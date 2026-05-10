@@ -68,6 +68,9 @@ statement(A) ::= use_statement(B). {
 statement(A) ::= set_connection_charset_statement(B). {
     A = B;
 }
+statement(A) ::= set_system_variable_statement(B). {
+    A = B;
+}
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
@@ -251,6 +254,61 @@ set_names_collate_opt(A) ::= . {
 }
 set_names_collate_opt(A) ::= COLLATE option_name(C). {
     A = C;
+}
+
+set_system_variable_statement(A) ::=
+    SET(S) set_system_variable_target(T) EQUAL set_system_variable_value(V). {
+    A = mylite_sql_parser_make_set_system_variable_statement(state, S, T, V);
+}
+
+set_system_variable_target(A) ::= identifier(N). {
+    A = mylite_sql_parser_make_set_system_variable_target(state, NULL, N);
+}
+set_system_variable_target(A) ::= SESSION(S) identifier(N). {
+    A = mylite_sql_parser_make_set_system_variable_target(
+        state,
+        mylite_sql_parser_make_identifier(state, S),
+        N);
+}
+set_system_variable_target(A) ::= LOCAL(L) identifier(N). {
+    A = mylite_sql_parser_make_set_system_variable_target(
+        state,
+        mylite_sql_parser_make_identifier(state, L),
+        N);
+}
+set_system_variable_target(A) ::= GLOBAL(G) identifier(N). {
+    A = mylite_sql_parser_make_set_system_variable_target(
+        state,
+        mylite_sql_parser_make_identifier(state, G),
+        N);
+}
+set_system_variable_target(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_set_system_variable_target(
+        state,
+        NULL,
+        mylite_sql_parser_make_system_variable(state, T));
+}
+
+set_system_variable_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_set_default_value(state, T);
+}
+set_system_variable_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+set_system_variable_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+set_system_variable_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+set_system_variable_value(A) ::= ON(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+set_system_variable_value(A) ::= OFF(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+set_system_variable_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 create_table_statement(A) ::=
@@ -1833,6 +1891,18 @@ identifier(A) ::= IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SESSION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LOCAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= GLOBAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= OFF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= IFNULL(T). {

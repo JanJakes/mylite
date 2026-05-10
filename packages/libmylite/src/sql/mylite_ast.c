@@ -364,6 +364,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "do_expression_list";
     case MYLITE_SQL_AST_DO_STATEMENT:
         return "do_statement";
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+        return "set_system_variable_statement";
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
+        return "set_system_variable_target";
+    case MYLITE_SQL_AST_SET_DEFAULT_VALUE:
+        return "set_default_value";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:

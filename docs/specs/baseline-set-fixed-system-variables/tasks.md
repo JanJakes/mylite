@@ -16,19 +16,19 @@
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
 - [x] Commit and push the start-feature artifacts.
-- [ ] Add parser/AST support for limited fixed `SET` system-variable
+- [x] Add parser/AST support for limited fixed `SET` system-variable
   statements.
-- [ ] Add MyLite-owned runtime validation/execution for admitted no-op
+- [x] Add MyLite-owned runtime validation/execution for admitted no-op
   assignments.
-- [ ] Preserve result shape, affected rows, warning count, row-count state,
+- [x] Preserve result shape, affected rows, warning count, row-count state,
   diagnostics clearing, catalog generations, SQLite schema generation, and
   file preamble invariants.
-- [ ] Add parser/runtime tests for accepted scope/value forms, diagnostics,
+- [x] Add parser/runtime tests for accepted scope/value forms, diagnostics,
   file safety, independent handles, and deterministic rejection of unsupported
   forms.
-- [ ] Register any new runtime test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, scope control,
+- [x] Register any new runtime test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, scope control,
   diagnostics, row-count state, fixed-value semantics, performance, cleanup,
   compatibility wording, and test relevance.

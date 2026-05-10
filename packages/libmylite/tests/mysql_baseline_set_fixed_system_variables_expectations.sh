@@ -191,6 +191,14 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "scoped read only variable" \
+    1238 \
+    HY000 \
+    "Variable 'version' is a read only variable" \
+    "SET SESSION version = '8.4.9';" \
+    "$DATABASE"
+
+expect_error \
     "invalid autocommit integer" \
     1231 \
     42000 \

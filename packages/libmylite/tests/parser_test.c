@@ -39,6 +39,7 @@ static int test_nullif_function(void);
 static int test_isnull_function(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
+static int test_set_fixed_system_variable_statement(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -167,6 +168,7 @@ int main(void) {
     failures += test_isnull_function();
     failures += test_case_operator();
     failures += test_do_statement();
+    failures += test_set_fixed_system_variable_statement();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -944,6 +946,35 @@ static int test_current_user_identity_functions(void) {
         select,
         MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         "identity alias identifier table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE session (local INT, global INT, off INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "nonreserved SET keyword identifier table"
+    );
+    failures += expect_span_text(child_at(select, 0U), "session", "session table identifier");
+    failures += expect_span_text(
+        child_at(child_at(child_at(select, 1U), 0U), 0U),
+        "local",
+        "local column identifier"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(select, 1U), 1U), 0U),
+        "global",
+        "global column identifier"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(select, 1U), 2U), 0U),
+        "off",
+        "off column identifier"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -8582,6 +8613,90 @@ static int test_delete_statement(void) {
     limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "delete simple limit");
     failures += expect_span_text(child_at(limit_clause, 0U), "0", "delete simple limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_set_fixed_system_variable_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SET autocommit = 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT,
+        "set system variable statement"
+    );
+    failures += expect_child_count(statement, 2U, "set system variable children");
+    failures += expect_node(
+        target,
+        MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET,
+        "set system variable target"
+    );
+    failures += expect_child_count(target, 1U, "set target unscoped child count");
+    failures += expect_span_text(child_at(target, 0U), "autocommit", "set unscoped name");
+    failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_INTEGER, "set integer fixed value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET SESSION `autocommit` = ON;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_child_count(target, 2U, "set target scoped child count");
+    failures += expect_span_text(child_at(target, 0U), "SESSION", "set target session scope");
+    failures += expect_span_text(child_at(target, 1U), "`autocommit`", "set quoted name");
+    failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_TRUE, "set ON fixed value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET LOCAL sql_warnings = OFF;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_span_text(child_at(target, 0U), "LOCAL", "set target local scope");
+    failures += expect_span_text(child_at(target, 1U), "sql_warnings", "set local name");
+    failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_FALSE, "set OFF fixed value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET @@session.sql_mode = DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    target = child_at(statement, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_child_count(target, 1U, "set system variable target child count");
+    failures += expect_node(
+        child_at(target, 0U),
+        MYLITE_SQL_AST_SYSTEM_VARIABLE,
+        "set system variable token target"
+    );
+    failures += expect_span_text(child_at(target, 0U), "@@session.sql_mode", "set @@ target");
+    failures += expect_node(value, MYLITE_SQL_AST_SET_DEFAULT_VALUE, "set default value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SET sql_mode = "
+        "'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "set sql_mode string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET autocommit = 1, sql_notes = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SET app.autocommit = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

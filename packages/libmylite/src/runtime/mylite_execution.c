@@ -784,6 +784,19 @@ struct system_variable_component {
     bool quoted;
 };
 
+enum set_system_variable_scope {
+    SET_SYSTEM_VARIABLE_SCOPE_NONE = 0,
+    SET_SYSTEM_VARIABLE_SCOPE_SESSION = 1,
+    SET_SYSTEM_VARIABLE_SCOPE_LOCAL = 2,
+    SET_SYSTEM_VARIABLE_SCOPE_GLOBAL = 3,
+};
+
+struct resolved_set_system_variable_target {
+    enum session_system_variable_kind kind;
+    enum set_system_variable_scope scope;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -806,6 +819,11 @@ static int execute_set_character_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_set_system_variable_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_set_connection_character_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -824,6 +842,43 @@ static int validate_set_connection_character_set_target(
 static int validate_set_names_collation_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *target
+);
+static int validate_set_system_variable_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static int resolve_set_system_variable_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    struct resolved_set_system_variable_target *out_target
+);
+static int resolve_set_system_variable_identifier_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scope_node,
+    const struct mylite_sql_ast_node *name_node,
+    struct resolved_set_system_variable_target *out_target
+);
+static int resolve_set_system_variable_system_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_node,
+    struct resolved_set_system_variable_target *out_target
+);
+static bool set_system_variable_fixed_boolean_value(
+    enum session_system_variable_kind kind,
+    bool *out_value
+);
+static int validate_set_fixed_boolean_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool expected_value
+);
+static int validate_set_sql_mode_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+);
+static void set_read_only_system_variable_error(
+    struct mylite_db *database,
+    const char *variable_name
 );
 static int execute_create_table_statement(
     struct mylite_db *database,
@@ -2579,6 +2634,10 @@ static void set_unknown_system_variable_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+static void set_unknown_system_variable_name_error(
+    struct mylite_db *database,
+    const char *variable_name
+);
 static int copy_system_variable_name_for_error(
     const struct mylite_sql_source_span *span,
     char **out_name
@@ -4140,6 +4199,8 @@ static int execute_parsed_statement(
         return execute_set_names_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
         return execute_set_character_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+        return execute_set_system_variable_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return execute_create_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -4342,6 +4403,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
+    case MYLITE_SQL_AST_SET_DEFAULT_VALUE:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
@@ -4427,6 +4490,29 @@ static int execute_set_character_set_statement(
     mylite_result **out_result
 ) {
     return execute_set_connection_character_set_statement(database, statement, false, out_result);
+}
+
+static int execute_set_system_variable_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = validate_set_system_variable_statement(database, statement);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
 }
 
 static int execute_set_connection_character_set_statement(
@@ -4541,6 +4627,325 @@ static int validate_set_names_collation_target(
         return MYLITE_ERROR;
     }
 
+    return MYLITE_OK;
+}
+
+static int validate_set_system_variable_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *target_node = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    struct resolved_set_system_variable_target target = {0};
+    bool expected_boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target_node = child_at(statement, 0U);
+    value_node = child_at(statement, 1U);
+    rc = resolve_set_system_variable_target(database, target_node, &target);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    if (set_system_variable_fixed_boolean_value(target.kind, &expected_boolean_value)) {
+        return validate_set_fixed_boolean_value(database, value_node, expected_boolean_value);
+    }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
+        return validate_set_sql_mode_value(database, value_node);
+    }
+
+    set_read_only_system_variable_error(database, target.name);
+    return MYLITE_ERROR;
+}
+
+static int resolve_set_system_variable_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    struct resolved_set_system_variable_target *out_target
+) {
+    const struct mylite_sql_ast_node *first = NULL;
+    const struct mylite_sql_ast_node *second = NULL;
+    size_t child_count = 0U;
+
+    if (out_target == NULL) {
+        set_runtime_error(database, "invalid SET system variable target");
+        return MYLITE_ERROR;
+    }
+    *out_target = (struct resolved_set_system_variable_target){0};
+    if (target == NULL || target->kind != MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(target);
+    first = child_at(target, 0U);
+    second = child_at(target, 1U);
+    if (child_count == 1U && first != NULL && first->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+        return resolve_set_system_variable_system_target(database, first, out_target);
+    }
+    if (child_count == 1U) {
+        return resolve_set_system_variable_identifier_target(database, NULL, first, out_target);
+    }
+    if (child_count == 2U) {
+        return resolve_set_system_variable_identifier_target(database, first, second, out_target);
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int resolve_set_system_variable_identifier_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *scope_node,
+    const struct mylite_sql_ast_node *name_node,
+    struct resolved_set_system_variable_target *out_target
+) {
+    struct system_variable_component name = {0};
+    char scope[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (name_node == NULL || name_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (scope_node == NULL) {
+        out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_NONE;
+    } else {
+        rc = copy_identifier_text(scope_node, scope, sizeof(scope), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(scope, "session")) {
+            out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_SESSION;
+        } else if (text_equals_ascii_case_insensitive(scope, "local")) {
+            out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_LOCAL;
+        } else if (text_equals_ascii_case_insensitive(scope, "global")) {
+            out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_GLOBAL;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+    }
+
+    rc = copy_identifier_text(name_node, out_target->name, sizeof(out_target->name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    memcpy(name.text, out_target->name, strlen(out_target->name) + 1U);
+    if (!resolve_system_variable_kind(&name, &out_target->kind)) {
+        set_unknown_system_variable_name_error(database, out_target->name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_set_system_variable_system_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_node,
+    struct resolved_set_system_variable_target *out_target
+) {
+    const struct mylite_sql_source_span *span = name_node == NULL ? NULL : &name_node->span;
+    struct system_variable_component first = {0};
+    struct system_variable_component second = {0};
+    const struct system_variable_component *name = &first;
+    size_t offset = 2U;
+    bool has_scope = false;
+    int rc = MYLITE_OK;
+
+    if (span == NULL || span->text == NULL || span->length < 3U || span->text[0] != '@' ||
+        span->text[1] != '@') {
+        set_unknown_system_variable_error(database, name_node);
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_system_variable_component(database, span, &offset, &first);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (offset < span->length && span->text[offset] == '.') {
+        has_scope = true;
+        ++offset;
+        if (first.quoted) {
+            set_unsupported_error(database, "unsupported quoted system variable scope");
+            return MYLITE_ERROR;
+        }
+        rc = parse_system_variable_component(database, span, &offset, &second);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        name = &second;
+    }
+    if (offset != span->length || system_variable_component_is_empty(name)) {
+        set_unknown_system_variable_error(database, name_node);
+        return MYLITE_ERROR;
+    }
+
+    if (!resolve_system_variable_kind(name, &out_target->kind)) {
+        set_unknown_system_variable_error(database, name_node);
+        return MYLITE_ERROR;
+    }
+    memcpy(out_target->name, name->text, strlen(name->text) + 1U);
+
+    if (!has_scope) {
+        out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_NONE;
+        return MYLITE_OK;
+    }
+    if (system_variable_component_equals(&first, "global")) {
+        out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_GLOBAL;
+        return MYLITE_OK;
+    }
+    if (system_variable_component_equals(&first, "session")) {
+        out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_SESSION;
+    } else if (system_variable_component_equals(&first, "local")) {
+        out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_LOCAL;
+    } else {
+        set_unknown_system_variable_error(database, name_node);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool set_system_variable_fixed_boolean_value(
+    enum session_system_variable_kind kind,
+    bool *out_value
+) {
+    switch (kind) {
+    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
+        *out_value = true;
+        return true;
+    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
+        *out_value = false;
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int validate_set_fixed_boolean_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool expected_value
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool actual_value = false;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        actual_value = true;
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        actual_value = false;
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        if (parse_unsigned_integer_literal(&value_node->span, &magnitude) != MYLITE_OK ||
+            magnitude > 1U) {
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        actual_value = magnitude == 1U;
+    } else {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (actual_value != expected_value) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_set_sql_mode_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char *decoded = NULL;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_table_option_string_literal(
+        database,
+        value_node,
+        &decoded,
+        (struct table_option_name_policy){
+            .identifier_kind = "sql_mode",
+            .nul_message = "SET sql_mode does not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (strcmp(decoded, default_sql_mode_value()) != 0) {
+        free(decoded);
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    free(decoded);
     return MYLITE_OK;
 }
 
@@ -7711,6 +8116,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_USE_STATEMENT:
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
@@ -7848,6 +8254,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
+    case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
+    case MYLITE_SQL_AST_SET_DEFAULT_VALUE:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
@@ -27328,6 +27736,26 @@ static void set_global_variable_only_error(struct mylite_db *database, const cha
     );
 }
 
+static void set_read_only_system_variable_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Variable '%s' is a read only variable", variable_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_session_variable_only,
+        "HY000",
+        message
+    );
+}
+
 static void set_unknown_system_variable_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -27349,6 +27777,26 @@ static void set_unknown_system_variable_error(
         message[0] = '\0';
     }
     free(variable_name);
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_system_variable,
+        "HY000",
+        message
+    );
+}
+
+static void set_unknown_system_variable_name_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *display_name = variable_name == NULL ? "unknown" : variable_name;
+    int written = snprintf(message, sizeof(message), "Unknown system variable '%s'", display_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
 
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),

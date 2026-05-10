@@ -24,7 +24,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `^` | ❌ | Bitwise XOR |
 | `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `OR`, `&&` is accepted with deprecation warning 1287, and no general expression-level boolean semantics are supported |
-| `BETWEEN ... AND ...` | ❌ | Whether a value is within a range of values |
+| `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `BINARY` | ❌ | Cast a string to a binary string |
 | `CASE` | ❌ | Case operator |
 | `DIV` | ❌ | Integer division |
@@ -36,7 +36,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
 | `LIKE` | ❌ | Simple pattern matching |
 | `NOT, !` | 🟡 | Limited keyword `NOT` over descriptor-backed `WHERE` boolean expressions for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; symbolic `!` remains unsupported until MyLite owns its higher-precedence expression semantics and deprecation warning behavior |
-| `NOT BETWEEN ... AND ...` | ❌ | Whether a value is not within a range of values |
+| `NOT BETWEEN ... AND ...` | 🟡 | Limited negation of the descriptor-backed `BETWEEN` predicate subset; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `NOT EXISTS()` | ❌ | Whether the result of a query contains no rows |
 | `NOT IN()` | ❌ | Whether a value is not within a set of values |
 | `NOT LIKE` | ❌ | Negation of simple pattern matching |

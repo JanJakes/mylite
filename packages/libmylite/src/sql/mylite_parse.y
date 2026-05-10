@@ -741,30 +741,44 @@ insert_select_statement(A) ::=
 }
 
 replace_values_statement(A) ::=
-    REPLACE(R) INTO table_name(T) insert_column_list_opt(C) VALUES insert_row_list(V). {
-    A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V);
+    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    VALUES insert_row_list(V). {
+    A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 replace_values_statement(A) ::=
-    REPLACE(R) table_name(T) insert_column_list_opt(C) VALUES insert_row_list(V). {
-    A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V);
+    REPLACE(R) replace_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    VALUES insert_row_list(V). {
+    A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 
 replace_select_statement(A) ::=
-    REPLACE(R) INTO table_name(T) insert_column_list_opt(C) select_statement(S). {
-    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S);
+    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
+    select_statement(S). {
+    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S, M);
 }
 replace_select_statement(A) ::=
-    REPLACE(R) table_name(T) insert_column_list_opt(C) select_statement(S). {
-    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S);
+    REPLACE(R) replace_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    select_statement(S). {
+    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S, M);
 }
 
 replace_set_statement(A) ::=
-    REPLACE(R) INTO table_name(T) SET insert_assignment_list(S). {
-    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S);
+    REPLACE(R) replace_modifier_opt(M) INTO table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S, M);
 }
 replace_set_statement(A) ::=
-    REPLACE(R) table_name(T) SET insert_assignment_list(S). {
-    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S);
+    REPLACE(R) replace_modifier_opt(M) table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S, M);
+}
+
+replace_modifier_opt(A) ::= . {
+    A = NULL;
+}
+replace_modifier_opt(A) ::= LOW_PRIORITY(T). {
+    A = mylite_sql_parser_make_replace_low_priority_modifier(state, T);
+}
+replace_modifier_opt(A) ::= DELAYED(T). {
+    A = mylite_sql_parser_make_replace_delayed_modifier(state, T);
 }
 
 insert_set_statement(A) ::=

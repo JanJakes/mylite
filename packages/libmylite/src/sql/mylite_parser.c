@@ -1645,7 +1645,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
     struct mylite_sql_token replace_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *select
+    struct mylite_sql_ast_node *select,
+    struct mylite_sql_ast_node *modifier
 ) {
     struct mylite_sql_source_span span = span_from_token(&replace_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1666,6 +1667,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, columns);
     mylite_sql_ast_node_append_child(statement, select);
+    mylite_sql_ast_node_append_child(statement, modifier);
     return statement;
 }
 
@@ -1674,7 +1676,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
     struct mylite_sql_token replace_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *rows
+    struct mylite_sql_ast_node *rows,
+    struct mylite_sql_ast_node *modifier
 ) {
     struct mylite_sql_source_span span = span_from_token(&replace_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1695,7 +1698,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, columns);
     mylite_sql_ast_node_append_child(statement, rows);
+    mylite_sql_ast_node_append_child(statement, modifier);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_low_priority_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER, span_from_token(&token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_delayed_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER, span_from_token(&token));
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
@@ -1727,7 +1745,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token replace_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *assignments
+    struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *modifier
 ) {
     struct mylite_sql_source_span span = span_from_token(&replace_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1745,6 +1764,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, assignments);
+    mylite_sql_ast_node_append_child(statement, modifier);
     return statement;
 }
 
@@ -2928,6 +2948,8 @@ static bool map_keyword_token(
         {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
+        {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
+        {"DELAYED", MYLITE_SQL_PARSE_DELAYED},
         {"INTO", MYLITE_SQL_PARSE_INTO},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"TO", MYLITE_SQL_PARSE_TO},

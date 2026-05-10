@@ -511,7 +511,7 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE LOW_PRIORITY INTO numbers SET id = 1, nn = 1",
+        "REPLACE LOW_PRIORITY DELAYED INTO numbers SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -520,7 +520,7 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE DELAYED INTO numbers SET id = 1, nn = 1",
+        "REPLACE HIGH_PRIORITY INTO numbers SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

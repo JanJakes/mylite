@@ -548,7 +548,7 @@ static int test_replace_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE LOW_PRIORITY INTO dst(id) SELECT id FROM src",
+        "REPLACE DELAYED LOW_PRIORITY INTO dst(id) SELECT id FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

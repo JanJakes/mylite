@@ -490,7 +490,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE LOW_PRIORITY INTO numbers VALUES (1)",
+        "REPLACE LOW_PRIORITY DELAYED INTO numbers VALUES (1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

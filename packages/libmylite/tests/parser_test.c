@@ -66,6 +66,7 @@ static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
 static int test_insert_select_statement(void);
 static int test_replace_select_statement(void);
+static int test_replace_modifier_statements(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -181,6 +182,7 @@ int main(void) {
     failures += test_select_item_alias_clause();
     failures += test_insert_select_statement();
     failures += test_replace_select_statement();
+    failures += test_replace_modifier_statements();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -5984,6 +5986,96 @@ static int test_replace_select_statement(void) {
     return failures;
 }
 
+static int test_replace_modifier_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "REPLACE LOW_PRIORITY INTO app.simple_lifecycle (id) VALUES (1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT,
+        "low priority replace values"
+    );
+    failures += expect_child_count(statement, 4U, "low priority replace values child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER,
+        "low priority replace values modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE DELAYED simple_lifecycle VALUES (2);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "delayed replace values");
+    failures += expect_child_count(statement, 4U, "delayed replace values child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER,
+        "delayed replace values modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE DELAYED INTO app.simple_lifecycle SET id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, "delayed replace set");
+    failures += expect_child_count(statement, 3U, "delayed replace set child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER,
+        "delayed replace set modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE LOW_PRIORITY INTO app.simple_lifecycle (id) SELECT id FROM app.source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT,
+        "low priority replace select"
+    );
+    failures += expect_child_count(statement, 4U, "low priority replace select child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER,
+        "low priority replace select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE DELAYED simple_lifecycle SELECT * FROM source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT, "delayed replace select");
+    failures += expect_child_count(statement, 4U, "delayed replace select child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER,
+        "delayed replace select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_delete_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -7259,7 +7351,21 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "REPLACE LOW_PRIORITY INTO t VALUES (1);",
+        "REPLACE LOW_PRIORITY DELAYED INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE HIGH_PRIORITY INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE INTO LOW_PRIORITY t VALUES (1);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -7337,7 +7443,14 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "REPLACE LOW_PRIORITY INTO t SET id = 1;",
+        "REPLACE DELAYED LOW_PRIORITY INTO t SET id = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE HIGH_PRIORITY INTO t SET id = 1;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

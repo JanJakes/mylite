@@ -1588,7 +1588,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *rows,
-    struct mylite_sql_ast_node *modifier
+    struct mylite_sql_ast_node *modifier,
+    struct mylite_sql_ast_node *ignore
 ) {
     struct mylite_sql_source_span span = span_from_token(&insert_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1610,6 +1611,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     mylite_sql_ast_node_append_child(statement, columns);
     mylite_sql_ast_node_append_child(statement, rows);
     mylite_sql_ast_node_append_child(statement, modifier);
+    mylite_sql_ast_node_append_child(statement, ignore);
     return statement;
 }
 
@@ -1663,6 +1665,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_delayed_modifier(
     struct mylite_sql_token token
 ) {
     return make_node(state, MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER, span_from_token(&token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_ignore_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER, span_from_token(&token));
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
@@ -1746,7 +1755,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     struct mylite_sql_token insert_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *assignments,
-    struct mylite_sql_ast_node *modifier
+    struct mylite_sql_ast_node *modifier,
+    struct mylite_sql_ast_node *ignore
 ) {
     struct mylite_sql_source_span span = span_from_token(&insert_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1765,6 +1775,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, assignments);
     mylite_sql_ast_node_append_child(statement, modifier);
+    mylite_sql_ast_node_append_child(statement, ignore);
     return statement;
 }
 
@@ -2931,6 +2942,7 @@ static bool map_keyword_token(
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"IF", MYLITE_SQL_PARSE_IF},
+        {"IGNORE", MYLITE_SQL_PARSE_IGNORE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},

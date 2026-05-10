@@ -74,8 +74,10 @@ records the runtime probes for this feature. Observed behavior:
 - Omitting a numeric `NOT NULL` column with no explicit default inserts `0` and
   records one warning `1364` for that omitted column per statement, not per
   inserted row.
-- Nullable omitted columns continue to receive `NULL`, and columns with an
-  explicit integer default continue to receive that default without a warning.
+- Nullable omitted columns with the ordinary implicit `DEFAULT NULL` continue
+  to receive `NULL` without a warning. Nullable columns whose default was
+  explicitly dropped also receive `NULL`, but record one warning `1364` for
+  that omitted column per statement.
 - Out-of-range integer values are clipped to the MySQL endpoint for the target
   integer type and record warning `1264` with the affected row number.
 - `TRUE` and `FALSE` are stored as `1` and `0` for currently supported integer
@@ -102,8 +104,8 @@ The implementation must add:
 - descriptor-driven schema, table, and column resolution unchanged;
 - strict parse/name/shape diagnostics unchanged for non-ignorable errors;
 - `NULL` into numeric `NOT NULL` converted to `0` with warning `1048`;
-- omitted numeric `NOT NULL` no-default columns converted to `0` with warning
-  `1364`;
+- omitted no-explicit-default columns warn with `1364`; numeric `NOT NULL`
+  columns store `0`, while nullable dropped-default columns store `NULL`;
 - out-of-range numeric values clipped to the current descriptor range with
   warning `1264`;
 - affected rows equal to inserted rows for successful adjusted inserts;
@@ -238,16 +240,17 @@ or MyLite-specific diagnostics. `IGNORE` does not demote these errors.
 
 - `NULL` assigned to a numeric `NOT NULL` column stores `0` and appends warning
   `1048`, SQLSTATE `23000`, message `Column '<column>' cannot be null`.
-- An omitted numeric `NOT NULL` column without an explicit default stores `0`
-  and appends warning `1364`, SQLSTATE `HY000`, message `Field '<column>'
-  doesn't have a default value`.
+- An omitted column without an explicit default appends warning `1364`,
+  SQLSTATE `HY000`, message `Field '<column>' doesn't have a default value`.
+  Numeric `NOT NULL` columns store `0`; nullable dropped-default columns store
+  `NULL`.
 - A decimal integer outside the target descriptor range stores the closest
   supported endpoint and appends warning `1264`, SQLSTATE `22003`, message
   `Out of range value for column '<column>' at row <n>`.
 
-Omitted nullable columns store `NULL`. Omitted columns with explicit integer
-defaults store that descriptor default. `TRUE` and `FALSE` convert to `1` and
-`0` before range checks.
+Omitted nullable columns with an implicit `DEFAULT NULL` store `NULL` without a
+warning. Omitted columns with explicit integer defaults store that descriptor
+default. `TRUE` and `FALSE` convert to `1` and `0` before range checks.
 
 Warnings are appended in descriptor/value processing order. For
 `DELAYED IGNORE`, the delayed warning is appended before ordinary insert
@@ -308,7 +311,7 @@ Supported warnings:
 | Condition | Code | SQLSTATE | Message Shape |
 | --- | ---: | --- | --- |
 | `NULL` into numeric `NOT NULL` | `1048` | `23000` | `Column '<column>' cannot be null` |
-| omitted numeric `NOT NULL` no-default | `1364` | `HY000` | `Field '<column>' doesn't have a default value` |
+| omitted no-explicit-default column | `1364` | `HY000` | `Field '<column>' doesn't have a default value` |
 | integer out of descriptor range | `1264` | `22003` | `Out of range value for column '<column>' at row <n>` |
 | `DELAYED` conversion | `3005` | `HY000` | existing delayed-conversion message |
 
@@ -331,8 +334,9 @@ The implementation tests must cover:
 - successful multi-row `VALUES` adjustment over signed and unsigned integer
   families in the current physical range;
 - successful `SET` adjustment;
-- `NULL` into `NOT NULL`, omitted no-default columns, explicit defaults,
-  nullable omitted columns, out-of-range clipping, and boolean inputs;
+- `NULL` into `NOT NULL`, omitted no-default columns including nullable
+  dropped-default descriptors, explicit defaults, ordinary nullable omitted
+  columns, out-of-range clipping, and boolean inputs;
 - delayed warning plus adjustment warnings and warning order;
 - affected rows, warning count, `SHOW WARNINGS`, absence of result rows, and
   `ROW_COUNT()`;

@@ -94,7 +94,7 @@
 | --- | --- | --- |
 | User variables | ❌ | Retention, coercion, metadata |
 | Local variables | ❌ | Stored-program variable typing, scope, and diagnostics |
-| Type conversion | 🟡 | Limited strict conversion for supported integer/`NULL`/`TRUE`/`FALSE` defaults plus inserted, replaced, and updated values, limited `INSERT IGNORE ... VALUES` / `SET` adjustment for omitted numeric `NOT NULL` no-default columns, explicit `NULL` into numeric `NOT NULL`, and out-of-range descriptor integer inputs, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
+| Type conversion | 🟡 | Limited strict conversion for supported integer/`NULL`/`TRUE`/`FALSE` defaults plus inserted, replaced, and updated values, limited `INSERT IGNORE ... VALUES` / `SET` adjustment for omitted no-explicit-default columns, explicit `NULL` into numeric `NOT NULL`, and out-of-range descriptor integer inputs, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
 | Collation coercibility | ❌ | Coercibility and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

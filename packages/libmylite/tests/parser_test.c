@@ -6079,6 +6079,7 @@ static int test_replace_modifier_statements(void) {
 }
 
 static int test_insert_modifier_statements(void) {
+    const size_t low_priority_ignore_values_child_count = 5U;
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
@@ -6115,6 +6116,46 @@ static int test_insert_modifier_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "INSERT IGNORE INTO app.simple_lifecycle (id) VALUES (3);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "ignore insert values");
+    failures += expect_child_count(statement, 4U, "ignore insert values child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "ignore insert values modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY IGNORE INTO app.simple_lifecycle (id) VALUES (4);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "low priority ignore values");
+    failures += expect_child_count(
+        statement,
+        low_priority_ignore_values_child_count,
+        "low priority ignore values child count"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER,
+        "low priority ignore values priority modifier"
+    );
+    failures += expect_node(
+        child_at(statement, 4U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "low priority ignore values ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT simple_lifecycle VALUES (3);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert values no into");
@@ -6135,6 +6176,27 @@ static int test_insert_modifier_statements(void) {
         child_at(statement, 2U),
         MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
         "delayed insert set modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT DELAYED IGNORE INTO app.simple_lifecycle SET id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "delayed ignore insert set");
+    failures += expect_child_count(statement, 4U, "delayed ignore insert set child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
+        "delayed ignore insert set delayed modifier"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "delayed ignore insert set ignore modifier"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -7430,10 +7492,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
         parse_sql("REPLACE INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -7475,7 +7533,14 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "INSERT LOW_PRIORITY IGNORE INTO t VALUES (1);",
+        "INSERT IGNORE LOW_PRIORITY INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY IGNORE INTO t SELECT id FROM src;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

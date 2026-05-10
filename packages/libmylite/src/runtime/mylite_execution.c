@@ -299,6 +299,7 @@ struct planned_insert {
     size_t column_count;
     struct planned_insert_row *rows;
     size_t row_count;
+    bool ignore_errors;
 };
 
 enum planned_select_predicate_kind {
@@ -1963,6 +1964,11 @@ static int check_insert_omitted_columns(
     const size_t *target_indexes,
     size_t target_count
 );
+static int validate_insert_row_shapes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_list,
+    size_t target_count
+);
 static int plan_insert_rows(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *row_list,
@@ -1978,6 +1984,12 @@ static int plan_insert_row(
     size_t target_count,
     struct planned_insert *plan,
     struct planned_insert_row *out_row
+);
+static int append_insert_omitted_column_warnings(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
 );
 static int plan_insert_set_row(
     struct mylite_db *database,
@@ -1996,6 +2008,7 @@ static int convert_insert_value(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 );
 static int convert_integer_literal(
@@ -2003,7 +2016,15 @@ static int convert_integer_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
+);
+static int clip_integer_for_column(
+    struct mylite_db *database,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    int64_t *out_value
 );
 static int parse_unsigned_integer_literal(
     const struct mylite_sql_source_span *span,
@@ -2019,6 +2040,15 @@ static int convert_integer_for_column(
     bool is_negative,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    int64_t *out_value
+);
+static int convert_integer_for_column_with_policy(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
     int64_t *out_value
 );
 static int plan_select_columns(
@@ -2593,6 +2623,13 @@ static void set_out_of_range_error(
     const char *column_name,
     size_t row_number
 );
+static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
+static int append_no_default_warning(struct mylite_db *database, const char *column_name);
+static int append_out_of_range_warning(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
 static void set_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
@@ -2945,6 +2982,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
         break;
@@ -6345,6 +6383,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
         break;
@@ -9722,6 +9761,8 @@ static int plan_insert(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
+    out_plan->ignore_errors =
+        child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -9756,10 +9797,13 @@ static int plan_insert(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
+        rc = validate_insert_row_shapes(database, row_list, target_count);
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_rows(database, row_list, target_indexes, target_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
     }
 
     free(target_indexes);
@@ -9781,6 +9825,8 @@ static int plan_insert_set(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert){0};
+    out_plan->ignore_errors =
+        child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -14192,22 +14238,57 @@ static int check_insert_omitted_columns(
     size_t target_count
 ) {
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        bool is_assigned = false;
+        bool column_is_targeted = false;
 
         for (size_t target_index = 0U; target_index < target_count; ++target_index) {
             if (target_indexes[target_index] == column_index) {
-                is_assigned = true;
+                column_is_targeted = true;
                 break;
             }
         }
-        if (!is_assigned &&
+        if (!column_is_targeted &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
               plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER))) {
+            if (plan->ignore_errors) {
+                continue;
+            }
             set_no_default_error(database, plan->columns[column_index].name);
             return MYLITE_ERROR;
         }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_insert_row_shapes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_list,
+    size_t target_count
+) {
+    const struct mylite_sql_ast_node *row_node = NULL;
+    size_t row_count = 0U;
+
+    if (row_list == NULL || row_list->kind != MYLITE_SQL_AST_INSERT_ROW_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    row_count = mylite_sql_ast_node_child_count(row_list);
+    row_node = child_at(row_list, 0U);
+    for (size_t row_index = 0U; row_index < row_count; ++row_index) {
+        size_t row_number = row_index + 1U;
+
+        if (row_node == NULL || row_node->kind != MYLITE_SQL_AST_INSERT_ROW) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_child_count(row_node) != target_count) {
+            set_column_count_mismatch_error(database, row_number);
+            return MYLITE_ERROR;
+        }
+        row_node = row_node->next_sibling;
     }
 
     return MYLITE_OK;
@@ -14289,13 +14370,48 @@ static int plan_insert_row(
             value_node,
             &plan->columns[column_index],
             row_number,
+            plan->ignore_errors,
             &out_row->values[column_index]
         );
 
         value_node = value_node == NULL ? NULL : value_node->next_sibling;
     }
+    if (rc == MYLITE_OK && plan->ignore_errors && row_number == 1U) {
+        rc = append_insert_omitted_column_warnings(database, plan, target_indexes, target_count);
+    }
 
     return rc;
+}
+
+static int append_insert_omitted_column_warnings(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
+) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        bool column_is_targeted = false;
+
+        for (size_t target_index = 0U; target_index < target_count; ++target_index) {
+            if (target_indexes[target_index] == column_index) {
+                column_is_targeted = true;
+                break;
+            }
+        }
+        if (!column_is_targeted &&
+            (plan->columns[column_index].default_kind ==
+                 MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
+             (!plan->columns[column_index].is_nullable &&
+              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER))) {
+            int rc = append_no_default_warning(database, plan->columns[column_index].name);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_insert_set_row(
@@ -14332,9 +14448,13 @@ static int plan_insert_set_row(
             value_node,
             &plan->columns[column_index],
             1U,
+            plan->ignore_errors,
             &plan->rows[0].values[column_index]
         );
         assignment = assignment->next_sibling;
+    }
+    if (rc == MYLITE_OK && plan->ignore_errors) {
+        rc = append_insert_omitted_column_warnings(database, plan, target_indexes, target_count);
     }
 
     return rc;
@@ -14359,6 +14479,9 @@ static int allocate_insert_row_values(
         if (plan->columns[column_index].default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
             out_row->values[column_index].is_null = false;
             out_row->values[column_index].integer = plan->columns[column_index].default_integer;
+        } else if (plan->ignore_errors && !plan->columns[column_index].is_nullable) {
+            out_row->values[column_index].is_null = false;
+            out_row->values[column_index].integer = 0;
         } else {
             out_row->values[column_index].is_null = true;
         }
@@ -14372,6 +14495,7 @@ static int convert_insert_value(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     if (value_node == NULL || column == NULL || out_value == NULL) {
@@ -14383,13 +14507,30 @@ static int convert_insert_value(
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
-            set_bad_null_error(database, column->name);
-            return MYLITE_ERROR;
+            if (!ignore_errors) {
+                set_bad_null_error(database, column->name);
+                return MYLITE_ERROR;
+            }
+            int rc = append_bad_null_warning(database, column->name);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            out_value->is_null = false;
+            out_value->integer = 0;
+            return MYLITE_OK;
         }
         return MYLITE_OK;
     }
 
-    return convert_integer_literal(database, value_node, column, row_number, out_value);
+    return convert_integer_literal(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
 }
 
 static int convert_integer_literal(
@@ -14397,6 +14538,7 @@ static int convert_integer_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     struct planned_value *out_value
 ) {
     const struct mylite_sql_ast_node *literal = value_node;
@@ -14427,24 +14569,74 @@ static int convert_integer_literal(
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
         if (rc != MYLITE_OK) {
-            set_out_of_range_error(database, column->name, row_number);
-            return MYLITE_ERROR;
+            if (!ignore_errors) {
+                set_out_of_range_error(database, column->name, row_number);
+                return MYLITE_ERROR;
+            }
+            out_value->is_null = false;
+            return clip_integer_for_column(
+                database,
+                is_negative,
+                column,
+                row_number,
+                &out_value->integer
+            );
         }
     }
 
     out_value->is_null = false;
-    rc = convert_integer_for_column(
+    rc = convert_integer_for_column_with_policy(
         database,
         magnitude,
         is_negative,
         column,
         row_number,
+        ignore_errors,
         &out_value->integer
     );
     if (rc != MYLITE_OK) {
         return rc;
     }
 
+    return MYLITE_OK;
+}
+
+static int clip_integer_for_column(
+    struct mylite_db *database,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    int64_t *out_value
+) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        column,
+        "INSERT supports only baseline integer columns",
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = append_out_of_range_warning(database, column->name, row_number);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (is_negative) {
+        if (range.negative_abs_max == 0U) {
+            *out_value = 0;
+        } else if (range.negative_abs_max == bigint_signed_negative_abs_max) {
+            *out_value = INT64_MIN;
+        } else {
+            *out_value = -(int64_t)range.negative_abs_max;
+        }
+        return MYLITE_OK;
+    }
+
+    *out_value = (int64_t)range.positive_max;
     return MYLITE_OK;
 }
 
@@ -14508,6 +14700,26 @@ static int convert_integer_for_column(
     size_t row_number,
     int64_t *out_value
 ) {
+    return convert_integer_for_column_with_policy(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        row_number,
+        false,
+        out_value
+    );
+}
+
+static int convert_integer_for_column_with_policy(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    int64_t *out_value
+) {
     const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
     struct integer_column_range range = {0};
     int rc = integer_range_for_column(
@@ -14523,6 +14735,9 @@ static int convert_integer_for_column(
     if (is_negative) {
         if ((range.negative_abs_max == 0U && magnitude != 0U) ||
             magnitude > range.negative_abs_max) {
+            if (ignore_errors) {
+                return clip_integer_for_column(database, true, column, row_number, out_value);
+            }
             set_out_of_range_error(database, column->name, row_number);
             return MYLITE_ERROR;
         }
@@ -14535,6 +14750,9 @@ static int convert_integer_for_column(
     }
 
     if (magnitude > range.positive_max) {
+        if (ignore_errors) {
+            return clip_integer_for_column(database, false, column, row_number, out_value);
+        }
         set_out_of_range_error(database, column->name, row_number);
         return MYLITE_ERROR;
     }
@@ -19392,6 +19610,77 @@ static void set_out_of_range_error(
         "22003",
         message
     );
+}
+
+static int append_bad_null_warning(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_bad_null,
+        "23000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_no_default_warning(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Field '%s' doesn't have a default value", column_name);
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_field_no_default,
+        "HY000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_out_of_range_warning(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Out of range value for column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_out_of_range,
+        "22003",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static void set_display_width_out_of_range_error(

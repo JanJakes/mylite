@@ -269,7 +269,7 @@ static int test_insert_modifiers_for_supported_forms(void) {
     );
     failures += execute_error(
         database,
-        "INSERT LOW_PRIORITY IGNORE INTO numbers VALUES (1)",
+        "INSERT IGNORE LOW_PRIORITY INTO numbers VALUES (1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

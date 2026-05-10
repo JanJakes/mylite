@@ -729,12 +729,26 @@ table_rename_connector_opt(A) ::= AS. {
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
     VALUES insert_row_list(R). {
-    A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M);
+    A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL);
+}
+insert_values_statement(A) ::=
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T) insert_column_list_opt(C)
+    VALUES insert_row_list(R). {
+    A = mylite_sql_parser_make_insert_statement(
+        state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
+    );
 }
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C)
     VALUES insert_row_list(R). {
-    A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M);
+    A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL);
+}
+insert_values_statement(A) ::=
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) insert_column_list_opt(C)
+    VALUES insert_row_list(R). {
+    A = mylite_sql_parser_make_insert_statement(
+        state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
+    );
 }
 
 insert_select_statement(A) ::=
@@ -803,11 +817,23 @@ replace_modifier_opt(A) ::= DELAYED(T). {
 
 insert_set_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) INTO table_name(T) SET insert_assignment_list(S). {
-    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M);
+    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M, NULL);
+}
+insert_set_statement(A) ::=
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_insert_set_statement(
+        state, I, T, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
+    );
 }
 insert_set_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) table_name(T) SET insert_assignment_list(S). {
-    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M);
+    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S, M, NULL);
+}
+insert_set_statement(A) ::=
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_insert_set_statement(
+        state, I, T, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
+    );
 }
 
 delete_statement(A) ::=

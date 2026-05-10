@@ -29,6 +29,18 @@ expect_output() {
     fi
 }
 
+expect_output_silent_stderr() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql "$sql" "$@" 2>/dev/null)
+    if [ "$output" != "$expected" ]; then
+        fail "$label: expected [$expected], got [$output]"
+    fi
+}
+
 expect_error() {
     label=$1
     code=$2
@@ -121,6 +133,32 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "nullable dropped default warning row" \
+    "1
+Warning	1364	Field 'n' doesn't have a default value
+1	NULL
+2	NULL" \
+    "CREATE TABLE drop_default_t(id INT NOT NULL, n INT NULL) ENGINE=InnoDB; "\
+"ALTER TABLE drop_default_t ALTER n DROP DEFAULT; "\
+"INSERT IGNORE INTO drop_default_t(id) VALUES (1), (2); "\
+"SHOW COUNT(*) WARNINGS; "\
+"SHOW WARNINGS; "\
+"SELECT id, IF(n IS NULL, 'NULL', n) FROM drop_default_t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mixed omitted default warning order" \
+    "3
+Warning	1264	Out of range value for column 'a' at row 1
+Warning	1364	Field 'b' doesn't have a default value
+Warning	1264	Out of range value for column 'a' at row 2" \
+    "CREATE TABLE order_t(a TINYINT, b INT NOT NULL) ENGINE=InnoDB; "\
+"INSERT IGNORE INTO order_t(a) VALUES (128), (129); "\
+"SHOW COUNT(*) WARNINGS; "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
     "priority ignore set forms" \
     "low_set_status	1	4	0
 0	127	0	0
@@ -179,6 +217,15 @@ expect_error \
     21S01 \
     "Column count doesn't match value count at row 1" \
     "INSERT IGNORE INTO set_t(id, nn) VALUES (1);" \
+    "$DATABASE"
+
+expect_output_silent_stderr \
+    "shape error warning rows do not retain adjustment warnings" \
+    "Error	1136	Column count doesn't match value count at row 2" \
+    "CREATE TABLE shape_t(a INT, b INT NOT NULL) ENGINE=InnoDB; "\
+"INSERT IGNORE INTO shape_t(a) VALUES (1), (1, 2); "\
+"SHOW WARNINGS;" \
+    --force \
     "$DATABASE"
 
 expect_error \

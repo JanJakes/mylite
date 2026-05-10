@@ -362,6 +362,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "min_aggregate_function";
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
         return "max_aggregate_function";
+    case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
+        return "count_column_function";
     case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
         return "session_user_function";
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:

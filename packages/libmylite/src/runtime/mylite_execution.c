@@ -289,11 +289,19 @@ struct planned_select {
     struct planned_select_limit limit;
 };
 
+enum planned_count_function {
+    PLANNED_COUNT_NONE = 0,
+    PLANNED_COUNT_STAR = 1,
+    PLANNED_COUNT_COLUMN = 2,
+};
+
 struct planned_count {
     bool has_source;
     const struct mylite_sql_ast_node *expression;
+    enum planned_count_function function;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor count_column;
     struct planned_select_predicate predicate;
 };
 
@@ -1033,11 +1041,24 @@ static int execute_select_from_plan(
     const struct planned_select *plan,
     mylite_result **out_result
 );
-static bool select_statement_has_count_star(const struct mylite_sql_ast_node *statement);
+static bool select_statement_has_count_aggregate(const struct mylite_sql_ast_node *statement);
 static int plan_count(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_count *out_plan
+);
+static enum planned_count_function count_function_from_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static const char *count_exactly_one_message(enum planned_count_function function);
+static const char *count_supported_clauses_message(enum planned_count_function function);
+static const char *count_descriptor_table_message(enum planned_count_function function);
+static int plan_count_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
 );
 static int execute_count_from_plan(
     struct mylite_db *database,
@@ -2335,6 +2356,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -3315,7 +3337,7 @@ static int execute_select_statement(
     if (select_statement_is_session_scalar(statement)) {
         return execute_session_scalar_select_statement(database, statement, out_result);
     }
-    if (select_statement_has_count_star(statement)) {
+    if (select_statement_has_count_aggregate(statement)) {
         rc = plan_count(database, statement, &count_plan);
         if (rc == MYLITE_OK) {
             rc = execute_count_from_plan(database, &count_plan, out_result);
@@ -5268,6 +5290,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -8283,7 +8306,7 @@ static int execute_select_from_plan(
     return finish_successful_result(database, result, out_result);
 }
 
-static bool select_statement_has_count_star(const struct mylite_sql_ast_node *statement) {
+static bool select_statement_has_count_aggregate(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = NULL;
 
@@ -8296,7 +8319,7 @@ static bool select_statement_has_count_star(const struct mylite_sql_ast_node *st
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
         expression = unwrap_parenthesized_expression(expression);
-        if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        if (count_function_from_expression(expression) != PLANNED_COUNT_NONE) {
             return true;
         }
         select_item = select_item->next_sibling;
@@ -8316,21 +8339,23 @@ static int plan_count(
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *count_expression = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_count){false};
-    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
-        set_unsupported_error(database, "COUNT(*) supports exactly one aggregate select item");
-        return MYLITE_ERROR;
-    }
-
     expression = child_at(select_item, 0U);
     out_plan->expression = expression;
-    expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
-        set_unsupported_error(database, "COUNT(*) supports exactly one aggregate select item");
+    count_expression = unwrap_parenthesized_expression(expression);
+    out_plan->function = count_function_from_expression(count_expression);
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_unsupported_error(database, count_exactly_one_message(out_plan->function));
+        return MYLITE_ERROR;
+    }
+    if (out_plan->function == PLANNED_COUNT_NONE) {
+        set_unsupported_error(database, count_exactly_one_message(out_plan->function));
         return MYLITE_ERROR;
     }
 
@@ -8339,13 +8364,23 @@ static int plan_count(
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             where_clause = optional_clause;
         } else {
-            set_unsupported_error(database, "COUNT(*) supports only WHERE");
+            set_unsupported_error(database, count_supported_clauses_message(out_plan->function));
             return MYLITE_ERROR;
         }
         optional_clause = optional_clause->next_sibling;
     }
 
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        if (out_plan->function == PLANNED_COUNT_COLUMN) {
+            const struct mylite_sql_ast_node *column_node = child_at(count_expression, 0U);
+
+            rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+            if (rc == MYLITE_OK) {
+                set_unknown_column_error(database, column_name);
+                rc = MYLITE_ERROR;
+            }
+            return rc;
+        }
         if (where_clause != NULL) {
             set_unsupported_error(database, "COUNT(*) WHERE requires a descriptor-backed table");
             return MYLITE_ERROR;
@@ -8353,7 +8388,7 @@ static int plan_count(
         return MYLITE_OK;
     }
     if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
-        set_unsupported_error(database, "COUNT(*) supports only descriptor-backed table reads");
+        set_unsupported_error(database, count_descriptor_table_message(out_plan->function));
         return MYLITE_ERROR;
     }
 
@@ -8366,12 +8401,21 @@ static int plan_count(
     if (rc == MYLITE_OK) {
         rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
     }
-    if (rc == MYLITE_OK && where_clause != NULL) {
+    if (rc == MYLITE_OK && (where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN)) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
             &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK && out_plan->function == PLANNED_COUNT_COLUMN) {
+        rc = plan_count_column(
+            database,
+            count_expression,
+            table_columns,
+            table_column_count,
+            &out_plan->count_column
         );
     }
     if (rc == MYLITE_OK) {
@@ -8386,6 +8430,84 @@ static int plan_count(
 
     free(table_columns);
     return rc;
+}
+
+static enum planned_count_function count_function_from_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL) {
+        return PLANNED_COUNT_NONE;
+    }
+    if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        return PLANNED_COUNT_STAR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION) {
+        return PLANNED_COUNT_COLUMN;
+    }
+
+    return PLANNED_COUNT_NONE;
+}
+
+static const char *count_exactly_one_message(enum planned_count_function function) {
+    if (function == PLANNED_COUNT_STAR) {
+        return "COUNT(*) supports exactly one aggregate select item";
+    }
+    if (function == PLANNED_COUNT_COLUMN) {
+        return "COUNT(column) supports exactly one aggregate select item";
+    }
+
+    return "COUNT aggregate supports exactly one aggregate select item";
+}
+
+static const char *count_supported_clauses_message(enum planned_count_function function) {
+    if (function == PLANNED_COUNT_COLUMN) {
+        return "COUNT(column) supports only WHERE";
+    }
+
+    return "COUNT(*) supports only WHERE";
+}
+
+static const char *count_descriptor_table_message(enum planned_count_function function) {
+    if (function == PLANNED_COUNT_COLUMN) {
+        return "COUNT(column) supports only descriptor-backed table reads";
+    }
+
+    return "COUNT(*) supports only descriptor-backed table reads";
+}
+
+static int plan_count_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "COUNT(column) supports only unqualified descriptor columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_column = table_columns[column_index];
+    return MYLITE_OK;
 }
 
 static int execute_count_from_plan(
@@ -13412,7 +13534,16 @@ static int build_count_sql(const struct planned_count *plan, char **out_sql) {
     *out_sql = NULL;
     dynamic_string_init(&string);
 
-    rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    rc = dynamic_string_append(&string, "SELECT COUNT(");
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_STAR) {
+        rc = dynamic_string_append(&string, "*");
+    }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_COLUMN) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->count_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") FROM ");
+    }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }

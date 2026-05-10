@@ -128,7 +128,66 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "empty table count",
         }
     );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "empty table count column",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE all_nulls (id INT NOT NULL, n INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO all_nulls VALUES (1, NULL), (2, NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM all_nulls",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "all-null count column",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE quoted_counts (`weird name` INT, `double\"quote` INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO quoted_counts VALUES (1, 1), (NULL, 2), (3, NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(`weird name`) FROM quoted_counts",
+            .column = "COUNT(`weird name`)",
+            .value = "2",
+            .context = "quoted space count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(`double\"quote`) FROM quoted_counts",
+            .column = "COUNT(`double\"quote`)",
+            .value = "2",
+            .context = "quoted double quote count column",
+        }
+    );
     failures += insert_count_rows(database);
+    failures += execute_ok(database, "ALTER TABLE numbers ALTER COLUMN n SET INVISIBLE", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
@@ -182,6 +241,168 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "parenthesized label count",
         }
     );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(id) FROM numbers",
+            .column = "COUNT(id)",
+            .value = "4",
+            .context = "not-null count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(i) FROM numbers",
+            .column = "COUNT(i)",
+            .value = "4",
+            .context = "integer count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(iu) FROM numbers",
+            .column = "COUNT(iu)",
+            .value = "3",
+            .context = "unsigned integer count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(b) FROM numbers",
+            .column = "COUNT(b)",
+            .value = "3",
+            .context = "bigint count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(bu) FROM numbers",
+            .column = "COUNT(bu)",
+            .value = "3",
+            .context = "unsigned bigint count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "explicit invisible nullable count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(nn) FROM numbers",
+            .column = "COUNT(nn)",
+            .value = "4",
+            .context = "not-null integer count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(ti) FROM numbers",
+            .column = "COUNT(ti)",
+            .value = "3",
+            .context = "tinyint count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(ti1) FROM numbers",
+            .column = "COUNT(ti1)",
+            .value = "3",
+            .context = "tinyint width one count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(si) FROM numbers",
+            .column = "COUNT(si)",
+            .value = "3",
+            .context = "smallint count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(mi) FROM numbers",
+            .column = "COUNT(mi)",
+            .value = "3",
+            .context = "mediumint count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(bool_col) FROM numbers",
+            .column = "COUNT(bool_col)",
+            .value = "3",
+            .context = "bool alias count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(boolean_col) FROM numbers",
+            .column = "COUNT(boolean_col)",
+            .value = "3",
+            .context = "boolean alias count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT count(n) FROM numbers",
+            .column = "count(n)",
+            .value = "3",
+            .context = "lowercase label count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT Count( n ) FROM numbers",
+            .column = "Count( n )",
+            .value = "3",
+            .context = "spaced label count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(/* inside */n) FROM numbers",
+            .column = "COUNT(/* inside */ n)",
+            .value = "3",
+            .context = "commented label count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT (COUNT(n)) FROM numbers",
+            .column = "(COUNT(n))",
+            .value = "3",
+            .context = "parenthesized label count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(N) FROM numbers",
+            .column = "COUNT(N)",
+            .value = "3",
+            .context = "case-insensitive count column",
+        }
+    );
 
     failures += expect_count_query(
         database,
@@ -190,6 +411,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(*)",
             .value = "1",
             .context = "schema-qualified target count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM app.numbers WHERE id = 1",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "schema-qualified target count column",
         }
     );
     failures += expect_count_query(
@@ -327,6 +557,132 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "unsigned bigint physical maximum count",
         }
     );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(id) FROM numbers WHERE n IS NULL",
+            .column = "COUNT(id)",
+            .value = "1",
+            .context = "count non-null id where nullable is null",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE n IS NULL",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "count nullable where nullable is null",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE n IS NOT NULL",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count nullable where nullable is not null",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id = 1",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "count column where equal null row",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id <> 1",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count column where not equal angle",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id != 1",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count column where not equal bang",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id < 3",
+            .column = "COUNT(n)",
+            .value = "1",
+            .context = "count column where less than",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id <= 3",
+            .column = "COUNT(n)",
+            .value = "2",
+            .context = "count column where less equal",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id > 2",
+            .column = "COUNT(n)",
+            .value = "2",
+            .context = "count column where greater than",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id >= 2",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "count column where greater equal",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE id <=> 2",
+            .column = "COUNT(n)",
+            .value = "1",
+            .context = "count column where null safe equal",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE iu = 4294967295",
+            .column = "COUNT(n)",
+            .value = "1",
+            .context = "count column where unsigned int boundary",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE b = -9223372036854775808",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "count column where signed bigint minimum",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE bu = 9223372036854775807",
+            .column = "COUNT(n)",
+            .value = "1",
+            .context = "count column where unsigned bigint physical maximum",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -342,6 +698,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(*)",
             .value = "1",
             .context = "reopened nullable count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM numbers WHERE n IS NOT NULL",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "reopened count column",
         }
     );
     failures += execute_ok(database, "RENAME TABLE numbers TO counted_numbers", &result);
@@ -365,6 +730,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .context = "renamed table count",
         }
     );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM counted_numbers",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "renamed table count column",
+        }
+    );
     failures += execute_ok(database, "TRUNCATE TABLE counted_numbers", &result);
     mylite_result_free(result);
     result = NULL;
@@ -375,6 +749,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(*)",
             .value = "0",
             .context = "truncated table count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(n) FROM counted_numbers",
+            .column = "COUNT(n)",
+            .value = "0",
+            .context = "truncated table count column",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -431,7 +814,25 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(n) FROM missing",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT(*) FROM missing_schema.numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n) FROM missing_schema.numbers",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
@@ -449,7 +850,25 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(n) FROM _mylite_reserved.numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT(*) FROM _mylite_reserved",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n) FROM _mylite_reserved",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -467,6 +886,42 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(n) FROM numbers WHERE missing = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(missing) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'n' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n) FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'n' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT(1) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -476,7 +931,7 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT COUNT(n) FROM numbers",
+        "SELECT COUNT(NULL) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -494,7 +949,25 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(t.n) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT() FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n, id) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -539,11 +1012,29 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(n), COUNT(id) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "COUNT(column) supports exactly one aggregate select item",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT(*), id FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "COUNT(*) supports exactly one aggregate select item",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n), id FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "COUNT(column) supports exactly one aggregate select item",
         }
     );
     failures += execute_error(
@@ -557,11 +1048,29 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(n) FROM numbers ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "COUNT(column) supports only WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT(*) FROM numbers LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "COUNT(*) supports only WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n) FROM numbers LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "COUNT(column) supports only WHERE",
         }
     );
     failures += execute_error(
@@ -615,6 +1124,15 @@ static int test_count_aggregate_diagnostics(void) {
             .message_part = "internal SQLite row operation failed",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(n) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "internal SQLite row operation failed",
+        }
+    );
 
     mylite_result_free(result);
     mylite_close(database);
@@ -657,12 +1175,30 @@ static int test_independent_count_aggregate_handles(void) {
         }
     );
     failures += expect_count_query(
+        first,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(id) FROM numbers",
+            .column = "COUNT(id)",
+            .value = "1",
+            .context = "first independent count column",
+        }
+    );
+    failures += expect_count_query(
         second,
         (struct expected_count_query){
             .sql = "SELECT COUNT(*) FROM numbers",
             .column = "COUNT(*)",
             .value = "2",
             .context = "second independent count",
+        }
+    );
+    failures += expect_count_query(
+        second,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(id) FROM numbers",
+            .column = "COUNT(id)",
+            .value = "2",
+            .context = "second independent count column",
         }
     );
 
@@ -696,7 +1232,13 @@ static int create_count_table(mylite_db *database) {
         "b BIGINT, "
         "bu BIGINT UNSIGNED, "
         "n INT, "
-        "nn INT NOT NULL)",
+        "nn INT NOT NULL, "
+        "ti TINYINT, "
+        "ti1 TINYINT(1), "
+        "si SMALLINT, "
+        "mi MEDIUMINT, "
+        "bool_col BOOL, "
+        "boolean_col BOOLEAN)",
         NULL
     );
 }
@@ -705,11 +1247,12 @@ static int insert_count_rows(mylite_db *database) {
     return execute_ok(
         database,
         "INSERT INTO numbers VALUES "
-        "(1, -2147483648, 0, -9223372036854775808, 0, NULL, 10), "
-        "(2, 0, 2, -1, 2, 20, 20), "
+        "(1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, "
+        "-128, -1, -32768, -8388608, 1, 0), "
+        "(2, 0, 2, -1, 2, 20, 20, 0, 0, 0, 0, NULL, 1), "
         "(3, 2147483647, 4294967295, 9223372036854775807, "
-        "9223372036854775807, 20, 30), "
-        "(4, 5, NULL, NULL, NULL, 30, 40)",
+        "9223372036854775807, 20, 30, 127, 1, 32767, 8388607, 0, NULL), "
+        "(4, 5, NULL, NULL, NULL, 30, 40, NULL, NULL, NULL, NULL, 1, 1)",
         NULL
     );
 }

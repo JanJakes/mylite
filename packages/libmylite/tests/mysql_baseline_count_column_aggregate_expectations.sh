@@ -92,12 +92,14 @@ run_mysql \
      );
      CREATE TABLE empty_t(id INT NOT NULL, n INT NULL, nn INT NOT NULL);
      CREATE TABLE all_null_t(id INT NOT NULL, n INT NULL);
+     CREATE TABLE quoted_t(\`weird name\` INT NULL, \`double\"quote\` INT NULL);
      INSERT INTO t VALUES
        (1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, -128, -1, -32768, -8388608, 1, 0),
        (2, 0, 2, -1, 2, 20, 20, 0, 0, 0, 0, NULL, 1),
        (3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, 20, 30, 127, 1, 32767, 8388607, 0, NULL),
        (4, 5, NULL, NULL, NULL, 30, 40, NULL, NULL, NULL, NULL, 1, 1);
-     INSERT INTO all_null_t VALUES (1, NULL), (2, NULL);" >/dev/null
+     INSERT INTO all_null_t VALUES (1, NULL), (2, NULL);
+     INSERT INTO quoted_t VALUES (1, 1), (NULL, 2), (3, NULL);" >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
@@ -114,6 +116,18 @@ expect_value "empty table count column" "0" "$(printf '%s\n' "$core" | sed -n '5
 expect_value "empty table count status" "0	-1" "$(printf '%s\n' "$core" | sed -n '6p')"
 expect_value "all-null table count column" "0" "$(printf '%s\n' "$core" | sed -n '7p')"
 expect_value "all-null table count status" "0	-1" "$(printf '%s\n' "$core" | sed -n '8p')"
+
+quoted_output=$(run_mysql_with_headers \
+    "USE ${DATABASE};
+     SELECT COUNT(\`weird name\`), COUNT(\`double\"quote\`) FROM quoted_t;"
+)
+quoted_headers=$(printf '%s\n' "$quoted_output" | sed -n '1p')
+quoted_values=$(printf '%s\n' "$quoted_output" | sed -n '2p')
+expect_value \
+    "quoted count column labels" \
+    'COUNT(`weird name`)	COUNT(`double"quote`)' \
+    "$quoted_headers"
+expect_value "quoted count column values" "2	2" "$quoted_values"
 
 headers_output=$(run_mysql_with_headers \
     "USE ${DATABASE};

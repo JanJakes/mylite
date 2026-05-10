@@ -109,6 +109,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION = 100,
     MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION = 101,
     MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION = 102,
+    MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION = 103,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -1044,6 +1044,12 @@ count_literal(A) ::= MINUS(M) INTEGER(T). {
 count_literal(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+count_literal(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+count_literal(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
 
 function_argument_list(A) ::= expression(B). {
     A = mylite_sql_parser_make_function_argument_list(state, B);

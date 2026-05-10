@@ -1295,6 +1295,47 @@ static int test_count_star_aggregate(void) {
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "count literal table");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT COUNT(TRUE), count(false), Count( TRUE ) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "count true literal function"
+    );
+    failures += expect_span_text(first_expression, "COUNT(TRUE)", "count true literal span");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "count true literal argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "lower count false literal function"
+    );
+    failures += expect_span_text(second_expression, "count(false)", "lower count false span");
+    failures += expect_literal(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "count false literal argument"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "mixed count true literal function"
+    );
+    failures += expect_span_text(third_expression, "Count( TRUE )", "mixed count true span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "count boolean table");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT COUNT(/* inside */NULL) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -1311,6 +1352,24 @@ static int test_count_star_aggregate(void) {
         "commented count null literal span"
     );
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "count literal dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT COUNT(/* inside */FALSE) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "commented count false literal function"
+    );
+    failures += expect_span_text(
+        first_expression,
+        "COUNT(/* inside */FALSE)",
+        "commented count false literal span"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "count boolean dual");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT (COUNT(n));", MYLITE_SQL_PARSE_OK, &result);
@@ -1376,9 +1435,15 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT('x');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT COUNT(TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT COUNT(+TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT COUNT(-FALSE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT COUNT(NOT TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT(id + 1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT COUNT(TRUE + 1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

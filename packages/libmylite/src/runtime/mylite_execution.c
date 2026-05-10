@@ -8557,10 +8557,14 @@ static int plan_count_literal(
 ) {
     const struct mylite_sql_ast_node *argument = child_at(function, 0U);
     const struct mylite_sql_ast_node *literal = argument;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
 
     *out_literal = (struct planned_value){.is_null = false, .integer = 1};
     if (argument == NULL) {
-        set_unsupported_error(database, "COUNT(literal) supports only integer and NULL literals");
+        set_unsupported_error(
+            database,
+            "COUNT(literal) supports only integer, boolean, and NULL literals"
+        );
         return MYLITE_ERROR;
     }
     if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
@@ -8570,23 +8574,38 @@ static int plan_count_literal(
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             set_unsupported_error(
                 database,
-                "COUNT(literal) supports only integer and NULL literals"
+                "COUNT(literal) supports only integer, boolean, and NULL literals"
             );
             return MYLITE_ERROR;
         }
         literal = child_at(argument, 0U);
     }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
-        set_unsupported_error(database, "COUNT(literal) supports only integer and NULL literals");
+        set_unsupported_error(
+            database,
+            "COUNT(literal) supports only integer, boolean, and NULL literals"
+        );
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_NULL) {
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
         out_literal->is_null = true;
         out_literal->integer = 0;
         return MYLITE_OK;
     }
-    if (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "COUNT(literal) supports only integer and NULL literals");
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        out_literal->integer = 1;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        out_literal->integer = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "COUNT(literal) supports only integer, boolean, and NULL literals"
+        );
         return MYLITE_ERROR;
     }
 

@@ -294,6 +294,7 @@ enum planned_count_function {
     PLANNED_COUNT_STAR = 1,
     PLANNED_COUNT_COLUMN = 2,
     PLANNED_COUNT_LITERAL = 3,
+    PLANNED_COUNT_DISTINCT_COLUMN = 4,
 };
 
 struct planned_count {
@@ -2381,6 +2382,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -5316,6 +5318,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -8420,7 +8423,8 @@ static int plan_count_without_source(
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
-    if (out_plan->function == PLANNED_COUNT_COLUMN) {
+    if (out_plan->function == PLANNED_COUNT_COLUMN ||
+        out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
         const struct mylite_sql_ast_node *column_node = child_at(nodes->count_expression, 0U);
 
         rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
@@ -8464,7 +8468,8 @@ static int plan_count_table_source(
         rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
     }
     if (rc == MYLITE_OK &&
-        (nodes->where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN)) {
+        (nodes->where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN ||
+         out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -8472,7 +8477,8 @@ static int plan_count_table_source(
             &table_column_count
         );
     }
-    if (rc == MYLITE_OK && out_plan->function == PLANNED_COUNT_COLUMN) {
+    if (rc == MYLITE_OK && (out_plan->function == PLANNED_COUNT_COLUMN ||
+                            out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN)) {
         rc = plan_count_column(
             database,
             nodes->count_expression,
@@ -8510,6 +8516,9 @@ static enum planned_count_function count_function_from_expression(
     if (expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION) {
         return PLANNED_COUNT_LITERAL;
     }
+    if (expression->kind == MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION) {
+        return PLANNED_COUNT_DISTINCT_COLUMN;
+    }
 
     return PLANNED_COUNT_NONE;
 }
@@ -8524,11 +8533,17 @@ static const char *count_exactly_one_message(enum planned_count_function functio
     if (function == PLANNED_COUNT_LITERAL) {
         return "COUNT(literal) supports exactly one aggregate select item";
     }
+    if (function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        return "COUNT(DISTINCT column) supports exactly one aggregate select item";
+    }
 
     return "COUNT aggregate supports exactly one aggregate select item";
 }
 
 static const char *count_supported_clauses_message(enum planned_count_function function) {
+    if (function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        return "COUNT(DISTINCT column) supports only WHERE";
+    }
     if (function == PLANNED_COUNT_COLUMN) {
         return "COUNT(column) supports only WHERE";
     }
@@ -8540,6 +8555,9 @@ static const char *count_supported_clauses_message(enum planned_count_function f
 }
 
 static const char *count_descriptor_table_message(enum planned_count_function function) {
+    if (function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        return "COUNT(DISTINCT column) supports only descriptor-backed table reads";
+    }
     if (function == PLANNED_COUNT_COLUMN) {
         return "COUNT(column) supports only descriptor-backed table reads";
     }
@@ -13680,6 +13698,12 @@ static int build_count_sql(const struct planned_count *plan, char **out_sql) {
     }
     if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_COLUMN) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->count_column.name);
+    }
+    if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        rc = dynamic_string_append(&string, "DISTINCT ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->count_column.name);
+        }
     }
     if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_LITERAL) {
         rc = append_numbered_parameter(&string, 1U);

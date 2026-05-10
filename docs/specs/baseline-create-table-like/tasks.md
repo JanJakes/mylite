@@ -11,19 +11,19 @@ Add a narrow descriptor-clone slice for persistent base tables.
   boundaries, physical SQLite handling, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST kind/name, and parser helper for
+- [x] Add parser grammar, AST kind/name, and parser helper for
   `CREATE TABLE ... LIKE`.
-- [ ] Add runtime planning and execution that resolves source/target
+- [x] Add runtime planning and execution that resolves source/target
   descriptors, clones descriptor columns, creates an empty physical table, and
   reports MySQL-compatible result metadata.
-- [ ] Preserve cloned visibility/default metadata and reject unsupported
+- [x] Preserve cloned visibility/default metadata and reject unsupported
   future descriptor types before mutation.
-- [ ] Add C parser/runtime tests for success paths, diagnostics, result shape,
+- [x] Add C parser/runtime tests for success paths, diagnostics, result shape,
   descriptor cloning, source validation order, preamble preservation, reopen
   behavior, and independent handles.
-- [ ] Register any new tests in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests, MySQL expectation script, and
+- [x] Register any new tests in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests, MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, descriptor authority,
+- [x] Review the final diff for architecture boundaries, descriptor authority,
   physical table creation semantics, diagnostics, docs accuracy, cleanup,
   performance, and test relevance.

@@ -628,15 +628,6 @@ static int test_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE IF NOT EXISTS like_target LIKE source_table",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "CREATE TABLE IF NOT EXISTS select_target AS SELECT 1 AS id",
         (struct expected_sql_error){
             .code = mysql_error_parse,

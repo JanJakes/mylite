@@ -499,16 +499,21 @@ int mylite_catalog_insert_column_in_mutation(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    bool is_visible,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     sqlite3_stmt *statement = NULL;
     int64_t nullable_value = 0;
+    int64_t visible_value = 0;
     int rc = MYLITE_OK;
 
     if (is_nullable) {
         nullable_value = 1;
+    }
+    if (is_visible) {
+        visible_value = 1;
     }
 
     if (out_column != NULL) {
@@ -575,7 +580,7 @@ int mylite_catalog_insert_column_in_mutation(
         rc = bind_i64(statement, catalog_column_insert_is_nullable_bind, nullable_value);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_i64(statement, catalog_column_insert_is_visible_bind, 1);
+        rc = bind_i64(statement, catalog_column_insert_is_visible_bind, visible_value);
     }
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, catalog_column_insert_default_kind_bind, (int64_t)default_kind);

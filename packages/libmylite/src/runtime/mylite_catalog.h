@@ -135,6 +135,7 @@ int mylite_catalog_insert_column_in_mutation(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    bool is_visible,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column

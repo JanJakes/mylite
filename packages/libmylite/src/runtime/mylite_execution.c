@@ -109,9 +109,12 @@ enum column_reference_diagnostic_context {
 
 struct planned_column {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char logical_type_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
+    char physical_type_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     const char *logical_type;
     const char *physical_type;
     bool is_nullable;
+    bool is_visible;
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
@@ -121,6 +124,12 @@ struct planned_create_table {
     struct table_name_resolution target;
     struct planned_column *columns;
     size_t column_count;
+};
+
+struct planned_create_table_like {
+    struct planned_create_table create_table;
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor source_table;
 };
 
 struct planned_drop_table_target {
@@ -563,6 +572,11 @@ static int execute_create_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_table_like_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_create_schema_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -863,6 +877,22 @@ static int plan_create_table(
     const struct mylite_sql_ast_node *statement,
     struct planned_create_table *out_plan
 );
+static int plan_create_table_like(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_table_like *out_plan
+);
+static int clone_create_table_like_columns(
+    struct mylite_db *database,
+    int64_t source_table_id,
+    struct planned_create_table *out_plan
+);
+static int validate_create_table_like_source_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static void planned_create_table_like_deinit(struct planned_create_table_like *plan);
 static int validate_create_table_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_options
@@ -2574,6 +2604,8 @@ static int execute_parsed_statement(
         return execute_drop_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
         return execute_create_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
+        return execute_create_table_like_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return execute_drop_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
@@ -2954,6 +2986,42 @@ static int execute_create_table_statement(
         rc = create_table_from_plan(database, &plan);
     }
     planned_create_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_create_table_like_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_table_like plan = {0};
+    mylite_result *result = NULL;
+    bool finished = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_create_table_like(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = maybe_finish_create_if_not_exists_noop(
+            database,
+            statement,
+            &plan.create_table,
+            &finished
+        );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = create_table_from_plan(database, &plan.create_table);
+    }
+    planned_create_table_like_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -5826,6 +5894,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -6039,6 +6108,126 @@ static int plan_create_table(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_create_table_like(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_table_like *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_create_table_like){0};
+    rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->source_table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
+    }
+    if (rc == MYLITE_OK &&
+        mylite_catalog_name_is_reserved(out_plan->create_table.target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->create_table.target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = clone_create_table_like_columns(
+            database,
+            out_plan->source_table.table_id,
+            &out_plan->create_table
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_create_table_like_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int clone_create_table_like_columns(
+    struct mylite_db *database,
+    int64_t source_table_id,
+    struct planned_create_table *out_plan
+) {
+    struct mylite_catalog_column_descriptor *source_columns = NULL;
+    size_t source_column_count = 0U;
+    int rc = load_table_columns(database, source_table_id, &source_columns, &source_column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_like_source_columns(
+            database,
+            source_columns,
+            source_column_count
+        );
+    }
+    if (rc == MYLITE_OK && source_column_count > SIZE_MAX / sizeof(*out_plan->columns)) {
+        set_nomem_error(database);
+        rc = MYLITE_NOMEM;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->columns = calloc(source_column_count, sizeof(*out_plan->columns));
+        if (out_plan->columns == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->column_count = source_column_count;
+        for (size_t column_index = 0U; column_index < source_column_count; ++column_index) {
+            planned_column_from_catalog_descriptor(
+                &source_columns[column_index],
+                NULL,
+                &out_plan->columns[column_index]
+            );
+        }
+    }
+
+    free(source_columns);
+    return rc;
+}
+
+static int validate_create_table_like_source_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        struct integer_column_range range = {0};
+        int rc = MYLITE_OK;
+
+        if (strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
+            set_unsupported_error(
+                database,
+                "CREATE TABLE LIKE supports only integer descriptor columns"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = integer_range_for_column(
+            database,
+            &columns[column_index],
+            "CREATE TABLE LIKE supports only integer descriptor columns",
+            &range
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static void planned_create_table_like_deinit(struct planned_create_table_like *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_create_table_deinit(&plan->create_table);
+    *plan = (struct planned_create_table_like){0};
 }
 
 static int validate_create_table_options(
@@ -6470,6 +6659,7 @@ static int insert_create_table_catalog_rows(
             column->logical_type,
             column->physical_type,
             column->is_nullable,
+            column->is_visible,
             column->default_kind,
             column->default_integer,
             NULL
@@ -7034,6 +7224,7 @@ static int alter_table_add_column_from_plan(
             plan->column.logical_type,
             plan->column.physical_type,
             plan->column.is_nullable,
+            true,
             plan->column.default_kind,
             plan->column.default_integer,
             NULL
@@ -8132,9 +8323,22 @@ static void planned_column_from_catalog_descriptor(
 ) {
     *out_column = (struct planned_column){0};
     snprintf(out_column->name, sizeof(out_column->name), "%s", descriptor->name);
-    out_column->logical_type = descriptor->logical_type;
-    out_column->physical_type = descriptor->physical_type;
+    snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "%s",
+        descriptor->logical_type
+    );
+    snprintf(
+        out_column->physical_type_storage,
+        sizeof(out_column->physical_type_storage),
+        "%s",
+        descriptor->physical_type
+    );
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
     out_column->is_nullable = descriptor->is_nullable;
+    out_column->is_visible = descriptor->is_visible;
     out_column->default_node = default_node;
     out_column->default_kind = descriptor->default_kind;
     out_column->default_integer = descriptor->default_integer;
@@ -12162,6 +12366,7 @@ static int plan_column(
     if (rc == MYLITE_OK) {
         out_column->is_nullable =
             column_is_nullable(child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY));
+        out_column->is_visible = true;
     }
     if (rc == MYLITE_OK) {
         out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);

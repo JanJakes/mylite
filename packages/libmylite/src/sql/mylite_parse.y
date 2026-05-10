@@ -66,6 +66,9 @@ statement(A) ::= set_connection_charset_statement(B). {
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
+statement(A) ::= create_table_like_statement(B). {
+    A = B;
+}
 statement(A) ::= create_schema_statement(B). {
     A = B;
 }
@@ -237,6 +240,15 @@ create_table_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN
     column_definition_list(L) RPAREN(R) table_option_list_opt(O). {
     A = mylite_sql_parser_make_create_table_statement(state, C, E, T, L, R, O);
+}
+create_table_like_statement(A) ::=
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LIKE table_name(S). {
+    A = mylite_sql_parser_make_create_table_like_statement(state, C, E, T, S);
+}
+create_table_like_statement(A) ::=
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN LIKE table_name(S)
+    RPAREN. {
+    A = mylite_sql_parser_make_create_table_like_statement(state, C, E, T, S);
 }
 
 create_if_not_exists_opt(A) ::= . {

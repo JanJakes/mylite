@@ -15,24 +15,24 @@
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
-- [ ] Commit and push the start-feature artifacts.
-- [ ] Add parser support for keyword logical scalar expressions without
+- [x] Commit and push the start-feature artifacts.
+- [x] Add parser support for keyword logical scalar expressions without
   changing descriptor-backed predicate planning.
-- [ ] Admit no-source and `FROM DUAL` scalar logical projection without
+- [x] Admit no-source and `FROM DUAL` scalar logical projection without
   widening table-backed expression projection.
-- [ ] Add MyLite-owned three-valued logical evaluation with MySQL 8.4.9
+- [x] Add MyLite-owned three-valued logical evaluation with MySQL 8.4.9
   short-circuit behavior.
-- [ ] Preserve evaluated child arithmetic warnings, in-statement diagnostics
+- [x] Preserve evaluated child arithmetic warnings, in-statement diagnostics
   count behavior, and row-count ordering for mixed scalar projections.
-- [ ] Add runtime/parser tests for truth tables, precedence, labels, aliases,
+- [x] Add runtime/parser tests for truth tables, precedence, labels, aliases,
   warning counts, diagnostics snapshot behavior, boundary operands, file
   safety, independent handles, and deterministic rejection of unsupported
   forms.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`, or
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`, or
   document that an existing test binary is reused.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, three-valued truth correctness, short-
   circuit warning behavior, signed-64 conversion safety, performance, cleanup,
   compatibility wording, and test relevance.

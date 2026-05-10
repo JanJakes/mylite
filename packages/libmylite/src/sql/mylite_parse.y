@@ -25,6 +25,10 @@
     mylite_sql_parser_state_stack_overflow(state);
 }
 
+%left OR.
+%left XOR.
+%left AND.
+%right NOT.
 %left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL.
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
@@ -1589,6 +1593,22 @@ expression(A) ::= PLUS(T) expression(B). [UPLUS] {
 expression(A) ::= MINUS(T) expression(B). [UMINUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
+expression(A) ::= NOT(T) expression(B). [NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
+}
+expression(A) ::= expression(B) AND(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
+}
+expression(A) ::= expression(B) XOR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR, C);
+}
+expression(A) ::= expression(B) OR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
 }
 expression(A) ::= expression(B) EQUAL(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

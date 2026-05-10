@@ -2831,6 +2831,7 @@ static int test_where_xor_predicates(void) {
     };
     static const char *const delete_limited_rows[] = {"1", "2", "3"};
     static const char *const persisted_rows[] = {"33", "33", "33"};
+    static const char *const scalar_xor_row[] = {"1"};
     static const char *const warning_rows[] = {"1", "4"};
     static const char *const warning_table[] = {
         "Warning",
@@ -3284,13 +3285,16 @@ static int test_where_xor_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT 1 XOR 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT 1 XOR 0",
+            .values = scalar_xor_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "no-source scalar xor projection",
         }
     );
 

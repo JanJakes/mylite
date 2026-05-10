@@ -339,6 +339,16 @@ static int test_select_expression_list(void) {
         bang_not_equal_item_index = 5,
         less_equal_item_index = 6,
         greater_equal_item_index = 7,
+        logical_item_count = 9,
+        logical_and_comparison_item_index = 0,
+        logical_and_arithmetic_item_index = 1,
+        logical_or_item_index = 2,
+        logical_xor_item_index = 3,
+        logical_not_item_index = 4,
+        logical_not_group_item_index = 5,
+        logical_or_precedence_item_index = 6,
+        logical_xor_precedence_item_index = 7,
+        logical_result_comparison_item_index = 8,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
@@ -351,6 +361,7 @@ static int test_select_expression_list(void) {
     const struct mylite_sql_ast_node *mod_function = NULL;
     const struct mylite_sql_ast_node *div_operator = NULL;
     const struct mylite_sql_ast_node *comparison = NULL;
+    const struct mylite_sql_ast_node *logical = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -476,6 +487,81 @@ static int test_select_expression_list(void) {
         child_at(child_at(select_list, greater_equal_item_index), 0U),
         MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
         "greater equal expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT 1<2 AND 2<3, 1+2 AND 0, 1 OR 0, 1 XOR 0, NOT 1<2, "
+        "NOT (1>2), 0 OR 0 AND 1, 1 XOR 1 AND 0, (1 AND 1)=1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, logical_item_count, "logical select list");
+    logical = child_at(child_at(select_list, logical_and_comparison_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, "logical and");
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_LESS,
+        "logical and comparison left"
+    );
+    logical = child_at(child_at(select_list, logical_and_arithmetic_item_index), 0U);
+    failures +=
+        expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, "logical arithmetic and");
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "logical and arithmetic precedence"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, logical_or_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_OR,
+        "logical or"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, logical_xor_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR,
+        "logical xor"
+    );
+    logical = child_at(child_at(select_list, logical_not_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, "logical not");
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_LESS,
+        "logical not comparison precedence"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, logical_not_group_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        "logical not group"
+    );
+    logical = child_at(child_at(select_list, logical_or_precedence_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, "or precedence");
+    failures += expect_operator(
+        child_at(logical, 1U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        "and binds tighter than or"
+    );
+    logical = child_at(child_at(select_list, logical_xor_precedence_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR, "xor precedence");
+    failures += expect_operator(
+        child_at(logical, 1U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        "and binds tighter than xor"
+    );
+    comparison = child_at(child_at(select_list, logical_result_comparison_item_index), 0U);
+    failures +=
+        expect_operator(comparison, MYLITE_SQL_AST_OPERATOR_EQUAL, "logical result comparison");
+    logical = child_at(comparison, 0U);
+    failures += expect_node(
+        logical,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized logical comparison operand"
+    );
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        "logical result compared"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -8499,6 +8585,27 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1<=>;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 AND;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT AND 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 OR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 XOR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NOT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1&&1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1||0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

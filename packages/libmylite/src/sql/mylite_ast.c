@@ -433,6 +433,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_or_aggregate_function";
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
         return "bit_xor_aggregate_function";
+    case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
+        return "group_by_clause";
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
         return "count_column_function";
     case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:

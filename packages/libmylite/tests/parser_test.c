@@ -63,6 +63,7 @@ static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
+static int test_select_group_by_clause(void);
 static int test_select_distinct_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
@@ -183,6 +184,7 @@ int main(void) {
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
+    failures += test_select_group_by_clause();
     failures += test_select_distinct_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
@@ -5727,6 +5729,87 @@ static int test_select_order_limit_clauses(void) {
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "simple limit clause");
     failures += expect_span_text(child_at(limit_clause, 0U), "0", "simple limit row count");
     failures += expect_true(child_at(limit_clause, 1U) == NULL, "simple limit has no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_group_by_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *group_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers WHERE id >= 1 GROUP BY g ORDER BY g LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(group_clause, MYLITE_SQL_AST_GROUP_BY_CLAUSE, "group clause");
+    failures += expect_span_text(child_at(group_clause, 0U), "g", "group key");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "group where");
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "group order");
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "group limit");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "group aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT t.g AS k, SUM(t.n) AS s FROM app.numbers AS t GROUP BY t.g ORDER BY k DESC "
+        "LIMIT 1 OFFSET 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(
+        child_at(group_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified group key"
+    );
+    failures += expect_span_text(child_at(group_clause, 0U), "t.g", "qualified group span");
+    failures += expect_span_text(child_at(order_clause, 0U), "k", "group order alias");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "group order desc"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "group limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "group limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers GROUP BY 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers GROUP BY g, n;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers GROUP BY g HAVING COUNT(*) > 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

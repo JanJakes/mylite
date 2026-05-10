@@ -11,15 +11,15 @@
   and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST node name, keyword mapping, and parser tests.
-- [ ] Implement descriptor-driven grouped aggregate planning and execution
+- [x] Add parser grammar, AST node name, keyword mapping, and parser tests.
+- [x] Implement descriptor-driven grouped aggregate planning and execution
   while keeping SQLite responsible for scans, filtering, grouping, ordering,
   and limiting.
-- [ ] Add C runtime tests for success, diagnostics, persistence, labels,
+- [x] Add C runtime tests for success, diagnostics, persistence, labels,
   ordering, limiting, and file-format safety.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, result semantics,
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, result semantics,
   descriptor authority, scope control, performance path, and compatibility
   wording.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

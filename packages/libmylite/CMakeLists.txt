@@ -309,6 +309,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_bitwise_aggregates_test)
 
+  add_executable(mylite_runtime_group_by_single_column_aggregate_test
+    tests/runtime_group_by_single_column_aggregate_test.c
+  )
+  target_link_libraries(mylite_runtime_group_by_single_column_aggregate_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_group_by_single_column_aggregate_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_group_by_single_column_aggregate_test)
+
   add_executable(mylite_runtime_show_columns_introspection_test
     tests/runtime_show_columns_introspection_test.c
   )
@@ -1230,6 +1242,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.bitwise_aggregates
     COMMAND mylite_runtime_bitwise_aggregates_test
+  )
+  add_test(
+    NAME libmylite.runtime.group_by_single_column_aggregate
+    COMMAND mylite_runtime_group_by_single_column_aggregate_test
   )
   add_test(
     NAME libmylite.runtime.show_columns_introspection

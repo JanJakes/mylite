@@ -948,88 +948,90 @@ update_value(A) ::= FALSE(T). {
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) ALL select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCTROW select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) ALL STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCTROW STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
 }
 
 table_alias_opt(A) ::= . {
@@ -1047,6 +1049,13 @@ where_clause_opt(A) ::= . {
 }
 where_clause_opt(A) ::= WHERE(W) predicate(P). {
     A = mylite_sql_parser_make_where_clause(state, W, P);
+}
+
+group_clause_opt(A) ::= . {
+    A = NULL;
+}
+group_clause_opt(A) ::= GROUP(G) BY qualified_identifier(K). {
+    A = mylite_sql_parser_make_group_by_clause(state, G, K);
 }
 
 predicate(A) ::= predicate_atom(B). {

@@ -1526,7 +1526,8 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "GROUP BY supports one grouped descriptor column and one aggregate result",
         }
     );
     failures += execute_error(

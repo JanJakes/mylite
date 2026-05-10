@@ -137,6 +137,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION = 128,
     MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION = 129,
     MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION = 130,
+    MYLITE_SQL_AST_GROUP_BY_CLAUSE = 131,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -1,0 +1,1041 @@
+#include <mylite/mylite.h>
+
+#include "runtime/mylite_catalog.h"
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
+#include "storage/mylite_file_format.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+#  include <process.h>
+#else
+#  include <unistd.h>
+#endif
+
+enum {
+    test_path_capacity = 1024,
+    sqlite_sql_capacity = 512,
+    mysql_error_parse = 1064,
+    mysql_error_no_database_selected = 1046,
+    mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
+    mysql_error_not_group_by = 1055,
+    mysql_error_incorrect_database_name = 1102,
+    mysql_error_incorrect_table_name = 1103,
+    mysql_error_unknown = 1105,
+    mysql_error_table_does_not_exist = 1146,
+};
+
+struct expected_sql_error {
+    int code;
+    const char *sqlstate;
+    const char *message_part;
+};
+
+struct expected_grouped_query {
+    const char *sql;
+    const char *const *columns;
+    size_t column_count;
+    const char *const *values;
+    size_t row_count;
+    const char *context;
+};
+
+static int test_grouped_values_persistence_rename_and_drop(void);
+static int test_grouped_diagnostics(void);
+static int test_independent_grouped_handles(void);
+static int seed_schema(mylite_db *database, const char *name);
+static int create_grouped_table(mylite_db *database, const char *table_name);
+static int create_empty_grouped_table(mylite_db *database, const char *table_name);
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
+static int expect_grouped_query(mylite_db *database, struct expected_grouped_query query);
+static int expect_row_count(mylite_db *database, const char *expected, const char *context);
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+);
+static int make_test_path(char *path, size_t path_size, const char *name);
+static int current_process_id(void);
+static void remove_related_files(const char *path);
+static void remove_with_suffix(const char *path, const char *suffix);
+static int read_file_at(const char *path, long offset, void *buffer, size_t size);
+static int drop_physical_table(sqlite3 *connection, const char *physical_name);
+static int execute_sql(sqlite3 *connection, const char *sql);
+static int expect_int(int actual, int expected, const char *context);
+static int expect_int64(int64_t actual, int64_t expected, const char *context);
+static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_true(int condition, const char *context);
+static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+);
+
+int main(void) {
+    int failures = 0;
+
+    failures += test_grouped_values_persistence_rename_and_drop();
+    failures += test_grouped_diagnostics();
+    failures += test_independent_grouped_handles();
+
+    return failures == 0 ? 0 : 1;
+}
+
+static int test_grouped_values_persistence_rename_and_drop(void) {
+    static const char *const g_count_columns[] = {"g", "COUNT(*)"};
+    static const char *const g_count_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const g_count_n_columns[] = {"g", "COUNT(n)"};
+    static const char *const g_count_n_values[] = {NULL, "0", "1", "1", "2", "2"};
+    static const char *const g_min_columns[] = {"g", "MIN(n)"};
+    static const char *const g_min_values[] = {NULL, NULL, "1", "10", "2", "20"};
+    static const char *const g_max_columns[] = {"g", "MAX(n)"};
+    static const char *const g_max_values[] = {NULL, NULL, "1", "10", "2", "30"};
+    static const char *const g_sum_columns[] = {"g", "SUM(n)"};
+    static const char *const g_sum_values[] = {NULL, NULL, "1", "10", "2", "50"};
+    static const char *const g_avg_columns[] = {"g", "AVG(n)"};
+    static const char *const g_avg_values[] = {NULL, NULL, "1", "10.0000", "2", "25.0000"};
+    static const char *const g_bit_and_columns[] = {"g", "BIT_AND(n)"};
+    static const char *const g_bit_and_values[] = {
+        NULL,
+        "18446744073709551615",
+        "1",
+        "10",
+        "2",
+        "20",
+    };
+    static const char *const g_bit_or_columns[] = {"g", "BIT_OR(nn)"};
+    static const char *const g_bit_or_values[] = {NULL, "5", "1", "7", "2", "9"};
+    static const char *const g_bit_xor_columns[] = {"g", "BIT_XOR(nn)"};
+    static const char *const g_bit_xor_values[] = {NULL, "5", "1", "1", "2", "1"};
+    static const char *const where_columns[] = {"g", "COUNT(*)"};
+    static const char *const where_values[] = {"1", "1", "2", "2"};
+    static const char *const alias_columns[] = {"k", "s"};
+    static const char *const alias_values[] = {"2", "50", "1", "10"};
+    static const char *const offset_values[] = {"1", "2"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation_before_select = 0U;
+    uint64_t sqlite_generation_before_select = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "values") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open values file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += create_empty_grouped_table(database, "empty_grouped_numbers");
+    failures += create_grouped_table(database, "grouped_numbers");
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        catalog_generation_before_select = catalog->generation;
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        sqlite_generation_before_select = session->sqlite_schema_generation;
+    }
+
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 3U,
+            .context = "count star grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_n_columns,
+            .column_count = 2U,
+            .values = g_count_n_values,
+            .row_count = 3U,
+            .context = "count nullable column grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_min_columns,
+            .column_count = 2U,
+            .values = g_min_values,
+            .row_count = 3U,
+            .context = "min grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MAX(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_max_columns,
+            .column_count = 2U,
+            .values = g_max_values,
+            .row_count = 3U,
+            .context = "max grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_sum_columns,
+            .column_count = 2U,
+            .values = g_sum_values,
+            .row_count = 3U,
+            .context = "sum grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_avg_columns,
+            .column_count = 2U,
+            .values = g_avg_values,
+            .row_count = 3U,
+            .context = "avg grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_AND(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_bit_and_columns,
+            .column_count = 2U,
+            .values = g_bit_and_values,
+            .row_count = 3U,
+            .context = "bit and grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(nn) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_bit_or_columns,
+            .column_count = 2U,
+            .values = g_bit_or_values,
+            .row_count = 3U,
+            .context = "bit or grouped not-null values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_XOR(nn) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_bit_xor_columns,
+            .column_count = 2U,
+            .values = g_bit_xor_values,
+            .row_count = 3U,
+            .context = "bit xor grouped not-null values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers WHERE n IS NOT NULL "
+                   "GROUP BY g ORDER BY g",
+            .columns = where_columns,
+            .column_count = 2U,
+            .values = where_values,
+            .row_count = 2U,
+            .context = "where filter before grouping",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT t.g AS k, SUM(t.n) AS s FROM app.grouped_numbers AS t "
+                   "GROUP BY t.g ORDER BY k DESC LIMIT 2",
+            .columns = alias_columns,
+            .column_count = 2U,
+            .values = alias_values,
+            .row_count = 2U,
+            .context = "schema qualified aliased group order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g LIMIT 0",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 0U,
+            .context = "grouped limit zero",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g "
+                   "LIMIT 1 OFFSET 1",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = offset_values,
+            .row_count = 1U,
+            .context = "grouped limit offset",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers WHERE id > 100 GROUP BY g",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 0U,
+            .context = "grouped no matching rows",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM empty_grouped_numbers GROUP BY g",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 0U,
+            .context = "empty table grouped count",
+        }
+    );
+    failures += expect_row_count(database, "-1", "row count after grouped select");
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_int64(
+            (int64_t)catalog->generation,
+            (int64_t)catalog_generation_before_select,
+            "grouped select catalog generation"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_int64(
+            (int64_t)session->sqlite_schema_generation,
+            (int64_t)sqlite_generation_before_select,
+            "grouped select sqlite schema generation"
+        );
+    }
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "grouped select preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen grouped file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_sum_columns,
+            .column_count = 2U,
+            .values = g_sum_values,
+            .row_count = 3U,
+            .context = "reopened grouped sum",
+        }
+    );
+    failures +=
+        execute_ok(database, "RENAME TABLE grouped_numbers TO renamed_grouped_numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM renamed_grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_count_values,
+            .row_count = 3U,
+            .context = "renamed table grouped count",
+        }
+    );
+    failures += execute_ok(database, "DROP TABLE renamed_grouped_numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM renamed_grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.renamed_grouped_numbers' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_grouped_diagnostics(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    const struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_schema_descriptor app_schema = schema;
+    struct mylite_catalog_table_descriptor table = {0};
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += create_grouped_table(database, "grouped_numbers");
+
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM missing_schema.grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM missing GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM _mylite_reserved.grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM _mylite_reserved GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT missing, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'group statement'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT n, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_not_group_by,
+            .sqlstate = "42000",
+            .message_part = "Expression #1 of SELECT list is not in GROUP BY clause",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT g, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY does not support SELECT DISTINCT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) AS c FROM grouped_numbers GROUP BY g ORDER BY c",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports ORDER BY only on the grouped column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*), SUM(n) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP BY supports one grouped descriptor column and one aggregate result",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(DISTINCT n) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP BY supports one grouped descriptor column and one aggregate result",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &app_schema),
+        MYLITE_OK,
+        "read diagnostics schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(
+            database,
+            app_schema.schema_id,
+            "grouped_numbers",
+            &table
+        ),
+        MYLITE_OK,
+        "read diagnostics table"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += drop_physical_table(sqlite, table.physical_name);
+    }
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "internal SQLite row operation failed",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_independent_grouped_handles(void) {
+    static const char *const first_columns[] = {"g", "SUM(n)"};
+    static const char *const first_values[] = {NULL, NULL, "1", "10", "2", "50"};
+    static const char *const second_columns[] = {"g", "SUM(n)"};
+    static const char *const second_values[] = {"9", "300"};
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "second") != 0) {
+        return 1;
+    }
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
+    failures += seed_schema(first, "app");
+    failures += seed_schema(second, "app");
+    failures += execute_ok(first, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(second, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += create_grouped_table(first, "grouped_numbers");
+    failures += create_empty_grouped_table(second, "grouped_numbers");
+    failures += execute_ok(
+        second,
+        "INSERT INTO grouped_numbers VALUES (1, 9, 100, 1), (2, 9, 200, 2)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_grouped_query(
+        first,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = first_columns,
+            .column_count = 2U,
+            .values = first_values,
+            .row_count = 3U,
+            .context = "first handle grouped sum",
+        }
+    );
+    failures += expect_grouped_query(
+        second,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = second_columns,
+            .column_count = 2U,
+            .values = second_values,
+            .row_count = 1U,
+            .context = "second handle grouped sum",
+        }
+    );
+
+    mylite_close(first);
+    mylite_close(second);
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    return failures;
+}
+
+static int seed_schema(mylite_db *database, const char *name) {
+    char sql[sqlite_sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(sql, sizeof(sql), "CREATE DATABASE %s", name);
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create schema SQL is too long for %s\n", name);
+        return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_grouped_table(mylite_db *database, const char *table_name) {
+    char sql[sqlite_sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "CREATE TABLE %s (id INT NOT NULL, g INT NULL, n INT NULL, nn INT NOT NULL)",
+        table_name
+    );
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create grouped table SQL is too long for %s\n", table_name);
+        return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "INSERT INTO %s VALUES "
+        "(1, NULL, NULL, 5), "
+        "(2, 1, 10, 6), "
+        "(3, 1, NULL, 7), "
+        "(4, 2, 20, 8), "
+        "(5, 2, 30, 9)",
+        table_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "insert grouped table SQL is too long for %s\n", table_name);
+        return failures + 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_empty_grouped_table(mylite_db *database, const char *table_name) {
+    char sql[sqlite_sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "CREATE TABLE %s (id INT NOT NULL, g INT NULL, n INT NULL, nn INT NOT NULL)",
+        table_name
+    );
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create empty grouped table SQL is too long for %s\n", table_name);
+        return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "execute '%s': expected OK, got %d / %d %s %s\n",
+            sql,
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        mylite_result_free(result);
+        return 1;
+    }
+    if (out_result != NULL) {
+        *out_result = result;
+    } else {
+        mylite_result_free(result);
+    }
+
+    return 0;
+}
+
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
+    mylite_result *result = NULL;
+    int failures = 0;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_ERROR) {
+        fprintf(stderr, "execute '%s': expected MYLITE_ERROR, got %d\n", sql, rc);
+        failures += 1;
+    }
+    failures += expect_true(result == NULL, "failed execute leaves result null");
+    if (mylite_errcode(database) != expected.code) {
+        fprintf(
+            stderr,
+            "execute '%s': expected error code %d, got %d\n",
+            sql,
+            expected.code,
+            mylite_errcode(database)
+        );
+        failures += 1;
+    }
+    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_grouped_query(mylite_db *database, struct expected_grouped_query query) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
+    for (size_t column_index = 0U; column_index < query.column_count; ++column_index) {
+        failures += expect_text(
+            mylite_result_column_name(result, column_index),
+            query.columns[column_index],
+            query.context
+        );
+    }
+    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    for (size_t row_index = 0U; row_index < query.row_count; ++row_index) {
+        for (size_t column_index = 0U; column_index < query.column_count; ++column_index) {
+            size_t value_index = (row_index * query.column_count) + column_index;
+
+            failures += expect_result_value(
+                result,
+                row_index,
+                column_index,
+                query.values[value_index],
+                query.context
+            );
+        }
+    }
+    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_row_count(mylite_db *database, const char *expected, const char *context) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SELECT ROW_COUNT()", &result);
+
+    failures += expect_size(mylite_result_column_count(result), 1U, context);
+    failures += expect_text(mylite_result_column_name(result, 0U), "ROW_COUNT()", context);
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures += expect_text(mylite_result_value_text(result, 0U, 0U), expected, context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+) {
+    const char *actual = mylite_result_value_text(result, row, column);
+
+    if (expected == NULL) {
+        return expect_true(actual == NULL, context);
+    }
+
+    return expect_text(actual, expected, context);
+}
+
+static int make_test_path(char *path, size_t path_size, const char *name) {
+    const char *directory = getenv("TMPDIR");
+    int written = 0;
+
+    if (directory == NULL || directory[0] == '\0') {
+        directory = getenv("TEMP");
+    }
+    if (directory == NULL || directory[0] == '\0') {
+        directory = ".";
+    }
+
+    written = snprintf(
+        path,
+        path_size,
+        "%s/mylite_group_by_single_column_aggregate_%d_%s.mylite",
+        directory,
+        current_process_id(),
+        name
+    );
+    if (written < 0 || (size_t)written >= path_size) {
+        fprintf(stderr, "test path is too long for %s\n", name);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int current_process_id(void) {
+#ifdef _WIN32
+    return _getpid();
+#else
+    return getpid();
+#endif
+}
+
+static void remove_related_files(const char *path) {
+    remove_with_suffix(path, "");
+    remove_with_suffix(path, "-journal");
+    remove_with_suffix(path, "-wal");
+    remove_with_suffix(path, "-shm");
+}
+
+static void remove_with_suffix(const char *path, const char *suffix) {
+    char related_path[test_path_capacity];
+    int written = snprintf(related_path, sizeof(related_path), "%s%s", path, suffix);
+
+    if (written < 0 || (size_t)written >= sizeof(related_path)) {
+        return;
+    }
+
+    (void)remove(related_path);
+}
+
+static int read_file_at(const char *path, long offset, void *buffer, size_t size) {
+    FILE *file = fopen(path, "rb");
+
+    if (file == NULL) {
+        fprintf(stderr, "failed to open %s for reading\n", path);
+        return 1;
+    }
+    if (fseek(file, offset, SEEK_SET) != 0) {
+        fprintf(stderr, "failed to seek %s\n", path);
+        (void)fclose(file);
+        return 1;
+    }
+    if (fread(buffer, 1U, size, file) != size) {
+        fprintf(stderr, "failed to read %zu bytes from %s\n", size, path);
+        (void)fclose(file);
+        return 1;
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "failed to close %s\n", path);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int drop_physical_table(sqlite3 *connection, const char *physical_name) {
+    char sql[sqlite_sql_capacity];
+    int written = snprintf(sql, sizeof(sql), "DROP TABLE \"%s\"", physical_name);
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "drop physical table SQL is too long\n");
+        return 1;
+    }
+
+    return execute_sql(connection, sql);
+}
+
+static int execute_sql(sqlite3 *connection, const char *sql) {
+    int rc = sqlite3_exec(connection, sql, NULL, NULL, NULL);
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQLite exec failed for '%s': %d\n", sql, rc);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_int(int actual, int expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_int64(int64_t actual, int64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %lld, got %lld\n",
+            context,
+            (long long)expected,
+            (long long)actual
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_size(size_t actual, size_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_true(int condition, const char *context) {
+    if (!condition) {
+        fprintf(stderr, "%s: expected true\n", context);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_text(const char *actual, const char *expected, const char *context) {
+    if (actual == NULL && expected == NULL) {
+        return 0;
+    }
+    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected '%s', got '%s'\n",
+            context,
+            expected == NULL ? "(null)" : expected,
+            actual == NULL ? "(null)" : actual
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_contains(const char *actual, const char *needle, const char *context) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+        fprintf(
+            stderr,
+            "%s: expected '%s' to contain '%s'\n",
+            context,
+            actual == NULL ? "(null)" : actual,
+            needle == NULL ? "(null)" : needle
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+) {
+    if (memcmp(actual, expected, size) != 0) {
+        fprintf(stderr, "%s: byte comparison failed\n", context);
+        return 1;
+    }
+
+    return 0;
+}

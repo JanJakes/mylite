@@ -282,6 +282,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_ast_node *select_list,
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *group_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 ) {
@@ -291,6 +292,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
         select_list,
         from_clause,
         where_clause,
+        group_clause,
         order_clause,
         limit_clause
     );
@@ -305,6 +307,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_ast_node *select_list,
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *group_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 ) {
@@ -319,6 +322,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     }
     if (where_clause != NULL) {
         span = span_join(span, where_clause->span);
+    }
+    if (group_clause != NULL) {
+        span = span_join(span, group_clause->span);
     }
     if (order_clause != NULL) {
         span = span_join(span, order_clause->span);
@@ -335,6 +341,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, group_clause);
     mylite_sql_ast_node_append_child(statement, order_clause);
     mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
@@ -2121,6 +2128,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     return where_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token group_token,
+    struct mylite_sql_ast_node *group_key
+) {
+    struct mylite_sql_source_span span = span_from_token(&group_token);
+    struct mylite_sql_ast_node *group_clause = NULL;
+
+    if (group_key != NULL) {
+        span = span_join(span, group_key->span);
+    }
+
+    group_clause = make_node(state, MYLITE_SQL_AST_GROUP_BY_CLAUSE, span);
+    if (group_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(group_clause, group_key);
+    return group_clause;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -2939,6 +2967,7 @@ static bool map_keyword_token(
         {"AS", MYLITE_SQL_PARSE_AS},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
+        {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
         {"CONNECTION_ID", MYLITE_SQL_PARSE_CONNECTION_ID},

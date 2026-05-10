@@ -50,8 +50,16 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
 - same-precedence `*`, `%`, infix `MOD`, and `DIV` operators associate left to
   right;
 - `TRUE` and `FALSE` behave as `1` and `0`;
-- if either `DIV` operand is `NULL`, the result is `NULL` and no division by
-  zero warning is produced, even when the other operand is zero;
+- if either already-evaluated `DIV` operand is `NULL`, the result is `NULL`;
+- MySQL 8.4.9 additionally short-circuits a limited set of syntactic `NULL`
+  left operands before evaluating the right operand: `NULL`, signed `NULL`,
+  parenthesized forms, `IFNULL()` / `COALESCE()` forms whose admitted arguments
+  are all syntactic `NULL`, and `NULLIF()` forms whose first admitted argument
+  is syntactic `NULL`;
+- MySQL does not apply that short-circuit to every expression that evaluates to
+  `NULL`; for example `NULLIF(1,1) DIV (5 DIV 0)` and
+  `(5 DIV 0) DIV (5 DIV 0)` still evaluate the right operand and record its
+  division-by-zero warning;
 - if both operands are non-`NULL` and the right operand is zero, the `DIV`
   expression result is `NULL` and MySQL records warning `1365` / SQLSTATE
   `22012`, message `Division by 0`;
@@ -61,7 +69,8 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
 - after a successful `DIV` select with zero-divisor warnings, the public result
   warning count and the following diagnostics snapshot count those warnings;
 - child arithmetic overflow is reported before the parent `DIV` expression can
-  return `NULL` or record warnings;
+  return `NULL` or record warnings, except where the left syntactic-`NULL`
+  short-circuit avoids evaluating the right child;
 - `(-9223372036854775807 - 1) DIV 1` and
   `(-9223372036854775807 - 1) DIV -1` raise MySQL error `1690` / SQLSTATE
   `22003`, even though ordinary arithmetic can produce the signed minimum
@@ -168,20 +177,26 @@ current `+`, binary `-`, `*`, unary arithmetic, and modulo slices.
    projection item or a `DIV` scalar expression.
 2. Preserve existing scalar function wrong-arity diagnostics before generic
    arithmetic unsupported diagnostics.
-3. Evaluate nested child expressions before applying their parent operator.
+3. Evaluate the left child before the right child. If the operator is `DIV` and
+   the left child is one of the MySQL-observed syntactic `NULL` short-circuit
+   forms (`NULL`, signed `NULL`, parenthesized forms, `IFNULL()` / `COALESCE()`
+   forms whose admitted arguments are all syntactic `NULL`, or `NULLIF()` forms
+   whose first admitted argument is syntactic `NULL`), return `NULL` without
+   evaluating the right child.
+4. Otherwise evaluate the right child before applying the parent operator.
    Child overflow wins over parent `DIV` `NULL` propagation or division-by-zero
    warnings.
-4. Convert `TRUE` and `FALSE` to `1` and `0` for arithmetic operands.
-5. If either `DIV` operand is `NULL`, return `NULL` without recording a
-   division-by-zero warning.
-6. If both operands are non-`NULL` and the right operand is zero, return `NULL`
+5. Convert `TRUE` and `FALSE` to `1` and `0` for arithmetic operands.
+6. If either evaluated `DIV` operand is `NULL`, return `NULL` without recording
+   a division-by-zero warning.
+7. If both operands are non-`NULL` and the right operand is zero, return `NULL`
    and stage one warning `1365` / `22012`, `Division by 0`.
-7. Otherwise return the signed integer quotient truncated toward zero.
-8. Match the observed MySQL 8.4.9 signed-minimum boundary for this supported
+8. Otherwise return the signed integer quotient truncated toward zero.
+9. Match the observed MySQL 8.4.9 signed-minimum boundary for this supported
    subset: `INT64_MIN DIV 1` and `INT64_MIN DIV -1` return error `1690` /
    `22003`.
-9. Format non-`NULL` results as canonical signed decimal integer text.
-10. Append staged division-by-zero warnings only after all scalar select-item
+10. Format non-`NULL` results as canonical signed decimal integer text.
+11. Append staged division-by-zero warnings only after all scalar select-item
     values have been evaluated, before completing the result.
 
 Successful supported `DIV` `SELECT` statements return one synthesized row,
@@ -248,6 +263,9 @@ Add or extend fast plain C runtime and parser tests under
 - aliases and generated column labels;
 - `FROM DUAL` `DIV` expressions and scalar-function operands;
 - `NULL` operands with zero on the other side and no warnings;
+- MySQL-observed syntactic left-`NULL` `DIV` short-circuit forms, plus
+  expression-left `NULL` cases such as `NULLIF(1,1) DIV (5 DIV 0)` and
+  `(5 DIV 0) DIV (5 DIV 0)` that still evaluate the right operand;
 - non-`NULL` zero divisors, result `NULL`, warning `1365` / `22012`,
   in-select `@@warning_count`/`ROW_COUNT()` ordering, result warning counts,
   and following diagnostics snapshot visibility;

@@ -203,6 +203,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN = 26,
     MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN = 27,
     MYLITE_SQL_AST_OPERATOR_MODULO = 28,
+    MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE = 29,
 };
 
 enum mylite_sql_ast_integer_type {

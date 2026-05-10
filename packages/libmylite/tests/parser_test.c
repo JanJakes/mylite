@@ -319,14 +319,17 @@ static int test_use_statements(void) {
 
 static int test_select_expression_list(void) {
     enum {
-        expected_select_item_count = 8,
+        expected_select_item_count = 9,
         percent_item_index = 1,
         mod_operator_item_index = 2,
         mod_function_item_index = 3,
-        string_item_index = 4,
-        true_item_index = 5,
-        false_item_index = 6,
-        null_item_index = 7,
+        div_operator_item_index = 4,
+        string_item_index = 5,
+        true_item_index = 6,
+        false_item_index = 7,
+        null_item_index = 8,
+        div_precedence_item_index = 4,
+        div_associativity_item_index = 5,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
@@ -337,10 +340,12 @@ static int test_select_expression_list(void) {
     const struct mylite_sql_ast_node *percent = NULL;
     const struct mylite_sql_ast_node *mod_operator = NULL;
     const struct mylite_sql_ast_node *mod_function = NULL;
+    const struct mylite_sql_ast_node *div_operator = NULL;
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT 1 + 2 * 3, 5 % 2, 5 MOD 2, MOD(5,2), 'text', TRUE, FALSE, NULL FROM DUAL;",
+        "SELECT 1 + 2 * 3, 5 % 2, 5 MOD 2, MOD(5,2), 5 DIV 2, "
+        "'text', TRUE, FALSE, NULL FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -353,6 +358,7 @@ static int test_select_expression_list(void) {
     percent = child_at(child_at(select_list, percent_item_index), 0U);
     mod_operator = child_at(child_at(select_list, mod_operator_item_index), 0U);
     mod_function = child_at(child_at(select_list, mod_function_item_index), 0U);
+    div_operator = child_at(child_at(select_list, div_operator_item_index), 0U);
 
     failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "select statement");
     failures += expect_node(select_list, MYLITE_SQL_AST_SELECT_LIST, "select list");
@@ -377,6 +383,11 @@ static int test_select_expression_list(void) {
     failures += expect_node(mod_function, MYLITE_SQL_AST_MOD_FUNCTION, "mod function");
     failures += expect_child_count(mod_function, 2U, "mod function argument count");
     failures += expect_span_text(mod_function, "MOD(5,2)", "mod function span");
+    failures += expect_node(div_operator, MYLITE_SQL_AST_BINARY_EXPRESSION, "div expression");
+    failures +=
+        expect_operator(div_operator, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, "div operator");
+    failures += expect_span_text(child_at(div_operator, 0U), "5", "div left");
+    failures += expect_span_text(child_at(div_operator, 1U), "2", "div right");
 
     failures += expect_literal(
         child_at(child_at(select_list, string_item_index), 0U),
@@ -401,7 +412,11 @@ static int test_select_expression_list(void) {
 
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT 1+5%2*3, 5*3%4, 5%3%2, -(5%2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "SELECT 1+5%2*3, 5*3%4, 5%3%2, -(5%2), 1+5 DIV 2*3, 5 DIV 3 DIV 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     select_list = child_at(child_at(result.root, 0U), 0U);
     add = child_at(child_at(select_list, 0U), 0U);
     multiply = child_at(add, 1U);
@@ -427,6 +442,24 @@ static int test_select_expression_list(void) {
         child_at(child_at(child_at(child_at(select_list, 3U), 0U), 0U), 0U),
         MYLITE_SQL_AST_OPERATOR_MODULO,
         "unary modulo child"
+    );
+    div_operator = child_at(child_at(select_list, div_precedence_item_index), 0U);
+    multiply = child_at(div_operator, 1U);
+    failures +=
+        expect_operator(div_operator, MYLITE_SQL_AST_OPERATOR_ADD, "div addition precedence");
+    failures += expect_operator(multiply, MYLITE_SQL_AST_OPERATOR_MULTIPLY, "div multiply");
+    failures += expect_operator(
+        child_at(multiply, 0U),
+        MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE,
+        "div before multiply"
+    );
+    div_operator = child_at(child_at(select_list, div_associativity_item_index), 0U);
+    failures +=
+        expect_operator(div_operator, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, "div associativity");
+    failures += expect_operator(
+        child_at(div_operator, 0U),
+        MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE,
+        "div left associativity"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -8381,6 +8414,15 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT MOD(5,2,1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DIV(5,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 5 DIV;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DIV 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

@@ -26,7 +26,7 @@
 }
 
 %left PLUS MINUS.
-%left STAR SLASH PERCENT MOD.
+%left STAR SLASH DIV PERCENT MOD.
 %right UPLUS UMINUS.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
@@ -1604,6 +1604,10 @@ expression(A) ::= expression(B) STAR(T) expression(C). {
 expression(A) ::= expression(B) SLASH(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
+}
+expression(A) ::= expression(B) DIV(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, C);
 }
 expression(A) ::= expression(B) PERCENT(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

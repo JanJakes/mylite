@@ -678,6 +678,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "is_not_unknown";
     case MYLITE_SQL_AST_OPERATOR_MODULO:
         return "modulo";
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        return "integer_divide";
     }
 
     return "unknown";

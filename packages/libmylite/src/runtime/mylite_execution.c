@@ -1956,6 +1956,28 @@ static int evaluate_scalar_arithmetic_operand(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 );
+static int scalar_arithmetic_div_left_operand_short_circuits(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_short_circuits
+);
+static int scalar_arithmetic_div_short_circuit_visit_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_node_stack *stack,
+    bool *out_short_circuits
+);
+static int scalar_arithmetic_div_short_circuit_push_child(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int scalar_arithmetic_div_short_circuit_push_function_arguments(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_short_circuits
+);
 static int parse_scalar_arithmetic_operand(
     struct mylite_db *database,
     const struct session_scalar_cell *cell,
@@ -1993,6 +2015,7 @@ static bool checked_int64_add(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_subtract(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_multiply(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_modulo(int64_t left, int64_t right, int64_t *out_result);
+static bool checked_int64_divide(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_negate(int64_t value, int64_t *out_result);
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database);
 static void set_scalar_arithmetic_operand_out_of_range_error(struct mylite_db *database);
@@ -5438,7 +5461,7 @@ static int execute_select_statement(
             "SELECT scalar projection supports only session scalar values, signed 64-bit integer, "
             "boolean, NULL, nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values, and "
             "signed 64-bit +, binary -, and * arithmetic plus unary +, unary -, %, infix MOD, "
-            "and MOD()"
+            "MOD(), and infix DIV"
         );
         return MYLITE_ERROR;
     }
@@ -14809,7 +14832,9 @@ static int evaluate_scalar_arithmetic_apply_frame(
         result.is_null = true;
         return scalar_arithmetic_value_stack_push(database, value_stack, result);
     }
-    if (operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO && right.integer == 0) {
+    if ((operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO ||
+         operator_kind == MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE) &&
+        right.integer == 0) {
         result.is_null = true;
         if (result.division_by_zero_warning_count == SIZE_MAX) {
             set_nomem_error(database);
@@ -14945,6 +14970,22 @@ static int evaluate_scalar_arithmetic_enter_frame(
         set_scalar_arithmetic_unsupported_error(database);
         return MYLITE_ERROR;
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE) {
+        bool left_operand_short_circuits = false;
+
+        int rc = scalar_arithmetic_div_left_operand_short_circuits(
+            database,
+            child_at(expression, 0U),
+            &left_operand_short_circuits
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (left_operand_short_circuits) {
+            value.is_null = true;
+            return scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+    }
 
     int rc = scalar_arithmetic_eval_stack_push(
         database,
@@ -14973,6 +15014,138 @@ static int evaluate_scalar_arithmetic_enter_frame(
         );
     }
     return rc;
+}
+
+static int scalar_arithmetic_div_left_operand_short_circuits(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_short_circuits
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool short_circuits = true;
+    int rc = MYLITE_OK;
+
+    if (out_short_circuits == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_short_circuits = false;
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (stack.count != 0U && rc == MYLITE_OK && short_circuits) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+
+        rc = scalar_arithmetic_div_short_circuit_visit_node(
+            database,
+            current,
+            &stack,
+            &short_circuits
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_short_circuits = short_circuits;
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int scalar_arithmetic_div_short_circuit_visit_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_node_stack *stack,
+    bool *out_short_circuits
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    if (expression == NULL || out_short_circuits == NULL) {
+        if (out_short_circuits != NULL) {
+            *out_short_circuits = false;
+        }
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        *out_short_circuits =
+            mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        operator_kind = mylite_sql_ast_node_operator(expression);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            *out_short_circuits = false;
+            return MYLITE_OK;
+        }
+        return scalar_arithmetic_div_short_circuit_push_child(
+            database,
+            stack,
+            child_at(expression, 0U)
+        );
+    case MYLITE_SQL_AST_IFNULL_FUNCTION:
+        return scalar_arithmetic_div_short_circuit_push_function_arguments(
+            database,
+            stack,
+            expression,
+            out_short_circuits
+        );
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+        return scalar_arithmetic_div_short_circuit_push_child(
+            database,
+            stack,
+            child_at(expression, 0U)
+        );
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+        return scalar_arithmetic_div_short_circuit_push_function_arguments(
+            database,
+            stack,
+            expression,
+            out_short_circuits
+        );
+    default:
+        *out_short_circuits = false;
+        return MYLITE_OK;
+    }
+}
+
+static int scalar_arithmetic_div_short_circuit_push_child(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (!scalar_arithmetic_node_stack_push(stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int scalar_arithmetic_div_short_circuit_push_function_arguments(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_short_circuits
+) {
+    size_t child_count = mylite_sql_ast_node_child_count(arguments);
+
+    if (child_count == 0U) {
+        *out_short_circuits = false;
+        return MYLITE_OK;
+    }
+    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+        int rc = scalar_arithmetic_div_short_circuit_push_child(
+            database,
+            stack,
+            child_at(arguments, child_index)
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int finish_scalar_arithmetic_result(
@@ -15121,6 +15294,9 @@ static int apply_scalar_arithmetic_operator(
         break;
     case MYLITE_SQL_AST_OPERATOR_MODULO:
         overflow = checked_int64_modulo(operation->left, operation->right, out_result);
+        break;
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        overflow = checked_int64_divide(operation->left, operation->right, out_result);
         break;
     default:
         set_scalar_arithmetic_unsupported_error(database);
@@ -15328,6 +15504,15 @@ static bool checked_int64_modulo(int64_t left, int64_t right, int64_t *out_resul
     return false;
 }
 
+static bool checked_int64_divide(int64_t left, int64_t right, int64_t *out_result) {
+    if (left == INT64_MIN && (right == 1 || right == -1)) {
+        return true;
+    }
+
+    *out_result = left / right;
+    return false;
+}
+
 static bool checked_int64_negate(int64_t value, int64_t *out_result) {
     if (value == INT64_MIN) {
         return true;
@@ -15342,7 +15527,7 @@ static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database) 
         database,
         "SELECT scalar arithmetic projection supports only signed 64-bit integer, boolean, "
         "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with +, "
-        "binary -, and * arithmetic plus unary +, unary -, %, infix MOD, and MOD()"
+        "binary -, and * arithmetic plus unary +, unary -, %, infix MOD, MOD(), and infix DIV"
     );
 }
 
@@ -16900,6 +17085,9 @@ static bool is_scalar_arithmetic_operator(enum mylite_sql_ast_operator operator_
         return true;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO) {
+        return true;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE) {
         return true;
     }
     return false;
@@ -19972,6 +20160,7 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -23576,6 +23765,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -24041,6 +24231,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:

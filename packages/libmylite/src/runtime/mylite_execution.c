@@ -60,6 +60,8 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    literal_projection_max_significant_digits = 81,
+    literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
@@ -442,6 +444,7 @@ struct collect_drop_schema_tables_context {
 struct session_scalar_cell {
     const char *value;
     char integer_text[integer_text_capacity];
+    char literal_text[literal_projection_text_capacity];
 };
 
 enum session_system_variable_kind {
@@ -1179,8 +1182,15 @@ static int append_count_value_row(
 );
 static int count_execution_error(struct mylite_db *database, int rc);
 static int min_max_aggregate_execution_error(struct mylite_db *database, int rc);
-static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement);
-static int execute_session_scalar_select_statement(
+static bool select_statement_is_session_scalar_projection(
+    const struct mylite_sql_ast_node *statement
+);
+static bool select_statement_is_literal_projection(const struct mylite_sql_ast_node *statement);
+static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
+static bool select_statement_is_literal_projection_attempt(
+    const struct mylite_sql_ast_node *statement
+);
+static int execute_scalar_projection_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -1188,6 +1198,11 @@ static int execute_session_scalar_select_statement(
 static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
+);
+static int copy_scalar_projection_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text
 );
 static const char *select_statement_argument_count_error_function(
     const struct mylite_sql_ast_node *statement
@@ -1197,6 +1212,18 @@ static int session_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
+);
+static int literal_projection_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int normalize_decimal_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    bool is_negative,
+    char *buffer,
+    size_t buffer_size
 );
 static int system_variable_value(
     struct mylite_db *database,
@@ -1219,6 +1246,9 @@ static bool resolve_system_variable_kind(
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
+static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
+static bool is_literal_projection_attempt_operand(const struct mylite_sql_ast_node *expression);
 static int append_system_variable_read_warning(
     struct mylite_db *database,
     enum session_system_variable_kind kind
@@ -3464,8 +3494,9 @@ static int execute_select_statement(
         set_native_function_parameter_count_error(database, argument_count_error_function);
         return MYLITE_ERROR;
     }
-    if (select_statement_is_session_scalar(statement)) {
-        return execute_session_scalar_select_statement(database, statement, out_result);
+    if (select_statement_is_session_scalar_projection(statement) ||
+        select_statement_is_literal_projection(statement)) {
+        return execute_scalar_projection_select_statement(database, statement, out_result);
     }
     if (select_statement_has_count_aggregate(statement)) {
         rc = plan_count(database, statement, &count_plan);
@@ -3480,6 +3511,14 @@ static int execute_select_statement(
             rc = execute_min_max_aggregate_from_plan(database, &min_max_plan, out_result);
         }
         return rc;
+    }
+    if (select_statement_is_literal_projection_attempt(statement)) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only unparenthesized integer, boolean, and NULL "
+            "literals"
+        );
+        return MYLITE_ERROR;
     }
 
     rc = plan_select(database, statement, &plan);
@@ -9395,7 +9434,9 @@ static int min_max_aggregate_execution_error(struct mylite_db *database, int rc)
     return MYLITE_ERROR;
 }
 
-static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement) {
+static bool select_statement_is_session_scalar_projection(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
@@ -9425,7 +9466,78 @@ static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node 
     return true;
 }
 
-static int execute_session_scalar_select_statement(
+static bool select_statement_is_literal_projection(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        return false;
+    }
+    if (child_at(statement, 2U) != NULL) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL) {
+        return false;
+    }
+    while (select_item != NULL) {
+        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
+            !is_literal_projection_expression(child_at(select_item, 0U))) {
+            return false;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return true;
+}
+
+static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+
+    if (from_clause == NULL) {
+        return true;
+    }
+    if (from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        return true;
+    }
+    return false;
+}
+
+static bool select_statement_is_literal_projection_attempt(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (!select_statement_has_no_source_or_dual(statement)) {
+        return false;
+    }
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        child_at(statement, 2U) != NULL) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL) {
+        return false;
+    }
+    while (select_item != NULL) {
+        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
+            !is_literal_projection_attempt_expression(child_at(select_item, 0U))) {
+            return false;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return true;
+}
+
+static int execute_scalar_projection_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -9471,7 +9583,7 @@ static int execute_session_scalar_select_statement(
         if (alias != NULL) {
             rc = copy_select_item_alias_text(database, alias, &column_name);
         } else {
-            rc = copy_source_span_text(database, &expression->span, &column_name);
+            rc = copy_scalar_projection_column_name(database, expression, &column_name);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_result_append_column(result, column_name);
@@ -9503,6 +9615,32 @@ static int execute_session_scalar_select_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int copy_scalar_projection_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text
+) {
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        const struct mylite_sql_ast_node *literal = child_at(expression, 0U);
+
+        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return copy_source_span_text(database, &literal->span, out_text);
+        }
+    }
+
+    return copy_source_span_text(database, &expression->span, out_text);
 }
 
 static int append_session_scalar_select_warnings(
@@ -9651,11 +9789,166 @@ static int session_scalar_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return literal_projection_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
+}
+
+static int literal_projection_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool has_sign = false;
+    bool is_negative = false;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        has_sign = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "SELECT literal projection supports only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(expression, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (has_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only signed integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        out_cell->value = "1";
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        out_cell->value = "0";
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    int rc = normalize_decimal_integer_literal(
+        database,
+        &literal->span,
+        is_negative,
+        out_cell->literal_text,
+        sizeof(out_cell->literal_text)
+    );
+
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->literal_text;
+    }
+    return rc;
+}
+
+static int normalize_decimal_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    bool is_negative,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t first_significant = 0U;
+    size_t significant_digit_count = 0U;
+    size_t output_offset = 0U;
+    size_t required_size = 0U;
+
+    if (span == NULL || span->text == NULL || span->length == 0U || buffer == NULL ||
+        buffer_size == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    first_significant = span->length;
+    for (size_t index = 0U; index < span->length; ++index) {
+        unsigned char byte = (unsigned char)span->text[index];
+
+        if (byte < '0' || byte > '9') {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        if (byte != '0' && first_significant == span->length) {
+            first_significant = index;
+        }
+    }
+    if (first_significant == span->length) {
+        if (buffer_size < sizeof("0")) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return MYLITE_OK;
+    }
+
+    significant_digit_count = span->length - first_significant;
+    if (significant_digit_count > literal_projection_max_significant_digits) {
+        set_unsupported_error(
+            database,
+            "SELECT literal projection supports at most 81 significant decimal digits"
+        );
+        return MYLITE_ERROR;
+    }
+    required_size = significant_digit_count + 1U;
+    if (is_negative) {
+        ++required_size;
+    }
+    if (required_size > buffer_size) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (is_negative) {
+        buffer[output_offset] = '-';
+        ++output_offset;
+    }
+    memcpy(&buffer[output_offset], &span->text[first_significant], significant_digit_count);
+    output_offset += significant_digit_count;
+    buffer[output_offset] = '\0';
+
+    return MYLITE_OK;
 }
 
 static int system_variable_value(
@@ -10136,6 +10429,98 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     }
     if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return true;
+    }
+
+    return false;
+}
+
+static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal = child_at(expression, 0U);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+            return false;
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return true;
+        }
+        return false;
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_NULL:
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return false;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return true;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return is_literal_projection_attempt_operand(expression);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (!is_literal_projection_attempt_operand(child_at(expression, 0U))) {
+            return false;
+        }
+        return is_literal_projection_attempt_operand(child_at(expression, 1U));
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+        return is_literal_projection_attempt_operand(expression);
+    default:
+        return false;
+    }
+}
+
+static bool is_literal_projection_attempt_operand(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        const struct mylite_sql_ast_node *child = child_at(expression, 0U);
+
+        if (child != NULL && child->kind == MYLITE_SQL_AST_LITERAL) {
+            return true;
+        }
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *child = child_at(expression, 0U);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        if (child != NULL && child->kind == MYLITE_SQL_AST_LITERAL) {
+            return true;
+        }
+        return false;
     }
 
     return false;

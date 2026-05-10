@@ -307,7 +307,7 @@ static int format_column_reference_name(
 }
 
 static bool column_reference_qualifier_matches_source(
-    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const struct select_source_context *source_context
 ) {

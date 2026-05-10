@@ -293,6 +293,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(mylite_runtime_table_if_exists_lifecycle_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_table_if_exists_lifecycle_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

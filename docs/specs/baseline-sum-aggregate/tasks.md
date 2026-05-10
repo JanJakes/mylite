@@ -13,12 +13,12 @@
   diagnostics, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST node name, keyword mapping, and parser tests.
-- [ ] Implement descriptor-driven `SUM(column)` planning and execution while
+- [x] Add parser grammar, AST node name, keyword mapping, and parser tests.
+- [x] Implement descriptor-driven `SUM(column)` planning and execution while
   keeping SQLite responsible for scans and in-range aggregation.
-- [ ] Add C runtime tests for success, diagnostics, persistence, and overflow.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, result semantics,
+- [x] Add C runtime tests for success, diagnostics, persistence, and overflow.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, result semantics,
   descriptor authority, scope control, and compatibility wording.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

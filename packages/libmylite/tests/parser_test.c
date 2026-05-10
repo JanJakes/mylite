@@ -39,6 +39,7 @@ static int test_last_insert_id_function(void);
 static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
 static int test_min_max_aggregate(void);
+static int test_sum_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -156,6 +157,7 @@ int main(void) {
     failures += test_diagnostics_count_system_variables();
     failures += test_count_star_aggregate();
     failures += test_min_max_aggregate();
+    failures += test_sum_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -1790,6 +1792,115 @@ static int test_min_max_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT MIN(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_sum_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT SUM(id), sum(n), Sum( n ) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, "sum aggregate");
+    failures += expect_span_text(first_expression, "SUM(id)", "sum aggregate span");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "sum arg");
+    failures += expect_span_text(child_at(first_expression, 0U), "id", "sum arg span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, "lower sum");
+    failures += expect_span_text(second_expression, "sum(n)", "lower sum span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, "mixed sum");
+    failures += expect_span_text(third_expression, "Sum( n )", "mixed sum span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "sum from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT SUM(/* inside */n) FROM t WHERE id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "commented sum aggregate"
+    );
+    failures += expect_span_text(first_expression, "SUM(/* inside */n)", "commented sum span");
+    failures += expect_span_text(child_at(first_expression, 0U), "n", "commented sum arg span");
+    failures += expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "sum where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM(t.id), SUM(db.t.n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified sum argument"
+    );
+    failures += expect_span_text(first_expression, "SUM(t.id)", "qualified sum span");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "schema-qualified sum argument"
+    );
+    failures += expect_span_text(second_expression, "SUM(db.t.n)", "schema sum span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (SUM(id));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized sum aggregate"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "wrapped sum aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE sum (sum INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "sum identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare sum identifier");
+    failures += expect_span_text(first_expression, "SUM", "bare sum span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SUM (id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM/**/(id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUM(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT SUM(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

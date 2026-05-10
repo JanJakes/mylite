@@ -8,7 +8,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | --- | --- | --- |
 | Default schema | ❌ | Current schema state |
 | SQL mode scalar value | 🟡 | Limited read-only `@@sql_mode` scalar reads expose MySQL 8.4.9's default mode string; no `SET`, mutable mode state, parser effects, conversion effects, or statement behavior changes |
-| Connection character set state | ❌ | Connection charset/collation state |
+| Connection character set state | 🟡 | Fixed `utf8mb4` / `utf8mb4_0900_ai_ci` baseline with limited scalar reads and no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve that baseline; no mutable conversion state |
 | Time zone state | ❌ | Time zone variables and conversion |
 | Autocommit state | 🟡 | Limited scalar `@@autocommit` reads report fixed enabled value `1`; no mutable `SET autocommit`, transaction boundaries, commit/rollback behavior, or protocol status flags |
 | Last insert id | ❌ | Insert-id state and packets |

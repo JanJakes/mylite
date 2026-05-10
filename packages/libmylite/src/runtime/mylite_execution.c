@@ -1034,6 +1034,11 @@ static int execute_update_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_do_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1936,6 +1941,13 @@ static int execute_scalar_projection_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static bool do_statement_has_only_scalar_projection_expressions(
+    const struct mylite_sql_ast_node *statement
+);
+static int append_session_scalar_do_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
@@ -1952,6 +1964,9 @@ static int copy_scalar_projection_column_name(
     char **out_text
 );
 static const char *select_statement_argument_count_error_function(
+    const struct mylite_sql_ast_node *statement
+);
+static const char *do_statement_argument_count_error_function(
     const struct mylite_sql_ast_node *statement
 );
 static const char *argument_count_error_function_name(const struct mylite_sql_ast_node *expression);
@@ -4185,6 +4200,8 @@ static int execute_parsed_statement(
         return execute_delete_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
         return execute_update_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_DO_STATEMENT:
+        return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT:
         return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -4304,6 +4321,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN_CLAUSE:
     case MYLITE_SQL_AST_CASE_ELSE_CLAUSE:
+    case MYLITE_SQL_AST_DO_EXPRESSION_LIST:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -5721,6 +5739,66 @@ static int execute_update_statement(
         return rc;
     }
 
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_do_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *expression_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *expression = child_at(expression_list, 0U);
+    const char *argument_count_error_function = NULL;
+    size_t staged_division_by_zero_warning_count = 0U;
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    argument_count_error_function = do_statement_argument_count_error_function(statement);
+    if (argument_count_error_function != NULL) {
+        set_native_function_parameter_count_error(database, argument_count_error_function);
+        return MYLITE_ERROR;
+    }
+    if (!do_statement_has_only_scalar_projection_expressions(statement)) {
+        set_unsupported_error(
+            database,
+            "DO supports only session scalar values, integer/boolean/NULL values, scalar "
+            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
+            "arithmetic, %, MOD, DIV, signed 64-bit scalar comparison, keyword scalar logical "
+            "operators, scalar IS predicates, and top-level CASE expressions"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_session_scalar_do_warnings(database, statement);
+    while (rc == MYLITE_OK && expression != NULL) {
+        struct session_scalar_cell cell = {0};
+
+        rc = session_scalar_value(database, expression, &cell);
+        if (rc == MYLITE_OK) {
+            rc = accumulate_staged_division_by_zero_warnings(
+                database,
+                cell.staged_division_by_zero_warning_count,
+                &staged_division_by_zero_warning_count
+            );
+        }
+        expression = expression->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_division_by_zero_warnings(database, staged_division_by_zero_warning_count);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -7647,6 +7725,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+    case MYLITE_SQL_AST_DO_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -7748,6 +7827,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN_CLAUSE:
     case MYLITE_SQL_AST_CASE_ELSE_CLAUSE:
+    case MYLITE_SQL_AST_DO_EXPRESSION_LIST:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -14777,6 +14857,53 @@ static int copy_scalar_projection_column_name(
     return copy_source_span_text(database, &expression->span, out_text);
 }
 
+static bool do_statement_has_only_scalar_projection_expressions(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *expression_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *expression = NULL;
+
+    if (expression_list == NULL || expression_list->kind != MYLITE_SQL_AST_DO_EXPRESSION_LIST) {
+        return false;
+    }
+    expression = child_at(expression_list, 0U);
+    if (expression == NULL) {
+        return false;
+    }
+    while (expression != NULL) {
+        if (!is_scalar_projection_expression(expression)) {
+            return false;
+        }
+        expression = expression->next_sibling;
+    }
+
+    return true;
+}
+
+static int append_session_scalar_do_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *expression_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *expression = child_at(expression_list, 0U);
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK && expression != NULL) {
+        const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
+        enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+
+        if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+            rc = resolve_session_system_variable(database, unwrapped, &variable);
+            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
+                rc = append_system_variable_read_warning(database, variable);
+            }
+        }
+        expression = expression->next_sibling;
+    }
+
+    return rc;
+}
+
 static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
@@ -14834,6 +14961,24 @@ static int append_division_by_zero_warnings(struct mylite_db *database, size_t w
     }
 
     return rc;
+}
+
+static const char *do_statement_argument_count_error_function(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *expression_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *expression = child_at(expression_list, 0U);
+    const char *function_name = NULL;
+
+    while (expression != NULL) {
+        function_name = argument_count_error_function_name(expression);
+        if (function_name != NULL) {
+            return function_name;
+        }
+        expression = expression->next_sibling;
+    }
+
+    return NULL;
 }
 
 static const char *select_statement_argument_count_error_function(

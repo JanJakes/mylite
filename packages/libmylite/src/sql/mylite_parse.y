@@ -209,6 +209,9 @@ statement(A) ::= delete_statement(B). {
 statement(A) ::= update_statement(B). {
     A = B;
 }
+statement(A) ::= do_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -850,6 +853,17 @@ update_statement(A) ::=
     UPDATE(U) table_name(T) SET update_assignment_list(S) where_clause_opt(W)
     order_clause_opt(O) update_limit_clause_opt(L). {
     A = mylite_sql_parser_make_update_statement(state, U, T, S, W, O, L);
+}
+
+do_statement(A) ::= DO(T) do_expression_list(E). {
+    A = mylite_sql_parser_make_do_statement(state, T, E);
+}
+
+do_expression_list(A) ::= expression(B). {
+    A = mylite_sql_parser_make_do_expression_list(state, B);
+}
+do_expression_list(A) ::= do_expression_list(B) COMMA expression(C). {
+    A = mylite_sql_parser_append_do_expression(state, B, C);
 }
 
 update_assignment_list(A) ::= update_assignment(B). {
@@ -1855,6 +1869,9 @@ identifier(A) ::= CONNECTION_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CURRENT_ROLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DO(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= END(T). {

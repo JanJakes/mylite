@@ -354,6 +354,58 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_do_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token do_token,
+    struct mylite_sql_ast_node *expression_list
+) {
+    struct mylite_sql_source_span span = span_from_token(&do_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (expression_list != NULL) {
+        span = span_join(span, expression_list->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DO_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, expression_list);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_do_expression_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression
+) {
+    struct mylite_sql_source_span span =
+        expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_DO_EXPRESSION_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, expression);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_do_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *expression
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, expression);
+    if (expression != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, expression->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token use_token,
@@ -3487,6 +3539,7 @@ static bool map_keyword_token(
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"TO", MYLITE_SQL_PARSE_TO},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
+        {"DO", MYLITE_SQL_PARSE_DO},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"SET", MYLITE_SQL_PARSE_SET},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},

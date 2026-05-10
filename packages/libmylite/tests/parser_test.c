@@ -38,6 +38,7 @@ static int test_coalesce_function(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
 static int test_case_operator(void);
+static int test_do_statement(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -165,6 +166,7 @@ int main(void) {
     failures += test_nullif_function();
     failures += test_isnull_function();
     failures += test_case_operator();
+    failures += test_do_statement();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -1814,6 +1816,68 @@ static int test_case_operator(void) {
     failures += parse_sql("CREATE TABLE end (end INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_span_text(child_at(select, 0U), "end", "end table identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_do_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("DO 1, NULL, IF(1,2,3), CASE WHEN 1 THEN 4 END;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "do statement");
+    failures += expect_span_text(
+        statement,
+        "DO 1, NULL, IF(1,2,3), CASE WHEN 1 THEN 4 END",
+        "do statement span"
+    );
+    failures +=
+        expect_node(expression_list, MYLITE_SQL_AST_DO_EXPRESSION_LIST, "do expression list");
+    failures += expect_child_count(expression_list, 4U, "do expression count");
+    failures +=
+        expect_literal(child_at(expression_list, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "do int");
+    failures +=
+        expect_literal(child_at(expression_list, 1U), MYLITE_SQL_AST_LITERAL_NULL, "do null");
+    failures += expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_IF_FUNCTION, "do if");
+    failures += expect_node(
+        child_at(expression_list, 3U),
+        MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION,
+        "do case"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("do +1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "lowercase do statement");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed do expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("DO 1 FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("DO 1 AS x;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE do (do INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "do", "do table identifier");
+    failures += expect_span_text(
+        child_at(child_at(child_at(statement, 1U), 0U), 0U),
+        "do",
+        "do column identifier"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

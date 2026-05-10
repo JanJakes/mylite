@@ -15,17 +15,17 @@
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
 - [x] Commit and push the start-feature artifacts.
-- [ ] Add parser/AST support for limited `DO` statements.
-- [ ] Add MyLite-owned `DO` execution that evaluates admitted scalar
+- [x] Add parser/AST support for limited `DO` statements.
+- [x] Add MyLite-owned `DO` execution that evaluates admitted scalar
   expressions without returning rows.
-- [ ] Preserve evaluated child warnings, skipped-child warning suppression,
+- [x] Preserve evaluated child warnings, skipped-child warning suppression,
   diagnostics counts, and row-count ordering.
-- [ ] Add runtime/parser tests for accepted expressions, warning behavior,
+- [x] Add runtime/parser tests for accepted expressions, warning behavior,
   diagnostics, row-count state, file safety, independent handles, and
   deterministic rejection of unsupported forms.
-- [ ] Register the new runtime test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Register the new runtime test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, no-result conventions, signed-64 conversion
   safety, performance, cleanup, compatibility wording, and test relevance.

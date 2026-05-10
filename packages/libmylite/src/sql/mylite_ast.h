@@ -162,6 +162,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CASE_WHEN_LIST = 153,
     MYLITE_SQL_AST_CASE_WHEN_CLAUSE = 154,
     MYLITE_SQL_AST_CASE_ELSE_CLAUSE = 155,
+    MYLITE_SQL_AST_DO_EXPRESSION_LIST = 156,
+    MYLITE_SQL_AST_DO_STATEMENT = 157,
 };
 
 enum mylite_sql_ast_literal_kind {

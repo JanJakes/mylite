@@ -14,9 +14,9 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
 | `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `%, MOD` | ❌ | Modulo operator |
-| `*` | ❌ | Multiplication operator |
-| `+` | ❌ | Addition operator |
-| `-` (binary) | ❌ | Minus operator |
+| `*` | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar arithmetic projection only; not implemented yet, and no table-backed expression support |
+| `+` | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar arithmetic projection only; not implemented yet, and no table-backed expression support |
+| `-` (binary) | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar arithmetic projection only; not implemented yet, and no table-backed expression support |
 | `-` (unary) | ❌ | Change the sign of the argument |
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |

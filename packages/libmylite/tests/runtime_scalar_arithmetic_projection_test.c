@@ -16,10 +16,10 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
-    core_column_count = 12,
+    core_column_count = 22,
     alias_column_count = 4,
     parenthesized_column_count = 4,
-    boundary_column_count = 3,
+    boundary_column_count = 4,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
     mysql_error_bigint_out_of_range = 1690,
@@ -94,23 +94,25 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
         "COALESCE(NULL,7)-2",
         "NULLIF(8,8)+1",
         "ISNULL(NULL)+9",
+        "-(1+2)",
+        "+(1+2)",
+        "- -1",
+        "+ -1",
+        "- +1",
+        "1",
+        "-NULL",
+        "NULL",
+        "-TRUE",
+        "+FALSE",
     };
     static const char *const core_values[] = {
-        "7",
-        "9",
-        "-3",
-        "-6",
-        "3",
-        "0",
-        NULL,
-        "6",
-        "10",
-        "5",
-        NULL,
-        "10",
+        "7",  "9",  "-3", "-6", "3",  "0",  NULL, "6",  "10", "5",  NULL,
+        "10", "-3", "3",  "1",  "-1", "-1", "1",  NULL, NULL, "-1", "0",
     };
     static const char *const alias_columns[] = {"sum", "diff", "product", "nullable"};
     static const char *const alias_values[] = {"3", "-2", "12", NULL};
+    static const char *const dual_unary_columns[] = {"neg_if", "pos_ifnull", "-TRUE"};
+    static const char *const dual_unary_values[] = {"-2", "5", "-1"};
     static const char *const parenthesized_columns[] = {
         "(1+2)",
         "(1+2)*3",
@@ -120,10 +122,12 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
     static const char *const parenthesized_values[] = {"3", "9", "-1", "9"};
     static const char *const boundary_columns[] = {
         "-9223372036854775807 - 1",
+        "+(-9223372036854775807 - 1)",
         "3037000499*3037000499",
         "-3037000499*3037000499",
     };
     static const char *const boundary_values[] = {
+        "-9223372036854775808",
         "-9223372036854775808",
         "9223372030926249001",
         "-9223372030926249001",
@@ -160,7 +164,9 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
         (struct expected_query){
             .sql = "SELECT 1+2*3, (1+2)*3, 7-10, 3*-2, TRUE+2, FALSE*9, "
                    "NULL+1, IF(1,2,3)+4, IFNULL(NULL,5)*2, "
-                   "COALESCE(NULL,7)-2, NULLIF(8,8)+1, ISNULL(NULL)+9",
+                   "COALESCE(NULL,7)-2, NULLIF(8,8)+1, ISNULL(NULL)+9, "
+                   "-(1+2), +(1+2), - -1, + -1, - +1, + +1, -NULL, +NULL, "
+                   "-TRUE, +FALSE",
             .columns = core_columns,
             .column_count = core_column_count,
             .values = core_values,
@@ -183,6 +189,18 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT -(IF(1,2,3)) AS neg_if, +(IFNULL(NULL,5)) AS pos_ifnull, "
+                   "-TRUE FROM DUAL",
+            .columns = dual_unary_columns,
+            .column_count = 3U,
+            .values = dual_unary_values,
+            .row_count = 1U,
+            .context = "dual unary scalar function operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT (1+2), (1+2)*3, (+2)+(-3), ((1+2)*3)",
             .columns = parenthesized_columns,
             .column_count = parenthesized_column_count,
@@ -194,7 +212,8 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT -9223372036854775807 - 1, 3037000499*3037000499, "
+            .sql = "SELECT -9223372036854775807 - 1, "
+                   "+(-9223372036854775807 - 1), 3037000499*3037000499, "
                    "-3037000499*3037000499",
             .columns = boundary_columns,
             .column_count = boundary_column_count,
@@ -312,6 +331,24 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT -(9223372036854775807+1)",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT -(-9223372036854775807 - 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT 9223372036854775808 + 0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -331,15 +368,6 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SELECT 1/0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT -(1+2)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -384,6 +412,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT -'2'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT 1 + ISNULL()",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_parameter_count,
@@ -402,7 +439,25 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT IF(-(1+2),2,3)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT IF() supports only signed 64-bit integer",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT 1+id FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT -id FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -443,10 +498,10 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
 }
 
 static int test_scalar_arithmetic_independent_handles(void) {
-    static const char *const first_columns[] = {"first_result", "1+2*3"};
-    static const char *const first_values[] = {"6", "7"};
-    static const char *const second_columns[] = {"second_result", "NULLIF(8,8)+1"};
-    static const char *const second_values[] = {"10", NULL};
+    static const char *const first_columns[] = {"first_result", "-(1+2)"};
+    static const char *const first_values[] = {"6", "-3"};
+    static const char *const second_columns[] = {"second_result", "+(3*4)"};
+    static const char *const second_values[] = {"10", "12"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -456,7 +511,7 @@ static int test_scalar_arithmetic_independent_handles(void) {
     failures += expect_query(
         first,
         (struct expected_query){
-            .sql = "SELECT IF(1,2,3)+4 AS first_result, 1+2*3",
+            .sql = "SELECT IF(1,2,3)+4 AS first_result, -(1+2)",
             .columns = first_columns,
             .column_count = 2U,
             .values = first_values,
@@ -467,7 +522,7 @@ static int test_scalar_arithmetic_independent_handles(void) {
     failures += expect_query(
         second,
         (struct expected_query){
-            .sql = "SELECT IFNULL(NULL,5)*2 AS second_result, NULLIF(8,8)+1",
+            .sql = "SELECT IFNULL(NULL,5)*2 AS second_result, +(3*4)",
             .columns = second_columns,
             .column_count = 2U,
             .values = second_values,

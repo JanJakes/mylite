@@ -638,6 +638,7 @@ struct scalar_arithmetic_operation {
 enum scalar_arithmetic_eval_frame_kind {
     SCALAR_ARITHMETIC_EVAL_ENTER = 1,
     SCALAR_ARITHMETIC_EVAL_APPLY = 2,
+    SCALAR_ARITHMETIC_EVAL_APPLY_UNARY = 3,
 };
 
 struct scalar_arithmetic_eval_frame {
@@ -1925,6 +1926,11 @@ static int evaluate_scalar_arithmetic_apply_frame(
     struct scalar_arithmetic_value_stack *value_stack,
     enum mylite_sql_ast_operator operator_kind
 );
+static int evaluate_scalar_arithmetic_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+);
 static int evaluate_scalar_arithmetic_enter_frame(
     struct mylite_db *database,
     struct scalar_arithmetic_eval_stack *expression_stack,
@@ -1977,6 +1983,7 @@ static void scalar_arithmetic_node_stack_deinit(struct scalar_arithmetic_node_st
 static bool checked_int64_add(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_subtract(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_multiply(int64_t left, int64_t right, int64_t *out_result);
+static bool checked_int64_negate(int64_t value, int64_t *out_result);
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database);
 static void set_scalar_arithmetic_operand_out_of_range_error(struct mylite_db *database);
 static void set_scalar_arithmetic_overflow_error(struct mylite_db *database);
@@ -5419,7 +5426,7 @@ static int execute_select_statement(
             database,
             "SELECT scalar projection supports only session scalar values, signed 64-bit integer, "
             "boolean, NULL, nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values, and "
-            "signed 64-bit +, binary -, and * arithmetic"
+            "signed 64-bit +, binary -, and * arithmetic plus unary + and unary -"
         );
         return MYLITE_ERROR;
     }
@@ -14377,11 +14384,21 @@ static int copy_scalar_projection_column_name(
     unwrapped = unwrap_parenthesized_expression(expression);
     if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-        const struct mylite_sql_ast_node *literal = child_at(unwrapped, 0U);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(unwrapped, 0U));
 
-        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
-            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-            return copy_source_span_text(database, &literal->span, out_text);
+        while (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+               mylite_sql_ast_node_operator(literal) == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+        }
+        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL) {
+            enum mylite_sql_ast_literal_kind literal_kind =
+                mylite_sql_ast_node_literal_kind(literal);
+
+            if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+                return copy_source_span_text(database, &literal->span, out_text);
+            }
         }
     }
     if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
@@ -14581,8 +14598,12 @@ static int session_scalar_value(
         return MYLITE_OK;
     }
     case MYLITE_SQL_AST_LITERAL:
-    case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return literal_projection_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        if (is_scalar_projection_literal_expression(expression)) {
+            return literal_projection_value(database, expression, out_cell);
+        }
+        return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
@@ -14681,6 +14702,13 @@ static int evaluate_scalar_arithmetic_frame(
     if (frame->kind == SCALAR_ARITHMETIC_EVAL_APPLY) {
         return evaluate_scalar_arithmetic_apply_frame(database, value_stack, frame->operator_kind);
     }
+    if (frame->kind == SCALAR_ARITHMETIC_EVAL_APPLY_UNARY) {
+        return evaluate_scalar_arithmetic_apply_unary_frame(
+            database,
+            value_stack,
+            frame->operator_kind
+        );
+    }
     return evaluate_scalar_arithmetic_enter_frame(
         database,
         expression_stack,
@@ -14723,6 +14751,34 @@ static int evaluate_scalar_arithmetic_apply_frame(
     return rc;
 }
 
+static int evaluate_scalar_arithmetic_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int64_t result = 0;
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &value)) {
+        set_runtime_error(database, "invalid scalar arithmetic evaluation stack");
+        return MYLITE_ERROR;
+    }
+    if (value.is_null || operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_scalar_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (checked_int64_negate(value.integer, &result)) {
+        set_scalar_arithmetic_overflow_error(database);
+        return MYLITE_ERROR;
+    }
+
+    value.integer = result;
+    return scalar_arithmetic_value_stack_push(database, value_stack, value);
+}
+
 static int evaluate_scalar_arithmetic_enter_frame(
     struct mylite_db *database,
     struct scalar_arithmetic_eval_stack *expression_stack,
@@ -14735,6 +14791,33 @@ static int evaluate_scalar_arithmetic_enter_frame(
     if (expression == NULL) {
         set_scalar_arithmetic_unsupported_error(database);
         return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        int rc = MYLITE_OK;
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_scalar_arithmetic_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_APPLY_UNARY,
+            NULL,
+            operator_kind
+        );
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_ARITHMETIC_EVAL_ENTER,
+                child_at(expression, 0U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
+        return rc;
     }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         int rc = evaluate_scalar_arithmetic_operand(database, expression, &value);
@@ -15119,12 +15202,21 @@ static bool checked_int64_multiply(int64_t left, int64_t right, int64_t *out_res
     return false;
 }
 
+static bool checked_int64_negate(int64_t value, int64_t *out_result) {
+    if (value == INT64_MIN) {
+        return true;
+    }
+
+    *out_result = -value;
+    return false;
+}
+
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
         "SELECT scalar arithmetic projection supports only signed 64-bit integer, boolean, "
         "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with +, "
-        "binary -, and *"
+        "binary -, and * arithmetic plus unary + and unary -"
     );
 }
 
@@ -16641,6 +16733,15 @@ static bool scalar_arithmetic_projection_node_is_admitted(
     if (expression == NULL) {
         return false;
     }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return is_scalar_value_projection_expression(expression);
     }
@@ -16774,6 +16875,15 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return is_scalar_value_projection_attempt_operand(expression);

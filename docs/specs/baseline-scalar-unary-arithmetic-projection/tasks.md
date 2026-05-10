@@ -14,25 +14,26 @@
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
-- [ ] Commit and push the start-feature artifacts.
-- [ ] Admit no-source and `FROM DUAL` scalar unary arithmetic projection over
+- [x] Commit and push the start-feature artifacts.
+- [x] Admit no-source and `FROM DUAL` scalar unary arithmetic projection over
   unary `+` and unary `-` without widening table-backed expression projection.
-- [ ] Preserve existing scalar value function operand restrictions unless the
+- [x] Preserve existing scalar value function operand restrictions unless the
   implementation deliberately and safely admits unary arithmetic there.
-- [ ] Add MyLite-owned checked signed-64 unary arithmetic evaluation with
+- [x] Add MyLite-owned checked signed-64 unary arithmetic evaluation with
   `NULL` propagation and deterministic overflow diagnostics.
-- [ ] Preserve warning-count and row-count ordering for mixed scalar
+- [x] Preserve warning-count and row-count ordering for mixed scalar
   projections.
-- [ ] Add runtime lifecycle tests for values, precedence, labels, aliases,
+- [x] Add runtime lifecycle tests for values, precedence, labels, aliases,
   warnings, row count, overflow/deferred unsigned-width outcomes, file safety,
   independent handles, and deterministic rejection of unsupported broader
   forms.
-- [ ] Update existing scalar projection tests that currently expect unary
+- [x] Update existing scalar projection tests that currently expect unary
   arithmetic rejection where this feature now admits it.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Keep the existing scalar arithmetic test binary; no new CMake target was
+  needed for this narrow expansion.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, unary overflow correctness, performance,
   cleanup, compatibility wording, and test relevance.
 - [ ] Commit, push `main`, and continue to the next baseline slice.

@@ -255,15 +255,6 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
     );
     failures += execute_error(
         database,
-        "SELECT +TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT scalar projection supports only session scalar values",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT 1 ORDER BY 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

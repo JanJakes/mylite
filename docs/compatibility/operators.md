@@ -29,7 +29,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `CASE` | ❌ | Case operator |
 | `DIV` | ❌ | Integer division |
 | `EXISTS()` | ❌ | Whether the result of a query contains any rows |
-| `IN()` | ❌ | Whether a value is within a set of values |
+| `IN()` | 🟡 | Limited descriptor-backed `WHERE` membership predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and a nonempty list of decimal integer, `TRUE`/`FALSE`, or `NULL` values; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |
 | `IS` | ❌ | Test a value against a boolean |
 | `IS NOT` | ❌ | Test a value against a boolean |
 | `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
@@ -38,7 +38,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `NOT, !` | 🟡 | Limited keyword `NOT` over descriptor-backed `WHERE` boolean expressions for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; symbolic `!` remains unsupported until MyLite owns its higher-precedence expression semantics and deprecation warning behavior |
 | `NOT BETWEEN ... AND ...` | 🟡 | Limited negation of the descriptor-backed `BETWEEN` predicate subset; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `NOT EXISTS()` | ❌ | Whether the result of a query contains no rows |
-| `NOT IN()` | ❌ | Whether a value is not within a set of values |
+| `NOT IN()` | 🟡 | Limited negation of the descriptor-backed `IN` predicate subset, including MySQL three-valued `NULL` list semantics; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |
 | `NOT LIKE` | ❌ | Negation of simple pattern matching |
 | `NOT REGEXP` | ❌ | Negation of REGEXP |
 | `OR, \|\|` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `OR` binds looser than `AND`, `\|\|` is accepted as logical OR with deprecation warning 1287, and no `PIPES_AS_CONCAT` or general expression-level boolean semantics are supported |

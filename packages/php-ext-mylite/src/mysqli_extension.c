@@ -29,6 +29,38 @@
 #define MYLITE_MYSQLI_REPORT_ALL 255
 #define MYLITE_MYSQLI_SERVER_INFO "8.4.9"
 #define MYLITE_MYSQLI_SERVER_VERSION 80409
+#define MYLITE_MYSQLI_FIELD_FLAG_NOT_NULL 1
+#define MYLITE_MYSQLI_FIELD_FLAG_PRI_KEY 2
+#define MYLITE_MYSQLI_FIELD_FLAG_UNIQUE_KEY 4
+#define MYLITE_MYSQLI_FIELD_FLAG_MULTIPLE_KEY 8
+#define MYLITE_MYSQLI_FIELD_FLAG_BLOB 16
+#define MYLITE_MYSQLI_FIELD_FLAG_UNSIGNED 32
+#define MYLITE_MYSQLI_FIELD_FLAG_ZEROFILL 64
+#define MYLITE_MYSQLI_FIELD_FLAG_BINARY 128
+#define MYLITE_MYSQLI_FIELD_FLAG_AUTO_INCREMENT 512
+#define MYLITE_MYSQLI_FIELD_FLAG_NUM 32768
+#define MYLITE_MYSQLI_FIELD_TYPE_DECIMAL 0
+#define MYLITE_MYSQLI_FIELD_TYPE_TINY 1
+#define MYLITE_MYSQLI_FIELD_TYPE_SHORT 2
+#define MYLITE_MYSQLI_FIELD_TYPE_LONG 3
+#define MYLITE_MYSQLI_FIELD_TYPE_FLOAT 4
+#define MYLITE_MYSQLI_FIELD_TYPE_DOUBLE 5
+#define MYLITE_MYSQLI_FIELD_TYPE_NULL 6
+#define MYLITE_MYSQLI_FIELD_TYPE_TIMESTAMP 7
+#define MYLITE_MYSQLI_FIELD_TYPE_LONGLONG 8
+#define MYLITE_MYSQLI_FIELD_TYPE_INT24 9
+#define MYLITE_MYSQLI_FIELD_TYPE_DATE 10
+#define MYLITE_MYSQLI_FIELD_TYPE_TIME 11
+#define MYLITE_MYSQLI_FIELD_TYPE_DATETIME 12
+#define MYLITE_MYSQLI_FIELD_TYPE_YEAR 13
+#define MYLITE_MYSQLI_FIELD_TYPE_NEWDATE 14
+#define MYLITE_MYSQLI_FIELD_TYPE_BIT 16
+#define MYLITE_MYSQLI_FIELD_TYPE_NEWDECIMAL 246
+#define MYLITE_MYSQLI_FIELD_TYPE_ENUM 247
+#define MYLITE_MYSQLI_FIELD_TYPE_SET 248
+#define MYLITE_MYSQLI_FIELD_TYPE_BLOB 252
+#define MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING 253
+#define MYLITE_MYSQLI_FIELD_TYPE_STRING 254
 
 enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_NONE = 0,
@@ -152,8 +184,8 @@ static bool mylite_mysqli_stmt_prepare_internal(mylite_mysqli_stmt *stmt, const 
 static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params);
 static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql, size_t sql_length,
                                       zval *out_result);
-static bool mylite_mysqli_buffer_statement(mylite_mysqli_link *link, mylite_stmt *stmt,
-                                           zval *out_result);
+static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_result *source,
+                                        zval *out_result);
 static void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value);
 static void mylite_mysqli_result_fetch_column(mylite_mysqli_result *result, zend_long column,
                                               zval *return_value);
@@ -1284,18 +1316,18 @@ PHP_FUNCTION(mysqli_get_warnings)
     ZEND_PARSE_PARAMETERS_END();
 
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
-    if (link->database == NULL || mylite_warning_count(link->database) <= 0) {
+    if (link->database == NULL || link->warning_count <= 0) {
         RETURN_FALSE;
     }
 
     object_init_ex(return_value, mylite_mysqli_warning_ce);
-    message = mylite_warning_message(link->database, 0);
+    message = "MyLite warning";
     zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "message",
                                 strlen("message"), message == NULL ? "" : message);
     zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "sqlstate",
                                 strlen("sqlstate"), "HY000");
     zend_update_property_long(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "errno",
-                              strlen("errno"), (zend_long)mylite_warning_code(link->database, 0));
+                              strlen("errno"), 0);
 }
 
 PHP_FUNCTION(mysqli_get_client_info)
@@ -3059,17 +3091,17 @@ PHP_METHOD(mysqli, get_warnings)
     const char *message = NULL;
 
     ZEND_PARSE_PARAMETERS_NONE();
-    if (link->database == NULL || mylite_warning_count(link->database) <= 0) {
+    if (link->database == NULL || link->warning_count <= 0) {
         RETURN_FALSE;
     }
     object_init_ex(return_value, mylite_mysqli_warning_ce);
-    message = mylite_warning_message(link->database, 0);
+    message = "MyLite warning";
     zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "message",
                                 strlen("message"), message == NULL ? "" : message);
     zend_update_property_string(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "sqlstate",
                                 strlen("sqlstate"), "HY000");
     zend_update_property_long(mylite_mysqli_warning_ce, Z_OBJ_P(return_value), "errno",
-                              strlen("errno"), (zend_long)mylite_warning_code(link->database, 0));
+                              strlen("errno"), 0);
 }
 
 PHP_METHOD(mysqli, init)
@@ -4160,7 +4192,7 @@ static bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *
 static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql, size_t sql_length,
                                       zval *out_result)
 {
-    mylite_stmt *stmt = NULL;
+    mylite_result *source = NULL;
     const char *sqlstate = "HY000";
     int status = MYLITE_OK;
 
@@ -4173,45 +4205,48 @@ static bool mylite_mysqli_execute_sql(mylite_mysqli_link *link, const char *sql,
     }
 
     mylite_mysqli_clear_error(link);
-    status = mylite_prepare(link->database, sql, sql_length, &stmt);
+    status = mylite_execute(link->database, sql, sql_length, &source);
     if (status != MYLITE_OK) {
-        int error_code = mylite_mysqli_error_from_status(status, &sqlstate);
+        int error_code = mylite_errcode(link->database);
 
-        mylite_mysqli_set_error(link, error_code, sqlstate, mylite_error_message(link->database));
+        if (error_code == 0) {
+            error_code = mylite_mysqli_error_from_status(status, &sqlstate);
+        } else {
+            sqlstate = mylite_sqlstate(link->database);
+        }
+        mylite_mysqli_set_error(link, error_code, sqlstate, mylite_errmsg(link->database));
         mylite_mysqli_report_link_error(link);
         return false;
     }
 
-    if (!mylite_mysqli_buffer_statement(link, stmt, out_result)) {
-        mylite_finalize(stmt);
+    if (!mylite_mysqli_buffer_result(link, source, out_result)) {
+        mylite_result_free(source);
         return false;
     }
-    mylite_finalize(stmt);
+    mylite_result_free(source);
     mylite_mysqli_update_link_properties(link);
     return true;
 }
 
-static bool mylite_mysqli_buffer_statement(mylite_mysqli_link *link, mylite_stmt *stmt,
-                                           zval *out_result)
+static bool mylite_mysqli_buffer_result(mylite_mysqli_link *link, const mylite_result *source,
+                                        zval *out_result)
 {
-    int column_count = mylite_column_count(stmt);
-    int status = MYLITE_OK;
+    size_t column_count = mylite_result_column_count(source);
+    size_t row_count = mylite_result_row_count(source);
 
-    link->field_count = column_count;
-    if (column_count == 0) {
-        status = mylite_step(stmt);
-        if (status != MYLITE_DONE) {
-            const char *sqlstate = "HY000";
-            int error_code = mylite_mysqli_error_from_status(status, &sqlstate);
+    if (column_count > (size_t)UINT32_MAX || row_count > (size_t)UINT32_MAX ||
+        (column_count != 0U && row_count > SIZE_MAX / column_count)) {
+        mylite_mysqli_set_error(link, MYLITE_MYSQLI_ERROR_CLIENT, "HY000",
+                                "result set is too large");
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
 
-            mylite_mysqli_set_error(link, error_code, sqlstate,
-                                    mylite_error_message(link->database));
-            mylite_mysqli_report_link_error(link);
-            return false;
-        }
-        link->affected_rows = (zend_long)mylite_affected_rows(stmt);
-        link->insert_id = (zend_long)mylite_last_insert_id(link->database);
-        link->warning_count = (zend_long)mylite_warning_count(link->database);
+    link->field_count = (zend_long)column_count;
+    link->warning_count = (zend_long)mylite_result_warning_count(source);
+    if (column_count == 0U) {
+        link->affected_rows = (zend_long)mylite_result_affected_rows(source);
+        link->insert_id = 0;
         ZVAL_TRUE(out_result);
         return true;
     }
@@ -4219,6 +4254,8 @@ static bool mylite_mysqli_buffer_statement(mylite_mysqli_link *link, mylite_stmt
     object_init_ex(out_result, mylite_mysqli_result_ce);
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(out_result));
     result->column_count = (uint32_t)column_count;
+    result->row_count = (uint32_t)row_count;
+    result->row_capacity = result->row_count;
     result->names = ecalloc(result->column_count, sizeof(zend_string *));
     result->schemas = ecalloc(result->column_count, sizeof(zend_string *));
     result->tables = ecalloc(result->column_count, sizeof(zend_string *));
@@ -4231,68 +4268,40 @@ static bool mylite_mysqli_buffer_statement(mylite_mysqli_link *link, mylite_stmt
     result->decimals = ecalloc(result->column_count, sizeof(unsigned int));
     result->charsets = ecalloc(result->column_count, sizeof(unsigned int));
     result->nullable = ecalloc(result->column_count, sizeof(bool));
+    if (row_count > 0U) {
+        result->values = ecalloc(row_count * column_count, sizeof(zval));
+    }
 
     for (uint32_t column = 0; column < result->column_count; column++) {
-        const char *name = mylite_column_name(stmt, (int)column);
-        const char *schema = mylite_column_schema_name(stmt, (int)column);
-        const char *table = mylite_column_table_name(stmt, (int)column);
-        const char *origin_table = mylite_column_origin_table_name(stmt, (int)column);
-        const char *origin_name = mylite_column_origin_name(stmt, (int)column);
+        const char *name = mylite_result_column_name(source, column);
 
         result->names[column] =
             zend_string_init(name == NULL ? "" : name, name == NULL ? 0U : strlen(name), false);
-        result->schemas[column] =
-            schema == NULL ? NULL : zend_string_init(schema, strlen(schema), false);
-        result->tables[column] =
-            table == NULL ? NULL : zend_string_init(table, strlen(table), false);
-        result->origin_tables[column] =
-            origin_table == NULL ? NULL
-                                 : zend_string_init(origin_table, strlen(origin_table), false);
-        result->origin_names[column] =
-            origin_name == NULL ? NULL : zend_string_init(origin_name, strlen(origin_name), false);
-        result->types[column] = mylite_column_field_type(stmt, (int)column);
-        result->flags[column] = mylite_column_flags(stmt, (int)column);
-        result->lengths[column] = mylite_column_declared_length(stmt, (int)column);
-        result->max_lengths[column] = mylite_column_max_length(stmt, (int)column);
-        result->decimals[column] = mylite_column_decimals(stmt, (int)column);
-        result->charsets[column] = mylite_column_charset_id(stmt, (int)column);
-        result->nullable[column] = mylite_column_is_nullable(stmt, (int)column) != 0;
+        result->types[column] = MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING;
+        result->charsets[column] = 255U;
+        result->nullable[column] = true;
     }
 
-    while ((status = mylite_step(stmt)) == MYLITE_ROW) {
-        if (result->row_count == result->row_capacity) {
-            uint32_t new_capacity = result->row_capacity == 0U ? 4U : result->row_capacity * 2U;
-            result->values = safe_erealloc(
-                result->values, (size_t)new_capacity * result->column_count, sizeof(zval), 0);
-            result->row_capacity = new_capacity;
-        }
+    for (uint32_t row = 0; row < result->row_count; row++) {
         for (uint32_t column = 0; column < result->column_count; column++) {
-            zval *value = &result->values[result->row_count * result->column_count + column];
-            const char *text = mylite_column_text(stmt, (int)column);
+            zval *value = &result->values[(size_t)row * result->column_count + column];
+            const char *text = mylite_result_value_text(source, row, column);
 
             if (text == NULL) {
                 ZVAL_NULL(value);
             } else {
+                size_t text_length = strlen(text);
+
+                if (text_length > result->max_lengths[column]) {
+                    result->max_lengths[column] = text_length;
+                }
                 ZVAL_STRING(value, text);
             }
         }
-        result->row_count++;
-    }
-
-    if (status != MYLITE_DONE) {
-        const char *sqlstate = "HY000";
-        int error_code = mylite_mysqli_error_from_status(status, &sqlstate);
-
-        mylite_mysqli_set_error(link, error_code, sqlstate, mylite_error_message(link->database));
-        mylite_mysqli_report_link_error(link);
-        zval_ptr_dtor(out_result);
-        ZVAL_FALSE(out_result);
-        return false;
     }
 
     link->affected_rows = -1;
-    link->insert_id = (zend_long)mylite_last_insert_id(link->database);
-    link->warning_count = (zend_long)mylite_warning_count(link->database);
+    link->insert_id = 0;
     mylite_mysqli_update_result_properties(result);
     return true;
 }
@@ -4734,13 +4743,13 @@ static void mylite_mysqli_report_stmt_error(mylite_mysqli_stmt *stmt)
 static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate)
 {
     switch (status) {
-    case MYLITE_PARSE_ERROR:
-        *out_sqlstate = "42000";
-        return MYLITE_MYSQLI_ERROR_PARSE;
-    case MYLITE_UNSUPPORTED:
-        *out_sqlstate = "42000";
-        return MYLITE_MYSQLI_ERROR_UNSUPPORTED;
-    case MYLITE_EXEC_ERROR:
+    case MYLITE_NOMEM:
+        *out_sqlstate = "HY000";
+        return MYLITE_MYSQLI_ERROR_CLIENT;
+    case MYLITE_MISUSE:
+        *out_sqlstate = "HY000";
+        return MYLITE_MYSQLI_ERROR_CLIENT;
+    case MYLITE_ERROR:
         *out_sqlstate = "HY000";
         return MYLITE_MYSQLI_ERROR_EXEC;
     default:
@@ -4869,16 +4878,16 @@ static void mylite_mysqli_register_constants(int module_number)
     REGISTER_LONG_CONSTANT("MYSQLI_STMT_ATTR_CURSOR_TYPE", 1, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_CURSOR_TYPE_NO_CURSOR", 0, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_CURSOR_TYPE_READ_ONLY", 1, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_NOT_NULL_FLAG", MYLITE_FIELD_FLAG_NOT_NULL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_PRI_KEY_FLAG", MYLITE_FIELD_FLAG_PRI_KEY, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_UNIQUE_KEY_FLAG", MYLITE_FIELD_FLAG_UNIQUE_KEY,
+    REGISTER_LONG_CONSTANT("MYSQLI_NOT_NULL_FLAG", MYLITE_MYSQLI_FIELD_FLAG_NOT_NULL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_PRI_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_PRI_KEY, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_UNIQUE_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_UNIQUE_KEY,
                            CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_MULTIPLE_KEY_FLAG", MYLITE_FIELD_FLAG_MULTIPLE_KEY,
+    REGISTER_LONG_CONSTANT("MYSQLI_MULTIPLE_KEY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_MULTIPLE_KEY,
                            CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_BLOB_FLAG", MYLITE_FIELD_FLAG_BLOB, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_UNSIGNED_FLAG", MYLITE_FIELD_FLAG_UNSIGNED, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_ZEROFILL_FLAG", MYLITE_FIELD_FLAG_ZEROFILL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_BINARY_FLAG", MYLITE_FIELD_FLAG_BINARY, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_BLOB_FLAG", MYLITE_MYSQLI_FIELD_FLAG_BLOB, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_UNSIGNED_FLAG", MYLITE_MYSQLI_FIELD_FLAG_UNSIGNED, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_ZEROFILL_FLAG", MYLITE_MYSQLI_FIELD_FLAG_ZEROFILL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_BINARY_FLAG", MYLITE_MYSQLI_FIELD_FLAG_BINARY, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TIMESTAMP_FLAG", 1024, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_SET_FLAG", 2048, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_PART_KEY_FLAG", 16384, CONST_PERSISTENT);
@@ -4886,40 +4895,40 @@ static void mylite_mysqli_register_constants(int module_number)
     REGISTER_LONG_CONSTANT("MYSQLI_ENUM_FLAG", 256, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_NO_DEFAULT_VALUE_FLAG", 4096, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_ON_UPDATE_NOW_FLAG", 8192, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_AUTO_INCREMENT_FLAG", MYLITE_FIELD_FLAG_AUTO_INCREMENT,
+    REGISTER_LONG_CONSTANT("MYSQLI_AUTO_INCREMENT_FLAG", MYLITE_MYSQLI_FIELD_FLAG_AUTO_INCREMENT,
                            CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_NUM_FLAG", MYLITE_FIELD_FLAG_NUM, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DECIMAL", MYLITE_FIELD_TYPE_DECIMAL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TINY", MYLITE_FIELD_TYPE_TINY, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SHORT", MYLITE_FIELD_TYPE_SHORT, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONG", MYLITE_FIELD_TYPE_LONG, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_FLOAT", MYLITE_FIELD_TYPE_FLOAT, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DOUBLE", MYLITE_FIELD_TYPE_DOUBLE, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NULL", MYLITE_FIELD_TYPE_NULL, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIMESTAMP", MYLITE_FIELD_TYPE_TIMESTAMP, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONGLONG", MYLITE_FIELD_TYPE_LONGLONG, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_INT24", MYLITE_FIELD_TYPE_INT24, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATE", MYLITE_FIELD_TYPE_DATE, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIME", MYLITE_FIELD_TYPE_TIME, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATETIME", MYLITE_FIELD_TYPE_DATETIME, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_YEAR", MYLITE_FIELD_TYPE_YEAR, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDATE", MYLITE_FIELD_TYPE_NEWDATE, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_CHAR", MYLITE_FIELD_TYPE_TINY, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_NUM_FLAG", MYLITE_MYSQLI_FIELD_FLAG_NUM, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DECIMAL", MYLITE_MYSQLI_FIELD_TYPE_DECIMAL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TINY", MYLITE_MYSQLI_FIELD_TYPE_TINY, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SHORT", MYLITE_MYSQLI_FIELD_TYPE_SHORT, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONG", MYLITE_MYSQLI_FIELD_TYPE_LONG, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_FLOAT", MYLITE_MYSQLI_FIELD_TYPE_FLOAT, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DOUBLE", MYLITE_MYSQLI_FIELD_TYPE_DOUBLE, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NULL", MYLITE_MYSQLI_FIELD_TYPE_NULL, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIMESTAMP", MYLITE_MYSQLI_FIELD_TYPE_TIMESTAMP, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONGLONG", MYLITE_MYSQLI_FIELD_TYPE_LONGLONG, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_INT24", MYLITE_MYSQLI_FIELD_TYPE_INT24, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATE", MYLITE_MYSQLI_FIELD_TYPE_DATE, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TIME", MYLITE_MYSQLI_FIELD_TYPE_TIME, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_DATETIME", MYLITE_MYSQLI_FIELD_TYPE_DATETIME, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_YEAR", MYLITE_MYSQLI_FIELD_TYPE_YEAR, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDATE", MYLITE_MYSQLI_FIELD_TYPE_NEWDATE, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_CHAR", MYLITE_MYSQLI_FIELD_TYPE_TINY, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_TINY_BLOB", 249, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_MEDIUM_BLOB", 250, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_LONG_BLOB", 251, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDECIMAL", MYLITE_FIELD_TYPE_NEWDECIMAL,
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_NEWDECIMAL", MYLITE_MYSQLI_FIELD_TYPE_NEWDECIMAL,
                            CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_JSON", 245, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_VECTOR", 242, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_ENUM", MYLITE_FIELD_TYPE_ENUM, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SET", MYLITE_FIELD_TYPE_SET, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BLOB", MYLITE_FIELD_TYPE_BLOB, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_VAR_STRING", MYLITE_FIELD_TYPE_VAR_STRING,
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_ENUM", MYLITE_MYSQLI_FIELD_TYPE_ENUM, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_SET", MYLITE_MYSQLI_FIELD_TYPE_SET, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BLOB", MYLITE_MYSQLI_FIELD_TYPE_BLOB, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_VAR_STRING", MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING,
                            CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_STRING", MYLITE_FIELD_TYPE_STRING, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_STRING", MYLITE_MYSQLI_FIELD_TYPE_STRING, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_TYPE_GEOMETRY", 255, CONST_PERSISTENT);
-    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BIT", MYLITE_FIELD_TYPE_BIT, CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("MYSQLI_TYPE_BIT", MYLITE_MYSQLI_FIELD_TYPE_BIT, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_SET_CHARSET_NAME", 7, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_NO_DATA", 100, CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("MYSQLI_DATA_TRUNCATED", 101, CONST_PERSISTENT);

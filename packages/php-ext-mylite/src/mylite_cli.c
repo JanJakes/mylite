@@ -6,7 +6,7 @@
 #include <string.h>
 
 static int run_query(const char *path, bool memory, const char *sql);
-static int print_result(mylite_stmt *stmt);
+static int print_result(const mylite_result *result);
 static void print_usage(const char *program);
 
 int main(int argc, char **argv)
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 static int run_query(const char *path, bool memory, const char *sql)
 {
     mylite_db *database = NULL;
-    mylite_stmt *stmt = NULL;
+    mylite_result *result = NULL;
     int status = MYLITE_OK;
     int exit_code = 0;
 
@@ -47,46 +47,41 @@ static int run_query(const char *path, bool memory, const char *sql)
         status = mylite_open(path, &database);
     }
     if (status != MYLITE_OK) {
-        fprintf(stderr, "open failed: %s\n", mylite_status_name(status));
+        fprintf(stderr, "open failed: status %d\n", status);
         return 1;
     }
 
-    status = mylite_prepare(database, sql, strlen(sql), &stmt);
+    status = mylite_execute(database, sql, strlen(sql), &result);
     if (status != MYLITE_OK) {
-        fprintf(stderr, "prepare failed: %s: %s\n", mylite_status_name(status),
-                mylite_error_message(database));
+        fprintf(stderr, "execute failed: %s\n", mylite_errmsg(database));
         mylite_close(database);
         return 1;
     }
 
-    exit_code = print_result(stmt);
-    if (exit_code != 0) {
-        fprintf(stderr, "execute failed: %s\n", mylite_error_message(database));
-    }
-
-    mylite_finalize(stmt);
+    exit_code = print_result(result);
+    mylite_result_free(result);
     mylite_close(database);
     return exit_code;
 }
 
-static int print_result(mylite_stmt *stmt)
+static int print_result(const mylite_result *result)
 {
-    int column_count = mylite_column_count(stmt);
-    int status = MYLITE_OK;
+    size_t column_count = mylite_result_column_count(result);
+    size_t row_count = mylite_result_row_count(result);
 
-    for (int column = 0; column < column_count; column++) {
+    for (size_t column = 0; column < column_count; column++) {
         if (column > 0) {
             putchar('\t');
         }
-        printf("%s", mylite_column_name(stmt, column));
+        printf("%s", mylite_result_column_name(result, column));
     }
     if (column_count > 0) {
         putchar('\n');
     }
 
-    while ((status = mylite_step(stmt)) == MYLITE_ROW) {
-        for (int column = 0; column < column_count; column++) {
-            const char *value = mylite_column_text(stmt, column);
+    for (size_t row = 0; row < row_count; row++) {
+        for (size_t column = 0; column < column_count; column++) {
+            const char *value = mylite_result_value_text(result, row, column);
 
             if (column > 0) {
                 putchar('\t');
@@ -96,7 +91,7 @@ static int print_result(mylite_stmt *stmt)
         putchar('\n');
     }
 
-    return status == MYLITE_DONE ? 0 : 1;
+    return 0;
 }
 
 static void print_usage(const char *program)

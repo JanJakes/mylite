@@ -311,6 +311,60 @@ static int test_do_statement_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "DO ?",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '?'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO @x := 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '@x'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO (SELECT 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'SELECT'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO !0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '!'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO 1 && 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '&&'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO 1 || 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '||'",
+        }
+    );
+    failures += execute_error(
+        database,
         "DO IFNULL(1)",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_parameter_count,

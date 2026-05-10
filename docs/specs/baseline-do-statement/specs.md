@@ -52,7 +52,7 @@ slice:
 - arithmetic overflow raises MySQL error 1690 / SQLSTATE `22003`;
 - wrong native-function arities preserve the existing MySQL-compatible
   parameter-count diagnostic;
-- MySQL accepts broader expression forms such as table-free scalar subqueries,
+- MySQL accepts broader expression forms such as scalar subqueries,
   user-variable assignments, string/decimal/float/hex/bit expressions, and
   aliases after `DO` expressions. MyLite defers those forms in this baseline.
 
@@ -206,7 +206,7 @@ does not need physical row access.
 Implementation shape:
 
 1. Add a `DO` parser token mapping and AST statement node.
-2. Store the expression list as direct children under the `DO` statement.
+2. Store a dedicated expression-list child under the `DO` statement.
 3. Add runtime dispatch for the new statement kind.
 4. Validate each child with the same scalar-projection classifier used by
    no-source `SELECT`.

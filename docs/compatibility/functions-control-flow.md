@@ -6,7 +6,7 @@ Conditional expression helpers.
 | --- | --- | --- |
 | `COALESCE()` | ❌ | Return first non-NULL argument |
 | `IF()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IF(condition, true_value, false_value)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, and nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata |
-| `IFNULL()` | ❌ | Null if/else construct |
+| `IFNULL()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IFNULL(value, fallback)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, nested `IFNULL()` operands, and supported nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata |
 | `NULLIF()` | ❌ | Return NULL if expr1 = expr2 |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

@@ -172,37 +172,45 @@ grammar:
 %left STAR SLASH DIV PERCENT MOD.
 %right UPLUS UMINUS.
 
-expression(A) ::= expression(B) IS(T) NULL(C). {
+expression(A) ::= expression(B) IS(T) NULL(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NULL, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NULL,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_NULL));
 }
-expression(A) ::= expression(B) IS(T) NOT NULL(C). {
+expression(A) ::= expression(B) IS(T) NOT NULL(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_NULL));
 }
-expression(A) ::= expression(B) IS(T) TRUE(C). {
+expression(A) ::= expression(B) IS(T) TRUE(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_TRUE, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_TRUE));
 }
-expression(A) ::= expression(B) IS(T) NOT TRUE(C). {
+expression(A) ::= expression(B) IS(T) NOT TRUE(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_TRUE));
 }
-expression(A) ::= expression(B) IS(T) FALSE(C). {
+expression(A) ::= expression(B) IS(T) FALSE(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_FALSE, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_FALSE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_FALSE));
 }
-expression(A) ::= expression(B) IS(T) NOT FALSE(C). {
+expression(A) ::= expression(B) IS(T) NOT FALSE(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_FALSE));
 }
-expression(A) ::= expression(B) IS(T) UNKNOWN(C). {
+expression(A) ::= expression(B) IS(T) UNKNOWN(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN,
+        mylite_sql_parser_make_identifier(state, C));
 }
-expression(A) ::= expression(B) IS(T) NOT UNKNOWN(C). {
+expression(A) ::= expression(B) IS(T) NOT UNKNOWN(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
-        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN, C);
+        state, B, T, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN,
+        mylite_sql_parser_make_identifier(state, C));
 }
 ```
 

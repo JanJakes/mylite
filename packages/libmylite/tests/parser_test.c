@@ -349,6 +349,17 @@ static int test_select_expression_list(void) {
         logical_or_precedence_item_index = 6,
         logical_xor_precedence_item_index = 7,
         logical_result_comparison_item_index = 8,
+        is_item_count = 10,
+        is_true_item_index = 0,
+        is_false_item_index = 1,
+        is_unknown_item_index = 2,
+        is_not_true_item_index = 3,
+        is_null_item_index = 4,
+        is_not_null_item_index = 5,
+        is_not_precedence_item_index = 6,
+        is_comparison_precedence_item_index = 7,
+        is_logical_precedence_item_index = 8,
+        is_parenthesized_comparison_item_index = 9,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
@@ -362,6 +373,7 @@ static int test_select_expression_list(void) {
     const struct mylite_sql_ast_node *div_operator = NULL;
     const struct mylite_sql_ast_node *comparison = NULL;
     const struct mylite_sql_ast_node *logical = NULL;
+    const struct mylite_sql_ast_node *is_expression = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -562,6 +574,83 @@ static int test_select_expression_list(void) {
         child_at(logical, 0U),
         MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
         "logical result compared"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT 1 IS TRUE, 0 IS FALSE, NULL IS UNKNOWN, 1 IS NOT TRUE, "
+        "1 IS NULL, 1 IS NOT NULL, NOT 1 IS TRUE, 1 = 1 IS TRUE, "
+        "1 IS TRUE AND 0, (1 IS TRUE)=1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, is_item_count, "scalar is select list");
+    failures += expect_operator(
+        child_at(child_at(select_list, is_true_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+        "scalar is true expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, is_false_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_FALSE,
+        "scalar is false expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, is_unknown_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN,
+        "scalar is unknown expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, is_not_true_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE,
+        "scalar is not true expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, is_null_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_NULL,
+        "scalar is null expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, is_not_null_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
+        "scalar is not null expression"
+    );
+    logical = child_at(child_at(select_list, is_not_precedence_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, "not over is");
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+        "is binds tighter than not"
+    );
+    is_expression = child_at(child_at(select_list, is_comparison_precedence_item_index), 0U);
+    failures +=
+        expect_operator(is_expression, MYLITE_SQL_AST_OPERATOR_IS_TRUE, "comparison then is");
+    failures += expect_operator(
+        child_at(is_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_EQUAL,
+        "comparison binds before is"
+    );
+    logical = child_at(child_at(select_list, is_logical_precedence_item_index), 0U);
+    failures += expect_operator(logical, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, "is then and");
+    failures += expect_operator(
+        child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+        "is binds tighter than and"
+    );
+    comparison = child_at(child_at(select_list, is_parenthesized_comparison_item_index), 0U);
+    failures +=
+        expect_operator(comparison, MYLITE_SQL_AST_OPERATOR_EQUAL, "parenthesized is compare");
+    is_expression = child_at(comparison, 0U);
+    failures += expect_node(
+        is_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized is comparison operand"
+    );
+    failures += expect_operator(
+        child_at(is_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+        "parenthesized is compared"
     );
     mylite_sql_parse_result_deinit(&result);
 

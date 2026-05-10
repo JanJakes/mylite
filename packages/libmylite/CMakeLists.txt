@@ -282,6 +282,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_isnull_function_test)
 
+  add_executable(mylite_runtime_case_operator_test
+    tests/runtime_case_operator_test.c
+  )
+  target_link_libraries(mylite_runtime_case_operator_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_case_operator_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_case_operator_test)
+
   add_executable(mylite_runtime_scalar_expression_projection_test
     tests/runtime_scalar_expression_projection_test.c
   )
@@ -1399,6 +1410,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.isnull_function
     COMMAND mylite_runtime_isnull_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.case_operator
+    COMMAND mylite_runtime_case_operator_test
   )
   add_test(
     NAME libmylite.runtime.scalar_expression_projection

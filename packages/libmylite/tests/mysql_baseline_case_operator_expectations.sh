@@ -167,20 +167,24 @@ expect_output_with_headers \
 
 expect_output_with_headers \
     "evaluated warning expressions" \
-    "condition_warning	simple_case_warning	evaluated_second_condition	evaluated_simple_compare
-2	3	3	3
+    "condition_warning	simple_case_warning	evaluated_second_condition	evaluated_simple_compare	selected_result_warning	selected_simple_result_warning
+2	3	3	3	NULL	NULL
 Level	Code	Message
 Warning	1365	Division by 0
 Warning	1365	Division by 0
 Warning	1365	Division by 0
 Warning	1365	Division by 0
+Warning	1365	Division by 0
+Warning	1365	Division by 0
 @@warning_count	ROW_COUNT()
-4	-1" \
+6	-1" \
     "DO 0;
      SELECT CASE WHEN 5 DIV 0 THEN 1 ELSE 2 END AS condition_warning,
             CASE 5 DIV 0 WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 3 END AS simple_case_warning,
             CASE WHEN 0 THEN 1 WHEN 5 DIV 0 THEN 2 ELSE 3 END AS evaluated_second_condition,
-            CASE 2 WHEN 1 THEN 1 WHEN 5 DIV 0 THEN 2 ELSE 3 END AS evaluated_simple_compare;
+            CASE 2 WHEN 1 THEN 1 WHEN 5 DIV 0 THEN 2 ELSE 3 END AS evaluated_simple_compare,
+            CASE WHEN 1 THEN 5 DIV 0 ELSE 2 END AS selected_result_warning,
+            CASE 1 WHEN 1 THEN 5 DIV 0 ELSE 2 END AS selected_simple_result_warning;
      SHOW WARNINGS;
      SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"

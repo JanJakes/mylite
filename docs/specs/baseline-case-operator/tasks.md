@@ -14,24 +14,24 @@
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
-- [ ] Commit and push the start-feature artifacts.
-- [ ] Add parser/AST support for searched and simple scalar `CASE`
+- [x] Commit and push the start-feature artifacts.
+- [x] Add parser/AST support for searched and simple scalar `CASE`
   expressions.
-- [ ] Admit no-source and `FROM DUAL` scalar `CASE` projection without
+- [x] Admit no-source and `FROM DUAL` scalar `CASE` projection without
   widening table-backed expression projection.
-- [ ] Add MyLite-owned scalar `CASE` evaluation with MySQL 8.4.9 branch
+- [x] Add MyLite-owned scalar `CASE` evaluation with MySQL 8.4.9 branch
   selection and `NULL` semantics.
-- [ ] Preserve evaluated child arithmetic warnings, skipped-branch warning
+- [x] Preserve evaluated child arithmetic warnings, skipped-branch warning
   suppression, diagnostics count behavior, row-count ordering, and scalar
   short-circuiting.
-- [ ] Add runtime/parser tests for searched/simple truth behavior, precedence,
+- [x] Add runtime/parser tests for searched/simple truth behavior, precedence,
   labels, aliases, warning counts, diagnostics snapshot behavior, boundary
   operands, file safety, independent handles, and deterministic rejection of
   unsupported forms.
-- [ ] Register the new runtime test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Register the new runtime test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, `CASE` branch correctness, child warning
   behavior, signed-64 conversion safety, performance, cleanup, compatibility
   wording, and test relevance.

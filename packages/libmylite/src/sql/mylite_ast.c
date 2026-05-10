@@ -350,6 +350,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "isnull_argument_count_error";
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return "mod_function";
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+        return "searched_case_expression";
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+        return "simple_case_expression";
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+        return "case_when_list";
+    case MYLITE_SQL_AST_CASE_WHEN_CLAUSE:
+        return "case_when_clause";
+    case MYLITE_SQL_AST_CASE_ELSE_CLAUSE:
+        return "case_else_clause";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:

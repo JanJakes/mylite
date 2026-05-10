@@ -1420,6 +1420,12 @@ expression(A) ::= qualified_identifier(B). {
 expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
+expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
+    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
+}
+expression(A) ::= CASE(T) expression(V) simple_case_when_list(W) case_else_opt(E) END(R). {
+    A = mylite_sql_parser_make_simple_case_expression(state, T, V, W, E, R);
+}
 expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
@@ -1707,6 +1713,33 @@ expression(A) ::= expression(B) MOD(T) expression(C). {
         state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
 }
 
+searched_case_when_list(A) ::= searched_case_when(B). {
+    A = mylite_sql_parser_make_case_when_list(state, B);
+}
+searched_case_when_list(A) ::= searched_case_when_list(B) searched_case_when(C). {
+    A = mylite_sql_parser_append_case_when(state, B, C);
+}
+searched_case_when(A) ::= WHEN(W) expression(C) THEN expression(R). {
+    A = mylite_sql_parser_make_case_when_clause(state, W, C, R);
+}
+
+simple_case_when_list(A) ::= simple_case_when(B). {
+    A = mylite_sql_parser_make_case_when_list(state, B);
+}
+simple_case_when_list(A) ::= simple_case_when_list(B) simple_case_when(C). {
+    A = mylite_sql_parser_append_case_when(state, B, C);
+}
+simple_case_when(A) ::= WHEN(W) expression(C) THEN expression(R). {
+    A = mylite_sql_parser_make_case_when_clause(state, W, C, R);
+}
+
+case_else_opt(A) ::= . {
+    A = NULL;
+}
+case_else_opt(A) ::= ELSE(E) expression(B). {
+    A = mylite_sql_parser_make_case_else_clause(state, E, B);
+}
+
 literal(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
@@ -1822,6 +1855,9 @@ identifier(A) ::= CONNECTION_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CURRENT_ROLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= END(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COUNT(T). {

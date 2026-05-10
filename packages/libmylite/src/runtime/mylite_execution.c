@@ -1960,6 +1960,11 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int session_scalar_value_without_case(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int session_unary_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2262,6 +2267,36 @@ static int isnull_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int searched_case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int simple_case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_case_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
+static int copy_case_result_cell(
+    struct mylite_db *database,
+    const struct session_scalar_cell *selected_cell,
+    size_t previous_warning_count,
+    struct session_scalar_cell *out_cell
+);
+static bool case_arithmetic_values_are_equal(
+    const struct scalar_arithmetic_value *left,
+    const struct scalar_arithmetic_value *right
+);
 static int if_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2407,6 +2442,50 @@ static int validate_isnull_function_value_node(
     const struct mylite_sql_ast_node *expression,
     const char *function_name
 );
+static int validate_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_argument_count_error_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_handled
+);
+static int validate_case_mod_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_unary_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_binary_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int validate_case_literal_value_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static bool case_value_expression_is_admitted(const struct mylite_sql_ast_node *expression);
+static bool is_case_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_case_when_list_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_case_when_clause_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_case_else_clause_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_case_expression_kind(enum mylite_sql_ast_node_kind kind);
+static void set_case_unsupported_error(struct mylite_db *database);
 static void set_if_unsupported_error(struct mylite_db *database, const char *function_name);
 static const char *if_function_name(const struct mylite_sql_ast_node *expression);
 static bool is_if_non_function_value_expression(const struct mylite_sql_ast_node *expression);
@@ -4220,6 +4299,11 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_MOD_FUNCTION:
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN_CLAUSE:
+    case MYLITE_SQL_AST_CASE_ELSE_CLAUSE:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -7659,6 +7743,11 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_MOD_FUNCTION:
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_CASE_WHEN_LIST:
+    case MYLITE_SQL_AST_CASE_WHEN_CLAUSE:
+    case MYLITE_SQL_AST_CASE_ELSE_CLAUSE:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -14925,8 +15014,49 @@ static int session_scalar_value(
         return nullif_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
         return isnull_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+        return case_expression_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int session_scalar_value_without_case(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return literal_projection_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return session_unary_scalar_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return session_binary_scalar_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_MOD_FUNCTION:
+        return scalar_arithmetic_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_IF_FUNCTION:
+        return if_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_IFNULL_FUNCTION:
+        return ifnull_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+        return coalesce_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+        return nullif_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ISNULL_FUNCTION:
+        return isnull_function_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
@@ -16908,6 +17038,194 @@ static int isnull_function_value(
     return if_scalar_value(database, expression, out_cell);
 }
 
+static int case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = validate_case_expression(database, expression);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION) {
+        return searched_case_expression_value(database, expression, out_cell);
+    }
+    return simple_case_expression_value(database, expression, out_cell);
+}
+
+static int searched_case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *when_list = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *else_clause = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *when_clause = child_at(when_list, 0U);
+    size_t staged_warning_count = 0U;
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK && when_clause != NULL) {
+        struct scalar_arithmetic_value condition = {.is_null = false, .integer = 0};
+
+        rc = evaluate_case_arithmetic_expression(database, child_at(when_clause, 0U), &condition);
+        if (rc == MYLITE_OK) {
+            rc = accumulate_staged_division_by_zero_warnings(
+                database,
+                condition.division_by_zero_warning_count,
+                &staged_warning_count
+            );
+        }
+        if (rc == MYLITE_OK && scalar_arithmetic_truth_value(&condition)) {
+            struct session_scalar_cell result = {0};
+
+            rc = session_scalar_value_without_case(database, child_at(when_clause, 1U), &result);
+            if (rc == MYLITE_OK) {
+                rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
+            }
+            return rc;
+        }
+        when_clause = when_clause->next_sibling;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (else_clause != NULL) {
+        struct session_scalar_cell result = {0};
+
+        rc = session_scalar_value_without_case(database, child_at(else_clause, 0U), &result);
+        if (rc == MYLITE_OK) {
+            rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
+        }
+        return rc;
+    }
+
+    *out_cell = (struct session_scalar_cell){0};
+    out_cell->staged_division_by_zero_warning_count = staged_warning_count;
+    return MYLITE_OK;
+}
+
+static int simple_case_expression_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *case_value_node = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *when_list = child_at(expression, 1U);
+    const struct mylite_sql_ast_node *else_clause = child_at(expression, 2U);
+    const struct mylite_sql_ast_node *when_clause = child_at(when_list, 0U);
+    struct scalar_arithmetic_value case_value = {.is_null = false, .integer = 0};
+    size_t staged_warning_count = 0U;
+    int rc = evaluate_case_arithmetic_expression(database, case_value_node, &case_value);
+
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            case_value.division_by_zero_warning_count,
+            &staged_warning_count
+        );
+    }
+    while (rc == MYLITE_OK && when_clause != NULL) {
+        struct scalar_arithmetic_value compare_value = {.is_null = false, .integer = 0};
+
+        rc = evaluate_case_arithmetic_expression(
+            database,
+            child_at(when_clause, 0U),
+            &compare_value
+        );
+        if (rc == MYLITE_OK) {
+            rc = accumulate_staged_division_by_zero_warnings(
+                database,
+                compare_value.division_by_zero_warning_count,
+                &staged_warning_count
+            );
+        }
+        if (rc == MYLITE_OK && case_arithmetic_values_are_equal(&case_value, &compare_value)) {
+            struct session_scalar_cell result = {0};
+
+            rc = session_scalar_value_without_case(database, child_at(when_clause, 1U), &result);
+            if (rc == MYLITE_OK) {
+                rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
+            }
+            return rc;
+        }
+        when_clause = when_clause->next_sibling;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (else_clause != NULL) {
+        struct session_scalar_cell result = {0};
+
+        rc = session_scalar_value_without_case(database, child_at(else_clause, 0U), &result);
+        if (rc == MYLITE_OK) {
+            rc = copy_case_result_cell(database, &result, staged_warning_count, out_cell);
+        }
+        return rc;
+    }
+
+    *out_cell = (struct session_scalar_cell){0};
+    out_cell->staged_division_by_zero_warning_count = staged_warning_count;
+    return MYLITE_OK;
+}
+
+static int evaluate_case_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = session_scalar_value_without_case(database, expression, &cell);
+
+    if (rc == MYLITE_OK) {
+        rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
+    }
+    return rc;
+}
+
+static int copy_case_result_cell(
+    struct mylite_db *database,
+    const struct session_scalar_cell *selected_cell,
+    size_t previous_warning_count,
+    struct session_scalar_cell *out_cell
+) {
+    size_t total_warning_count = previous_warning_count;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = accumulate_staged_division_by_zero_warnings(
+        database,
+        selected_cell == NULL ? 0U : selected_cell->staged_division_by_zero_warning_count,
+        &total_warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    copy_session_scalar_cell(out_cell, selected_cell);
+    out_cell->staged_division_by_zero_warning_count = total_warning_count;
+    return MYLITE_OK;
+}
+
+static bool case_arithmetic_values_are_equal(
+    const struct scalar_arithmetic_value *left,
+    const struct scalar_arithmetic_value *right
+) {
+    if (left == NULL || right == NULL || left->is_null || right->is_null) {
+        return false;
+    }
+    return left->integer == right->integer;
+}
+
 static int if_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17350,8 +17668,14 @@ static void copy_session_scalar_cell(
 ) {
     *destination = (struct session_scalar_cell){0};
     if (source == NULL || source->value == NULL) {
+        if (source != NULL) {
+            destination->staged_division_by_zero_warning_count =
+                source->staged_division_by_zero_warning_count;
+        }
         return;
     }
+    destination->staged_division_by_zero_warning_count =
+        source->staged_division_by_zero_warning_count;
     if (source->value == source->integer_text) {
         memcpy(destination->integer_text, source->integer_text, sizeof(destination->integer_text));
         destination->value = destination->integer_text;
@@ -18178,6 +18502,345 @@ static int validate_isnull_function_value_node(
     return if_validation_stack_push(database, stack, child_at(expression, 0U));
 }
 
+static int validate_case_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *case_value = NULL;
+    const struct mylite_sql_ast_node *when_list = NULL;
+    const struct mylite_sql_ast_node *else_clause = NULL;
+    const struct mylite_sql_ast_node *when_clause = NULL;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || !is_case_expression_kind(expression->kind)) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION) {
+        if (child_count < 1U || child_count > 2U) {
+            set_case_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        when_list = child_at(expression, 0U);
+        else_clause = child_at(expression, 1U);
+    } else {
+        if (child_count < 2U || child_count > 3U) {
+            set_case_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        case_value = child_at(expression, 0U);
+        when_list = child_at(expression, 1U);
+        else_clause = child_at(expression, 2U);
+        rc = validate_case_value_expression(database, case_value);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (when_list == NULL || when_list->kind != MYLITE_SQL_AST_CASE_WHEN_LIST ||
+        mylite_sql_ast_node_child_count(when_list) == 0U) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    when_clause = child_at(when_list, 0U);
+    while (rc == MYLITE_OK && when_clause != NULL) {
+        if (when_clause->kind != MYLITE_SQL_AST_CASE_WHEN_CLAUSE ||
+            mylite_sql_ast_node_child_count(when_clause) != 2U) {
+            set_case_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = validate_case_value_expression(database, child_at(when_clause, 0U));
+        if (rc == MYLITE_OK) {
+            rc = validate_case_value_expression(database, child_at(when_clause, 1U));
+        }
+        when_clause = when_clause->next_sibling;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (else_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (else_clause->kind != MYLITE_SQL_AST_CASE_ELSE_CLAUSE ||
+        mylite_sql_ast_node_child_count(else_clause) != 1U) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return validate_case_value_expression(database, child_at(else_clause, 0U));
+}
+
+static int validate_case_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct if_validation_stack stack = {0};
+    int rc = if_validation_stack_push(database, &stack, expression);
+
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+
+        rc = validate_case_value_node(database, &stack, current);
+    }
+    if_validation_stack_deinit(&stack);
+    return rc;
+}
+
+static int validate_case_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = validate_case_argument_count_error_node(database, expression, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    if (!case_value_expression_is_admitted(expression)) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    if (is_scalar_function_expression(expression)) {
+        return validate_if_value_expression(database, expression, if_function_name(expression));
+    }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return validate_case_mod_value_node(database, stack, expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return validate_case_unary_value_node(database, stack, expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return validate_case_binary_value_node(database, stack, expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return validate_case_literal_value_node(database, expression);
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_case_argument_count_error_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_handled
+) {
+    if (out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "IFNULL");
+        *out_handled = true;
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "NULLIF");
+        *out_handled = true;
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ISNULL");
+        *out_handled = true;
+        return MYLITE_ERROR;
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int validate_case_mod_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_case_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = if_validation_stack_push(database, stack, child_at(expression, 1U));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return if_validation_stack_push(database, stack, child_at(expression, 0U));
+}
+
+static int validate_case_unary_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    const struct mylite_sql_ast_node *operand = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(operand);
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL) {
+            return validate_case_literal_value_node(database, expression);
+        }
+        return if_validation_stack_push(database, stack, operand);
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        return if_validation_stack_push(database, stack, operand);
+    }
+    set_case_unsupported_error(database);
+    return MYLITE_ERROR;
+}
+
+static int validate_case_binary_value_node(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    int rc = MYLITE_OK;
+
+    if (!is_scalar_is_operator(operator_kind)) {
+        rc = if_validation_stack_push(database, stack, child_at(expression, 1U));
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return if_validation_stack_push(database, stack, child_at(expression, 0U));
+}
+
+static int validate_case_literal_value_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (is_if_non_function_value_expression(expression)) {
+        return MYLITE_OK;
+    }
+    set_case_unsupported_error(database);
+    return MYLITE_ERROR;
+}
+
+static bool case_value_expression_is_admitted(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || is_session_scalar_expression(expression)) {
+        return false;
+    }
+    if (is_case_expression_kind(expression->kind)) {
+        return false;
+    }
+    if (is_scalar_logical_projection_expression(expression)) {
+        return true;
+    }
+    if (is_scalar_comparison_projection_expression(expression)) {
+        return true;
+    }
+    if (is_scalar_arithmetic_projection_expression(expression)) {
+        return true;
+    }
+    return is_scalar_value_projection_expression(expression);
+}
+
+static bool is_case_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *when_list = NULL;
+    const struct mylite_sql_ast_node *else_clause = NULL;
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || !is_case_expression_kind(expression->kind)) {
+        return false;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION) {
+        if (child_count < 1U || child_count > 2U) {
+            return false;
+        }
+        when_list = child_at(expression, 0U);
+        else_clause = child_at(expression, 1U);
+    } else {
+        if (child_count < 2U || child_count > 3U || child_at(expression, 0U) == NULL) {
+            return false;
+        }
+        when_list = child_at(expression, 1U);
+        else_clause = child_at(expression, 2U);
+    }
+    if (!is_case_when_list_projection_expression(when_list)) {
+        return false;
+    }
+    if (else_clause != NULL && !is_case_else_clause_projection_expression(else_clause)) {
+        return false;
+    }
+    return true;
+}
+
+static bool is_case_when_list_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *when_clause = NULL;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CASE_WHEN_LIST ||
+        mylite_sql_ast_node_child_count(expression) == 0U) {
+        return false;
+    }
+    when_clause = child_at(expression, 0U);
+    while (when_clause != NULL) {
+        if (!is_case_when_clause_projection_expression(when_clause)) {
+            return false;
+        }
+        when_clause = when_clause->next_sibling;
+    }
+    return true;
+}
+
+static bool is_case_when_clause_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CASE_WHEN_CLAUSE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    if (child_at(expression, 0U) == NULL) {
+        return false;
+    }
+    return child_at(expression, 1U) != NULL;
+}
+
+static bool is_case_else_clause_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CASE_ELSE_CLAUSE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_case_expression_kind(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static void set_case_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "SELECT CASE supports only no-source and FROM DUAL signed 64-bit integer, boolean, "
+        "NULL, scalar arithmetic, scalar comparison, scalar logical, scalar IS, "
+        "and existing scalar IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() expressions"
+    );
+}
+
 static void set_if_unsupported_error(struct mylite_db *database, const char *function_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int message_length = snprintf(
@@ -18329,6 +18992,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
         return true;
     }
     if (is_scalar_arithmetic_projection_expression(expression)) {
+        return true;
+    }
+    if (is_case_projection_expression(expression)) {
         return true;
     }
     return is_scalar_value_projection_expression(expression);
@@ -18679,6 +19345,8 @@ static bool is_scalar_value_projection_attempt_expression(
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
+    case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
         return true;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return is_scalar_value_projection_attempt_operand(expression);

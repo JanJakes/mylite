@@ -725,6 +725,41 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_ast_node *expression,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_clause,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *case_value,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_clause,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *when_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_case_when(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *when_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token when_token,
+    struct mylite_sql_ast_node *condition,
+    struct mylite_sql_ast_node *result
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_else_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token else_token,
+    struct mylite_sql_ast_node *result
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

@@ -37,6 +37,7 @@ static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
+static int test_case_operator(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -163,6 +164,7 @@ int main(void) {
     failures += test_coalesce_function();
     failures += test_nullif_function();
     failures += test_isnull_function();
+    failures += test_case_operator();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -1717,6 +1719,101 @@ static int test_isnull_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT ISNULL(,1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_case_operator(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *searched = NULL;
+    const struct mylite_sql_ast_node *simple = NULL;
+    const struct mylite_sql_ast_node *when_list = NULL;
+    const struct mylite_sql_ast_node *when_clause = NULL;
+    const struct mylite_sql_ast_node *else_clause = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CASE WHEN 1 THEN 2 WHEN 0 THEN 3 ELSE 4 END, "
+        "CASE 1 WHEN 1 THEN 10 WHEN 2 THEN 20 ELSE 30 END FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    searched = child_at(child_at(select_list, 0U), 0U);
+    simple = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(searched, MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION, "searched case");
+    failures += expect_span_text(
+        searched,
+        "CASE WHEN 1 THEN 2 WHEN 0 THEN 3 ELSE 4 END",
+        "searched case span"
+    );
+    failures += expect_child_count(searched, 2U, "searched case child count");
+    when_list = child_at(searched, 0U);
+    else_clause = child_at(searched, 1U);
+    failures += expect_node(when_list, MYLITE_SQL_AST_CASE_WHEN_LIST, "searched when list");
+    failures += expect_child_count(when_list, 2U, "searched when count");
+    when_clause = child_at(when_list, 0U);
+    failures += expect_node(when_clause, MYLITE_SQL_AST_CASE_WHEN_CLAUSE, "searched when clause");
+    failures += expect_span_text(when_clause, "WHEN 1 THEN 2", "searched when span");
+    failures += expect_literal(
+        child_at(when_clause, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "searched condition"
+    );
+    failures += expect_literal(
+        child_at(when_clause, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "searched result"
+    );
+    failures += expect_node(else_clause, MYLITE_SQL_AST_CASE_ELSE_CLAUSE, "searched else");
+    failures += expect_span_text(else_clause, "ELSE 4", "searched else span");
+
+    failures += expect_node(simple, MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION, "simple case");
+    failures += expect_child_count(simple, 3U, "simple case child count");
+    failures += expect_literal(child_at(simple, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "case value");
+    when_list = child_at(simple, 1U);
+    failures += expect_node(when_list, MYLITE_SQL_AST_CASE_WHEN_LIST, "simple when list");
+    failures += expect_child_count(when_list, 2U, "simple when count");
+    failures += expect_node(child_at(simple, 2U), MYLITE_SQL_AST_CASE_ELSE_CLAUSE, "simple else");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "case from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT (CASE WHEN 1 THEN CASE WHEN 0 THEN 2 ELSE 3 END END) AS chosen;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 0U), 0U);
+    searched = child_at(parenthesized, 0U);
+    failures += expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped case");
+    failures += expect_node(searched, MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION, "outer nested case");
+    failures += expect_child_count(searched, 1U, "no-else searched case child count");
+    when_clause = child_at(child_at(searched, 0U), 0U);
+    failures += expect_node(
+        child_at(when_clause, 1U),
+        MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION,
+        "inner nested case"
+    );
+    failures += expect_span_text(
+        parenthesized,
+        "(CASE WHEN 1 THEN CASE WHEN 0 THEN 2 ELSE 3 END END)",
+        "wrapped case span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CASE WHEN 1 THEN 2 END CASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE end (end INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(select, 0U), "end", "end table identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

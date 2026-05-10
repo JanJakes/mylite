@@ -2677,6 +2677,127 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_clause,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_ast_node *case_expression = make_node(
+        state,
+        MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION,
+        span_join(span_from_token(&case_token), span_from_token(&end_token))
+    );
+    if (case_expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(case_expression, when_list);
+    mylite_sql_ast_node_append_child(case_expression, else_clause);
+    return case_expression;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *case_value,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_clause,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_ast_node *case_expression = make_node(
+        state,
+        MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION,
+        span_join(span_from_token(&case_token), span_from_token(&end_token))
+    );
+    if (case_expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(case_expression, case_value);
+    mylite_sql_ast_node_append_child(case_expression, when_list);
+    mylite_sql_ast_node_append_child(case_expression, else_clause);
+    return case_expression;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *when_clause
+) {
+    struct mylite_sql_source_span span =
+        when_clause == NULL ? (struct mylite_sql_source_span){0} : when_clause->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_CASE_WHEN_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, when_clause);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_case_when(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *when_clause
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, when_clause);
+    if (when_clause != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, when_clause->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token when_token,
+    struct mylite_sql_ast_node *condition,
+    struct mylite_sql_ast_node *result
+) {
+    struct mylite_sql_source_span span = span_from_token(&when_token);
+    struct mylite_sql_ast_node *when_clause = NULL;
+
+    if (result != NULL) {
+        span = span_join(span, result->span);
+    } else if (condition != NULL) {
+        span = span_join(span, condition->span);
+    }
+
+    when_clause = make_node(state, MYLITE_SQL_AST_CASE_WHEN_CLAUSE, span);
+    if (when_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(when_clause, condition);
+    mylite_sql_ast_node_append_child(when_clause, result);
+    return when_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_else_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token else_token,
+    struct mylite_sql_ast_node *result
+) {
+    struct mylite_sql_source_span span = span_from_token(&else_token);
+    struct mylite_sql_ast_node *else_clause = NULL;
+
+    if (result != NULL) {
+        span = span_join(span, result->span);
+    }
+
+    else_clause = make_node(state, MYLITE_SQL_AST_CASE_ELSE_CLAUSE, span);
+    if (else_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(else_clause, result);
+    return else_clause;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -3307,6 +3428,11 @@ static bool map_keyword_token(
         {"COALESCE", MYLITE_SQL_PARSE_COALESCE},
         {"NULLIF", MYLITE_SQL_PARSE_NULLIF},
         {"ISNULL", MYLITE_SQL_PARSE_ISNULL},
+        {"CASE", MYLITE_SQL_PARSE_CASE},
+        {"WHEN", MYLITE_SQL_PARSE_WHEN},
+        {"THEN", MYLITE_SQL_PARSE_THEN},
+        {"ELSE", MYLITE_SQL_PARSE_ELSE},
+        {"END", MYLITE_SQL_PARSE_END},
         {"MOD", MYLITE_SQL_PARSE_MOD},
         {"DIV", MYLITE_SQL_PARSE_DIV},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},

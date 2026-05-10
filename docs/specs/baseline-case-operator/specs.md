@@ -11,18 +11,21 @@ SELECT CASE value WHEN compare_value THEN result [WHEN compare_value THEN result
 SELECT CASE ... END FROM DUAL
 ```
 
-The slice supports searched `CASE` and simple `CASE` over MyLite's current
+The slice supports searched `CASE` and simple `CASE` as top-level no-source or
+`FROM DUAL` select items. Each case value, searched condition, comparison
+value, result, and `ELSE` expression may use MyLite's current non-`CASE`
 signed-64 scalar expression domain: decimal integer, `TRUE`, `FALSE`, `NULL`,
-supported scalar control-flow/comparison helpers, unary and binary signed-64
-arithmetic currently admitted by scalar projection, scalar comparisons, keyword
-logical operators, scalar `IS`, parenthesized expressions, and nested `CASE`.
+supported scalar control-flow helpers, unary and binary signed-64 arithmetic
+currently admitted by scalar projection, scalar comparisons, keyword logical
+operators, scalar `IS`, and parenthesized expressions.
 
 This is still not a general expression engine. It does not admit table-backed
 `CASE`, descriptor-column expression projection, `WHERE CASE ...`, DML
 assignment `CASE`, strings, decimals, floats, hex, bit literals, temporal
 values, casts, collations, parameters, variables or session/system scalar
-reads inside `CASE`, subqueries, CTEs, row constructors, expression
-metadata, or arbitrary SQLite pass-through.
+reads inside `CASE`, nested `CASE`, using `CASE` as an operand of another
+scalar expression, subqueries, CTEs, row constructors, expression metadata, or
+arbitrary SQLite pass-through.
 
 ## Compatibility Authority
 
@@ -55,7 +58,6 @@ slice:
 - selected signed integer results render in canonical decimal text;
 - missing `ELSE` returns SQL `NULL` when no branch matches;
 - searched and simple `CASE` choose the first matching branch;
-- nested `CASE` is accepted;
 - scalar arithmetic, comparison, logical, and scalar `IS` expressions can be
   used as admitted conditions, case values, comparison values, and result
   values;
@@ -72,6 +74,11 @@ slice:
   explicit alias is provided;
 - the stored-program `END CASE` terminator is not part of this expression
   slice and is a syntax error in scalar `SELECT`.
+
+Additional MySQL probes record that nested `CASE` and using `CASE` as an
+operand of a larger scalar expression are valid MySQL expression behavior.
+MyLite defers that broader composition until the scalar expression evaluator
+is unified; this baseline rejects those forms deterministically.
 
 ## Ownership Boundaries
 
@@ -206,7 +213,6 @@ expression must be within this slice's scalar domain:
 - `TRUE`, `FALSE`, and `NULL`;
 - supported scalar `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, and
   `ISNULL()` calls;
-- supported scalar `CASE`;
 - supported parenthesized expressions;
 - supported signed-64 scalar `+`, binary `-`, `*`, `%`, infix `MOD`,
   `MOD(left, right)`, and infix `DIV`;
@@ -218,9 +224,11 @@ The parser may accept broader expression shapes to preserve normal syntax
 diagnostics, but runtime validation rejects unsupported forms deterministically
 before returning a value. Unsupported forms are rejected even when they appear
 in an unevaluated branch; this is a MyLite scope-control decision for the
-baseline slice. A no-source or `FROM DUAL` select list may still mix separate
-session scalar select items next to `CASE` items; those session scalar reads are
-not part of the admitted `CASE` child-expression domain yet.
+baseline slice. Nested `CASE` and `CASE` as an operand of arithmetic,
+comparison, logical, scalar `IS`, or scalar control-flow expressions are also
+rejected in this phase. A no-source or `FROM DUAL` select list may still mix
+separate session scalar select items next to `CASE` items; those session scalar
+reads are not part of the admitted `CASE` child-expression domain yet.
 
 ### Warnings And Diagnostics
 
@@ -261,7 +269,9 @@ The evaluator should:
 3. Evaluate only the selected result or selected `ELSE` expression.
 4. Return a `session_scalar_cell` using the existing scalar result text and
    staged-warning conventions.
-5. Avoid recursion depth tied to C call stack where practical by following the
+5. Use the existing non-`CASE` scalar evaluators for child expressions only
+   after validation proves the child subtree contains no nested `CASE`.
+6. Avoid recursion depth tied to C call stack where practical by following the
    current small explicit-stack style used by scalar control-flow functions.
 
 No catalog, descriptor, VFS, preamble, or SQLite schema-generation state may be
@@ -276,7 +286,8 @@ Expected diagnostics include:
   `END CASE` terminator in scalar `SELECT`.
 - Unsupported scalar projection diagnostic for table-backed `CASE`, DML
   assignment `CASE`, unsupported branch expressions, unsupported literals,
-  subqueries, row constructors, parameters, and identifiers outside supported
+  nested `CASE`, `CASE` operands inside larger scalar expressions, subqueries,
+  row constructors, parameters, and identifiers outside supported
   literal/control-flow/scalar-expression forms.
 - Existing arithmetic overflow diagnostic for evaluated or validation-relevant
   signed-64 scalar arithmetic overflow.
@@ -291,7 +302,7 @@ This phase is O(number of `CASE` arms plus evaluated expression cost) for scalar
 no-source/`DUAL` selects. It does not scan tables, materialize rowsets, build
 temporary SQLite tables, add indexes, or fork SQLite. The only dynamic memory
 needed beyond existing result construction is small AST/runtime stack growth
-proportional to nested expression depth and `WHEN` arm count.
+proportional to expression depth and `WHEN` arm count.
 
 ## Tests
 
@@ -300,17 +311,16 @@ Add:
 - `packages/libmylite/tests/mysql_baseline_case_operator_expectations.sh`
   with MySQL 8.4.9 verified expectations.
 - Parser tests for searched and simple `CASE`, multiple `WHEN` arms, optional
-  `ELSE`, missing `ELSE`, nested `CASE`, aliases/default labels through spans,
-  precedence with arithmetic/comparison/logical/scalar `IS`, and malformed
-  syntax.
+  `ELSE`, missing `ELSE`, nested parsed `CASE`, aliases/default labels through
+  spans, precedence with arithmetic/comparison/logical/scalar `IS`, and
+  malformed syntax.
 - A new C runtime test binary `runtime_case_operator_test.c`, registered as
   `libmylite.runtime.case_operator`.
 
 Runtime coverage should include:
 
-- searched true, false, `NULL`, no-`ELSE`, first-match, and nested forms;
-- simple first-match, later-match, no-match, `NULL` comparison no-match, and
-  nested forms;
+- searched true, false, `NULL`, no-`ELSE`, and first-match forms;
+- simple first-match, later-match, no-match, and `NULL` comparison no-match;
 - result values `NULL`, `TRUE`, `FALSE`, signed boundaries, and normalized
   integers;
 - admitted arithmetic, comparison, logical, scalar `IS`, and control-flow child
@@ -322,7 +332,8 @@ Runtime coverage should include:
   following diagnostics snapshot behavior;
 - unsupported table-backed `CASE`, DML assignment `CASE`, strings, decimals,
   floats, hex, bit literals, identifiers, parameters, subqueries, row
-  constructors, and malformed syntax;
+  constructors, nested `CASE`, `CASE` as a larger scalar operand, and malformed
+  syntax;
 - file-backed preamble preservation, unchanged catalog/schema-generation
   counters, independent handles, and zero-initialized cleanup for new runtime
   objects.

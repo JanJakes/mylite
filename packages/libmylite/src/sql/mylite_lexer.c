@@ -292,6 +292,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"BINLOG", 0U},
         {"BIT", 0U},
         {"BIT_AND", 0U},
+        {"BIT_COUNT", 0U},
         {"BIT_OR", 0U},
         {"BIT_XOR", 0U},
         {"BLOB", MYLITE_SQL_KEYWORD_RESERVED},

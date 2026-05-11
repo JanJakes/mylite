@@ -10,7 +10,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `ATAN()` | ❌ | Return arc tangent |
 | `ATAN2(), ATAN()` | ❌ | Return arc tangent of the two arguments |
 | `BIN()` | ❌ | Return a string containing binary representation of a number |
-| `BIT_COUNT()` | ❌ | Return number of bits that are set |
+| `BIT_COUNT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support or binary-string bit counting |
 | `CEIL()` | ❌ | Return smallest integer value not less than the argument |
 | `CEILING()` | ❌ | Return smallest integer value not less than the argument |
 | `CONV()` | ❌ | Convert numbers between different number bases |

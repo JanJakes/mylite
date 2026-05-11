@@ -1653,6 +1653,10 @@ expression(A) ::= MOD(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_MOD_FUNCTION, B, C, R);
 }
+expression(A) ::= BIT_COUNT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
+}
 expression(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
@@ -1695,6 +1699,15 @@ expression(A) ::= ISNULL(T) LPAREN expression(B) COMMA function_argument_list(C)
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= BIT_COUNT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= BIT_COUNT(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -2104,6 +2117,9 @@ identifier(A) ::= BIT_OR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= BIT_XOR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= BIT_COUNT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

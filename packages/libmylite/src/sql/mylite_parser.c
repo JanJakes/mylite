@@ -3610,6 +3610,7 @@ static bool map_keyword_token(
         {"COUNT", MYLITE_SQL_PARSE_COUNT},
         {"AVG", MYLITE_SQL_PARSE_AVG},
         {"BIT_AND", MYLITE_SQL_PARSE_BIT_AND},
+        {"BIT_COUNT", MYLITE_SQL_PARSE_BIT_COUNT},
         {"BIT_OR", MYLITE_SQL_PARSE_BIT_OR},
         {"BIT_XOR", MYLITE_SQL_PARSE_BIT_XOR},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},

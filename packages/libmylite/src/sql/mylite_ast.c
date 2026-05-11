@@ -409,6 +409,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "isnull_argument_count_error";
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return "mod_function";
+    case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
+        return "bit_count_function";
+    case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
+        return "bit_count_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

@@ -381,6 +381,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_sign_function_test)
 
+  add_executable(mylite_runtime_ceil_floor_functions_test
+    tests/runtime_ceil_floor_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_ceil_floor_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_ceil_floor_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_ceil_floor_functions_test)
+
   add_executable(mylite_runtime_bit_count_function_test
     tests/runtime_bit_count_function_test.c
   )
@@ -1556,6 +1567,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.sign_function
     COMMAND mylite_runtime_sign_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.ceil_floor_functions
+    COMMAND mylite_runtime_ceil_floor_functions_test
   )
   add_test(
     NAME libmylite.runtime.bit_count_function

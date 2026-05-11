@@ -421,6 +421,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "sign_function";
     case MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR:
         return "sign_argument_count_error";
+    case MYLITE_SQL_AST_CEIL_FUNCTION:
+        return "ceil_function";
+    case MYLITE_SQL_AST_CEIL_ARGUMENT_COUNT_ERROR:
+        return "ceil_argument_count_error";
+    case MYLITE_SQL_AST_CEILING_FUNCTION:
+        return "ceiling_function";
+    case MYLITE_SQL_AST_CEILING_ARGUMENT_COUNT_ERROR:
+        return "ceiling_argument_count_error";
+    case MYLITE_SQL_AST_FLOOR_FUNCTION:
+        return "floor_function";
+    case MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR:
+        return "floor_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

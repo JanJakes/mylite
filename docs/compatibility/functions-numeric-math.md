@@ -11,15 +11,15 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `ATAN2(), ATAN()` | ❌ | Return arc tangent of the two arguments |
 | `BIN()` | ❌ | Return a string containing binary representation of a number |
 | `BIT_COUNT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support or binary-string bit counting |
-| `CEIL()` | ❌ | Return smallest integer value not less than the argument |
-| `CEILING()` | ❌ | Return smallest integer value not less than the argument |
+| `CEIL()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
+| `CEILING()` | 🟡 | Synonym for the limited `CEIL()` subset |
 | `CONV()` | ❌ | Convert numbers between different number bases |
 | `COS()` | ❌ | Return cosine |
 | `COT()` | ❌ | Return cotangent |
 | `CRC32()` | ❌ | Compute a cyclic redundancy check value |
 | `DEGREES()` | ❌ | Convert radians to degrees |
 | `EXP()` | ❌ | Raise to the power of |
-| `FLOOR()` | ❌ | Return largest integer value not greater than the argument |
+| `FLOOR()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `FORMAT()` | ❌ | Localized decimal formatting |
 | `LN()` | ❌ | Return natural logarithm of the argument |
 | `LOG()` | ❌ | Return natural logarithm of the first argument |

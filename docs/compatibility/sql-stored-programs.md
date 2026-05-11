@@ -4,7 +4,7 @@ Stored-program body statements, variables, control flow, cursors, handlers, and 
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `DO` | 🟡 | Limited expression-execution statement over the current no-source scalar expression domain, including supported session scalar/system-variable reads, integer/`NULL`/boolean literals, control-flow helpers, signed-64 arithmetic/comparison/logical/scalar-`IS`, limited unsigned-64 numeric bitwise operators, limited numeric `ABS()`, `SIGN()`, and `BIT_COUNT()`, and top-level `CASE`; returns no result rows, affected rows `0`, and evaluated-expression warnings for the admitted subset; no aliases, table-backed evaluation, variables, assignment, subqueries, parameters, string/decimal/float/hex/bit expressions, stored-program blocks, or arbitrary SQLite pass-through |
+| `DO` | 🟡 | Limited expression-execution statement over the current no-source scalar expression domain, including supported session scalar/system-variable reads, integer/`NULL`/boolean literals, control-flow helpers, signed-64 arithmetic/comparison/logical/scalar-`IS`, limited unsigned-64 numeric bitwise operators, limited numeric `ABS()`, `SIGN()`, `CEIL()`/`CEILING()`/`FLOOR()`, and `BIT_COUNT()`, and top-level `CASE`; returns no result rows, affected rows `0`, and evaluated-expression warnings for the admitted subset; no aliases, table-backed evaluation, variables, assignment, subqueries, parameters, string/decimal/float/hex/bit expressions, stored-program blocks, or arbitrary SQLite pass-through |
 | `SELECT ... INTO var_list` | ❌ | User/local variable assignment semantics |
 | `BEGIN ... END` | ❌ | Stored-program block scope |
 | Statement labels | ❌ | LEAVE/ITERATE label binding |

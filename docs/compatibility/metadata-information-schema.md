@@ -12,7 +12,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.COLLATIONS` | ❌ | Collation catalog |
 | `INFORMATION_SCHEMA.COLUMN_PRIVILEGES` | ❌ | Privileges on columns |
 | `INFORMATION_SCHEMA.COLUMN_STATISTICS` | ❌ | Histogram statistics for column values |
-| `INFORMATION_SCHEMA.COLUMNS` | ❌ | Columns in each table |
+| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/`VARCHAR` metadata, nullability, integer defaults, visibility, primary-key markers, and auto-increment `EXTRA`; no privileges, generated columns, comments, string defaults, secondary index metadata, full charset/collation behavior, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.COLUMNS_EXTENSIONS` | ❌ | Column attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | Failed login attempts per account |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | Roles enabled within current session |
@@ -68,7 +68,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ROLE_TABLE_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROUTINES` | ❌ | Stored routine information |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | ❌ | Privileges on schemas |
-| `INFORMATION_SCHEMA.SCHEMATA` | ❌ | Schema information |
+| `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema` and MyLite catalog schemas with fixed charset/collation/default-encryption metadata; no `mysql`, `performance_schema`, `sys`, privileges, or schema options |
 | `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | Schema options |
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | Columns in each table that store spatial data |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |
@@ -77,7 +77,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | ❌ | Table constraints |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | Privileges on tables |
-| `INFORMATION_SCHEMA.TABLES` | ❌ | Table information |
+| `INFORMATION_SCHEMA.TABLES` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite base-table descriptors, with fixed InnoDB/table-status placeholders and descriptor-owned auto-increment metadata; no views, temporary tables, system schemas beyond the supported views, privileges, timestamps, or full storage-engine statistics |
 | `INFORMATION_SCHEMA.TABLES_EXTENSIONS` | ❌ | Table attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.TABLESPACES_EXTENSIONS` | ❌ | Tablespace attributes for primary storage engines |
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATE` | ❌ | Thread pool thread group states |

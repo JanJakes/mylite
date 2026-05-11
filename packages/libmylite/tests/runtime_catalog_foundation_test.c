@@ -189,6 +189,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             false,
             MYLITE_CATALOG_COLUMN_DEFAULT_NONE,
             0,
+            NULL,
             &column
         ),
         MYLITE_OK,
@@ -385,7 +386,7 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-version file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
-        failures += execute_sql(sqlite, "UPDATE _mylite_catalog_state SET schema_version = 7");
+        failures += execute_sql(sqlite, "UPDATE _mylite_catalog_state SET schema_version = 8");
     }
     mylite_close(database);
     database = NULL;

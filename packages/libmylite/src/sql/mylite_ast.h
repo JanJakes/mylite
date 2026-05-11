@@ -215,6 +215,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT = 206,
     MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION = 207,
     MYLITE_SQL_AST_TEXT_TYPE = 208,
+    MYLITE_SQL_AST_DECIMAL_TYPE = 209,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -285,6 +286,13 @@ enum mylite_sql_ast_text_type {
     MYLITE_SQL_AST_TEXT_TYPE_TEXT = 2,
     MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT = 3,
     MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT = 4,
+};
+
+enum mylite_sql_ast_decimal_type {
+    MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL = 1,
+    MYLITE_SQL_AST_DECIMAL_TYPE_DEC = 2,
+    MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC = 3,
+    MYLITE_SQL_AST_DECIMAL_TYPE_FIXED = 4,
 };
 
 enum mylite_sql_ast_nullability {
@@ -361,6 +369,15 @@ struct mylite_sql_ast_text_type_payload {
     enum mylite_sql_ast_text_type kind;
 };
 
+struct mylite_sql_ast_decimal_type_payload {
+    enum mylite_sql_ast_decimal_type kind;
+    int has_precision;
+    int has_scale;
+    int is_unsigned;
+    struct mylite_sql_source_span precision_span;
+    struct mylite_sql_source_span scale_span;
+};
+
 struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
@@ -381,6 +398,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_varchar_type_payload varchar_type;
     struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
+    struct mylite_sql_ast_decimal_type_payload decimal_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
@@ -454,6 +472,10 @@ void mylite_sql_ast_node_set_text_type(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_text_type text_type
 );
+void mylite_sql_ast_node_set_decimal_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_decimal_type_payload payload
+);
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -497,6 +519,18 @@ struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_decimal_type_has_precision(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_decimal_type_has_scale(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_decimal_type_is_unsigned(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_precision_span(
+    const struct mylite_sql_ast_node *node
+);
+struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_scale_span(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );
@@ -512,6 +546,7 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
 const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_type);
+const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type decimal_type);
 const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
 const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction);
 const char *mylite_sql_ast_column_visibility_name(enum mylite_sql_ast_column_visibility visibility);

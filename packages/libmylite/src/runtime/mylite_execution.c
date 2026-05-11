@@ -67,6 +67,9 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_data_too_long = 1406,
+    mysql_error_decimal_scale_too_big = 1425,
+    mysql_error_decimal_precision_too_big = 1426,
+    mysql_error_decimal_must_be_greater_or_equal_to_d = 1427,
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
     mysql_error_failed_read_auto_increment = 1467,
@@ -77,6 +80,7 @@ enum {
     mysql_warning_division_by_zero = 1365,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
+    mysql_warning_decimal_unsigned_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
     sqlite_use_nul_terminated_string = -1,
     decimal_base = 10,
@@ -85,6 +89,10 @@ enum {
     literal_projection_max_significant_digits = 81,
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
+    decimal_default_precision = 10,
+    decimal_default_scale = 0,
+    decimal_max_precision = 65,
+    decimal_max_scale = 30,
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
     show_columns_extra_column = 5,
@@ -113,6 +121,8 @@ enum {
     information_schema_columns_is_nullable_column = 6,
     information_schema_columns_character_maximum_length_column = 8,
     information_schema_columns_character_octet_length_column = 9,
+    information_schema_columns_numeric_precision_column = 10,
+    information_schema_columns_numeric_scale_column = 11,
     information_schema_columns_character_set_name_column = 13,
     information_schema_columns_collation_name_column = 14,
     information_schema_columns_column_type_column = 15,
@@ -205,6 +215,7 @@ struct planned_column {
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
+    char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
 };
 
 struct planned_create_table {
@@ -385,6 +396,26 @@ struct text_family_type_info {
     const char *logical_type;
     const char *display_type;
     uint64_t maximum_length;
+};
+
+struct decimal_type_info {
+    uint64_t precision;
+    uint64_t scale;
+    bool is_unsigned;
+};
+
+struct decimal_literal_parts {
+    size_t integer_end;
+    size_t fraction_start;
+    size_t fraction_end;
+    size_t integer_digit_start;
+};
+
+struct decimal_digit_buffer {
+    char *digits;
+    size_t digit_count;
+    size_t digit_capacity;
+    bool discarded_nonzero;
 };
 
 struct integer_column_range {
@@ -4702,6 +4733,12 @@ static int map_text_family_type(
     const struct mylite_sql_ast_node *type_node,
     struct planned_column *out_column
 );
+static int map_decimal_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+);
 static int map_integer_display_width(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -4715,11 +4752,17 @@ static bool planned_column_is_varchar(const struct planned_column *column);
 static bool planned_column_is_char(const struct planned_column *column);
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
+static bool planned_column_is_decimal(const struct planned_column *column);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
+);
+static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column);
+static int decimal_type_info_for_logical_type(
+    const char *logical_type,
+    struct decimal_type_info *out_info
 );
 static const struct text_family_type_info *text_family_type_info_for_logical_type(
     const char *logical_type
@@ -4972,6 +5015,17 @@ static int allocate_insert_row_values(
     const struct planned_insert *plan,
     struct planned_insert_row *out_row
 );
+static int allocate_insert_column_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t column_index,
+    struct planned_value *out_value
+);
+static int make_insert_ignore_implicit_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -4985,6 +5039,12 @@ static int convert_auto_increment_insert_value(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_null_insert_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
     bool ignore_errors,
     struct planned_value *out_value
 );
@@ -5023,6 +5083,92 @@ static int convert_text_family_literal(
     size_t row_number,
     struct planned_value *out_value
 );
+static int convert_decimal_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int canonicalize_decimal_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    const struct decimal_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int parse_decimal_literal_parts(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct decimal_literal_parts *out_parts
+);
+static int build_decimal_digit_buffer(
+    struct mylite_db *database,
+    const char *text,
+    const struct decimal_type_info *info,
+    const struct decimal_literal_parts *parts,
+    struct decimal_digit_buffer *out_buffer
+);
+static int round_decimal_digit_buffer_if_needed(
+    struct mylite_db *database,
+    const char *text,
+    const struct decimal_type_info *info,
+    const struct decimal_literal_parts *parts,
+    struct decimal_digit_buffer *buffer
+);
+static bool decimal_value_is_out_of_range(
+    const struct decimal_type_info *info,
+    bool is_negative,
+    const char *digits,
+    size_t digit_count
+);
+static int handle_decimal_out_of_range(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    bool is_negative,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int build_decimal_zero_value(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+);
+static int build_decimal_endpoint_value(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    bool is_negative,
+    struct planned_value *out_value
+);
+static int assign_decimal_text_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    struct planned_value *out_value
+);
+static int copy_decimal_text_value(
+    struct mylite_db *database,
+    const char *text,
+    struct planned_value *out_value
+);
+static bool decimal_digits_are_zero(const char *digits, size_t digit_count);
+static int increment_decimal_digits(char *digits, size_t *digit_count, size_t capacity);
+static int format_decimal_digits(
+    struct mylite_db *database,
+    const char *digits,
+    size_t digit_count,
+    bool is_negative,
+    uint64_t scale,
+    struct planned_value *out_value
+);
 static int decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
@@ -5056,6 +5202,13 @@ static int validate_text_family_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     struct varchar_text_validation validation
+);
+static int validate_canonical_decimal_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *text,
+    size_t text_length,
+    size_t row_number
 );
 static int validate_utf8_text(const char *text, size_t text_length, size_t *out_character_count);
 static int utf8_sequence_width(
@@ -5560,8 +5713,14 @@ static int append_create_table_primary_key_sql(
 );
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
 static int build_alter_table_add_column_sql(
+    struct mylite_db *database,
     const struct planned_alter_table_add_column *plan,
     char **out_sql
+);
+static int append_alter_table_add_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
 );
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
@@ -6114,7 +6273,26 @@ static int append_out_of_range_warning(
     const char *column_name,
     size_t row_number
 );
+static int append_decimal_truncated_note(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
 static void set_display_width_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
+);
+static void set_decimal_precision_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t precision
+);
+static void set_decimal_scale_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t scale
+);
+static void set_decimal_scale_greater_than_precision_error(
     struct mylite_db *database,
     const char *column_name
 );
@@ -6446,6 +6624,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
@@ -9143,6 +9322,8 @@ static int append_information_schema_columns_base_column_row(
     char default_text[integer_text_capacity];
     char character_length_text[integer_text_capacity];
     char character_octet_text[integer_text_capacity];
+    char numeric_precision_text[integer_text_capacity];
+    char numeric_scale_text[integer_text_capacity];
     char column_type_text[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     struct information_schema_character_metadata character_metadata = {0};
     const char *column_type = NULL;
@@ -9195,6 +9376,10 @@ static int append_information_schema_columns_base_column_row(
         );
         column_default = default_text;
     }
+    if (rc == MYLITE_OK && !column->is_auto_increment &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        column_default = column->default_text;
+    }
     if (rc == MYLITE_OK) {
         rc = show_column_type_text(
             database,
@@ -9214,6 +9399,31 @@ static int append_information_schema_columns_base_column_row(
             sizeof(character_octet_text),
             &character_metadata
         );
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_decimal(column)) {
+        struct decimal_type_info info = {0};
+
+        rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info.precision,
+                numeric_precision_text,
+                sizeof(numeric_precision_text)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info.scale,
+                numeric_scale_text,
+                sizeof(numeric_scale_text)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            values[information_schema_columns_numeric_precision_column] = numeric_precision_text;
+            values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
+        }
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -10711,6 +10921,9 @@ static const char *information_schema_data_type_for_descriptor(
 
         return info == NULL ? "" : info->display_type;
     }
+    if (column_descriptor_is_decimal(column)) {
+        return "decimal";
+    }
     if (logical_type == NULL) {
         return "";
     }
@@ -10735,7 +10948,7 @@ static const char *information_schema_numeric_precision_for_descriptor(
 ) {
     const char *logical_type = column->logical_type;
 
-    if (column_descriptor_is_string_family(column)) {
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column)) {
         return NULL;
     }
     if (logical_type == NULL) {
@@ -10763,7 +10976,7 @@ static const char *information_schema_numeric_precision_for_descriptor(
 static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
-    if (column_descriptor_is_string_family(column)) {
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column)) {
         return NULL;
     }
     return "0";
@@ -12669,6 +12882,17 @@ static int append_show_create_table_column_default(
         return dynamic_string_append(string, " DEFAULT NULL");
     }
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+            int rc = dynamic_string_append(string, " DEFAULT '");
+
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append(string, column->default_text);
+            }
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append_char(string, '\'');
+            }
+            return rc;
+        }
         return MYLITE_OK;
     }
 
@@ -12761,6 +12985,7 @@ static int show_descriptor_type_text(
     const char **out_type_text
 ) {
     const char *integer_text = NULL;
+    struct decimal_type_info decimal_info = {0};
 
     if (logical_type == NULL || buffer == NULL || unsupported_message == NULL ||
         out_type_text == NULL) {
@@ -12788,6 +13013,23 @@ static int show_descriptor_type_text(
         );
     }
     if (format_text_family_type_text(logical_type, out_type_text) == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
+        int written = snprintf(
+            buffer,
+            buffer_size,
+            "decimal(%" PRIu64 ",%" PRIu64 ")%s",
+            decimal_info.precision,
+            decimal_info.scale,
+            decimal_info.is_unsigned ? " unsigned" : ""
+        );
+
+        if (written < 0 || (size_t)written >= buffer_size) {
+            set_runtime_error(database, "failed to format column type");
+            return MYLITE_ERROR;
+        }
+        *out_type_text = buffer;
         return MYLITE_OK;
     }
 
@@ -13010,6 +13252,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
@@ -13449,7 +13692,7 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         set_runtime_error(database, "invalid primary-key column");
         return MYLITE_ERROR;
     }
-    if (planned_column_is_string_family(column)) {
+    if (planned_column_is_string_family(column) || planned_column_is_decimal(column)) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
         }
@@ -13511,7 +13754,7 @@ static int validate_auto_increment_column(
     }
 
     column = &plan->columns[column_index];
-    if (planned_column_is_string_family(column)) {
+    if (planned_column_is_string_family(column) || planned_column_is_decimal(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -13654,21 +13897,22 @@ static int validate_create_table_like_source_columns(
         struct integer_column_range range = {0};
         int rc = MYLITE_OK;
 
-        if (column_descriptor_is_string_family(&columns[column_index])) {
+        if (column_descriptor_is_string_family(&columns[column_index]) ||
+            column_descriptor_is_decimal(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE LIKE supports only integer and string descriptor columns"
+                "CREATE TABLE LIKE supports only integer, string, and decimal descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE LIKE supports only integer and string descriptor columns",
+            "CREATE TABLE LIKE supports only integer, string, and decimal descriptor columns",
             &range
         );
 
@@ -13876,21 +14120,22 @@ static int validate_create_table_select_source_columns(
         struct integer_column_range range = {0};
         int rc = MYLITE_OK;
 
-        if (column_descriptor_is_string_family(&columns[column_index])) {
+        if (column_descriptor_is_string_family(&columns[column_index]) ||
+            column_descriptor_is_decimal(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE SELECT supports only integer and string descriptor columns"
+                "CREATE TABLE SELECT supports only integer, string, and decimal descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE SELECT supports only integer and string descriptor columns",
+            "CREATE TABLE SELECT supports only integer, string, and decimal descriptor columns",
             &range
         );
         if (rc != MYLITE_OK) {
@@ -14497,6 +14742,7 @@ static int insert_create_table_catalog_rows(
             column->is_auto_increment,
             column->default_kind,
             column->default_integer,
+            column->default_text,
             &inserted_column
         );
         if (rc == MYLITE_OK && plan->has_primary_key &&
@@ -15113,6 +15359,7 @@ static int alter_table_add_column_from_plan(
             false,
             plan->column.default_kind,
             plan->column.default_integer,
+            plan->column.default_text,
             NULL
         );
     }
@@ -15148,7 +15395,7 @@ static int execute_physical_alter_table_add_column(
     const struct planned_alter_table_add_column *plan
 ) {
     char *sql = NULL;
-    int rc = build_alter_table_add_column_sql(plan, &sql);
+    int rc = build_alter_table_add_column_sql(database, plan, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
@@ -15726,7 +15973,8 @@ static int alter_table_set_default_from_plan(
             plan->original_column.is_visible,
             plan->original_column.is_auto_increment,
             plan->column.default_kind,
-            plan->column.default_integer
+            plan->column.default_integer,
+            plan->column.default_text
         );
     }
     if (rc == MYLITE_OK) {
@@ -15842,7 +16090,8 @@ static int alter_table_drop_default_from_plan(
             plan->column.is_visible,
             plan->column.is_auto_increment,
             MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT,
-            0
+            0,
+            NULL
         );
     }
     if (rc == MYLITE_OK) {
@@ -16315,6 +16564,12 @@ static void planned_column_from_catalog_descriptor(
     out_column->default_node = default_node;
     out_column->default_kind = descriptor->default_kind;
     out_column->default_integer = descriptor->default_integer;
+    snprintf(
+        out_column->default_text,
+        sizeof(out_column->default_text),
+        "%s",
+        descriptor->default_text
+    );
 }
 
 static int resolve_alter_table_column_replacement_plan(
@@ -16394,7 +16649,9 @@ static int complete_alter_table_modify_column_plan(
     int rc = MYLITE_OK;
 
     if (column_descriptor_is_string_family(&out_plan->original_column) ||
-        planned_column_is_string_family(&out_plan->column)) {
+        column_descriptor_is_decimal(&out_plan->original_column) ||
+        planned_column_is_string_family(&out_plan->column) ||
+        planned_column_is_decimal(&out_plan->column)) {
         set_unsupported_error(database, out_plan->integer_support_message);
         return MYLITE_ERROR;
     }
@@ -16455,6 +16712,10 @@ static bool modify_column_definition_matches(
     }
     if (original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
         original_column->default_integer != replacement_column->default_integer) {
+        return false;
+    }
+    if (original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
+        strcmp(original_column->default_text, replacement_column->default_text) != 0) {
         return false;
     }
 
@@ -16546,7 +16807,8 @@ static int alter_table_modify_column_from_plan(
             true,
             plan->column.is_auto_increment,
             plan->column.default_kind,
-            plan->column.default_integer
+            plan->column.default_integer,
+            plan->column.default_text
         );
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
@@ -16740,6 +17002,12 @@ static void make_modify_target_descriptor(
     out_column->is_nullable = plan->column.is_nullable;
     out_column->default_kind = plan->column.default_kind;
     out_column->default_integer = plan->column.default_integer;
+    snprintf(
+        out_column->default_text,
+        sizeof(out_column->default_text),
+        "%s",
+        plan->column.default_text
+    );
 }
 
 static int execute_physical_alter_table_modify_column(
@@ -18068,6 +18336,31 @@ static int validate_insert_select_value(
                 .text_length = (size_t)byte_count,
                 .row_number = row_number,
             }
+        );
+    }
+    if (column_descriptor_is_decimal(target_column)) {
+        const unsigned char *text = NULL;
+        int byte_count = 0;
+
+        if (sqlite_type != SQLITE_TEXT) {
+            set_unsupported_error(
+                database,
+                "INSERT ... SELECT does not support implicit DECIMAL conversion"
+            );
+            return MYLITE_ERROR;
+        }
+        text = sqlite3_column_text(statement, selected_column_index);
+        byte_count = sqlite3_column_bytes(statement, selected_column_index);
+        if (text == NULL || byte_count < 0) {
+            set_physical_sqlite_row_error(database);
+            return MYLITE_ERROR;
+        }
+        return validate_canonical_decimal_text(
+            database,
+            target_column,
+            (const char *)text,
+            (size_t)byte_count,
+            row_number
         );
     }
     if (sqlite_type != SQLITE_INTEGER) {
@@ -30458,6 +30751,7 @@ static int finalize_planned_column_default(
 
     column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NONE;
     column->default_integer = 0;
+    column->default_text[0] = '\0';
     if (column->default_node == NULL ||
         column->default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
         return MYLITE_OK;
@@ -30465,6 +30759,54 @@ static int finalize_planned_column_default(
     if (column->default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+
+    if (planned_column_is_decimal(column)) {
+        struct mylite_catalog_column_descriptor descriptor = {0};
+        struct planned_value value = {
+            .is_null = false,
+            .is_text = false,
+            .integer = 0,
+            .text = NULL,
+            .text_length = 0U,
+        };
+
+        snprintf(descriptor.name, sizeof(descriptor.name), "%s", column->name);
+        snprintf(
+            descriptor.logical_type,
+            sizeof(descriptor.logical_type),
+            "%s",
+            column->logical_type
+        );
+        snprintf(
+            descriptor.physical_type,
+            sizeof(descriptor.physical_type),
+            "%s",
+            column->physical_type
+        );
+        descriptor.is_nullable = column->is_nullable;
+        rc = convert_decimal_literal(
+            database,
+            child_at(column->default_node, 0U),
+            &descriptor,
+            1U,
+            false,
+            &value
+        );
+        if (rc != MYLITE_OK) {
+            planned_value_deinit(&value);
+            return rc;
+        }
+        if (value.text == NULL || value.text_length >= sizeof(column->default_text)) {
+            planned_value_deinit(&value);
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        memcpy(column->default_text, value.text, value.text_length);
+        column->default_text[value.text_length] = '\0';
+        planned_value_deinit(&value);
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL;
+        return MYLITE_OK;
     }
 
     rc = convert_column_default_value(
@@ -30639,6 +30981,9 @@ static int map_column_type(
         (void)column_name;
         return map_text_family_type(database, type_node, out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return map_decimal_type(database, type_node, column_name, out_column);
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -30766,6 +31111,93 @@ static int map_text_family_type(
         "%s",
         logical_type
     );
+    snprintf(
+        out_column->physical_type_storage,
+        sizeof(out_column->physical_type_storage),
+        "%s",
+        "TEXT"
+    );
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
+    return MYLITE_OK;
+}
+
+static int map_decimal_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+) {
+    uint64_t precision = decimal_default_precision;
+    uint64_t scale = decimal_default_scale;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_decimal_type_has_precision(type_node) != 0) {
+        struct mylite_sql_source_span precision_span =
+            mylite_sql_ast_node_decimal_type_precision_span(type_node);
+
+        rc = parse_unsigned_integer_literal(&precision_span, &precision);
+        if (rc != MYLITE_OK) {
+            set_decimal_precision_too_big_error(database, column_name, precision);
+            return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_decimal_type_has_scale(type_node) != 0) {
+            struct mylite_sql_source_span scale_span =
+                mylite_sql_ast_node_decimal_type_scale_span(type_node);
+
+            rc = parse_unsigned_integer_literal(&scale_span, &scale);
+            if (rc != MYLITE_OK) {
+                set_decimal_scale_too_big_error(database, column_name, scale);
+                return MYLITE_ERROR;
+            }
+        } else {
+            scale = decimal_default_scale;
+        }
+    }
+    if (precision == 0U && scale == 0U) {
+        precision = decimal_default_precision;
+    }
+    if (precision > decimal_max_precision) {
+        set_decimal_precision_too_big_error(database, column_name, precision);
+        return MYLITE_ERROR;
+    }
+    if (scale > decimal_max_scale) {
+        set_decimal_scale_too_big_error(database, column_name, scale);
+        return MYLITE_ERROR;
+    }
+    if (scale > precision) {
+        set_decimal_scale_greater_than_precision_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_decimal_type_is_unsigned(type_node) != 0) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_decimal_unsigned_deprecated,
+            "HY000",
+            "UNSIGNED for decimal and floating point data types is deprecated and support for it "
+            "will be removed in a future release."
+        );
+        if (rc != MYLITE_OK) {
+            if (rc == MYLITE_NOMEM) {
+                set_nomem_error(database);
+            }
+            return rc;
+        }
+    }
+
+    written = snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "DECIMAL(%" PRIu64 ",%" PRIu64 ")%s",
+        precision,
+        scale,
+        mylite_sql_ast_node_decimal_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_column->logical_type_storage)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
     snprintf(
         out_column->physical_type_storage,
         sizeof(out_column->physical_type_storage),
@@ -30953,6 +31385,18 @@ static bool planned_column_is_string_family(const struct planned_column *column)
             planned_column_is_text_family(column)) != 0;
 }
 
+static bool planned_column_is_decimal(const struct planned_column *column) {
+    struct decimal_type_info info = {0};
+
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    if (strcmp(column->physical_type, "TEXT") != 0) {
+        return false;
+    }
+    return decimal_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
+}
+
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
     bool has_varchar_logical_type = false;
     bool has_text_physical_type = false;
@@ -31016,6 +31460,70 @@ static bool column_descriptor_is_string_family(
 ) {
     return (column_descriptor_is_char(column) || column_descriptor_is_varchar(column) ||
             column_descriptor_is_text_family(column)) != 0;
+}
+
+static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column) {
+    struct decimal_type_info info = {0};
+
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    if (strcmp(column->physical_type, "TEXT") != 0) {
+        return false;
+    }
+    return decimal_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
+}
+
+static int decimal_type_info_for_logical_type(
+    const char *logical_type,
+    struct decimal_type_info *out_info
+) {
+    static const char prefix[] = "DECIMAL(";
+    static const char unsigned_suffix[] = " UNSIGNED";
+    struct mylite_sql_source_span span = {0};
+    const char *comma = NULL;
+    const char *close = NULL;
+    size_t logical_length = logical_type == NULL ? 0U : strlen(logical_type);
+    int rc = MYLITE_OK;
+
+    if (logical_type == NULL || out_info == NULL || logical_length <= sizeof(prefix) ||
+        strncmp(logical_type, prefix, sizeof(prefix) - 1U) != 0) {
+        return MYLITE_ERROR;
+    }
+
+    comma = strchr(logical_type + sizeof(prefix) - 1U, ',');
+    close = comma == NULL ? NULL : strchr(comma + 1, ')');
+    if (comma == NULL || close == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    *out_info = (struct decimal_type_info){0};
+    span = (struct mylite_sql_source_span){
+        .text = logical_type + sizeof(prefix) - 1U,
+        .length = (size_t)(comma - (logical_type + sizeof(prefix) - 1U)),
+    };
+    rc = parse_unsigned_integer_literal(&span, &out_info->precision);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    span = (struct mylite_sql_source_span){
+        .text = comma + 1,
+        .length = (size_t)(close - (comma + 1)),
+    };
+    rc = parse_unsigned_integer_literal(&span, &out_info->scale);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (strcmp(close + 1, "") == 0) {
+        out_info->is_unsigned = false;
+        return MYLITE_OK;
+    }
+    if (strcmp(close + 1, unsigned_suffix) == 0) {
+        out_info->is_unsigned = true;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_ERROR;
 }
 
 static const struct text_family_type_info *text_family_type_info_for_logical_type(
@@ -31788,7 +32296,8 @@ static int check_insert_omitted_columns(
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER))) {
+              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL))) {
             if (plan->ignore_errors) {
                 continue;
             }
@@ -31940,7 +32449,8 @@ static int append_insert_omitted_column_warnings(
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER))) {
+              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL))) {
             int rc = append_no_default_warning(database, plan->columns[column_index].name);
 
             if (rc != MYLITE_OK) {
@@ -32014,27 +32524,67 @@ static int allocate_insert_row_values(
         return MYLITE_NOMEM;
     }
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        if (plan->columns[column_index].default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-            out_row->values[column_index].is_null = false;
-            out_row->values[column_index].is_text = false;
-            out_row->values[column_index].integer = plan->columns[column_index].default_integer;
-        } else if (plan->ignore_errors && !plan->columns[column_index].is_nullable) {
-            if (column_descriptor_is_string_family(&plan->columns[column_index])) {
-                int rc = make_empty_text_value(database, &out_row->values[column_index]);
+        int rc = allocate_insert_column_value(
+            database,
+            plan,
+            column_index,
+            &out_row->values[column_index]
+        );
 
-                if (rc != MYLITE_OK) {
-                    return rc;
-                }
-            } else {
-                out_row->values[column_index].is_null = false;
-                out_row->values[column_index].is_text = false;
-                out_row->values[column_index].integer = 0;
-            }
-        } else {
-            out_row->values[column_index].is_null = true;
+        if (rc != MYLITE_OK) {
+            return rc;
         }
     }
 
+    return MYLITE_OK;
+}
+
+static int allocate_insert_column_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t column_index,
+    struct planned_value *out_value
+) {
+    const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        out_value->is_null = false;
+        out_value->is_text = false;
+        out_value->integer = column->default_integer;
+        return MYLITE_OK;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        return copy_decimal_text_value(database, column->default_text, out_value);
+    }
+    if (!plan->ignore_errors || column->is_nullable) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+
+    return make_insert_ignore_implicit_value(database, column, out_value);
+}
+
+static int make_insert_ignore_implicit_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    if (column_descriptor_is_string_family(column)) {
+        return make_empty_text_value(database, out_value);
+    }
+    if (column_descriptor_is_decimal(column)) {
+        struct decimal_type_info info = {0};
+        int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+
+        if (rc == MYLITE_OK) {
+            rc = build_decimal_zero_value(database, &info, out_value);
+        }
+        return rc;
+    }
+
+    out_value->is_null = false;
+    out_value->is_text = false;
+    out_value->integer = 0;
     return MYLITE_OK;
 }
 
@@ -32068,25 +32618,7 @@ static int convert_insert_value(
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
-        if (!column->is_nullable) {
-            if (!ignore_errors) {
-                set_bad_null_error(database, column->name);
-                return MYLITE_ERROR;
-            }
-            int rc = append_bad_null_warning(database, column->name);
-
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            if (column_descriptor_is_string_family(column)) {
-                return make_empty_text_value(database, out_value);
-            }
-            out_value->is_null = false;
-            out_value->is_text = false;
-            out_value->integer = 0;
-            return MYLITE_OK;
-        }
-        return MYLITE_OK;
+        return convert_null_insert_value(database, column, ignore_errors, out_value);
     }
     if (column_descriptor_is_char(column)) {
         return convert_char_literal(database, value_node, column, row_number, out_value);
@@ -32096,6 +32628,16 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, row_number, out_value);
+    }
+    if (column_descriptor_is_decimal(column)) {
+        return convert_decimal_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
     }
 
     return convert_integer_literal(
@@ -32137,6 +32679,45 @@ static int convert_auto_increment_insert_value(
     );
 }
 
+static int convert_null_insert_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (column->is_nullable) {
+        return MYLITE_OK;
+    }
+    if (!ignore_errors) {
+        set_bad_null_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = append_bad_null_warning(database, column->name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_string_family(column)) {
+        return make_empty_text_value(database, out_value);
+    }
+    if (column_descriptor_is_decimal(column)) {
+        struct decimal_type_info info = {0};
+
+        rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+        if (rc == MYLITE_OK) {
+            rc = build_decimal_zero_value(database, &info, out_value);
+        }
+        return rc;
+    }
+
+    out_value->is_null = false;
+    out_value->is_text = false;
+    out_value->integer = 0;
+    return MYLITE_OK;
+}
+
 static int materialize_dml_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -32150,6 +32731,9 @@ static int materialize_dml_default_value(
             .integer = column->default_integer,
         };
         return MYLITE_OK;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        return copy_decimal_text_value(database, column->default_text, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
@@ -32169,6 +32753,14 @@ static int materialize_dml_default_value(
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     } else if (column_descriptor_is_string_family(column)) {
         return make_empty_text_value(database, out_value);
+    } else if (column_descriptor_is_decimal(column)) {
+        struct decimal_type_info info = {0};
+
+        rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+        if (rc == MYLITE_OK) {
+            rc = build_decimal_zero_value(database, &info, out_value);
+        }
+        return rc;
     } else {
         *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
     }
@@ -32399,6 +32991,478 @@ static int convert_text_family_literal(
     out_value->text = text;
     out_value->text_length = text_length;
     return MYLITE_OK;
+}
+
+static int convert_decimal_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    static const char true_text[] = "1";
+    static const char false_text[] = "0";
+
+    const struct mylite_sql_ast_node *literal = value_node;
+    struct decimal_type_info info = {0};
+    bool is_negative = false;
+    uint64_t boolean_magnitude = 0U;
+    int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "DECIMAL values require baseline decimal descriptors");
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL) {
+        set_unsupported_error(
+            database,
+            "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (boolean_literal_magnitude(literal, &boolean_magnitude)) {
+        return canonicalize_decimal_text(
+            database,
+            boolean_magnitude == 0U ? false_text : true_text,
+            1U,
+            is_negative,
+            &info,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL)) {
+        set_unsupported_error(
+            database,
+            "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return canonicalize_decimal_text(
+        database,
+        literal->span.text,
+        literal->span.length,
+        is_negative,
+        &info,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int canonicalize_decimal_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    const struct decimal_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    struct decimal_literal_parts parts = {0};
+    struct decimal_digit_buffer buffer = {0};
+    int rc = MYLITE_OK;
+
+    if (text == NULL || info == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = parse_decimal_literal_parts(database, text, text_length, &parts);
+    if (rc == MYLITE_OK) {
+        rc = build_decimal_digit_buffer(database, text, info, &parts, &buffer);
+    }
+    if (rc == MYLITE_OK &&
+        decimal_value_is_out_of_range(info, is_negative, buffer.digits, buffer.digit_count)) {
+        rc = handle_decimal_out_of_range(
+            database,
+            info,
+            column_name,
+            row_number,
+            is_negative,
+            ignore_errors,
+            out_value
+        );
+        free(buffer.digits);
+        return rc;
+    }
+    if (rc == MYLITE_OK && buffer.discarded_nonzero) {
+        rc = append_decimal_truncated_note(database, column_name, row_number);
+    }
+    if (rc == MYLITE_OK) {
+        bool keep_negative_sign =
+            (is_negative && !decimal_digits_are_zero(buffer.digits, buffer.digit_count)) != 0;
+
+        rc = format_decimal_digits(
+            database,
+            buffer.digits,
+            buffer.digit_count,
+            keep_negative_sign,
+            info->scale,
+            out_value
+        );
+    }
+    free(buffer.digits);
+    return rc;
+}
+
+static int parse_decimal_literal_parts(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct decimal_literal_parts *out_parts
+) {
+    size_t integer_end = 0U;
+    size_t fraction_start = 0U;
+    size_t fraction_end = 0U;
+    bool saw_dot = false;
+    bool saw_digit = false;
+
+    if (text == NULL || out_parts == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    while (integer_end < text_length && text[integer_end] >= '0' && text[integer_end] <= '9') {
+        ++integer_end;
+        saw_digit = true;
+    }
+    fraction_start = integer_end;
+    fraction_end = fraction_start;
+    if (fraction_start < text_length && text[fraction_start] == '.') {
+        saw_dot = true;
+        ++fraction_start;
+        fraction_end = fraction_start;
+        while (fraction_end < text_length && text[fraction_end] >= '0' &&
+               text[fraction_end] <= '9') {
+            ++fraction_end;
+            saw_digit = true;
+        }
+    }
+    if (!saw_digit || fraction_end != text_length || (!saw_dot && integer_end == 0U)) {
+        set_unsupported_error(
+            database,
+            "DECIMAL values support only fixed decimal and integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_parts = (struct decimal_literal_parts){
+        .integer_end = integer_end,
+        .fraction_start = fraction_start,
+        .fraction_end = fraction_end,
+        .integer_digit_start = 0U,
+    };
+    while (out_parts->integer_digit_start < integer_end &&
+           text[out_parts->integer_digit_start] == '0') {
+        ++out_parts->integer_digit_start;
+    }
+
+    return MYLITE_OK;
+}
+
+static int build_decimal_digit_buffer(
+    struct mylite_db *database,
+    const char *text,
+    const struct decimal_type_info *info,
+    const struct decimal_literal_parts *parts,
+    struct decimal_digit_buffer *out_buffer
+) {
+    size_t digit_count = 0U;
+
+    if (text == NULL || info == NULL || parts == NULL || out_buffer == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_buffer = (struct decimal_digit_buffer){
+        .digits =
+            malloc((parts->fraction_end - parts->integer_digit_start) + (size_t)info->scale + 2U),
+        .digit_count = 0U,
+        .digit_capacity =
+            (parts->fraction_end - parts->integer_digit_start) + (size_t)info->scale + 2U,
+        .discarded_nonzero = false,
+    };
+    if (out_buffer->digits == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = parts->integer_digit_start; index < parts->integer_end; ++index) {
+        out_buffer->digits[digit_count] = text[index];
+        ++digit_count;
+    }
+    for (uint64_t scale_index = 0U; scale_index < info->scale; ++scale_index) {
+        size_t fraction_index = parts->fraction_start + (size_t)scale_index;
+
+        out_buffer->digits[digit_count] =
+            fraction_index < parts->fraction_end ? text[fraction_index] : '0';
+        ++digit_count;
+    }
+    out_buffer->digit_count = digit_count;
+
+    return round_decimal_digit_buffer_if_needed(database, text, info, parts, out_buffer);
+}
+
+static int round_decimal_digit_buffer_if_needed(
+    struct mylite_db *database,
+    const char *text,
+    const struct decimal_type_info *info,
+    const struct decimal_literal_parts *parts,
+    struct decimal_digit_buffer *buffer
+) {
+    size_t round_index =
+        parts == NULL || info == NULL ? 0U : parts->fraction_start + (size_t)info->scale;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || info == NULL || parts == NULL || buffer == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if ((uint64_t)(parts->fraction_end - parts->fraction_start) <= info->scale) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = round_index; index < parts->fraction_end; ++index) {
+        if (text[index] != '0') {
+            buffer->discarded_nonzero = true;
+            break;
+        }
+    }
+    if (text[round_index] < '5') {
+        return MYLITE_OK;
+    }
+
+    rc = increment_decimal_digits(buffer->digits, &buffer->digit_count, buffer->digit_capacity);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static bool decimal_value_is_out_of_range(
+    const struct decimal_type_info *info,
+    bool is_negative,
+    const char *digits,
+    size_t digit_count
+) {
+    uint64_t integer_digits = 0U;
+    uint64_t integer_capacity = info == NULL ? 0U : info->precision - info->scale;
+
+    if (info == NULL || decimal_digits_are_zero(digits, digit_count)) {
+        return false;
+    }
+    if (digit_count > (size_t)info->scale) {
+        integer_digits = (uint64_t)(digit_count - (size_t)info->scale);
+    }
+
+    return (integer_digits > integer_capacity || (info->is_unsigned && is_negative)) != 0;
+}
+
+static int handle_decimal_out_of_range(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    bool is_negative,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (!ignore_errors) {
+        set_out_of_range_error(database, column_name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    rc = append_out_of_range_warning(database, column_name, row_number);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (info->is_unsigned && is_negative) {
+        return build_decimal_zero_value(database, info, out_value);
+    }
+
+    return build_decimal_endpoint_value(database, info, is_negative, out_value);
+}
+
+static int build_decimal_zero_value(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+) {
+    return format_decimal_digits(database, "", 0U, false, info->scale, out_value);
+}
+
+static int build_decimal_endpoint_value(
+    struct mylite_db *database,
+    const struct decimal_type_info *info,
+    bool is_negative,
+    struct planned_value *out_value
+) {
+    char digits[decimal_max_precision];
+
+    if (info == NULL || info->precision == 0U || info->precision > decimal_max_precision) {
+        return MYLITE_ERROR;
+    }
+    memset(digits, '9', (size_t)info->precision);
+    return format_decimal_digits(
+        database,
+        digits,
+        (size_t)info->precision,
+        (is_negative && !info->is_unsigned) != 0,
+        info->scale,
+        out_value
+    );
+}
+
+static int assign_decimal_text_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    struct planned_value *out_value
+) {
+    if (text == NULL || out_value == NULL) {
+        free(text);
+        return MYLITE_MISUSE;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){
+        .is_null = false,
+        .is_text = true,
+        .integer = 0,
+        .text = text,
+        .text_length = text_length,
+    };
+    (void)database;
+    return MYLITE_OK;
+}
+
+static int copy_decimal_text_value(
+    struct mylite_db *database,
+    const char *text,
+    struct planned_value *out_value
+) {
+    size_t text_length = text == NULL ? 0U : strlen(text);
+    char *copy = NULL;
+
+    if (text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    copy = malloc(text_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, text, text_length + 1U);
+    return assign_decimal_text_value(database, copy, text_length, out_value);
+}
+
+static bool decimal_digits_are_zero(const char *digits, size_t digit_count) {
+    for (size_t index = 0U; index < digit_count; ++index) {
+        if (digits[index] != '0') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int increment_decimal_digits(char *digits, size_t *digit_count, size_t capacity) {
+    size_t index = digit_count == NULL ? 0U : *digit_count;
+
+    if (digits == NULL || digit_count == NULL || capacity == 0U) {
+        return MYLITE_MISUSE;
+    }
+    while (index > 0U) {
+        --index;
+        if (digits[index] < '9') {
+            ++digits[index];
+            return MYLITE_OK;
+        }
+        digits[index] = '0';
+    }
+    if (*digit_count + 1U > capacity) {
+        return MYLITE_NOMEM;
+    }
+    memmove(digits + 1, digits, *digit_count);
+    digits[0] = '1';
+    ++(*digit_count);
+    return MYLITE_OK;
+}
+
+static int format_decimal_digits(
+    struct mylite_db *database,
+    const char *digits,
+    size_t digit_count,
+    bool is_negative,
+    uint64_t scale,
+    struct planned_value *out_value
+) {
+    size_t scale_size = (size_t)scale;
+    size_t integer_digit_count = digit_count > scale_size ? digit_count - scale_size : 0U;
+    size_t leading_fraction_zeroes = digit_count < scale_size ? scale_size - digit_count : 0U;
+    size_t sign_length = 0U;
+    size_t output_length = 0U;
+    char *text = NULL;
+    size_t output_index = 0U;
+
+    if (is_negative) {
+        sign_length = 1U;
+    }
+    output_length = sign_length + (integer_digit_count == 0U ? 1U : integer_digit_count);
+    if (scale_size > 0U) {
+        output_length += 1U + scale_size;
+    }
+    text = malloc(output_length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (is_negative) {
+        text[output_index] = '-';
+        ++output_index;
+    }
+    if (integer_digit_count == 0U) {
+        text[output_index] = '0';
+        ++output_index;
+    } else {
+        memcpy(text + output_index, digits, integer_digit_count);
+        output_index += integer_digit_count;
+    }
+    if (scale_size > 0U) {
+        text[output_index] = '.';
+        ++output_index;
+        memset(text + output_index, '0', leading_fraction_zeroes);
+        output_index += leading_fraction_zeroes;
+        if (digit_count > integer_digit_count) {
+            size_t fraction_digit_count = digit_count - integer_digit_count;
+
+            memcpy(text + output_index, digits + integer_digit_count, fraction_digit_count);
+            output_index += fraction_digit_count;
+        }
+    }
+    text[output_index] = '\0';
+    return assign_decimal_text_value(database, text, output_index, out_value);
 }
 
 static int decode_sql_string_literal(
@@ -32700,6 +33764,59 @@ static int validate_text_family_text(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_canonical_decimal_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *text,
+    size_t text_length,
+    size_t row_number
+) {
+    struct decimal_type_info info = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    bool is_negative = false;
+    size_t start = 0U;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || column == NULL || !column_descriptor_is_decimal(column)) {
+        set_unsupported_error(database, "statement supports only baseline DECIMAL descriptors");
+        return MYLITE_ERROR;
+    }
+    if (text_length > 0U && text[0] == '-') {
+        is_negative = true;
+        start = 1U;
+    }
+    rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+    if (rc == MYLITE_OK) {
+        rc = canonicalize_decimal_text(
+            database,
+            text + start,
+            text_length - start,
+            is_negative,
+            &info,
+            column->name,
+            row_number,
+            false,
+            &value
+        );
+    }
+    if (rc == MYLITE_OK &&
+        (value.text_length != text_length || memcmp(value.text, text, text_length) != 0)) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT into DECIMAL supports only already-canonical DECIMAL values"
+        );
+        rc = MYLITE_ERROR;
+    }
+    planned_value_deinit(&value);
+    return rc;
 }
 
 static int validate_utf8_text(const char *text, size_t text_length, size_t *out_character_count) {
@@ -34865,6 +35982,9 @@ static int convert_update_value(
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, 1U, out_value);
     }
+    if (column_descriptor_is_decimal(column)) {
+        return convert_decimal_literal(database, value_node, column, 1U, false, out_value);
+    }
 
     return convert_update_integer_literal(database, value_node, column, out_value);
 }
@@ -35264,6 +36384,10 @@ static int append_show_column(
             return MYLITE_ERROR;
         }
         values[4] = default_text;
+    }
+    if (!column->is_auto_increment &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        values[4] = column->default_text;
     }
     if (column->is_auto_increment && !column->is_visible) {
         values[show_columns_extra_column] = "auto_increment INVISIBLE";
@@ -35906,6 +37030,7 @@ static int build_drop_table_sql(const char *physical_name, char **out_sql) {
 }
 
 static int build_alter_table_add_column_sql(
+    struct mylite_db *database,
     const struct planned_alter_table_add_column *plan,
     char **out_sql
 ) {
@@ -35934,28 +37059,8 @@ static int build_alter_table_add_column_sql(
     if (rc == MYLITE_OK && !plan->column.is_nullable) {
         rc = dynamic_string_append(&string, " NOT NULL");
     }
-    if (rc == MYLITE_OK && plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        char default_text[integer_text_capacity];
-        int written = snprintf(
-            default_text,
-            sizeof(default_text),
-            " DEFAULT %" PRId64,
-            plan->column.default_integer
-        );
-
-        if (written < 0 || (size_t)written >= sizeof(default_text)) {
-            rc = MYLITE_NOMEM;
-        } else {
-            rc = dynamic_string_append(&string, default_text);
-        }
-    }
-    if (rc == MYLITE_OK && !plan->column.is_nullable &&
-        plan->column.default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        if (planned_column_is_string_family(&plan->column)) {
-            rc = dynamic_string_append(&string, " DEFAULT ''");
-        } else {
-            rc = dynamic_string_append(&string, " DEFAULT 0");
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_alter_table_add_column_default(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -35967,6 +37072,72 @@ static int build_alter_table_add_column_sql(
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_alter_table_add_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        char default_text[integer_text_capacity];
+        int written = snprintf(
+            default_text,
+            sizeof(default_text),
+            " DEFAULT %" PRId64,
+            plan->column.default_integer
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(default_text)) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append(string, default_text);
+    }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        int rc = dynamic_string_append(string, " DEFAULT '");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, plan->column.default_text);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '\'');
+        }
+        return rc;
+    }
+    if (plan->column.is_nullable) {
+        return MYLITE_OK;
+    }
+    if (planned_column_is_string_family(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT ''");
+    }
+    if (planned_column_is_decimal(&plan->column)) {
+        struct decimal_type_info info = {0};
+        struct planned_value value = {
+            .is_null = false,
+            .is_text = false,
+            .integer = 0,
+            .text = NULL,
+            .text_length = 0U,
+        };
+        int rc = decimal_type_info_for_logical_type(plan->column.logical_type, &info);
+
+        if (rc == MYLITE_OK) {
+            rc = build_decimal_zero_value(database, &info, &value);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " DEFAULT '");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, value.text);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '\'');
+        }
+        planned_value_deinit(&value);
+        return rc;
+    }
+
+    return dynamic_string_append(string, " DEFAULT 0");
 }
 
 static int build_alter_table_drop_column_sql(
@@ -36908,8 +38079,10 @@ static int append_insert_select_target_expressions(
         if (rc == MYLITE_OK && is_selected) {
             rc = append_insert_select_temp_column_name(string, target_position);
         } else if (
-            rc == MYLITE_OK &&
-            plan->target.columns[column_index].default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER
+            rc == MYLITE_OK && (plan->target.columns[column_index].default_kind ==
+                                    MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ||
+                                plan->target.columns[column_index].default_kind ==
+                                    MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL)
         ) {
             rc = append_numbered_parameter(string, *next_default_parameter);
             if (rc == MYLITE_OK) {
@@ -38513,17 +39686,32 @@ static int bind_insert_select_parameters(
             continue;
         }
         if (plan->target.columns[column_index].default_kind !=
-            MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+                MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+            plan->target.columns[column_index].default_kind !=
+                MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
             continue;
         }
         if (parameter_index == 0U || parameter_index > (size_t)INT_MAX) {
             return MYLITE_ERROR;
         }
-        rc = bind_int64_parameter(
-            statement,
-            (int)parameter_index,
-            plan->target.columns[column_index].default_integer
-        );
+        if (plan->target.columns[column_index].default_kind ==
+            MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+            rc = bind_int64_parameter(
+                statement,
+                (int)parameter_index,
+                plan->target.columns[column_index].default_integer
+            );
+        } else {
+            struct planned_value value = {
+                .is_null = false,
+                .is_text = true,
+                .integer = 0,
+                .text = (char *)plan->target.columns[column_index].default_text,
+                .text_length = strlen(plan->target.columns[column_index].default_text),
+            };
+
+            rc = bind_planned_value_parameter(statement, (int)parameter_index, &value);
+        }
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
@@ -40187,6 +41375,36 @@ static int append_out_of_range_warning(
     return rc;
 }
 
+static int append_decimal_truncated_note(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Data truncated for column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_note(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_truncated,
+        "01000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
 static void set_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
@@ -40205,6 +41423,79 @@ static void set_display_width_out_of_range_error(
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_display_width_out_of_range,
+        "42000",
+        message
+    );
+}
+
+static void set_decimal_precision_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t precision
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Too-big precision %" PRIu64 " specified for '%s'. Maximum is 65.",
+        precision,
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_decimal_precision_too_big,
+        "42000",
+        message
+    );
+}
+
+static void set_decimal_scale_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t scale
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Too big scale %" PRIu64 " specified for column '%s'. Maximum is 30.",
+        scale,
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_decimal_scale_too_big,
+        "42000",
+        message
+    );
+}
+
+static void set_decimal_scale_greater_than_precision_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "For float(M,D), double(M,D) or decimal(M,D), M must be >= D (column '%s').",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_decimal_must_be_greater_or_equal_to_d,
         "42000",
         message
     );

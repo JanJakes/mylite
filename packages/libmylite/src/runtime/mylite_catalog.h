@@ -8,11 +8,12 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 6,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 6,
+    MYLITE_CATALOG_SCHEMA_VERSION = 7,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 7,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
+    MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY = 96,
 };
 
 enum mylite_catalog_table_kind {
@@ -24,6 +25,7 @@ enum mylite_catalog_column_default_kind {
     MYLITE_CATALOG_COLUMN_DEFAULT_NONE = 0,
     MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER = 1,
     MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT = 2,
+    MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL = 3,
 };
 
 enum mylite_catalog_index_kind {
@@ -73,6 +75,7 @@ struct mylite_catalog_column_descriptor {
     bool is_auto_increment;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
+    char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -183,6 +186,7 @@ int mylite_catalog_insert_column_in_mutation(
     bool is_auto_increment,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
+    const char *default_text,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_insert_index_in_mutation(
@@ -236,7 +240,8 @@ int mylite_catalog_replace_column_in_mutation(
     bool is_visible,
     bool is_auto_increment,
     enum mylite_catalog_column_default_kind default_kind,
-    int64_t default_integer
+    int64_t default_integer,
+    const char *default_text
 );
 int mylite_catalog_set_column_visibility_in_mutation(
     struct mylite_db *database,
@@ -355,6 +360,7 @@ int mylite_catalog_create_column(
     bool is_nullable,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
+    const char *default_text,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

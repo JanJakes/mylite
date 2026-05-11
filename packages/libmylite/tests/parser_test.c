@@ -11,6 +11,8 @@ enum {
     display_width_column_count = 16,
     bool_alias_column_count = 3,
     integer_default_column_count = 5,
+    decimal_column_count = 6,
+    decimal_fixed_column_index = 5,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
     alias_int3_unsigned_column_index = 7,
@@ -69,6 +71,7 @@ static int test_table_lifecycle_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
+static int test_decimal_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
@@ -165,6 +168,14 @@ static int expect_text_type(
     enum mylite_sql_ast_text_type expected,
     const char *context
 );
+static int expect_decimal_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_decimal_type expected,
+    const char *expected_precision,
+    const char *expected_scale,
+    int expected_unsigned,
+    const char *context
+);
 static int expect_integer_display_width(
     const struct mylite_sql_ast_node *node,
     const char *expected_width,
@@ -233,6 +244,7 @@ int main(void) {
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
     failures += test_text_type_statements();
+    failures += test_decimal_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
@@ -7109,6 +7121,216 @@ static int test_text_type_statements(void) {
     return failures;
 }
 
+static int test_decimal_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE decimal_types (a DECIMAL, b DECIMAL(5), c DECIMAL(5,2) UNSIGNED, "
+        "d NUMERIC(4,1), e DEC(6,0), f FIXED(7,3));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, decimal_column_count, "decimal column list");
+
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_decimal_type(
+        column_type,
+        MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL,
+        NULL,
+        NULL,
+        0,
+        "bare decimal column type"
+    );
+    failures += expect_span_text(column_type, "DECIMAL", "bare decimal span");
+
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_decimal_type(
+        column_type,
+        MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL,
+        "5",
+        NULL,
+        0,
+        "precision decimal column type"
+    );
+
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_decimal_type(
+        column_type,
+        MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL,
+        "5",
+        "2",
+        1,
+        "unsigned decimal column type"
+    );
+    failures += expect_span_text(column_type, "DECIMAL(5,2) UNSIGNED", "unsigned decimal span");
+
+    column = child_at(columns, 3U);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC,
+        "4",
+        "1",
+        0,
+        "numeric column type"
+    );
+
+    column = child_at(columns, 4U);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_DEC,
+        "6",
+        "0",
+        0,
+        "dec column type"
+    );
+
+    column = child_at(columns, decimal_fixed_column_index);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_FIXED,
+        "7",
+        "3",
+        0,
+        "fixed column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE decimal_defaults (a DECIMAL(5,2) DEFAULT 1.23, "
+        "b NUMERIC(5,2) DEFAULT -0.50, c DECIMAL(5,2) DEFAULT +1.20);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_DECIMAL,
+        "decimal default literal"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative decimal default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "positive decimal default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN amount DECIMAL(8,2) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL,
+        "8",
+        "2",
+        0,
+        "alter add decimal column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter add decimal not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY amount NUMERIC(9,3) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC,
+        "9",
+        "3",
+        0,
+        "alter modify numeric column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE amount total DEC(10,4) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    failures += expect_decimal_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_DECIMAL_TYPE_DEC,
+        "10",
+        "4",
+        0,
+        "alter change dec column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO decimal_types VALUES (1.20, -2.30, +3.40, NULL, TRUE, FALSE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_DECIMAL,
+        "decimal insert value"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative decimal insert value"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 2U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "positive decimal insert value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE decimal_types SET a = 9.99;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_DECIMAL,
+        "decimal update value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_decimal (c DECIMAL SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_create_table_primary_key_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -11573,8 +11795,7 @@ static int test_syntax_errors(void) {
         parse_sql("CREATE TABLE t (id INT DEFAULT '5');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE t (id INT DEFAULT 1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE TABLE t (id INT DEFAULT 1.5);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -12248,7 +12469,7 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t VALUES (1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12260,7 +12481,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("INSERT INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12357,7 +12578,7 @@ static int test_syntax_errors(void) {
         parse_sql("REPLACE INTO t VALUES ((SELECT 1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (1e0);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12369,7 +12590,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12390,7 +12611,7 @@ static int test_syntax_errors(void) {
         parse_sql("REPLACE INTO t SET id = (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 1e0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12492,7 +12713,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("DELETE LOW_PRIORITY FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12885,6 +13106,91 @@ static int expect_text_type(
             context,
             mylite_sql_ast_text_type_name(expected),
             mylite_sql_ast_text_type_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_decimal_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_decimal_type expected,
+    const char *expected_precision,
+    const char *expected_scale,
+    int expected_unsigned,
+    const char *context
+) {
+    struct mylite_sql_source_span precision_span = {0};
+    struct mylite_sql_source_span scale_span = {0};
+    enum mylite_sql_ast_decimal_type actual = MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL;
+    int actual_unsigned = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_DECIMAL_TYPE, context) != 0) {
+        return 1;
+    }
+
+    actual = mylite_sql_ast_node_decimal_type(node);
+    actual_unsigned = mylite_sql_ast_node_decimal_type_is_unsigned(node);
+    if (actual != expected || actual_unsigned != expected_unsigned) {
+        fprintf(
+            stderr,
+            "%s: expected decimal type %s unsigned=%d, got %s unsigned=%d\n",
+            context,
+            mylite_sql_ast_decimal_type_name(expected),
+            expected_unsigned,
+            mylite_sql_ast_decimal_type_name(actual),
+            actual_unsigned
+        );
+        return 1;
+    }
+
+    if (expected_precision == NULL) {
+        if (mylite_sql_ast_node_decimal_type_has_precision(node) != 0) {
+            fprintf(stderr, "%s: expected no decimal precision\n", context);
+            return 1;
+        }
+        return 0;
+    }
+    if (mylite_sql_ast_node_decimal_type_has_precision(node) == 0) {
+        fprintf(stderr, "%s: expected decimal precision %s\n", context, expected_precision);
+        return 1;
+    }
+    precision_span = mylite_sql_ast_node_decimal_type_precision_span(node);
+    if (precision_span.text == NULL || precision_span.length != strlen(expected_precision) ||
+        strncmp(precision_span.text, expected_precision, precision_span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected decimal precision %s, got %.*s\n",
+            context,
+            expected_precision,
+            (int)precision_span.length,
+            precision_span.text == NULL ? "" : precision_span.text
+        );
+        return 1;
+    }
+
+    if (expected_scale == NULL) {
+        if (mylite_sql_ast_node_decimal_type_has_scale(node) != 0) {
+            fprintf(stderr, "%s: expected no decimal scale\n", context);
+            return 1;
+        }
+        return 0;
+    }
+    if (mylite_sql_ast_node_decimal_type_has_scale(node) == 0) {
+        fprintf(stderr, "%s: expected decimal scale %s\n", context, expected_scale);
+        return 1;
+    }
+    scale_span = mylite_sql_ast_node_decimal_type_scale_span(node);
+    if (scale_span.text == NULL || scale_span.length != strlen(expected_scale) ||
+        strncmp(scale_span.text, expected_scale, scale_span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected decimal scale %s, got %.*s\n",
+            context,
+            expected_scale,
+            (int)scale_span.length,
+            scale_span.text == NULL ? "" : scale_span.text
         );
         return 1;
     }

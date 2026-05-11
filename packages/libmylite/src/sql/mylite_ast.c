@@ -187,6 +187,17 @@ void mylite_sql_ast_node_set_text_type(
     node->payload.text_type.kind = text_type;
 }
 
+void mylite_sql_ast_node_set_decimal_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_decimal_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.decimal_type = payload;
+}
+
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -380,6 +391,60 @@ enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(
     return node->payload.text_type.kind;
 }
 
+enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL;
+    }
+
+    return node->payload.decimal_type.kind;
+}
+
+int mylite_sql_ast_node_decimal_type_has_precision(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return 0;
+    }
+
+    return node->payload.decimal_type.has_precision;
+}
+
+int mylite_sql_ast_node_decimal_type_has_scale(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return 0;
+    }
+
+    return node->payload.decimal_type.has_scale;
+}
+
+int mylite_sql_ast_node_decimal_type_is_unsigned(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return 0;
+    }
+
+    return node->payload.decimal_type.is_unsigned;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_precision_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.decimal_type.precision_span;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_scale_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_DECIMAL_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.decimal_type.scale_span;
+}
+
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 ) {
@@ -460,6 +525,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "char_type";
     case MYLITE_SQL_AST_TEXT_TYPE:
         return "text_type";
+    case MYLITE_SQL_AST_DECIMAL_TYPE:
+        return "decimal_type";
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
         return "primary_key_definition";
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
@@ -974,6 +1041,21 @@ const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_typ
         return "mediumtext";
     case MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT:
         return "longtext";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type decimal_type) {
+    switch (decimal_type) {
+    case MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL:
+        return "decimal";
+    case MYLITE_SQL_AST_DECIMAL_TYPE_DEC:
+        return "dec";
+    case MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC:
+        return "numeric";
+    case MYLITE_SQL_AST_DECIMAL_TYPE_FIXED:
+        return "fixed";
     }
 
     return "unknown";

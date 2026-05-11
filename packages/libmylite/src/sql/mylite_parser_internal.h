@@ -45,6 +45,18 @@ struct mylite_sql_text_type_tokens {
     enum mylite_sql_ast_text_type text_type;
 };
 
+struct mylite_sql_decimal_type_tokens {
+    struct mylite_sql_token type_token;
+    struct mylite_sql_token precision_token;
+    struct mylite_sql_token scale_token;
+    struct mylite_sql_token end_token;
+    struct mylite_sql_token attribute_token;
+    enum mylite_sql_ast_decimal_type decimal_type;
+    int has_precision;
+    int has_scale;
+    int is_unsigned;
+};
+
 struct mylite_sql_show_count_warnings_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token count;
@@ -1011,6 +1023,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_char_type(
 struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_text_type_tokens tokens
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_decimal_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,

@@ -3689,6 +3689,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_decimal_type_tokens tokens
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token));
+    struct mylite_sql_ast_node *type = make_node(state, MYLITE_SQL_AST_DECIMAL_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_decimal_type(
+        type,
+        (struct mylite_sql_ast_decimal_type_payload){
+            .kind = tokens.decimal_type,
+            .has_precision = tokens.has_precision,
+            .has_scale = tokens.has_scale,
+            .is_unsigned = tokens.is_unsigned,
+            .precision_span = span_from_token(&tokens.precision_token),
+            .scale_span = span_from_token(&tokens.scale_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_nullability nullability,
@@ -4077,6 +4102,10 @@ static bool map_keyword_token(
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
+        {"DECIMAL", MYLITE_SQL_PARSE_DECIMAL_TYPE},
+        {"DEC", MYLITE_SQL_PARSE_DEC},
+        {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
+        {"FIXED", MYLITE_SQL_PARSE_FIXED},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},

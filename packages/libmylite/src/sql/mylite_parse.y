@@ -40,6 +40,8 @@
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
+%type decimal_type_name { struct mylite_sql_decimal_type_tokens }
+%type decimal_unsigned_opt { struct mylite_sql_decimal_type_tokens }
 %type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
 %type integer_signedness_opt { struct mylite_sql_integer_signedness_tokens }
 %type select_modifiers { struct mylite_sql_select_modifiers }
@@ -1022,15 +1024,28 @@ insert_value_list(A) ::= insert_value_list(B) COMMA insert_value(C). {
 insert_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+insert_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
 insert_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
+insert_value(A) ::= PLUS(P) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
 insert_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+insert_value(A) ::= MINUS(M) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
 insert_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -1051,15 +1066,28 @@ insert_value(A) ::= DEFAULT(T). {
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+update_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
 update_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
+update_value(A) ::= PLUS(P) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
 update_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= MINUS(M) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
 update_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -2467,6 +2495,9 @@ identifier(A) ::= TABLES(T). {
 identifier(A) ::= TEXT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= FIXED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= FIELDS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -2609,6 +2640,9 @@ column_type(A) ::= char_type(T). {
 column_type(A) ::= text_type(T). {
     A = T;
 }
+column_type(A) ::= decimal_type(T). {
+    A = T;
+}
 
 varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
     A = mylite_sql_parser_make_varchar_type(
@@ -2667,6 +2701,77 @@ text_type_name(A) ::= LONGTEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
+    };
+}
+
+decimal_type(A) ::= decimal_type_name(T) decimal_unsigned_opt(U). {
+    T.attribute_token = U.attribute_token;
+    T.is_unsigned = U.is_unsigned;
+    T.end_token = T.attribute_token.text == NULL ? T.type_token : T.attribute_token;
+    A = mylite_sql_parser_make_decimal_type(state, T);
+}
+decimal_type(A) ::= decimal_type_name(T) LPAREN INTEGER(P) RPAREN(R) decimal_unsigned_opt(U). {
+    T.precision_token = P;
+    T.end_token = R;
+    T.has_precision = 1;
+    T.attribute_token = U.attribute_token;
+    T.is_unsigned = U.is_unsigned;
+    if (T.attribute_token.text != NULL) {
+        T.end_token = T.attribute_token;
+    }
+    A = mylite_sql_parser_make_decimal_type(state, T);
+}
+decimal_type(A) ::= decimal_type_name(T) LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R)
+    decimal_unsigned_opt(U). {
+    T.precision_token = P;
+    T.scale_token = S;
+    T.end_token = R;
+    T.has_precision = 1;
+    T.has_scale = 1;
+    T.attribute_token = U.attribute_token;
+    T.is_unsigned = U.is_unsigned;
+    if (T.attribute_token.text != NULL) {
+        T.end_token = T.attribute_token;
+    }
+    A = mylite_sql_parser_make_decimal_type(state, T);
+}
+
+decimal_type_name(A) ::= DECIMAL_TYPE(T). {
+    A = (struct mylite_sql_decimal_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .decimal_type = MYLITE_SQL_AST_DECIMAL_TYPE_DECIMAL,
+    };
+}
+decimal_type_name(A) ::= DEC(T). {
+    A = (struct mylite_sql_decimal_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .decimal_type = MYLITE_SQL_AST_DECIMAL_TYPE_DEC,
+    };
+}
+decimal_type_name(A) ::= NUMERIC(T). {
+    A = (struct mylite_sql_decimal_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .decimal_type = MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC,
+    };
+}
+decimal_type_name(A) ::= FIXED(T). {
+    A = (struct mylite_sql_decimal_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .decimal_type = MYLITE_SQL_AST_DECIMAL_TYPE_FIXED,
+    };
+}
+
+decimal_unsigned_opt(A) ::= . {
+    A = (struct mylite_sql_decimal_type_tokens){0};
+}
+decimal_unsigned_opt(A) ::= UNSIGNED(U). {
+    A = (struct mylite_sql_decimal_type_tokens){
+        .attribute_token = U,
+        .is_unsigned = 1,
     };
 }
 
@@ -2816,15 +2921,28 @@ column_default(A) ::= DEFAULT(D) column_default_value(V). {
 column_default_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+column_default_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
 column_default_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
+column_default_value(A) ::= PLUS(P) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
 column_default_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+column_default_value(A) ::= MINUS(M) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
 column_default_value(A) ::= TRUE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);

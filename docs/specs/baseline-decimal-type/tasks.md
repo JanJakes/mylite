@@ -14,36 +14,36 @@
 
 ## Implementation
 
-- [ ] Extend parser and AST support for admitted decimal column types and
+- [x] Extend parser and AST support for admitted decimal column types and
   decimal literal DML/default values.
-- [ ] Add durable catalog support for decimal default text without regressing
+- [x] Add durable catalog support for decimal default text without regressing
   existing integer defaults or older catalog migrations.
-- [ ] Map admitted decimal descriptors to logical `DECIMAL(M,D)` text and
+- [x] Map admitted decimal descriptors to logical `DECIMAL(M,D)` text and
   physical SQLite `TEXT`.
-- [ ] Add MyLite-owned exact decimal conversion, canonicalization, rounding,
+- [x] Add MyLite-owned exact decimal conversion, canonicalization, rounding,
   range checking, `INSERT IGNORE` clipping, null/default handling, and text
   binding.
-- [ ] Add decimal support for `CREATE TABLE`, `ALTER ADD COLUMN`,
+- [x] Add decimal support for `CREATE TABLE`, `ALTER ADD COLUMN`,
   `ALTER COLUMN SET/DROP DEFAULT`, `INSERT`, `REPLACE`, `UPDATE`, compatible
   `INSERT ... SELECT`, compatible `REPLACE ... SELECT`, compatible
   `CREATE TABLE ... SELECT`, `CREATE TABLE ... LIKE`, plain `SELECT` readback,
   and null-test predicates.
-- [ ] Reject unsupported decimal comparisons, ordering, distinct, grouping,
+- [x] Reject unsupported decimal comparisons, ordering, distinct, grouping,
   aggregates, primary keys, auto-increment, `ZEROFILL`, expression values,
   string/float/hex/bit conversions, and `ALTER MODIFY` / `CHANGE` replacement
   deterministically.
-- [ ] Update `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`,
+- [x] Update `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`,
   `SHOW CREATE TABLE`, and `INFORMATION_SCHEMA.COLUMNS` rendering.
 
 ## Tests and Docs
 
 - [x] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add focused C runtime tests and parser tests for supported and rejected
+- [x] Add focused C runtime tests and parser tests for supported and rejected
   behavior.
 - [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   implemented subset.
-- [ ] Run focused build/tests, the new MySQL expectation script, and
+- [x] Run focused build/tests, the new MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog authority,
+- [x] Review the final diff for architecture boundaries, catalog authority,
   exact decimal conversion, descriptor-driven SQLite SQL, compatibility claims,
   performance, and file-format safety.

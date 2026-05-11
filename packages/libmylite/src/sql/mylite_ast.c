@@ -765,6 +765,18 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "modulo";
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
         return "integer_divide";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+        return "bitwise_not";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+        return "bitwise_xor";
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+        return "left_shift";
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+        return "right_shift";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+        return "bitwise_and";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+        return "bitwise_or";
     }
 
     return "unknown";

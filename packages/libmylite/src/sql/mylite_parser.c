@@ -3843,17 +3843,29 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
         *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
         return true;
+    case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
+        *out_parser_token = MYLITE_SQL_PARSE_LEFT_SHIFT;
+        return true;
+    case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
+        *out_parser_token = MYLITE_SQL_PARSE_RIGHT_SHIFT;
+        return true;
+    case MYLITE_SQL_OPERATOR_BITWISE_NOT:
+        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_NOT;
+        return true;
+    case MYLITE_SQL_OPERATOR_BITWISE_XOR:
+        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_XOR;
+        return true;
+    case MYLITE_SQL_OPERATOR_BITWISE_AND:
+        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_AND;
+        return true;
+    case MYLITE_SQL_OPERATOR_BITWISE_OR:
+        *out_parser_token = MYLITE_SQL_PARSE_BITWISE_OR;
+        return true;
     case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
-    case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
-    case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
     case MYLITE_SQL_OPERATOR_ASSIGN:
     case MYLITE_SQL_OPERATOR_NOT:
-    case MYLITE_SQL_OPERATOR_BITWISE_NOT:
-    case MYLITE_SQL_OPERATOR_BITWISE_XOR:
-    case MYLITE_SQL_OPERATOR_BITWISE_AND:
-    case MYLITE_SQL_OPERATOR_BITWISE_OR:
         return false;
     }
 

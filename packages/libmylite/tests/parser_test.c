@@ -376,6 +376,17 @@ static int test_select_expression_list(void) {
         is_comparison_precedence_item_index = 7,
         is_logical_precedence_item_index = 8,
         is_parenthesized_comparison_item_index = 9,
+        bitwise_item_count = 10,
+        bitwise_or_item_index = 0,
+        bitwise_and_item_index = 1,
+        bitwise_xor_item_index = 2,
+        bitwise_shift_item_index = 3,
+        bitwise_shift_arithmetic_item_index = 4,
+        bitwise_not_item_index = 5,
+        bitwise_not_arithmetic_item_index = 6,
+        bitwise_and_or_item_index = 7,
+        bitwise_xor_and_item_index = 8,
+        bitwise_logical_xor_item_index = 9,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
@@ -390,6 +401,7 @@ static int test_select_expression_list(void) {
     const struct mylite_sql_ast_node *comparison = NULL;
     const struct mylite_sql_ast_node *logical = NULL;
     const struct mylite_sql_ast_node *is_expression = NULL;
+    const struct mylite_sql_ast_node *bitwise = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -718,6 +730,76 @@ static int test_select_expression_list(void) {
         child_at(div_operator, 0U),
         MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE,
         "div left associativity"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT 1|2, 1&2, 1^2, 1<<2, 1<<2+1, ~1, ~(1+2), 1&2|4, "
+        "1^3&2, 1 XOR 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, bitwise_item_count, "bitwise select list");
+    failures += expect_operator(
+        child_at(child_at(select_list, bitwise_or_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_OR,
+        "bitwise or"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, bitwise_and_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_AND,
+        "bitwise and"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, bitwise_xor_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_XOR,
+        "bitwise xor"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, bitwise_shift_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT,
+        "left shift"
+    );
+    bitwise = child_at(child_at(select_list, bitwise_shift_arithmetic_item_index), 0U);
+    failures += expect_operator(bitwise, MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT, "shift arithmetic");
+    failures += expect_operator(
+        child_at(bitwise, 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "addition binds tighter than shift"
+    );
+    bitwise = child_at(child_at(select_list, bitwise_not_item_index), 0U);
+    failures += expect_operator(bitwise, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, "bitwise not");
+    bitwise = child_at(child_at(select_list, bitwise_not_arithmetic_item_index), 0U);
+    failures += expect_operator(bitwise, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, "bitwise not group");
+    failures += expect_node(
+        child_at(bitwise, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "bitwise not parenthesized child"
+    );
+    failures += expect_operator(
+        child_at(child_at(bitwise, 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "bitwise not sees parenthesized arithmetic"
+    );
+    bitwise = child_at(child_at(select_list, bitwise_and_or_item_index), 0U);
+    failures += expect_operator(bitwise, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, "and before or");
+    failures += expect_operator(
+        child_at(bitwise, 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_AND,
+        "bitwise and binds tighter than or"
+    );
+    bitwise = child_at(child_at(select_list, bitwise_xor_and_item_index), 0U);
+    failures += expect_operator(bitwise, MYLITE_SQL_AST_OPERATOR_BITWISE_AND, "xor before and");
+    failures += expect_operator(
+        child_at(bitwise, 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_XOR,
+        "bitwise xor binds tighter than and"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, bitwise_logical_xor_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR,
+        "keyword xor remains logical xor"
     );
     mylite_sql_parse_result_deinit(&result);
 

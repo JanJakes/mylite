@@ -4,13 +4,13 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |
-| `&` | ❌ | Bitwise AND |
+| `&` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar bitwise projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; no table-backed expression support or binary-string bit operations |
 | `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
-| `>>` | ❌ | Right shift |
+| `>>` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar right-shift projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; shift counts greater than or equal to 64 produce `0`; no table-backed expression support or binary-string bit operations |
 | `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
 | `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
 | `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
-| `<<` | ❌ | Left shift |
+| `<<` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar left-shift projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; shift counts greater than or equal to 64 produce `0`; no table-backed expression support or binary-string bit operations |
 | `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
 | `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar NULL-safe equality projection and limited `DO` expression execution |
 | `%, MOD` | 🟡 | Limited no-source/`DUAL` signed-64 scalar modulo projection and limited `DO` expression execution with `%`, infix `MOD`, and `MOD(left, right)`; no table-backed expression support |
@@ -22,7 +22,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `:=` | ❌ | Assign a value |
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, `NULL`, or descriptor-resolved `DEFAULT`; limited fixed no-op system-variable `SET` assignments; expression assignments remain unsupported |
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |
-| `^` | ❌ | Bitwise XOR |
+| `^` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar bitwise XOR projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; distinct from keyword logical `XOR`; no table-backed expression support or binary-string bit operations |
 | `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `XOR` and `OR`, `&&` is accepted with deprecation warning 1287, and limited no-source/`DUAL` scalar logical projection plus limited `DO` expression execution admit keyword `AND` only |
 | `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `BINARY` | ❌ | Cast a string to a binary string |
@@ -46,7 +46,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `RLIKE` | ❌ | Whether string matches regular expression |
 | `SOUNDS LIKE` | ❌ | Compare sounds |
 | `XOR` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `XOR` binds looser than `AND` and tighter than `OR`, propagates `NULL` for the admitted predicate subset, and has limited no-source/`DUAL` scalar logical projection plus limited `DO` expression execution support |
-| `\|` | ❌ | Bitwise OR |
-| `~` | ❌ | Bitwise inversion |
+| `\|` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar bitwise OR projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; no table-backed expression support or binary-string bit operations |
+| `~` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar bitwise inversion projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; no table-backed expression support or binary-string bit operations |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

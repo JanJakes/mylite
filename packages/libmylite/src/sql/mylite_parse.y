@@ -30,9 +30,13 @@
 %left AND.
 %right NOT.
 %left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS.
+%left BITWISE_OR.
+%left BITWISE_AND.
+%left LEFT_SHIFT RIGHT_SHIFT.
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
-%right UPLUS UMINUS.
+%left BITWISE_XOR.
+%right UPLUS UMINUS BITWISE_NOT.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
@@ -1780,6 +1784,10 @@ expression(A) ::= NOT(T) expression(B). [NOT] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
 }
+expression(A) ::= BITWISE_NOT(T) expression(B). [BITWISE_NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
+}
 expression(A) ::= expression(B) AND(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
@@ -1819,6 +1827,22 @@ expression(A) ::= expression(B) GREATER(T) expression(C). {
 expression(A) ::= expression(B) GREATER_EQUAL(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, C);
+}
+expression(A) ::= expression(B) BITWISE_OR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
+expression(A) ::= expression(B) BITWISE_AND(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_AND, C);
+}
+expression(A) ::= expression(B) LEFT_SHIFT(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT, C);
+}
+expression(A) ::= expression(B) RIGHT_SHIFT(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT, C);
 }
 expression(A) ::= expression(B) IS(T) NULL(C). [IS] {
     A = mylite_sql_parser_make_binary_expression(
@@ -1887,6 +1911,10 @@ expression(A) ::= expression(B) PERCENT(T) expression(C). {
 expression(A) ::= expression(B) MOD(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+expression(A) ::= expression(B) BITWISE_XOR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_XOR, C);
 }
 
 searched_case_when_list(A) ::= searched_case_when(B). {

@@ -19,31 +19,31 @@
 
 ## Implementation
 
-- [ ] Add the MySQL-runtime expectation artifact for the baseline `CONV()`
+- [x] Add the MySQL-runtime expectation artifact for the baseline `CONV()`
   function slice.
-- [ ] Extend lexer/parser/AST support for `CONV(expr, expr, expr)` and
+- [x] Extend lexer/parser/AST support for `CONV(expr, expr, expr)` and
   wrong-arity nodes without widening general function behavior.
-- [ ] Implement MyLite-owned top-level no-source/`DUAL`/`DO` evaluation over
+- [x] Implement MyLite-owned top-level no-source/`DUAL`/`DO` evaluation over
   the admitted integer/boolean/`NULL`, direct decimal integer literal,
   signed-64 arithmetic, and limited numeric bitwise value operand domain.
-- [ ] Preserve warning staging, native function arity diagnostics, overflow
+- [x] Preserve warning staging, native function arity diagnostics, overflow
   diagnostics, unsupported-form diagnostics, row-count behavior, and public
   result conventions.
-- [ ] Add parser and runtime tests for successful values, aliases,
+- [x] Add parser and runtime tests for successful values, aliases,
   `FROM DUAL`, `DO`, warnings, unsupported forms, file safety, independent
   handles, and catalog/schema-generation immutability.
-- [ ] Update compatibility documentation for only the admitted limited
+- [x] Update compatibility documentation for only the admitted limited
   `CONV()` subset.
 
 ## Verification
 
-- [ ] Run `packages/libmylite/tests/mysql_baseline_conv_function_expectations.sh`.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run focused parser/runtime CTest entries for `CONV()` and adjacent
+- [x] Run `packages/libmylite/tests/mysql_baseline_conv_function_expectations.sh`.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run focused parser/runtime CTest entries for `CONV()` and adjacent
   scalar-function/scalar-expression surfaces.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, MySQL 8.4.9 evidence,
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, MySQL 8.4.9 evidence,
   base parsing correctness, signed/unsigned formatting correctness, warning
   behavior, file-format safety, scope control, and compatibility-doc accuracy.
-- [ ] Commit atomically, run a subagent release-gate review, amend if needed,
+- [x] Commit atomically, run a subagent release-gate review, amend if needed,
   push `main`, and continue to the next baseline slice.

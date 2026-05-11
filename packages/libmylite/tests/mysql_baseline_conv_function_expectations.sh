@@ -18,6 +18,14 @@ run_mysql() {
             --batch --raw --binary-as-hex=1 --skip-column-names "$@"
 }
 
+run_mysql_force() {
+    sql=$1
+    shift
+    printf '%s\n' "$sql" \
+        | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
+            --batch --raw --binary-as-hex=1 --skip-column-names --force "$@" 2>/dev/null
+}
+
 run_mysql_with_headers() {
     sql=$1
     shift
@@ -43,6 +51,16 @@ expect_output() {
     shift 3
 
     output=$(run_mysql "$sql" "$@")
+    expect_value "$label" "$expected" "$output"
+}
+
+expect_output_force() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql_force "$sql" "$@")
     expect_value "$label" "$expected" "$output"
 }
 
@@ -154,6 +172,17 @@ Warning	1365	Division by 0
     "$DATABASE"
 
 expect_output \
+    "null short circuit warning staging" \
+    "NULL	NULL	NULL	0
+Warning	1365	Division by 0
+1	-1" \
+    "DO 0;
+     SELECT CONV(NULL,5 DIV 0,2),CONV(10,NULL,5 DIV 0),
+            CONV(10,5 DIV 0,NULL),@@warning_count;
+     SHOW WARNINGS; SELECT @@warning_count,ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output \
     "invalid leading digit warning staging" \
     "0	0	1	1	-1	0	0
 Warning	1292	Truncated incorrect DECIMAL value: '2'
@@ -234,6 +263,26 @@ expect_error \
     22003 \
     "BIGINT value is out of range" \
     "SELECT CONV(12,10,3037000500*3037000500);" \
+    "$DATABASE"
+
+expect_output_force \
+    "select warning before later error" \
+    "Warning	1292	Truncated incorrect DECIMAL value: '2'
+Error	1690	BIGINT value is out of range in '(3037000500 * 3037000500)'
+2	1	-1" \
+    "DO 0;
+     SELECT CONV(2,2,10),CONV(3037000500*3037000500,10,2);
+     SHOW WARNINGS; SELECT @@warning_count,@@error_count,ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output_force \
+    "do warning before later error" \
+    "Warning	1292	Truncated incorrect DECIMAL value: '2'
+Error	1690	BIGINT value is out of range in '(3037000500 * 3037000500)'
+2	1	-1" \
+    "DO 0;
+     DO CONV(2,2,10),CONV(3037000500*3037000500,10,2);
+     SHOW WARNINGS; SELECT @@warning_count,@@error_count,ROW_COUNT();" \
     "$DATABASE"
 
 accepted_but_deferred=$(run_mysql_with_headers \

@@ -14,7 +14,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `BIT_COUNT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support or binary-string bit counting |
 | `CEIL()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `CEILING()` | 🟡 | Synonym for the limited `CEIL()` subset |
-| `CONV()` | ❌ | Convert numbers between different number bases |
+| `CONV()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted signed/unsigned value envelope, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise value operands; `from_base` and `to_base` are signed-64 scalar arithmetic values with absolute range `2..36`; returns uppercase base-conversion text with MySQL signed/unsigned output behavior; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `COS()` | ❌ | Return cosine |
 | `COT()` | ❌ | Return cotangent |
 | `CRC32()` | ❌ | Compute a cyclic redundancy check value |

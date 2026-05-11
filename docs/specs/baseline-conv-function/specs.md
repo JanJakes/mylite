@@ -178,9 +178,22 @@ expression(A) ::= CONV(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR, NULL, R);
 }
-expression(A) ::= CONV(T) LPAREN function_argument_list(B) RPAREN(R). {
+expression(A) ::= CONV(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= CONV(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::=
+    CONV(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) COMMA function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR, E, R);
 }
 identifier(A) ::= CONV(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -201,8 +214,12 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    `CONV()` expression.
 2. Preserve existing native-function wrong-arity diagnostics before generic
    unsupported diagnostics.
-3. Evaluate `base_value`, `from_base`, and `to_base` once, left to right.
-4. If any argument is `NULL`, return `NULL` and preserve staged child warnings.
+3. Evaluate `base_value`, `from_base`, and `to_base` left to right, with
+   MySQL-compatible `NULL` short-circuiting: a `NULL` `base_value` returns
+   `NULL` without evaluating the base arguments, and a `NULL` `from_base`
+   returns `NULL` without evaluating `to_base`.
+4. If an evaluated argument is `NULL`, return `NULL` and preserve staged child
+   warnings from arguments actually evaluated.
 5. If either absolute base is outside `2..36`, return `NULL` and preserve
    staged child warnings without adding a warning for the invalid base.
 6. Convert non-`NULL` `base_value` to MyLite's supported decimal integer text:

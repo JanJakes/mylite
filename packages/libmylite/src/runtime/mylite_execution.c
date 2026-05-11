@@ -63,6 +63,7 @@ enum {
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
+    mysql_warning_truncated_incorrect_decimal = 1292,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
@@ -106,7 +107,8 @@ enum {
     scalar_bitwise_integer_bits = 64,
     base_conversion_binary_base = 2,
     base_conversion_octal_base = 8,
-    base_conversion_text_capacity = scalar_bitwise_integer_bits + 1,
+    base_conversion_max_base = 36,
+    base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
 };
 
 struct table_name_resolution {
@@ -635,6 +637,8 @@ struct session_scalar_cell {
     char literal_text[literal_projection_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
     size_t staged_division_by_zero_warning_count;
+    bool has_staged_truncated_decimal_warning;
+    char staged_truncated_decimal_text[integer_text_capacity];
 };
 
 struct scalar_arithmetic_value {
@@ -653,6 +657,31 @@ struct scalar_bitwise_value {
     bool is_null;
     uint64_t integer;
     size_t division_by_zero_warning_count;
+};
+
+struct conv_input_value {
+    bool is_null;
+    bool is_negative;
+    uint64_t magnitude;
+    size_t division_by_zero_warning_count;
+};
+
+struct conv_arguments {
+    struct conv_input_value input;
+    struct scalar_arithmetic_value from_base;
+    struct scalar_arithmetic_value to_base;
+};
+
+struct conv_digit_parse {
+    uint64_t value;
+    bool saw_digit;
+    bool overflowed;
+};
+
+struct conv_output_format {
+    uint64_t value;
+    unsigned int base;
+    bool signed_output;
 };
 
 struct scalar_comparison_operation {
@@ -2116,6 +2145,14 @@ static int execute_scalar_projection_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int append_scalar_projection_columns_and_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    mylite_result *result,
+    struct session_scalar_cell *cells,
+    const char **values,
+    size_t *out_column_count
+);
 static bool do_statement_has_only_scalar_projection_expressions(
     const struct mylite_sql_ast_node *statement
 );
@@ -2138,12 +2175,25 @@ static int append_select_modifier_warnings(
 static int append_found_rows_deprecation_warning(struct mylite_db *database);
 static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *database);
 static int append_sql_no_cache_deprecation_warning(struct mylite_db *database);
+static int append_session_scalar_cell_warnings(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell
+);
+static int append_session_scalar_cells_warnings(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cells,
+    size_t cell_count
+);
 static int accumulate_staged_division_by_zero_warnings(
     struct mylite_db *database,
     size_t cell_warning_count,
     size_t *total_warning_count
 );
 static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count);
+static int append_truncated_incorrect_decimal_warning(
+    struct mylite_db *database,
+    const char *value_text
+);
 static int copy_scalar_projection_column_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2242,6 +2292,73 @@ static int base_conversion_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
+);
+static int conv_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_conv_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    struct conv_arguments *out_arguments,
+    bool *out_is_null
+);
+static int set_conv_staged_division_by_zero_count(
+    struct mylite_db *database,
+    const struct conv_arguments *arguments,
+    bool include_from_base,
+    bool include_to_base,
+    struct session_scalar_cell *cell
+);
+static unsigned int absolute_conv_base(int64_t base);
+static int evaluate_conv_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct conv_input_value *out_value
+);
+static int evaluate_conv_direct_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct conv_input_value *out_value,
+    bool *out_handled
+);
+static int evaluate_conv_base_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
+static int convert_conv_value(
+    struct mylite_db *database,
+    const struct conv_input_value *input,
+    unsigned int from_base,
+    bool signed_input,
+    struct session_scalar_cell *cell,
+    uint64_t *out_value
+);
+static int parse_conv_input_digits(
+    const char *input_text,
+    unsigned int from_base,
+    uint64_t limit,
+    struct conv_digit_parse *out_parse
+);
+static int format_conv_input_text(
+    struct mylite_db *database,
+    const struct conv_input_value *input,
+    char *buffer,
+    size_t buffer_size
+);
+static int stage_conv_truncated_decimal_warning(
+    struct mylite_db *database,
+    const char *input_text,
+    struct session_scalar_cell *cell
+);
+static int format_conv_output_value(
+    struct mylite_db *database,
+    struct conv_output_format format,
+    char *buffer,
+    size_t buffer_size
 );
 static int format_base_conversion_value(
     struct mylite_db *database,
@@ -4782,6 +4899,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+    case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6570,8 +6689,10 @@ static int execute_do_statement(
     const struct mylite_sql_ast_node *expression_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *expression = child_at(expression_list, 0U);
     const char *argument_count_error_function = NULL;
-    size_t staged_division_by_zero_warning_count = 0U;
+    struct session_scalar_cell *cells = NULL;
     mylite_result *result = NULL;
+    size_t expression_count = mylite_sql_ast_node_child_count(expression_list);
+    size_t expression_index = 0U;
     int rc = MYLITE_OK;
 
     argument_count_error_function = do_statement_argument_count_error_function(statement);
@@ -6586,7 +6707,7 @@ static int execute_do_statement(
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
-            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT() and "
+            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV() and "
             "CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
@@ -6597,24 +6718,34 @@ static int execute_do_statement(
         set_nomem_error(database);
         return rc;
     }
+    if (expression_count > SIZE_MAX / sizeof(*cells)) {
+        mylite_result_free(result);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    cells = (struct session_scalar_cell *)calloc(expression_count, sizeof(*cells));
+    if (cells == NULL) {
+        mylite_result_free(result);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
 
     rc = append_session_scalar_do_warnings(database, statement);
     while (rc == MYLITE_OK && expression != NULL) {
-        struct session_scalar_cell cell = {0};
-
-        rc = session_scalar_value(database, expression, &cell);
+        rc = session_scalar_value(database, expression, &cells[expression_index]);
         if (rc == MYLITE_OK) {
-            rc = accumulate_staged_division_by_zero_warnings(
-                database,
-                cell.staged_division_by_zero_warning_count,
-                &staged_division_by_zero_warning_count
-            );
+            ++expression_index;
+            expression = expression->next_sibling;
         }
-        expression = expression->next_sibling;
     }
-    if (rc == MYLITE_OK) {
-        rc = append_division_by_zero_warnings(database, staged_division_by_zero_warning_count);
+    if (rc == MYLITE_OK || expression_index != 0U) {
+        int warning_rc = append_session_scalar_cells_warnings(database, cells, expression_index);
+
+        if (warning_rc != MYLITE_OK) {
+            rc = warning_rc;
+        }
     }
+    free(cells);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -6688,7 +6819,7 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -8846,6 +8977,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+    case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -15937,8 +16070,7 @@ static int execute_scalar_projection_select_statement(
     const char **values = NULL;
     mylite_result *result = NULL;
     size_t column_count = mylite_sql_ast_node_child_count(select_list);
-    size_t column_index = 0U;
-    size_t staged_division_by_zero_warning_count = 0U;
+    size_t evaluated_column_count = 0U;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -15968,6 +16100,51 @@ static int execute_scalar_projection_select_statement(
     if (rc == MYLITE_OK) {
         rc = append_session_scalar_select_warnings(database, select_list);
     }
+    if (rc == MYLITE_OK) {
+        rc = append_scalar_projection_columns_and_values(
+            database,
+            select_item,
+            result,
+            cells,
+            values,
+            &evaluated_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK || evaluated_column_count != 0U) {
+        int warning_rc =
+            append_session_scalar_cells_warnings(database, cells, evaluated_column_count);
+
+        if (warning_rc != MYLITE_OK) {
+            rc = warning_rc;
+        }
+    }
+    free((void *)values);
+    free(cells);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_scalar_projection_columns_and_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    mylite_result *result,
+    struct session_scalar_cell *cells,
+    const char **values,
+    size_t *out_column_count
+) {
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
     while (rc == MYLITE_OK && select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
         const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
@@ -15990,32 +16167,13 @@ static int execute_scalar_projection_select_statement(
         }
         if (rc == MYLITE_OK) {
             values[column_index] = cells[column_index].value;
-            rc = accumulate_staged_division_by_zero_warnings(
-                database,
-                cells[column_index].staged_division_by_zero_warning_count,
-                &staged_division_by_zero_warning_count
-            );
+            ++column_index;
+            select_item = select_item->next_sibling;
         }
-        ++column_index;
-        select_item = select_item->next_sibling;
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_text_row(result, values);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_division_by_zero_warnings(database, staged_division_by_zero_warning_count);
-    }
-    free((void *)values);
-    free(cells);
-    if (rc != MYLITE_OK) {
-        mylite_result_free(result);
-        return rc;
     }
 
-    return finish_successful_result(database, result, out_result);
+    *out_column_count = column_index;
+    return rc;
 }
 
 static int copy_scalar_projection_column_name(
@@ -16224,6 +16382,44 @@ static int accumulate_staged_division_by_zero_warnings(
     return MYLITE_OK;
 }
 
+static int append_session_scalar_cell_warnings(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell
+) {
+    int rc = MYLITE_OK;
+
+    if (cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (cell->has_staged_truncated_decimal_warning) {
+        rc = append_truncated_incorrect_decimal_warning(
+            database,
+            cell->staged_truncated_decimal_text
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            append_division_by_zero_warnings(database, cell->staged_division_by_zero_warning_count);
+    }
+    return rc;
+}
+
+static int append_session_scalar_cells_warnings(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cells,
+    size_t cell_count
+) {
+    int rc = MYLITE_OK;
+
+    if (cells == NULL && cell_count != 0U) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < cell_count; ++index) {
+        rc = append_session_scalar_cell_warnings(database, &cells[index]);
+    }
+    return rc;
+}
+
 static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count) {
     int rc = MYLITE_OK;
 
@@ -16239,6 +16435,36 @@ static int append_division_by_zero_warnings(struct mylite_db *database, size_t w
         }
     }
 
+    return rc;
+}
+
+static int append_truncated_incorrect_decimal_warning(
+    struct mylite_db *database,
+    const char *value_text
+) {
+    char message[sizeof("Truncated incorrect DECIMAL value: ''") + integer_text_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (value_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written =
+        snprintf(message, sizeof(message), "Truncated incorrect DECIMAL value: '%s'", value_text);
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format CONV() warning");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_decimal,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
     return rc;
 }
 
@@ -16361,6 +16587,8 @@ static const char *argument_count_error_node_function_name(
         return "BIN";
     case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
         return "OCT";
+    case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
+        return "CONV";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
     default:
@@ -16480,6 +16708,8 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+        return conv_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
         return bit_count_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
@@ -17332,6 +17562,501 @@ static int base_conversion_function_value(
     return rc;
 }
 
+static int conv_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct conv_arguments arguments;
+    struct conv_output_format output = {0};
+    uint64_t converted = 0U;
+    unsigned int input_base = 0U;
+    unsigned int output_base = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONV_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 3U) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_conv_arguments(database, expression, out_cell, &arguments, &is_null);
+    if (rc != MYLITE_OK || is_null) {
+        return rc;
+    }
+
+    input_base = absolute_conv_base(arguments.from_base.integer);
+    output_base = absolute_conv_base(arguments.to_base.integer);
+    if (input_base < base_conversion_binary_base || input_base > base_conversion_max_base ||
+        output_base < base_conversion_binary_base || output_base > base_conversion_max_base) {
+        return MYLITE_OK;
+    }
+
+    rc = convert_conv_value(
+        database,
+        &arguments.input,
+        input_base,
+        arguments.from_base.integer < 0,
+        out_cell,
+        &converted
+    );
+    if (rc == MYLITE_OK) {
+        output.value = converted;
+        output.base = output_base;
+        output.signed_output = arguments.to_base.integer < 0;
+        rc = format_conv_output_value(
+            database,
+            output,
+            out_cell->base_conversion_text,
+            sizeof(out_cell->base_conversion_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->base_conversion_text;
+    }
+    return rc;
+}
+
+static int evaluate_conv_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    struct conv_arguments *out_arguments,
+    bool *out_is_null
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || cell == NULL || out_arguments == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_arguments->input = (struct conv_input_value){
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    out_arguments->from_base = (struct scalar_arithmetic_value){
+        .is_null = false,
+        .integer = 0,
+        .division_by_zero_warning_count = 0U,
+    };
+    out_arguments->to_base = (struct scalar_arithmetic_value){
+        .is_null = false,
+        .integer = 0,
+        .division_by_zero_warning_count = 0U,
+    };
+    *out_is_null = false;
+
+    rc = evaluate_conv_value_operand(database, child_at(expression, 0U), &out_arguments->input);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_arguments->input.is_null) {
+        rc = set_conv_staged_division_by_zero_count(database, out_arguments, false, false, cell);
+        *out_is_null = true;
+        return rc;
+    }
+
+    rc = evaluate_conv_base_operand(database, child_at(expression, 1U), &out_arguments->from_base);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_arguments->from_base.is_null) {
+        rc = set_conv_staged_division_by_zero_count(database, out_arguments, true, false, cell);
+        *out_is_null = true;
+        return rc;
+    }
+
+    rc = evaluate_conv_base_operand(database, child_at(expression, 2U), &out_arguments->to_base);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_arguments->to_base.is_null) {
+        rc = set_conv_staged_division_by_zero_count(database, out_arguments, true, true, cell);
+        *out_is_null = true;
+        return rc;
+    }
+
+    return set_conv_staged_division_by_zero_count(database, out_arguments, true, true, cell);
+}
+
+static int set_conv_staged_division_by_zero_count(
+    struct mylite_db *database,
+    const struct conv_arguments *arguments,
+    bool include_from_base,
+    bool include_to_base,
+    struct session_scalar_cell *cell
+) {
+    size_t warning_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = accumulate_staged_division_by_zero_warnings(
+        database,
+        arguments->input.division_by_zero_warning_count,
+        &warning_count
+    );
+    if (rc == MYLITE_OK && include_from_base) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            arguments->from_base.division_by_zero_warning_count,
+            &warning_count
+        );
+    }
+    if (rc == MYLITE_OK && include_to_base) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            arguments->to_base.division_by_zero_warning_count,
+            &warning_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        cell->staged_division_by_zero_warning_count = warning_count;
+    }
+    return rc;
+}
+
+static unsigned int absolute_conv_base(int64_t base) {
+    if (base == INT64_MIN) {
+        return base_conversion_max_base + 1U;
+    }
+    if (base < 0) {
+        return (unsigned int)(-base);
+    }
+    return (unsigned int)base;
+}
+
+static int evaluate_conv_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct conv_input_value *out_value
+) {
+    struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct conv_input_value){.is_null = false, .is_negative = false, .magnitude = 0U};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_conv_direct_value_operand(database, expression, out_value, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    if (is_scalar_bitwise_projection_expression(expression)) {
+        struct scalar_bitwise_value bitwise = {.is_null = false, .integer = 0U};
+
+        rc = evaluate_scalar_bitwise_expression(database, expression, &bitwise);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_value->is_null = bitwise.is_null;
+        out_value->magnitude = bitwise.integer;
+        out_value->division_by_zero_warning_count = bitwise.division_by_zero_warning_count;
+        return MYLITE_OK;
+    }
+    if (!is_scalar_arithmetic_projection_expression(expression)) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_scalar_arithmetic_expression(database, expression, &arithmetic);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = arithmetic.is_null;
+    out_value->division_by_zero_warning_count = arithmetic.division_by_zero_warning_count;
+    if (arithmetic.is_null) {
+        return MYLITE_OK;
+    }
+    if (arithmetic.integer < 0) {
+        out_value->is_negative = true;
+        out_value->magnitude = arithmetic.integer == INT64_MIN ? ((uint64_t)INT64_MAX + 1U)
+                                                               : (uint64_t)(-arithmetic.integer);
+    } else {
+        out_value->magnitude = (uint64_t)arithmetic.integer;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_conv_direct_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct conv_input_value *out_value,
+    bool *out_handled
+) {
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return MYLITE_OK;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        has_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_value->is_null = true;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        out_value->magnitude = 1U;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        out_value->magnitude = 0U;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (is_negative && magnitude > int64_min_magnitude) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    out_value->is_negative = false;
+    if (is_negative && magnitude != 0U) {
+        out_value->is_negative = true;
+    }
+    out_value->magnitude = magnitude;
+    return MYLITE_OK;
+}
+
+static int evaluate_conv_base_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression == NULL || !is_scalar_arithmetic_projection_expression(expression)) {
+        set_base_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    return evaluate_scalar_arithmetic_expression(database, expression, out_value);
+}
+
+static int convert_conv_value(
+    struct mylite_db *database,
+    const struct conv_input_value *input,
+    unsigned int from_base,
+    bool signed_input,
+    struct session_scalar_cell *cell,
+    uint64_t *out_value
+) {
+    uint64_t limit = UINT64_MAX;
+    struct conv_digit_parse parse = {0};
+    char input_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (input == NULL || cell == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (signed_input) {
+        limit = (uint64_t)INT64_MAX;
+        if (input->is_negative) {
+            limit = (uint64_t)INT64_MAX + 1U;
+        }
+    }
+    rc = format_conv_input_text(database, input, input_text, sizeof(input_text));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = parse_conv_input_digits(input_text, from_base, limit, &parse);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!parse.saw_digit || parse.overflowed) {
+        rc = stage_conv_truncated_decimal_warning(database, input_text, cell);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (!parse.saw_digit) {
+        *out_value = 0U;
+    } else if (input->is_negative) {
+        *out_value = 0U - parse.value;
+    } else {
+        *out_value = parse.value;
+    }
+    return MYLITE_OK;
+}
+
+static int parse_conv_input_digits(
+    const char *input_text,
+    unsigned int from_base,
+    uint64_t limit,
+    struct conv_digit_parse *out_parse
+) {
+    struct conv_digit_parse parse = {0};
+    size_t offset = 0U;
+
+    if (input_text == NULL || out_parse == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (input_text[offset] == '-') {
+        ++offset;
+    }
+    while (input_text[offset] != '\0') {
+        unsigned char byte = (unsigned char)input_text[offset];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            break;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (digit >= (uint64_t)from_base) {
+            break;
+        }
+        parse.saw_digit = true;
+        if (!parse.overflowed) {
+            if (parse.value > (limit - digit) / (uint64_t)from_base) {
+                parse.value = limit;
+                parse.overflowed = true;
+            } else {
+                parse.value = (parse.value * (uint64_t)from_base) + digit;
+            }
+        }
+        ++offset;
+    }
+    *out_parse = parse;
+    return MYLITE_OK;
+}
+
+static int format_conv_input_text(
+    struct mylite_db *database,
+    const struct conv_input_value *input,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = 0;
+
+    if (input == NULL || buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    if (!input->is_negative) {
+        return format_uint64(database, input->magnitude, buffer, buffer_size);
+    }
+    written = snprintf(buffer, buffer_size, "-%" PRIu64, input->magnitude);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format CONV() input value");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int stage_conv_truncated_decimal_warning(
+    struct mylite_db *database,
+    const char *input_text,
+    struct session_scalar_cell *cell
+) {
+    int written = 0;
+
+    if (input_text == NULL || cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(
+        cell->staged_truncated_decimal_text,
+        sizeof(cell->staged_truncated_decimal_text),
+        "%s",
+        input_text
+    );
+    if (written < 0 || (size_t)written >= sizeof(cell->staged_truncated_decimal_text)) {
+        set_runtime_error(database, "failed to stage CONV() warning");
+        return MYLITE_ERROR;
+    }
+    cell->has_staged_truncated_decimal_warning = true;
+    return MYLITE_OK;
+}
+
+static int format_conv_output_value(
+    struct mylite_db *database,
+    struct conv_output_format format,
+    char *buffer,
+    size_t buffer_size
+) {
+    uint64_t magnitude = format.value;
+    bool is_negative = false;
+    int rc = MYLITE_OK;
+
+    if (buffer == NULL || buffer_size == 0U || format.base < base_conversion_binary_base ||
+        format.base > base_conversion_max_base) {
+        set_runtime_error(database, "failed to format CONV() value");
+        return MYLITE_ERROR;
+    }
+    if (format.signed_output && format.value > (uint64_t)INT64_MAX) {
+        is_negative = true;
+        magnitude = 0U - format.value;
+    }
+    if (is_negative) {
+        if (buffer_size < 2U) {
+            set_runtime_error(database, "failed to format CONV() value");
+            return MYLITE_ERROR;
+        }
+        buffer[0] = '-';
+        rc = format_base_conversion_value(
+            database,
+            magnitude,
+            format.base,
+            buffer + 1U,
+            buffer_size - 1U
+        );
+    } else {
+        rc = format_base_conversion_value(database, magnitude, format.base, buffer, buffer_size);
+    }
+    return rc;
+}
+
 static int format_base_conversion_value(
     struct mylite_db *database,
     uint64_t value,
@@ -17342,8 +18067,8 @@ static int format_base_conversion_value(
     char reversed[base_conversion_text_capacity];
     size_t digit_count = 0U;
 
-    if (buffer == NULL || buffer_size == 0U ||
-        (base != base_conversion_binary_base && base != base_conversion_octal_base)) {
+    if (buffer == NULL || buffer_size == 0U || base < base_conversion_binary_base ||
+        base > base_conversion_max_base) {
         set_runtime_error(database, "failed to format base conversion value");
         return MYLITE_ERROR;
     }
@@ -17364,7 +18089,9 @@ static int format_base_conversion_value(
             set_runtime_error(database, "failed to format base conversion value");
             return MYLITE_ERROR;
         }
-        reversed[digit_count] = (char)('0' + digit);
+        reversed[digit_count] = digit < (unsigned int)decimal_base
+                                    ? (char)('0' + digit)
+                                    : (char)('A' + digit - (unsigned int)decimal_base);
         ++digit_count;
         value /= base;
     }
@@ -20005,7 +20732,8 @@ static void set_base_conversion_unsupported_error(struct mylite_db *database) {
         database,
         "BIN()/OCT() support only top-level no-source SELECT, FROM DUAL SELECT, and DO "
         "numeric conversion over integer, boolean, NULL, signed 64-bit scalar arithmetic, "
-        "and limited numeric bitwise operands"
+        "and limited numeric bitwise operands; CONV() support is limited to the same "
+        "top-level scalar contexts, with signed 64-bit scalar arithmetic base arguments"
     );
 }
 
@@ -22188,6 +22916,16 @@ static bool is_base_conversion_projection_expression(const struct mylite_sql_ast
     if (expression == NULL) {
         return false;
     }
+    if (expression->kind == MYLITE_SQL_AST_CONV_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 3U) {
+            return false;
+        }
+        if (child_at(expression, 0U) == NULL || child_at(expression, 1U) == NULL ||
+            child_at(expression, 2U) == NULL) {
+            return false;
+        }
+        return true;
+    }
     if (expression->kind != MYLITE_SQL_AST_BIN_FUNCTION &&
         expression->kind != MYLITE_SQL_AST_OCT_FUNCTION) {
         return false;
@@ -22752,6 +23490,7 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_ROUND_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
+    case MYLITE_SQL_AST_CONV_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
         return true;
     default:

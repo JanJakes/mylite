@@ -3639,6 +3639,7 @@ static bool map_keyword_token(
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IFNULL", MYLITE_SQL_PARSE_IFNULL},
         {"COALESCE", MYLITE_SQL_PARSE_COALESCE},
+        {"CONV", MYLITE_SQL_PARSE_CONV},
         {"NULLIF", MYLITE_SQL_PARSE_NULLIF},
         {"ISNULL", MYLITE_SQL_PARSE_ISNULL},
         {"CASE", MYLITE_SQL_PARSE_CASE},

@@ -358,6 +358,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"CONTAINS", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"CONTEXT", 0U},
         {"CONTINUE", MYLITE_SQL_KEYWORD_RESERVED},
+        {"CONV", 0U},
         {"CONVERT", MYLITE_SQL_KEYWORD_RESERVED},
         {"COUNT", 0U},
         {"CPU", 0U},

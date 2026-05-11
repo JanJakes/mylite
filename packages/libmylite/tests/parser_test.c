@@ -2360,12 +2360,16 @@ static int test_base_conversion_functions(void) {
         expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "base conversion from dual");
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT BIN (1), (OCT(1)), BIN(IFNULL(NULL,7));", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "SELECT BIN (1), (OCT(1)), CONV(1010,2,10), BIN(IFNULL(NULL,7));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     select_list = child_at(child_at(result.root, 0U), 0U);
     first_expression = child_at(child_at(select_list, 0U), 0U);
     parenthesized = child_at(child_at(select_list, 1U), 0U);
     third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_BIN_FUNCTION, "spaced bin");
     failures += expect_span_text(first_expression, "BIN (1)", "spaced bin span");
     failures +=
@@ -2373,9 +2377,26 @@ static int test_base_conversion_functions(void) {
     failures +=
         expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_OCT_FUNCTION, "wrapped oct");
     failures += expect_span_text(parenthesized, "(OCT(1))", "parenthesized oct span");
-    failures += expect_node(third_expression, MYLITE_SQL_AST_BIN_FUNCTION, "nested bin value");
-    failures += expect_node(
+    failures += expect_node(third_expression, MYLITE_SQL_AST_CONV_FUNCTION, "conv function");
+    failures += expect_child_count(third_expression, 3U, "conv argument count");
+    failures += expect_literal(
         child_at(third_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "conv value"
+    );
+    failures += expect_literal(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "conv from base"
+    );
+    failures += expect_literal(
+        child_at(third_expression, 2U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "conv to base"
+    );
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_BIN_FUNCTION, "nested bin value");
+    failures += expect_node(
+        child_at(fourth_expression, 0U),
         MYLITE_SQL_AST_IFNULL_FUNCTION,
         "ifnull bin value"
     );
@@ -2413,8 +2434,41 @@ static int test_base_conversion_functions(void) {
         "two oct argument count error"
     );
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONV();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR,
+        "empty conv argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONV(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR,
+        "one conv argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONV(1,10);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR,
+        "two conv argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONV(1,10,2,3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR,
+        "four conv argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE bin (oct INT, bin INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures +=
+        parse_sql("CREATE TABLE bin (oct INT, bin INT, conv INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures +=
         expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "base conversion identifiers");

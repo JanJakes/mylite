@@ -252,6 +252,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
     size_t high = 0U;
 
     static const struct mylite_keyword_entry keywords[] = {
+        {"ABS", 0U},
         {"ACCESSIBLE", MYLITE_SQL_KEYWORD_RESERVED},
         {"ACCOUNT", 0U},
         {"ACTION", 0U},

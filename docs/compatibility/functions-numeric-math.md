@@ -4,7 +4,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |
-| `ABS()` | ❌ | Return absolute value |
+| `ABS()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; direct decimal integer magnitudes are admitted within the unsigned-64 envelope except `ABS(-9223372036854775808)` reports MySQL overflow; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `ACOS()` | ❌ | Return arc cosine |
 | `ASIN()` | ❌ | Return arc sine |
 | `ATAN()` | ❌ | Return arc tangent |

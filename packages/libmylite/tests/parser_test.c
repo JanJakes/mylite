@@ -44,6 +44,7 @@ static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_pi_function(void);
 static int test_sqrt_function(void);
+static int test_angle_conversion_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
@@ -185,6 +186,7 @@ int main(void) {
     failures += test_bit_count_function();
     failures += test_pi_function();
     failures += test_sqrt_function();
+    failures += test_angle_conversion_functions();
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
@@ -2468,6 +2470,107 @@ static int test_sqrt_function(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare sqrt identifier");
     failures += expect_span_text(first_expression, "SQRT", "bare sqrt span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_angle_conversion_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DEGREES(1), Degrees(2), radians(180) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_DEGREES_FUNCTION, "degrees function");
+    failures += expect_span_text(first_expression, "DEGREES(1)", "degrees function span");
+    failures += expect_child_count(first_expression, 1U, "degrees argument count");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "degrees argument");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_DEGREES_FUNCTION, "mixed degrees function");
+    failures += expect_span_text(second_expression, "Degrees(2)", "mixed degrees span");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_RADIANS_FUNCTION, "lower radians function");
+    failures += expect_span_text(third_expression, "radians(180)", "lower radians span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "angle from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DEGREES (2), (RADIANS(NULL));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_DEGREES_FUNCTION, "spaced degrees");
+    failures += expect_span_text(first_expression, "DEGREES (2)", "spaced degrees span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped radians");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_RADIANS_FUNCTION, "radians child");
+    failures += expect_span_text(parenthesized, "(RADIANS(NULL))", "parenthesized radians span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DEGREES(), DEGREES(1, 2), RADIANS(), RADIANS(1, 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR,
+        "degrees empty argument error"
+    );
+    failures += expect_child_count(first_expression, 0U, "degrees empty error child count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR,
+        "degrees multiple argument error"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "degrees multiple argument count");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR,
+        "radians empty argument error"
+    );
+    failures += expect_child_count(third_expression, 0U, "radians empty error child count");
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR,
+        "radians multiple argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE degrees (radians INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "angle identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DEGREES, RADIANS;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare degrees");
+    failures += expect_span_text(first_expression, "DEGREES", "bare degrees span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare radians");
+    failures += expect_span_text(second_expression, "RADIANS", "bare radians span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

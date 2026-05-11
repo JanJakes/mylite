@@ -72,6 +72,13 @@ establish these expectations for this slice:
   example `DEGREES(-18446744073709551615)` returns
   `-1.0569205811815205e21` and `RADIANS(-18446744073709551615)` returns
   `-3.2195642035898323e17`;
+- MySQL's visible double text uses scientific notation for integer-valued
+  double results at large magnitudes, including examples such as
+  `DEGREES(100000000000000)` returning `5.729577951308232e15`,
+  `RADIANS(57295779513082320)` returning `1e15`, and
+  `RADIANS(548826014839375280)` returning `9.578820979546356e15`, while
+  nearby non-integer results such as `RADIANS(100000000000000000)` return fixed
+  text `1745329251994329.5`;
 - bitwise child operands use the existing unsigned 64-bit numeric bitwise
   result, for example `DEGREES(~0)` returns `1.0569205811815205e21` and
   `RADIANS(~0)` returns `3.2195642035898323e17`;
@@ -236,14 +243,17 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    result representation, shift behavior, warning staging, and overflow
    behavior for evaluated children.
 9. Convert the admitted integer-domain value through a double:
-   `DEGREES(value)` computes `value * 180 / pi`, and `RADIANS(value)` computes
-   `value * pi / 180`. Use a `pi` value consistent with the host C math library
-   double `acos(-1.0)` result.
+   `DEGREES(value)` computes `value * (180 / pi)`, and `RADIANS(value)`
+   computes `value * (pi / 180)`. Use a `pi` value consistent with the host C
+   math library double `acos(-1.0)` result.
 10. Format exact zero as decimal integer text `0`. Format all other non-`NULL`
     results as the shortest decimal string that round-trips back to the
-    computed double value, with at most 17 significant digits. This matches the
-    observed MySQL 8.4.9 text for the admitted integer and bitwise examples
-    while avoiding a broader approximate-number type system.
+    computed double value, with at most 17 significant digits. For
+    integer-valued double results with absolute value at least `1e15`, use the
+    shortest round-tripping scientific form and normalize the exponent without
+    `+` or leading zeroes. This matches the observed MySQL 8.4.9 text for the
+    admitted integer and bitwise examples while avoiding a broader
+    approximate-number type system.
 11. Append staged division-by-zero warnings after scalar select-item or `DO`
     expression evaluation through the existing scalar warning path.
 

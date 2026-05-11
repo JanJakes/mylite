@@ -110,10 +110,14 @@ enum {
     base_conversion_octal_base = 8,
     base_conversion_max_base = 36,
     base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
-    sqrt_max_significant_digits = 17,
+    double_text_max_significant_digits = 17,
+    double_text_capacity = 32,
+    double_format_error_capacity = 80,
 };
 
 static const char scalar_pi_text[] = "3.141593";
+static const double angle_conversion_half_turn_degrees = 180.0;
+static const double double_scientific_integer_threshold = 1.0e15;
 
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
@@ -640,7 +644,7 @@ struct session_scalar_cell {
     char integer_text[integer_text_capacity];
     char literal_text[literal_projection_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
-    char sqrt_text[integer_text_capacity];
+    char double_text[double_text_capacity];
     size_t staged_division_by_zero_warning_count;
     bool has_staged_truncated_decimal_warning;
     char staged_truncated_decimal_text[integer_text_capacity];
@@ -671,7 +675,7 @@ struct conv_input_value {
     size_t division_by_zero_warning_count;
 };
 
-struct sqrt_input_value {
+struct approximate_numeric_input_value {
     bool is_null;
     bool is_negative;
     uint64_t magnitude;
@@ -2641,23 +2645,54 @@ static int sqrt_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-static int evaluate_sqrt_operand(
+static int angle_conversion_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct sqrt_input_value *out_value
+    struct session_scalar_cell *out_cell
 );
-static int evaluate_sqrt_direct_value_operand(
+static int evaluate_approximate_numeric_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct sqrt_input_value *out_value,
+    struct approximate_numeric_input_value *out_value,
+    void (*set_unsupported_error)(struct mylite_db *)
+);
+static int evaluate_approximate_numeric_direct_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct approximate_numeric_input_value *out_value,
+    void (*set_unsupported_error)(struct mylite_db *),
     bool *out_handled
 );
-static int format_sqrt_value(
+static int format_double_text(
     struct mylite_db *database,
-    uint64_t magnitude,
+    double value,
+    const char *function_name,
     char *buffer,
     size_t buffer_size
 );
+static int copy_normalized_double_text(
+    struct mylite_db *database,
+    const char *candidate,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+);
+static bool should_format_scientific_integer_double(double value);
+static int format_scientific_double_text(
+    struct mylite_db *database,
+    double value,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+);
+static int copy_normalized_scientific_double_text(
+    struct mylite_db *database,
+    const char *candidate,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+);
+static void set_double_format_error(struct mylite_db *database, const char *function_name);
 static int format_scalar_division_value(
     struct mylite_db *database,
     int64_t numerator,
@@ -2777,6 +2812,7 @@ static void set_abs_unsupported_error(struct mylite_db *database);
 static void set_sign_unsupported_error(struct mylite_db *database);
 static void set_rounding_unsupported_error(struct mylite_db *database);
 static void set_sqrt_unsupported_error(struct mylite_db *database);
+static void set_angle_conversion_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
@@ -3067,6 +3103,7 @@ static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expre
 static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -4945,6 +4982,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+    case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
+    case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6751,7 +6792,8 @@ static int execute_do_statement(
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
-            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT() "
+            "predicates, limited numeric "
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
@@ -6867,8 +6909,8 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/CEIL()/CEILING()/FLOOR()/"
-            "ROUND()"
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
+            "CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -9032,6 +9074,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+    case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
+    case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16113,7 +16159,9 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         return rc;
     }
     if (!text_equals_ascii_case_insensitive(column_name, "pi") &&
-        !text_equals_ascii_case_insensitive(column_name, "sqrt")) {
+        !text_equals_ascii_case_insensitive(column_name, "sqrt") &&
+        !text_equals_ascii_case_insensitive(column_name, "degrees") &&
+        !text_equals_ascii_case_insensitive(column_name, "radians")) {
         return MYLITE_OK;
     }
 
@@ -16658,6 +16706,10 @@ static const char *argument_count_error_node_function_name(
         return "PI";
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
         return "SQRT";
+    case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
+        return "DEGREES";
+    case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
+        return "RADIANS";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -16807,6 +16859,9 @@ static int session_scalar_value(
         return rounding_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SQRT_FUNCTION:
         return sqrt_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
+        return angle_conversion_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
@@ -17621,12 +17676,14 @@ static int sqrt_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    struct sqrt_input_value value = {
+    struct approximate_numeric_input_value value = {
         .is_null = false,
         .is_negative = false,
         .magnitude = 0U,
         .division_by_zero_warning_count = 0U,
     };
+    double result = 0.0;
+    uint64_t integer_result = 0U;
     int rc = MYLITE_OK;
 
     if (out_cell == NULL) {
@@ -17639,7 +17696,12 @@ static int sqrt_function_value(
         return MYLITE_ERROR;
     }
 
-    rc = evaluate_sqrt_operand(database, child_at(expression, 0U), &value);
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_sqrt_unsupported_error
+    );
     if (rc != MYLITE_OK || value.is_null || value.is_negative) {
         if (rc == MYLITE_OK) {
             out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
@@ -17647,39 +17709,130 @@ static int sqrt_function_value(
         return rc;
     }
 
-    rc = format_sqrt_value(
-        database,
-        value.magnitude,
-        out_cell->sqrt_text,
-        sizeof(out_cell->sqrt_text)
-    );
+    result = sqrt((double)value.magnitude);
+    integer_result = (uint64_t)result;
+    if ((double)integer_result == result) {
+        rc = format_uint64(
+            database,
+            integer_result,
+            out_cell->double_text,
+            sizeof(out_cell->double_text)
+        );
+    } else {
+        rc = format_double_text(
+            database,
+            result,
+            "SQRT",
+            out_cell->double_text,
+            sizeof(out_cell->double_text)
+        );
+    }
     if (rc == MYLITE_OK) {
-        out_cell->value = out_cell->sqrt_text;
+        out_cell->value = out_cell->double_text;
         out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     }
     return rc;
 }
 
-static int evaluate_sqrt_operand(
+static int angle_conversion_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct sqrt_input_value *out_value
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    bool is_degrees = false;
+    const char *function_name = NULL;
+    double input = 0.0;
+    double output = 0.0;
+    double pi = acos(-1.0);
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_DEGREES_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_RADIANS_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_angle_conversion_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    is_degrees = expression->kind == MYLITE_SQL_AST_DEGREES_FUNCTION;
+    if (is_degrees) {
+        function_name = "DEGREES";
+    } else {
+        function_name = "RADIANS";
+    }
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_angle_conversion_unsupported_error
+    );
+    if (rc != MYLITE_OK || value.is_null) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    input = (double)value.magnitude;
+    if (value.is_negative) {
+        input = -input;
+    }
+    if (is_degrees) {
+        output = input * (angle_conversion_half_turn_degrees / pi);
+    } else {
+        output = input * (pi / angle_conversion_half_turn_degrees);
+    }
+    rc = format_double_text(
+        database,
+        output,
+        function_name,
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->double_text;
+        out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+    }
+    return rc;
+}
+
+static int evaluate_approximate_numeric_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct approximate_numeric_input_value *out_value,
+    void (*set_unsupported_error)(struct mylite_db *)
 ) {
     struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
     bool handled = false;
     int rc = MYLITE_OK;
 
-    if (out_value == NULL) {
+    if (out_value == NULL || set_unsupported_error == NULL) {
         return MYLITE_MISUSE;
     }
-    *out_value = (struct sqrt_input_value){.is_null = false, .is_negative = false, .magnitude = 0U};
+    *out_value = (struct approximate_numeric_input_value){.is_null = false, .is_negative = false};
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
-        set_sqrt_unsupported_error(database);
+        set_unsupported_error(database);
         return MYLITE_ERROR;
     }
 
-    rc = evaluate_sqrt_direct_value_operand(database, expression, out_value, &handled);
+    rc = evaluate_approximate_numeric_direct_value_operand(
+        database,
+        expression,
+        out_value,
+        set_unsupported_error,
+        &handled
+    );
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
@@ -17696,7 +17849,7 @@ static int evaluate_sqrt_operand(
         return MYLITE_OK;
     }
     if (!is_scalar_arithmetic_projection_expression(expression)) {
-        set_sqrt_unsupported_error(database);
+        set_unsupported_error(database);
         return MYLITE_ERROR;
     }
 
@@ -17719,10 +17872,11 @@ static int evaluate_sqrt_operand(
     return MYLITE_OK;
 }
 
-static int evaluate_sqrt_direct_value_operand(
+static int evaluate_approximate_numeric_direct_value_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct sqrt_input_value *out_value,
+    struct approximate_numeric_input_value *out_value,
+    void (*set_unsupported_error)(struct mylite_db *),
     bool *out_handled
 ) {
     const struct mylite_sql_ast_node *literal = expression;
@@ -17731,7 +17885,7 @@ static int evaluate_sqrt_direct_value_operand(
     bool has_sign = false;
     uint64_t magnitude = 0U;
 
-    if (out_value == NULL || out_handled == NULL) {
+    if (out_value == NULL || set_unsupported_error == NULL || out_handled == NULL) {
         return MYLITE_MISUSE;
     }
     *out_handled = false;
@@ -17779,7 +17933,7 @@ static int evaluate_sqrt_direct_value_operand(
     *out_handled = true;
 
     if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
-        set_sqrt_unsupported_error(database);
+        set_unsupported_error(database);
         return MYLITE_ERROR;
     }
     out_value->is_negative = false;
@@ -17790,45 +17944,210 @@ static int evaluate_sqrt_direct_value_operand(
     return MYLITE_OK;
 }
 
-static int format_sqrt_value(
+static int format_double_text(
     struct mylite_db *database,
-    uint64_t magnitude,
+    double value,
+    const char *function_name,
     char *buffer,
     size_t buffer_size
 ) {
-    double value = sqrt((double)magnitude);
-    uint64_t integer_value = (uint64_t)value;
-
-    if (buffer == NULL || buffer_size == 0U) {
+    if (function_name == NULL || buffer == NULL || buffer_size == 0U) {
         return MYLITE_MISUSE;
     }
-    if ((double)integer_value == value) {
-        return format_uint64(database, integer_value, buffer, buffer_size);
+
+    if (should_format_scientific_integer_double(value)) {
+        return format_scientific_double_text(database, value, function_name, buffer, buffer_size);
     }
 
-    for (int precision = 1; precision <= sqrt_max_significant_digits; ++precision) {
-        char candidate[integer_text_capacity];
+    for (int precision = 1; precision <= double_text_max_significant_digits; ++precision) {
+        char candidate[double_text_capacity];
         char *end = NULL;
         double parsed = 0.0;
         int written = snprintf(candidate, sizeof(candidate), "%.*g", precision, value);
 
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
-            set_runtime_error(database, "failed to format SQRT() value");
+            set_double_format_error(database, function_name);
             return MYLITE_ERROR;
         }
         parsed = strtod(candidate, &end);
         if (end != candidate && end != NULL && *end == '\0' && parsed == value) {
-            written = snprintf(buffer, buffer_size, "%s", candidate);
-            if (written < 0 || (size_t)written >= buffer_size) {
-                set_runtime_error(database, "failed to format SQRT() value");
-                return MYLITE_ERROR;
-            }
-            return MYLITE_OK;
+            return copy_normalized_double_text(
+                database,
+                candidate,
+                function_name,
+                buffer,
+                buffer_size
+            );
         }
     }
 
-    set_runtime_error(database, "failed to format SQRT() value");
+    set_double_format_error(database, function_name);
     return MYLITE_ERROR;
+}
+
+static bool should_format_scientific_integer_double(double value) {
+    double magnitude = fabs(value);
+
+    if (magnitude < double_scientific_integer_threshold) {
+        return false;
+    }
+    return trunc(value) == value;
+}
+
+static int format_scientific_double_text(
+    struct mylite_db *database,
+    double value,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    if (function_name == NULL || buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    for (int precision = 0; precision < double_text_max_significant_digits; ++precision) {
+        char candidate[double_text_capacity];
+        char *end = NULL;
+        double parsed = 0.0;
+        int written = snprintf(candidate, sizeof(candidate), "%.*e", precision, value);
+
+        if (written < 0 || (size_t)written >= sizeof(candidate)) {
+            set_double_format_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        parsed = strtod(candidate, &end);
+        if (end != candidate && end != NULL && *end == '\0' && parsed == value) {
+            return copy_normalized_scientific_double_text(
+                database,
+                candidate,
+                function_name,
+                buffer,
+                buffer_size
+            );
+        }
+    }
+
+    set_double_format_error(database, function_name);
+    return MYLITE_ERROR;
+}
+
+static int copy_normalized_double_text(
+    struct mylite_db *database,
+    const char *candidate,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t write_index = 0U;
+
+    if (candidate == NULL || function_name == NULL || buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t read_index = 0U; candidate[read_index] != '\0'; ++read_index) {
+        if (write_index + 1U >= buffer_size) {
+            set_double_format_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        buffer[write_index] = candidate[read_index];
+        ++write_index;
+        if ((candidate[read_index] == 'e' || candidate[read_index] == 'E') &&
+            candidate[read_index + 1U] == '+') {
+            ++read_index;
+        }
+    }
+    buffer[write_index] = '\0';
+    return MYLITE_OK;
+}
+
+static int copy_normalized_scientific_double_text(
+    struct mylite_db *database,
+    const char *candidate,
+    const char *function_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    const char *exponent = NULL;
+    size_t mantissa_end = 0U;
+    size_t write_index = 0U;
+    size_t exponent_index = 0U;
+
+    if (candidate == NULL || function_name == NULL || buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    exponent = strchr(candidate, 'e');
+    if (exponent == NULL) {
+        exponent = strchr(candidate, 'E');
+    }
+    if (exponent == NULL) {
+        set_double_format_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    mantissa_end = (size_t)(exponent - candidate);
+    while (mantissa_end > 0U && candidate[mantissa_end - 1U] == '0') {
+        --mantissa_end;
+    }
+    if (mantissa_end > 0U && candidate[mantissa_end - 1U] == '.') {
+        --mantissa_end;
+    }
+    for (size_t read_index = 0U; read_index < mantissa_end; ++read_index) {
+        if (write_index + 1U >= buffer_size) {
+            set_double_format_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        buffer[write_index] = candidate[read_index];
+        ++write_index;
+    }
+
+    if (write_index + 1U >= buffer_size) {
+        set_double_format_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    buffer[write_index] = 'e';
+    ++write_index;
+
+    exponent_index = (size_t)(exponent - candidate) + 1U;
+    if (candidate[exponent_index] == '+') {
+        ++exponent_index;
+    } else if (candidate[exponent_index] == '-') {
+        if (write_index + 1U >= buffer_size) {
+            set_double_format_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        buffer[write_index] = '-';
+        ++write_index;
+        ++exponent_index;
+    }
+    while (candidate[exponent_index] == '0' && candidate[exponent_index + 1U] != '\0') {
+        ++exponent_index;
+    }
+    while (candidate[exponent_index] != '\0') {
+        if (write_index + 1U >= buffer_size) {
+            set_double_format_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        buffer[write_index] = candidate[exponent_index];
+        ++write_index;
+        ++exponent_index;
+    }
+    buffer[write_index] = '\0';
+    return MYLITE_OK;
+}
+
+static void set_double_format_error(struct mylite_db *database, const char *function_name) {
+    char message[double_format_error_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "failed to format %s() value",
+        function_name == NULL ? "scalar double" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format scalar double value");
+        return;
+    }
+    set_runtime_error(database, message);
 }
 
 static int base_conversion_function_value(
@@ -21053,6 +21372,15 @@ static void set_sqrt_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_angle_conversion_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "DEGREES()/RADIANS() support only top-level no-source SELECT, FROM DUAL SELECT, "
+        "and DO numeric conversion over integer, boolean, NULL, signed 64-bit scalar "
+        "arithmetic, and limited numeric bitwise operands"
+    );
+}
+
 static void set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -23166,6 +23494,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_sqrt_projection_expression(expression)) {
         return true;
     }
+    if (is_angle_conversion_projection_expression(expression)) {
+        return true;
+    }
     if (is_base_conversion_projection_expression(expression)) {
         return true;
     }
@@ -23246,6 +23577,24 @@ static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expr
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_SQRT_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_angle_conversion_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind != MYLITE_SQL_AST_DEGREES_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_RADIANS_FUNCTION) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -23833,6 +24182,8 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_ROUND_FUNCTION:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:

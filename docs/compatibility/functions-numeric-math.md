@@ -18,7 +18,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `COS()` | ❌ | Return cosine |
 | `COT()` | ❌ | Return cotangent |
 | `CRC32()` | ❌ | Compute a cyclic redundancy check value |
-| `DEGREES()` | ❌ | Convert radians to degrees |
+| `DEGREES()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned-64 magnitude envelope with optional sign, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `EXP()` | ❌ | Raise to the power of |
 | `FLOOR()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `FORMAT()` | ❌ | Localized decimal formatting |
@@ -31,7 +31,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `PI()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution as a top-level pi constant returning MySQL's default visible text `3.141593`; no table-backed expression support, nesting, approximate arithmetic, or expression metadata |
 | `POW()` | ❌ | Return argument raised to the specified power |
 | `POWER()` | ❌ | Return argument raised to the specified power |
-| `RADIANS()` | ❌ | Return argument converted to radians |
+| `RADIANS()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned-64 magnitude envelope with optional sign, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `RAND()` | ❌ | Return a random floating-point value |
 | `ROUND()` | 🟡 | Limited one-argument no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no `ROUND(value, places)`, decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `SIGN()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct exact-decimal integer literals, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |

@@ -457,6 +457,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "sqrt_function";
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
         return "sqrt_argument_count_error";
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+        return "degrees_function";
+    case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
+        return "degrees_argument_count_error";
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
+        return "radians_function";
+    case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
+        return "radians_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

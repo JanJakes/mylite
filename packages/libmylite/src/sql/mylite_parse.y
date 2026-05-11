@@ -1676,6 +1676,14 @@ expression(A) ::= SQRT(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_SQRT_FUNCTION, B, R);
 }
+expression(A) ::= DEGREES(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DEGREES_FUNCTION, B, R);
+}
+expression(A) ::= RADIANS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RADIANS_FUNCTION, B, R);
+}
 expression(A) ::= ABS(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ABS_FUNCTION, B, R);
@@ -1816,6 +1824,24 @@ expression(A) ::= SQRT(T) LPAREN expression(B) COMMA function_argument_list(C) R
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= DEGREES(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= DEGREES(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= RADIANS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= RADIANS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CEIL(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -2284,6 +2310,12 @@ identifier(A) ::= SIGN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SQRT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DEGREES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= RADIANS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CEIL(T). {

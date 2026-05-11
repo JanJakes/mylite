@@ -3649,6 +3649,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_text_type_tokens tokens
+) {
+    struct mylite_sql_ast_node *type =
+        make_node(state, MYLITE_SQL_AST_TEXT_TYPE, span_from_token(&tokens.type_token));
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_text_type(type, tokens.text_type);
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_nullability nullability,
@@ -4037,6 +4051,10 @@ static bool map_keyword_token(
         {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
+        {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
+        {"TEXT", MYLITE_SQL_PARSE_TEXT},
+        {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
+        {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},

@@ -213,6 +213,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST = 204,
     MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT = 205,
     MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION = 206,
+    MYLITE_SQL_AST_TEXT_TYPE = 207,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -275,6 +276,14 @@ enum mylite_sql_ast_integer_type {
     MYLITE_SQL_AST_INTEGER_TYPE_TINYINT = 3,
     MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT = 4,
     MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT = 5,
+};
+
+enum mylite_sql_ast_text_type {
+    MYLITE_SQL_AST_TEXT_TYPE_NONE = 0,
+    MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT = 1,
+    MYLITE_SQL_AST_TEXT_TYPE_TEXT = 2,
+    MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT = 3,
+    MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT = 4,
 };
 
 enum mylite_sql_ast_nullability {
@@ -342,6 +351,10 @@ struct mylite_sql_ast_varchar_type_payload {
     struct mylite_sql_source_span length_span;
 };
 
+struct mylite_sql_ast_text_type_payload {
+    enum mylite_sql_ast_text_type kind;
+};
+
 struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
@@ -360,6 +373,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
     struct mylite_sql_ast_varchar_type_payload varchar_type;
+    struct mylite_sql_ast_text_type_payload text_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
@@ -425,6 +439,10 @@ void mylite_sql_ast_node_set_varchar_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_varchar_type_payload payload
 );
+void mylite_sql_ast_node_set_text_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_text_type text_type
+);
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -463,6 +481,7 @@ struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_spa
 struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );
@@ -477,6 +496,7 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
+const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_type);
 const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
 const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction);
 const char *mylite_sql_ast_column_visibility_name(enum mylite_sql_ast_column_visibility visibility);

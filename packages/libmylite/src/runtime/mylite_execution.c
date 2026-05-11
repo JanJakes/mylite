@@ -139,6 +139,9 @@ enum {
     varchar_max_length = 255,
     varchar_logical_prefix_length = 8,
     varchar_logical_syntax_overhead = 9,
+    tinytext_max_length = 255,
+    text_max_length = 65535,
+    mediumtext_max_length = 16777215,
     utf8_ascii_max = 0x7f,
     utf8_continuation_mask = 0xc0,
     utf8_continuation_tag = 0x80,
@@ -163,6 +166,7 @@ enum {
 static const char scalar_pi_text[] = "3.141593";
 static const double angle_conversion_half_turn_degrees = 180.0;
 static const double double_scientific_integer_threshold = 1.0e15;
+static const uint64_t longtext_max_length = 4294967295ULL;
 
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
@@ -365,6 +369,12 @@ struct varchar_text_validation {
     const char *text;
     size_t text_length;
     size_t row_number;
+};
+
+struct text_family_type_info {
+    const char *logical_type;
+    const char *display_type;
+    uint64_t maximum_length;
 };
 
 struct integer_column_range {
@@ -4416,6 +4426,7 @@ static int format_varchar_type_text(
     const char *unsupported_message,
     const char **out_type_text
 );
+static int format_text_family_type_text(const char *logical_type, const char **out_type_text);
 static const char *integer_descriptor_display_text(const char *logical_type);
 static int build_show_create_database_sql(const char *schema_name, char **out_sql);
 
@@ -4647,6 +4658,11 @@ static int map_varchar_type(
     const char *column_name,
     struct planned_column *out_column
 );
+static int map_text_family_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+);
 static int map_integer_display_width(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -4657,7 +4673,16 @@ static int map_integer_display_width(
 static int append_integer_display_width_warning(struct mylite_db *database);
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
 static bool planned_column_is_varchar(const struct planned_column *column);
+static bool planned_column_is_text_family(const struct planned_column *column);
+static bool planned_column_is_string_family(const struct planned_column *column);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_string_family(
+    const struct mylite_catalog_column_descriptor *column
+);
+static const struct text_family_type_info *text_family_type_info_for_logical_type(
+    const char *logical_type
+);
 static bool column_descriptor_is_auto_increment(
     const struct mylite_catalog_column_descriptor *column
 );
@@ -4943,18 +4968,33 @@ static int convert_varchar_literal(
     size_t row_number,
     struct planned_value *out_value
 );
+static int convert_text_family_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
 static int decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
+    const char *unsupported_message,
+    const char *nul_message,
     char **out_text,
     size_t *out_text_length
 );
 static int append_decoded_sql_string_escape(
     struct mylite_db *database,
     struct dynamic_string *string,
-    char escaped_byte
+    char escaped_byte,
+    const char *nul_message
 );
 static int validate_varchar_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct varchar_text_validation validation
+);
+static int validate_text_family_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     struct varchar_text_validation validation
@@ -5020,7 +5060,7 @@ static int parse_varchar_descriptor_length(
     const char *unsupported_message,
     size_t *out_length
 );
-static int make_empty_varchar_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_empty_text_value(struct mylite_db *database, struct planned_value *out_value);
 static int clip_integer_for_column(
     struct mylite_db *database,
     bool is_negative,
@@ -6335,6 +6375,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_VARCHAR_TYPE:
+    case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
@@ -9030,8 +9071,8 @@ static int append_information_schema_columns_base_column_row(
 ) {
     char ordinal_text[integer_text_capacity];
     char default_text[integer_text_capacity];
-    char varchar_length_text[integer_text_capacity];
-    char varchar_octet_text[integer_text_capacity];
+    char character_length_text[integer_text_capacity];
+    char character_octet_text[integer_text_capacity];
     char column_type_text[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     const char *column_type = NULL;
     const char *character_maximum_length = NULL;
@@ -9109,20 +9150,49 @@ static int append_information_schema_columns_base_column_row(
             rc = information_schema_format_i64(
                 database,
                 (int64_t)varchar_length,
-                varchar_length_text,
-                sizeof(varchar_length_text)
+                character_length_text,
+                sizeof(character_length_text)
             );
         }
         if (rc == MYLITE_OK) {
             rc = information_schema_format_i64(
                 database,
                 ((int64_t)varchar_length) * 4,
-                varchar_octet_text,
-                sizeof(varchar_octet_text)
+                character_octet_text,
+                sizeof(character_octet_text)
             );
         }
-        character_maximum_length = varchar_length_text;
-        character_octet_length = varchar_octet_text;
+        character_maximum_length = character_length_text;
+        character_octet_length = character_octet_text;
+        character_set_name = "utf8mb4";
+        collation_name = "utf8mb4_0900_ai_ci";
+    } else if (rc == MYLITE_OK && column_descriptor_is_text_family(column)) {
+        const struct text_family_type_info *info =
+            text_family_type_info_for_logical_type(column->logical_type);
+
+        if (info == NULL) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA.COLUMNS supports only baseline TEXT descriptors"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)info->maximum_length,
+            character_length_text,
+            sizeof(character_length_text)
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info->maximum_length,
+                character_octet_text,
+                sizeof(character_octet_text)
+            );
+        }
+        character_maximum_length = character_length_text;
+        character_octet_length = character_octet_text;
         character_set_name = "utf8mb4";
         collation_name = "utf8mb4_0900_ai_ci";
     }
@@ -9920,7 +9990,14 @@ static int information_schema_predicate_value_text(
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
         size_t text_length = 0U;
 
-        return decode_sql_string_literal(database, value_node, &out_value->text, &text_length);
+        return decode_sql_string_literal(
+            database,
+            value_node,
+            "INFORMATION_SCHEMA WHERE supports only string literals",
+            "INFORMATION_SCHEMA WHERE string literals do not support NUL bytes",
+            &out_value->text,
+            &text_length
+        );
     }
 
     return information_schema_predicate_integer_value_text(database, value_node, out_value);
@@ -10518,6 +10595,12 @@ static const char *information_schema_data_type_for_descriptor(
     if (column_descriptor_is_varchar(column)) {
         return "varchar";
     }
+    if (column_descriptor_is_text_family(column)) {
+        const struct text_family_type_info *info =
+            text_family_type_info_for_logical_type(column->logical_type);
+
+        return info == NULL ? "" : info->display_type;
+    }
     if (logical_type == NULL) {
         return "";
     }
@@ -10542,7 +10625,7 @@ static const char *information_schema_numeric_precision_for_descriptor(
 ) {
     const char *logical_type = column->logical_type;
 
-    if (column_descriptor_is_varchar(column)) {
+    if (column_descriptor_is_string_family(column)) {
         return NULL;
     }
     if (logical_type == NULL) {
@@ -10570,7 +10653,7 @@ static const char *information_schema_numeric_precision_for_descriptor(
 static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
-    if (column_descriptor_is_varchar(column)) {
+    if (column_descriptor_is_string_family(column)) {
         return NULL;
     }
     return "0";
@@ -12471,7 +12554,8 @@ static int append_show_create_table_column_default(
     if (column->is_auto_increment) {
         return MYLITE_OK;
     }
-    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable &&
+        !column_descriptor_is_text_family(column)) {
         return dynamic_string_append(string, " DEFAULT NULL");
     }
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
@@ -12553,7 +12637,7 @@ static int show_create_table_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW CREATE TABLE supports only integer and VARCHAR column descriptors",
+        "SHOW CREATE TABLE supports only integer and string column descriptors",
         out_type_text
     );
 }
@@ -12582,6 +12666,9 @@ static int show_descriptor_type_text(
             unsupported_message,
             out_type_text
         );
+    }
+    if (format_text_family_type_text(logical_type, out_type_text) == MYLITE_OK) {
+        return MYLITE_OK;
     }
 
     integer_text = integer_descriptor_display_text(logical_type);
@@ -12616,6 +12703,16 @@ static int format_varchar_type_text(
         return MYLITE_ERROR;
     }
     *out_type_text = buffer;
+    return MYLITE_OK;
+}
+
+static int format_text_family_type_text(const char *logical_type, const char **out_type_text) {
+    const struct text_family_type_info *info = text_family_type_info_for_logical_type(logical_type);
+
+    if (info == NULL || out_type_text == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_type_text = info->display_type;
     return MYLITE_OK;
 }
 
@@ -12766,6 +12863,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_VARCHAR_TYPE:
+    case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
@@ -13205,7 +13303,7 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         set_runtime_error(database, "invalid primary-key column");
         return MYLITE_ERROR;
     }
-    if (planned_column_is_varchar(column)) {
+    if (planned_column_is_string_family(column)) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
         }
@@ -13267,7 +13365,7 @@ static int validate_auto_increment_column(
     }
 
     column = &plan->columns[column_index];
-    if (planned_column_is_varchar(column)) {
+    if (planned_column_is_string_family(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -13410,21 +13508,21 @@ static int validate_create_table_like_source_columns(
         struct integer_column_range range = {0};
         int rc = MYLITE_OK;
 
-        if (column_descriptor_is_varchar(&columns[column_index])) {
+        if (column_descriptor_is_string_family(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE LIKE supports only integer and VARCHAR descriptor columns"
+                "CREATE TABLE LIKE supports only integer and string descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE LIKE supports only integer and VARCHAR descriptor columns",
+            "CREATE TABLE LIKE supports only integer and string descriptor columns",
             &range
         );
 
@@ -13632,21 +13730,21 @@ static int validate_create_table_select_source_columns(
         struct integer_column_range range = {0};
         int rc = MYLITE_OK;
 
-        if (column_descriptor_is_varchar(&columns[column_index])) {
+        if (column_descriptor_is_string_family(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE SELECT supports only integer and VARCHAR descriptor columns"
+                "CREATE TABLE SELECT supports only integer and string descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE SELECT supports only integer and VARCHAR descriptor columns",
+            "CREATE TABLE SELECT supports only integer and string descriptor columns",
             &range
         );
         if (rc != MYLITE_OK) {
@@ -16149,8 +16247,8 @@ static int complete_alter_table_modify_column_plan(
 ) {
     int rc = MYLITE_OK;
 
-    if (column_descriptor_is_varchar(&out_plan->original_column) ||
-        planned_column_is_varchar(&out_plan->column)) {
+    if (column_descriptor_is_string_family(&out_plan->original_column) ||
+        planned_column_is_string_family(&out_plan->column)) {
         set_unsupported_error(database, out_plan->integer_support_message);
         return MYLITE_ERROR;
     }
@@ -17777,14 +17875,14 @@ static int validate_insert_select_value(
         }
         return MYLITE_OK;
     }
-    if (column_descriptor_is_varchar(target_column)) {
+    if (column_descriptor_is_string_family(target_column)) {
         const unsigned char *text = NULL;
         int byte_count = 0;
 
         if (sqlite_type != SQLITE_TEXT) {
             set_unsupported_error(
                 database,
-                "INSERT ... SELECT does not support implicit VARCHAR conversion"
+                "INSERT ... SELECT does not support implicit string conversion"
             );
             return MYLITE_ERROR;
         }
@@ -17794,7 +17892,18 @@ static int validate_insert_select_value(
             set_physical_sqlite_row_error(database);
             return MYLITE_ERROR;
         }
-        return validate_varchar_text(
+        if (column_descriptor_is_varchar(target_column)) {
+            return validate_varchar_text(
+                database,
+                target_column,
+                (struct varchar_text_validation){
+                    .text = (const char *)text,
+                    .text_length = (size_t)byte_count,
+                    .row_number = row_number,
+                }
+            );
+        }
+        return validate_text_family_text(
             database,
             target_column,
             (struct varchar_text_validation){
@@ -30149,7 +30258,7 @@ static int validate_column_default(
         return MYLITE_OK;
     }
     if (default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
-        if (planned_column_is_varchar(column)) {
+        if (planned_column_is_string_family(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -30365,6 +30474,10 @@ static int map_column_type(
     if (type_node->kind == MYLITE_SQL_AST_VARCHAR_TYPE) {
         return map_varchar_type(database, type_node, column_name, out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_TEXT_TYPE) {
+        (void)column_name;
+        return map_text_family_type(database, type_node, out_column);
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -30408,6 +30521,52 @@ static int map_varchar_type(
     out_column->logical_type = out_column->logical_type_storage;
     out_column->physical_type = out_column->physical_type_storage;
 
+    return MYLITE_OK;
+}
+
+static int map_text_family_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+) {
+    enum mylite_sql_ast_text_type text_type = mylite_sql_ast_node_text_type(type_node);
+    const char *logical_type = NULL;
+
+    switch (text_type) {
+    case MYLITE_SQL_AST_TEXT_TYPE_NONE:
+        break;
+    case MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT:
+        logical_type = "TINYTEXT";
+        break;
+    case MYLITE_SQL_AST_TEXT_TYPE_TEXT:
+        logical_type = "TEXT";
+        break;
+    case MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT:
+        logical_type = "MEDIUMTEXT";
+        break;
+    case MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT:
+        logical_type = "LONGTEXT";
+        break;
+    }
+    if (logical_type == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "%s",
+        logical_type
+    );
+    snprintf(
+        out_column->physical_type_storage,
+        sizeof(out_column->physical_type_storage),
+        "%s",
+        "TEXT"
+    );
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
     return MYLITE_OK;
 }
 
@@ -30549,6 +30708,20 @@ static bool planned_column_is_varchar(const struct planned_column *column) {
     return true;
 }
 
+static bool planned_column_is_text_family(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    if (strcmp(column->physical_type, "TEXT") != 0) {
+        return false;
+    }
+    return text_family_type_info_for_logical_type(column->logical_type) != NULL;
+}
+
+static bool planned_column_is_string_family(const struct planned_column *column) {
+    return (planned_column_is_varchar(column) || planned_column_is_text_family(column)) != 0;
+}
+
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
     bool has_varchar_logical_type = false;
     bool has_text_physical_type = false;
@@ -30570,6 +30743,45 @@ static bool column_descriptor_is_varchar(const struct mylite_catalog_column_desc
         return false;
     }
     return true;
+}
+
+static bool column_descriptor_is_text_family(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    if (strcmp(column->physical_type, "TEXT") != 0) {
+        return false;
+    }
+    return text_family_type_info_for_logical_type(column->logical_type) != NULL;
+}
+
+static bool column_descriptor_is_string_family(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return (column_descriptor_is_varchar(column) || column_descriptor_is_text_family(column)) != 0;
+}
+
+static const struct text_family_type_info *text_family_type_info_for_logical_type(
+    const char *logical_type
+) {
+    static const struct text_family_type_info text_types[] = {
+        {"TINYTEXT", "tinytext", tinytext_max_length},
+        {"TEXT", "text", text_max_length},
+        {"MEDIUMTEXT", "mediumtext", mediumtext_max_length},
+        {"LONGTEXT", "longtext", longtext_max_length},
+    };
+
+    if (logical_type == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < sizeof(text_types) / sizeof(text_types[0]); ++index) {
+        if (strcmp(logical_type, text_types[index].logical_type) == 0) {
+            return &text_types[index];
+        }
+    }
+    return NULL;
 }
 
 static bool column_descriptor_is_auto_increment(
@@ -31552,8 +31764,8 @@ static int allocate_insert_row_values(
             out_row->values[column_index].is_text = false;
             out_row->values[column_index].integer = plan->columns[column_index].default_integer;
         } else if (plan->ignore_errors && !plan->columns[column_index].is_nullable) {
-            if (column_descriptor_is_varchar(&plan->columns[column_index])) {
-                int rc = make_empty_varchar_value(database, &out_row->values[column_index]);
+            if (column_descriptor_is_string_family(&plan->columns[column_index])) {
+                int rc = make_empty_text_value(database, &out_row->values[column_index]);
 
                 if (rc != MYLITE_OK) {
                     return rc;
@@ -31611,8 +31823,8 @@ static int convert_insert_value(
             if (rc != MYLITE_OK) {
                 return rc;
             }
-            if (column_descriptor_is_varchar(column)) {
-                return make_empty_varchar_value(database, out_value);
+            if (column_descriptor_is_string_family(column)) {
+                return make_empty_text_value(database, out_value);
             }
             out_value->is_null = false;
             out_value->is_text = false;
@@ -31623,6 +31835,9 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_varchar(column)) {
         return convert_varchar_literal(database, value_node, column, row_number, out_value);
+    }
+    if (column_descriptor_is_text_family(column)) {
+        return convert_text_family_literal(database, value_node, column, row_number, out_value);
     }
 
     return convert_integer_literal(
@@ -31694,8 +31909,8 @@ static int materialize_dml_default_value(
     }
     if (column->is_nullable) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
-    } else if (column_descriptor_is_varchar(column)) {
-        return make_empty_varchar_value(database, out_value);
+    } else if (column_descriptor_is_string_family(column)) {
+        return make_empty_text_value(database, out_value);
     } else {
         *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
     }
@@ -31793,9 +32008,68 @@ static int convert_varchar_literal(
         return MYLITE_ERROR;
     }
 
-    rc = decode_sql_string_literal(database, value_node, &text, &text_length);
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "VARCHAR values support only string literals",
+        "VARCHAR values do not support NUL bytes",
+        &text,
+        &text_length
+    );
     if (rc == MYLITE_OK) {
         rc = validate_varchar_text(
+            database,
+            column,
+            (struct varchar_text_validation){
+                .text = text,
+                .text_length = text_length,
+                .row_number = row_number,
+            }
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(text);
+        return rc;
+    }
+
+    out_value->is_null = false;
+    out_value->is_text = true;
+    out_value->integer = 0;
+    out_value->text = text;
+    out_value->text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int convert_text_family_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "TEXT values support only string, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "TEXT values support only string literals",
+        "TEXT values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_text_family_text(
             database,
             column,
             (struct varchar_text_validation){
@@ -31821,6 +32095,8 @@ static int convert_varchar_literal(
 static int decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
+    const char *unsupported_message,
+    const char *nul_message,
     char **out_text,
     size_t *out_text_length
 ) {
@@ -31830,14 +32106,15 @@ static int decode_sql_string_literal(
     char quote = '\0';
     int rc = MYLITE_OK;
 
-    if (out_text == NULL || out_text_length == NULL) {
+    if (unsupported_message == NULL || nul_message == NULL || out_text == NULL ||
+        out_text_length == NULL) {
         return MYLITE_MISUSE;
     }
     *out_text = NULL;
     *out_text_length = 0U;
     if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(database, "VARCHAR values support only string literals");
+        set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
 
@@ -31858,7 +32135,7 @@ static int decode_sql_string_literal(
             ++index;
         } else if (byte == '\\' && index + 2U < length) {
             ++index;
-            rc = append_decoded_sql_string_escape(database, &string, text[index]);
+            rc = append_decoded_sql_string_escape(database, &string, text[index], nul_message);
         } else {
             rc = dynamic_string_append_char(&string, byte);
         }
@@ -31883,11 +32160,12 @@ static int decode_sql_string_literal(
 static int append_decoded_sql_string_escape(
     struct mylite_db *database,
     struct dynamic_string *string,
-    char escaped_byte
+    char escaped_byte,
+    const char *nul_message
 ) {
     switch (escaped_byte) {
     case '0':
-        set_unsupported_error(database, "VARCHAR values do not support NUL bytes");
+        set_unsupported_error(database, nul_message);
         return MYLITE_ERROR;
     case 'n':
         return dynamic_string_append_char(string, '\n');
@@ -31951,6 +32229,50 @@ static int validate_varchar_text(
         return MYLITE_ERROR;
     }
     if (character_count > declared_length) {
+        set_data_too_long_error(database, column->name, validation.row_number);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_text_family_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct varchar_text_validation validation
+) {
+    const struct text_family_type_info *info = NULL;
+    size_t character_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (validation.text == NULL) {
+        set_runtime_error(database, "invalid TEXT value");
+        return MYLITE_ERROR;
+    }
+    if (validation.text_length > (size_t)INT_MAX) {
+        set_unsupported_error(database, "TEXT values are too large for this build");
+        return MYLITE_ERROR;
+    }
+    if (memchr(validation.text, '\0', validation.text_length) != NULL) {
+        set_unsupported_error(database, "TEXT values do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    if (column == NULL || !column_descriptor_is_text_family(column)) {
+        set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_utf8_text(validation.text, validation.text_length, &character_count);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "TEXT values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+    info = text_family_type_info_for_logical_type(column->logical_type);
+    if (info == NULL) {
+        set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+    if (validation.text_length > info->maximum_length) {
         set_data_too_long_error(database, column->name, validation.row_number);
         return MYLITE_ERROR;
     }
@@ -32181,7 +32503,7 @@ static int parse_varchar_descriptor_length(
     return MYLITE_OK;
 }
 
-static int make_empty_varchar_value(struct mylite_db *database, struct planned_value *out_value) {
+static int make_empty_text_value(struct mylite_db *database, struct planned_value *out_value) {
     char *text = NULL;
 
     if (out_value == NULL) {
@@ -34065,6 +34387,9 @@ static int convert_update_value(
     if (column_descriptor_is_varchar(column)) {
         return convert_varchar_literal(database, value_node, column, 1U, out_value);
     }
+    if (column_descriptor_is_text_family(column)) {
+        return convert_text_family_literal(database, value_node, column, 1U, out_value);
+    }
 
     return convert_update_integer_literal(database, value_node, column, out_value);
 }
@@ -34526,7 +34851,7 @@ static int show_column_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW COLUMNS supports only integer and VARCHAR column descriptors",
+        "SHOW COLUMNS supports only integer and string column descriptors",
         out_type_text
     );
 }
@@ -35151,7 +35476,7 @@ static int build_alter_table_add_column_sql(
     }
     if (rc == MYLITE_OK && !plan->column.is_nullable &&
         plan->column.default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        if (planned_column_is_varchar(&plan->column)) {
+        if (planned_column_is_string_family(&plan->column)) {
             rc = dynamic_string_append(&string, " DEFAULT ''");
         } else {
             rc = dynamic_string_append(&string, " DEFAULT 0");

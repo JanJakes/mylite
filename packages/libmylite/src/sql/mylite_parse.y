@@ -39,6 +39,7 @@
 %right UPLUS UMINUS BITWISE_NOT.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
+%type text_type_name { struct mylite_sql_text_type_tokens }
 %type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
 %type integer_signedness_opt { struct mylite_sql_integer_signedness_tokens }
 %type select_modifiers { struct mylite_sql_select_modifiers }
@@ -2463,6 +2464,9 @@ identifier(A) ::= COLUMNS(T). {
 identifier(A) ::= TABLES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= TEXT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= FIELDS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -2599,6 +2603,9 @@ column_type(A) ::= integer_type(T). {
 column_type(A) ::= varchar_type(T). {
     A = T;
 }
+column_type(A) ::= text_type(T). {
+    A = T;
+}
 
 varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
     A = mylite_sql_parser_make_varchar_type(
@@ -2608,6 +2615,35 @@ varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
             .length_token = L,
             .end_token = R,
         });
+}
+
+text_type(A) ::= text_type_name(T). {
+    A = mylite_sql_parser_make_text_type(state, T);
+}
+
+text_type_name(A) ::= TINYTEXT(T). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT,
+    };
+}
+text_type_name(A) ::= TEXT(T). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_TEXT,
+    };
+}
+text_type_name(A) ::= MEDIUMTEXT(T). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+    };
+}
+text_type_name(A) ::= LONGTEXT(T). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
+    };
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {

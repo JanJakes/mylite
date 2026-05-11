@@ -213,6 +213,9 @@ column_type:
 
 `TEXT(M)` and family-specific length arguments are not admitted in this slice.
 Column-level charset, collation, and `BINARY` attributes are not admitted.
+`TEXT` remains a nonreserved keyword in MyLite's keyword catalog and is still
+admitted anywhere the current identifier grammar admits nonreserved keywords.
+`TINYTEXT`, `MEDIUMTEXT`, and `LONGTEXT` remain reserved.
 
 DML values for `TEXT` family targets reuse the existing string row-value
 grammar:

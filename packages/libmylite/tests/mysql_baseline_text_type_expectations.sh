@@ -89,6 +89,17 @@ esac
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 
+text_identifier_expected=$(cat <<\EXPECTED
+text	int	YES		NULL	
+body	text	YES		NULL	
+EXPECTED
+)
+expect_output \
+    "mysql accepts nonreserved text identifiers" \
+    "$text_identifier_expected" \
+    "CREATE TABLE text (text INT, body TEXT); SHOW COLUMNS FROM text; DROP TABLE text;" \
+    "$DATABASE"
+
 show_columns_expected=$(cat <<\EXPECTED
 id	int	NO		NULL	
 tt	tinytext	YES		NULL	

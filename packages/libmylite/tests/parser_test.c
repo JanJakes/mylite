@@ -67,6 +67,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_varchar_type_statements(void);
+static int test_text_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
@@ -152,6 +153,11 @@ static int expect_varchar_type(
     const char *expected_length,
     const char *context
 );
+static int expect_text_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_text_type expected,
+    const char *context
+);
 static int expect_integer_display_width(
     const struct mylite_sql_ast_node *node,
     const char *expected_width,
@@ -218,6 +224,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_varchar_type_statements();
+    failures += test_text_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
@@ -6853,6 +6860,146 @@ static int test_varchar_type_statements(void) {
     return failures;
 }
 
+static int test_text_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE text_types (tt TINYTEXT, t TEXT, mt MEDIUMTEXT NOT NULL, lt LONGTEXT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 4U, "text family column list");
+
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "tt", "tinytext column name");
+    failures +=
+        expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT, "tinytext column type");
+    failures += expect_span_text(column_type, "TINYTEXT", "tinytext span");
+
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "t", "text column name");
+    failures += expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_TEXT, "text column type");
+    failures += expect_span_text(column_type, "TEXT", "text span");
+
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "mt", "mediumtext column name");
+    failures += expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "mediumtext column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "mediumtext not null"
+    );
+
+    column = child_at(columns, 3U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "lt", "longtext column name");
+    failures +=
+        expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT, "longtext column type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE text (text INT, body TEXT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "text", "nonreserved text table name");
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 2U, "nonreserved text identifier columns");
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "text", "nonreserved text column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "nonreserved text column integer type"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "body", "nonreserved text body column name");
+    failures += expect_text_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_TEXT_TYPE_TEXT,
+        "nonreserved text body type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN body TEXT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_TEXT, "alter add text column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter add text not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY body MEDIUMTEXT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "alter modify mediumtext column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "alter modify mediumtext nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_body new_body LONGTEXT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
+        "alter change longtext column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter change longtext nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE invalid_text_length (body TEXT(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_create_table_primary_key_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -12558,6 +12705,32 @@ static int expect_varchar_type(
             expected_length,
             (int)span.length,
             span.text == NULL ? "" : span.text
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_text_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_text_type expected,
+    const char *context
+) {
+    enum mylite_sql_ast_text_type actual = MYLITE_SQL_AST_TEXT_TYPE_NONE;
+
+    if (expect_node(node, MYLITE_SQL_AST_TEXT_TYPE, context) != 0) {
+        return 1;
+    }
+
+    actual = mylite_sql_ast_node_text_type(node);
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected text type %s, got %s\n",
+            context,
+            mylite_sql_ast_text_type_name(expected),
+            mylite_sql_ast_text_type_name(actual)
         );
         return 1;
     }

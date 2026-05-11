@@ -165,6 +165,17 @@ void mylite_sql_ast_node_set_varchar_type(
     node->payload.varchar_type = payload;
 }
 
+void mylite_sql_ast_node_set_text_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_text_type text_type
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.text_type.kind = text_type;
+}
+
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -330,6 +341,16 @@ struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     return node->payload.varchar_type.length_span;
 }
 
+enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_TEXT_TYPE) {
+        return MYLITE_SQL_AST_TEXT_TYPE_NONE;
+    }
+
+    return node->payload.text_type.kind;
+}
+
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 ) {
@@ -406,6 +427,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "integer_type";
     case MYLITE_SQL_AST_VARCHAR_TYPE:
         return "varchar_type";
+    case MYLITE_SQL_AST_TEXT_TYPE:
+        return "text_type";
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
         return "primary_key_definition";
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
@@ -903,6 +926,23 @@ const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type in
         return "smallint";
     case MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT:
         return "mediumint";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_type) {
+    switch (text_type) {
+    case MYLITE_SQL_AST_TEXT_TYPE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT:
+        return "tinytext";
+    case MYLITE_SQL_AST_TEXT_TYPE_TEXT:
+        return "text";
+    case MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT:
+        return "mediumtext";
+    case MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT:
+        return "longtext";
     }
 
     return "unknown";

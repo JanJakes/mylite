@@ -3609,6 +3609,8 @@ static bool map_keyword_token(
         {"BIN", MYLITE_SQL_PARSE_BIN},
         {"OCT", MYLITE_SQL_PARSE_OCT},
         {"ABS", MYLITE_SQL_PARSE_ABS},
+        {"ACOS", MYLITE_SQL_PARSE_ACOS},
+        {"ASIN", MYLITE_SQL_PARSE_ASIN},
         {"SIGN", MYLITE_SQL_PARSE_SIGN},
         {"CEIL", MYLITE_SQL_PARSE_CEIL},
         {"CEILING", MYLITE_SQL_PARSE_CEILING},

@@ -1684,6 +1684,14 @@ expression(A) ::= RADIANS(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_RADIANS_FUNCTION, B, R);
 }
+expression(A) ::= ACOS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ACOS_FUNCTION, B, R);
+}
+expression(A) ::= ASIN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ASIN_FUNCTION, B, R);
+}
 expression(A) ::= ABS(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ABS_FUNCTION, B, R);
@@ -1842,6 +1850,24 @@ expression(A) ::= RADIANS(T) LPAREN expression(B) COMMA function_argument_list(C
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= ACOS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ACOS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= ASIN(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ASIN(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CEIL(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -2316,6 +2342,12 @@ identifier(A) ::= DEGREES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= RADIANS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ACOS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ASIN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CEIL(T). {

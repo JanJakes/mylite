@@ -2650,6 +2650,11 @@ static int angle_conversion_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int inverse_trig_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_approximate_numeric_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2813,6 +2818,7 @@ static void set_sign_unsupported_error(struct mylite_db *database);
 static void set_rounding_unsupported_error(struct mylite_db *database);
 static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_angle_conversion_unsupported_error(struct mylite_db *database);
+static void set_inverse_trig_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
@@ -3104,6 +3110,7 @@ static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expr
 static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -4986,6 +4993,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ASIN_FUNCTION:
+    case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6793,7 +6804,8 @@ static int execute_do_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
             "predicates, limited numeric "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS() "
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
+            "ACOS()/ASIN() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
@@ -6910,7 +6922,7 @@ static int execute_select_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ACOS()/ASIN()/CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -9078,6 +9090,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ASIN_FUNCTION:
+    case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16161,7 +16177,9 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
     if (!text_equals_ascii_case_insensitive(column_name, "pi") &&
         !text_equals_ascii_case_insensitive(column_name, "sqrt") &&
         !text_equals_ascii_case_insensitive(column_name, "degrees") &&
-        !text_equals_ascii_case_insensitive(column_name, "radians")) {
+        !text_equals_ascii_case_insensitive(column_name, "radians") &&
+        !text_equals_ascii_case_insensitive(column_name, "acos") &&
+        !text_equals_ascii_case_insensitive(column_name, "asin")) {
         return MYLITE_OK;
     }
 
@@ -16710,6 +16728,10 @@ static const char *argument_count_error_node_function_name(
         return "DEGREES";
     case MYLITE_SQL_AST_RADIANS_ARGUMENT_COUNT_ERROR:
         return "RADIANS";
+    case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
+        return "ACOS";
+    case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
+        return "ASIN";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -16862,6 +16884,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
         return angle_conversion_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_ASIN_FUNCTION:
+        return inverse_trig_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
@@ -17791,6 +17816,77 @@ static int angle_conversion_function_value(
         output = input * (angle_conversion_half_turn_degrees / pi);
     } else {
         output = input * (pi / angle_conversion_half_turn_degrees);
+    }
+    rc = format_double_text(
+        database,
+        output,
+        function_name,
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->double_text;
+        out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+    }
+    return rc;
+}
+
+static int inverse_trig_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    bool is_acos = false;
+    const char *function_name = NULL;
+    double input = 0.0;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_ACOS_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_ASIN_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_inverse_trig_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    is_acos = expression->kind == MYLITE_SQL_AST_ACOS_FUNCTION;
+    if (is_acos) {
+        function_name = "ACOS";
+    } else {
+        function_name = "ASIN";
+    }
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_inverse_trig_unsupported_error
+    );
+    if (rc != MYLITE_OK || value.is_null || value.magnitude > 1U) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    input = (double)value.magnitude;
+    if (value.is_negative) {
+        input = -input;
+    }
+    if (is_acos) {
+        output = acos(input);
+    } else {
+        output = asin(input);
     }
     rc = format_double_text(
         database,
@@ -21381,6 +21477,15 @@ static void set_angle_conversion_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_inverse_trig_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "ACOS()/ASIN() support only top-level no-source SELECT, FROM DUAL SELECT, and DO "
+        "inverse trigonometry over integer, boolean, NULL, signed 64-bit scalar arithmetic, "
+        "and limited numeric bitwise operands"
+    );
+}
+
 static void set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -23497,6 +23602,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_angle_conversion_projection_expression(expression)) {
         return true;
     }
+    if (is_inverse_trig_projection_expression(expression)) {
+        return true;
+    }
     if (is_base_conversion_projection_expression(expression)) {
         return true;
     }
@@ -23595,6 +23703,22 @@ static bool is_angle_conversion_projection_expression(
     }
     if (expression->kind != MYLITE_SQL_AST_DEGREES_FUNCTION &&
         expression->kind != MYLITE_SQL_AST_RADIANS_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind != MYLITE_SQL_AST_ACOS_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_ASIN_FUNCTION) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -24184,6 +24308,8 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:

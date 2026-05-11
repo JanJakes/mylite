@@ -45,6 +45,7 @@ static int test_bit_count_function(void);
 static int test_pi_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
+static int test_inverse_trig_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
@@ -187,6 +188,7 @@ int main(void) {
     failures += test_pi_function();
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
+    failures += test_inverse_trig_functions();
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
@@ -2571,6 +2573,107 @@ static int test_angle_conversion_functions(void) {
     failures += expect_span_text(first_expression, "DEGREES", "bare degrees span");
     failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare radians");
     failures += expect_span_text(second_expression, "RADIANS", "bare radians span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_inverse_trig_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT ACOS(1), Acos(0), asin(-1) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ACOS_FUNCTION, "acos function");
+    failures += expect_span_text(first_expression, "ACOS(1)", "acos function span");
+    failures += expect_child_count(first_expression, 1U, "acos argument count");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "acos arg");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ACOS_FUNCTION, "mixed acos");
+    failures += expect_span_text(second_expression, "Acos(0)", "mixed acos span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_ASIN_FUNCTION, "lower asin");
+    failures += expect_span_text(third_expression, "asin(-1)", "lower asin span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "inverse trig dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ACOS (0), (ASIN(NULL));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ACOS_FUNCTION, "spaced acos");
+    failures += expect_span_text(first_expression, "ACOS (0)", "spaced acos span");
+    failures += expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped asin");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_ASIN_FUNCTION, "asin child");
+    failures += expect_span_text(parenthesized, "(ASIN(NULL))", "parenthesized asin span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ACOS(1) AS a, ASIN(0) s;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ACOS_FUNCTION, "aliased acos");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 1U), "a", "acos alias");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ASIN_FUNCTION, "aliased asin");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 1U), "s", "asin alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT ACOS(), ACOS(1, 2), ASIN(), ASIN(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR,
+        "acos empty argument error"
+    );
+    failures += expect_child_count(first_expression, 0U, "acos empty error child count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR,
+        "acos multiple argument error"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "acos multiple argument count");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR,
+        "asin empty argument error"
+    );
+    failures += expect_child_count(third_expression, 0U, "asin empty error child count");
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR,
+        "asin multiple argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE acos (asin INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "inverse trig ids");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ACOS, ASIN;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare acos");
+    failures += expect_span_text(first_expression, "ACOS", "bare acos span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare asin");
+    failures += expect_span_text(second_expression, "ASIN", "bare asin span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

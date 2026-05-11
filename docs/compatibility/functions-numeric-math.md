@@ -33,7 +33,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `RADIANS()` | ❌ | Return argument converted to radians |
 | `RAND()` | ❌ | Return a random floating-point value |
 | `ROUND()` | ❌ | Round the argument |
-| `SIGN()` | ❌ | Return sign of the argument |
+| `SIGN()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct exact-decimal integer literals, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `SIN()` | ❌ | Return sine of the argument |
 | `SQRT()` | ❌ | Return square root of the argument |
 | `TAN()` | ❌ | Return tangent of the argument |

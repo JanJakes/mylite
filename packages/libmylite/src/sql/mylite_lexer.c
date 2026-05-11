@@ -823,6 +823,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"SHOW", MYLITE_SQL_KEYWORD_RESERVED},
         {"SHUTDOWN", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL | MYLITE_SQL_KEYWORD_RESTRICTED_ROLE},
         {"SIGNAL", MYLITE_SQL_KEYWORD_RESERVED},
+        {"SIGN", 0U},
         {"SIGNED", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"SIMPLE", 0U},
         {"SKIP", 0U},

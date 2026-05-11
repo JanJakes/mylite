@@ -417,6 +417,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "abs_function";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:
         return "abs_argument_count_error";
+    case MYLITE_SQL_AST_SIGN_FUNCTION:
+        return "sign_function";
+    case MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR:
+        return "sign_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

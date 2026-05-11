@@ -3607,6 +3607,7 @@ static bool map_keyword_token(
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
         {"ABS", MYLITE_SQL_PARSE_ABS},
+        {"SIGN", MYLITE_SQL_PARSE_SIGN},
         {"CONNECTION_ID", MYLITE_SQL_PARSE_CONNECTION_ID},
         {"COUNT", MYLITE_SQL_PARSE_COUNT},
         {"AVG", MYLITE_SQL_PARSE_AVG},

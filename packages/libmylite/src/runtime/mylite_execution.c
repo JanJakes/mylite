@@ -2196,6 +2196,28 @@ static int evaluate_abs_direct_literal_operand(
     struct scalar_bitwise_value *out_value,
     bool *out_handled
 );
+static int sign_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_sign_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
+static int evaluate_sign_direct_literal_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value,
+    bool *out_handled
+);
+static int sign_of_decimal_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+);
 static int bit_count_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2537,6 +2559,7 @@ static void set_scalar_arithmetic_overflow_error(struct mylite_db *database);
 static void set_scalar_bitwise_unsupported_error(struct mylite_db *database);
 static void set_abs_signed_minimum_overflow_error(struct mylite_db *database);
 static void set_abs_unsupported_error(struct mylite_db *database);
+static void set_sign_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
 static void set_scalar_comparison_unsupported_error(struct mylite_db *database);
@@ -2823,6 +2846,7 @@ static int if_validation_stack_push(
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_arithmetic_projection_expression(
@@ -4676,6 +4700,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_MOD_FUNCTION:
     case MYLITE_SQL_AST_ABS_FUNCTION:
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SIGN_FUNCTION:
+    case MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6479,8 +6505,8 @@ static int execute_do_statement(
             "DO supports only session scalar values, integer/boolean/NULL values, scalar "
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, limited numeric bitwise operators, signed 64-bit scalar "
-            "comparison, keyword scalar logical operators, scalar IS predicates, and top-level "
-            "CASE expressions"
+            "comparison, keyword scalar logical operators, scalar IS predicates, limited numeric "
+            "ABS()/SIGN()/BIT_COUNT(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -6578,9 +6604,9 @@ static int execute_select_statement(
         set_unsupported_error(
             database,
             "SELECT scalar projection supports only session scalar values, integer/boolean/NULL, "
-            "scalar comparison, scalar logical operators, scalar IS predicates, signed 64-bit +, "
-            "binary -, and * arithmetic, %, MOD, DIV, scalar functions, and limited numeric "
-            "bitwise operators"
+            "signed 64-bit +, binary -, and * arithmetic, %, MOD, DIV, limited numeric bitwise "
+            "operators, limited numeric ABS()/SIGN()/BIT_COUNT(), scalar functions, scalar "
+            "comparison, logical, and scalar IS predicates"
         );
         return MYLITE_ERROR;
     }
@@ -8724,6 +8750,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_MOD_FUNCTION:
     case MYLITE_SQL_AST_ABS_FUNCTION:
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SIGN_FUNCTION:
+    case MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16225,6 +16253,8 @@ static const char *argument_count_error_node_function_name(
         return "ISNULL";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:
         return "ABS";
+    case MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR:
+        return "SIGN";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
     default:
@@ -16334,6 +16364,8 @@ static int session_scalar_value(
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return abs_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SIGN_FUNCTION:
+        return sign_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
         return bit_count_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
@@ -16620,6 +16652,197 @@ static int evaluate_abs_direct_literal_operand(
         return MYLITE_ERROR;
     }
     out_value->integer = magnitude;
+    return MYLITE_OK;
+}
+
+static int sign_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_sign_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_sign_operand(database, child_at(expression, 0U), &value);
+    if (rc != MYLITE_OK || value.is_null) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    if (value.integer < 0) {
+        out_cell->value = "-1";
+    } else if (value.integer > 0) {
+        out_cell->value = "1";
+    } else {
+        out_cell->value = "0";
+    }
+    out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+    return MYLITE_OK;
+}
+
+static int evaluate_sign_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_sign_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_sign_direct_literal_operand(database, expression, out_value, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    if (is_scalar_bitwise_projection_expression(expression)) {
+        struct scalar_bitwise_value bitwise = {.is_null = false, .integer = 0U};
+
+        rc = evaluate_scalar_bitwise_expression(database, expression, &bitwise);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_value->is_null = bitwise.is_null;
+        out_value->division_by_zero_warning_count = bitwise.division_by_zero_warning_count;
+        if (!bitwise.is_null) {
+            out_value->integer = bitwise.integer == 0U ? 0 : 1;
+        }
+        return MYLITE_OK;
+    }
+    if (!is_scalar_arithmetic_projection_expression(expression)) {
+        set_sign_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_scalar_arithmetic_expression(database, expression, &arithmetic);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = arithmetic.is_null;
+    out_value->division_by_zero_warning_count = arithmetic.division_by_zero_warning_count;
+    if (arithmetic.is_null) {
+        return MYLITE_OK;
+    }
+    if (arithmetic.integer < 0) {
+        out_value->integer = -1;
+    } else if (arithmetic.integer > 0) {
+        out_value->integer = 1;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_sign_direct_literal_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+
+    if (out_value == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return MYLITE_OK;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        has_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_value->is_null = true;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        out_value->integer = 1;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        out_value->integer = 0;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+
+    return sign_of_decimal_integer_literal(database, &literal->span, is_negative, out_value);
+}
+
+static int sign_of_decimal_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+) {
+    bool is_zero = true;
+
+    if (span == NULL || span->text == NULL || span->length == 0U || out_value == NULL) {
+        set_sign_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; index < span->length; ++index) {
+        unsigned char byte = (unsigned char)span->text[index];
+
+        if (byte < '0' || byte > '9') {
+            set_sign_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        if (byte != '0') {
+            is_zero = false;
+        }
+    }
+
+    if (is_zero) {
+        out_value->integer = 0;
+    } else if (is_negative) {
+        out_value->integer = -1;
+    } else {
+        out_value->integer = 1;
+    }
     return MYLITE_OK;
 }
 
@@ -19098,6 +19321,15 @@ static void set_abs_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_sign_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "SIGN() supports only top-level no-source SELECT, FROM DUAL SELECT, and DO numeric "
+        "SIGN() over integer, boolean, NULL, direct decimal integer literals, signed 64-bit "
+        "scalar arithmetic, and limited numeric bitwise operands"
+    );
+}
+
 static void set_bit_count_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -21189,6 +21421,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_abs_projection_expression(expression)) {
         return true;
     }
+    if (is_sign_projection_expression(expression)) {
+        return true;
+    }
     if (is_bit_count_projection_expression(expression)) {
         return true;
     }
@@ -21214,6 +21449,18 @@ static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expre
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_ABS_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SIGN_FUNCTION) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -21731,6 +21978,9 @@ static bool is_scalar_value_projection_attempt_operand(
             return true;
         }
         if (expression->kind == MYLITE_SQL_AST_ABS_FUNCTION) {
+            return true;
+        }
+        if (expression->kind == MYLITE_SQL_AST_SIGN_FUNCTION) {
             return true;
         }
         if (expression->kind == MYLITE_SQL_AST_BIT_COUNT_FUNCTION) {

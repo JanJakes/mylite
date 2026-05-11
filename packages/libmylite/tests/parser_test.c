@@ -38,6 +38,7 @@ static int test_coalesce_function(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
 static int test_abs_function(void);
+static int test_sign_function(void);
 static int test_bit_count_function(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
@@ -174,6 +175,7 @@ int main(void) {
     failures += test_nullif_function();
     failures += test_isnull_function();
     failures += test_abs_function();
+    failures += test_sign_function();
     failures += test_bit_count_function();
     failures += test_case_operator();
     failures += test_do_statement();
@@ -1928,6 +1930,92 @@ static int test_abs_function(void) {
     failures += parse_sql("CREATE TABLE abs (abs INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "abs identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_sign_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT SIGN(-64), Sign(NULL), sign(~0) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SIGN_FUNCTION, "sign function");
+    failures += expect_span_text(first_expression, "SIGN(-64)", "sign function span");
+    failures += expect_child_count(first_expression, 1U, "sign argument count");
+    failures += expect_operator(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "sign negative integer"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_SIGN_FUNCTION, "mixed sign");
+    failures +=
+        expect_literal(child_at(second_expression, 0U), MYLITE_SQL_AST_LITERAL_NULL, "sign NULL");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SIGN_FUNCTION, "lower sign");
+    failures += expect_operator(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_NOT,
+        "sign bitwise argument"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "sign from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SIGN (1), (SIGN(1)), SIGN(IFNULL(NULL,-7));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SIGN_FUNCTION, "spaced sign");
+    failures += expect_span_text(first_expression, "SIGN (1)", "spaced sign span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized sign");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_SIGN_FUNCTION, "wrapped sign");
+    failures += expect_span_text(parenthesized, "(SIGN(1))", "parenthesized sign span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SIGN_FUNCTION, "ifnull sign value");
+    failures +=
+        expect_node(child_at(third_expression, 0U), MYLITE_SQL_AST_IFNULL_FUNCTION, "sign ifnull");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SIGN();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR,
+        "empty sign argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SIGN(1,2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SIGN_ARGUMENT_COUNT_ERROR,
+        "two sign argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE sign (sign INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "sign identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -1406,31 +1406,31 @@ predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 
-predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) LESS(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) LESS(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) GREATER(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) GREATER(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
 }
-predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_integer_value(V). {
+predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
@@ -1496,6 +1496,21 @@ predicate_in_value(A) ::= predicate_integer_value(V). {
 }
 predicate_in_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+predicate_comparison_value(A) ::= predicate_integer_value(V). {
+    A = V;
+}
+predicate_comparison_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
 }
 
 predicate_integer_value(A) ::= INTEGER(T). {
@@ -2443,6 +2458,9 @@ identifier(A) ::= LAST_INSERT_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COLUMNS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TABLES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELDS(T). {

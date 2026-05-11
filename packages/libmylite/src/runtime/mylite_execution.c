@@ -43,6 +43,7 @@ enum {
     mysql_error_cant_drop_field_or_key = 1091,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
+    mysql_error_unknown_table_in_schema = 1109,
     mysql_error_unknown = 1105,
     mysql_error_column_specified_twice = 1110,
     mysql_error_unknown_character_set = 1115,
@@ -104,6 +105,19 @@ enum {
     show_count_warnings_result_column_count = 1,
     show_errors_result_column_count = 3,
     show_count_errors_result_column_count = 1,
+    information_schema_schemata_column_count = 6,
+    information_schema_tables_column_count = 21,
+    information_schema_columns_column_count = 22,
+    information_schema_tables_auto_increment_column = 13,
+    information_schema_columns_default_column = 5,
+    information_schema_columns_is_nullable_column = 6,
+    information_schema_columns_character_maximum_length_column = 8,
+    information_schema_columns_character_octet_length_column = 9,
+    information_schema_columns_character_set_name_column = 13,
+    information_schema_columns_collation_name_column = 14,
+    information_schema_columns_column_type_column = 15,
+    information_schema_columns_column_key_column = 16,
+    information_schema_columns_extra_column = 17,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -717,6 +731,630 @@ struct show_columns_target_nodes {
     const struct mylite_sql_ast_node *schema;
 };
 
+enum information_schema_table_kind {
+    INFORMATION_SCHEMA_TABLE_SCHEMATA = 0,
+    INFORMATION_SCHEMA_TABLE_TABLES = 1,
+    INFORMATION_SCHEMA_TABLE_COLUMNS = 2,
+};
+
+struct information_schema_column_definition {
+    const char *name;
+    const char *column_default;
+    const char *is_nullable;
+    const char *data_type;
+    const char *character_maximum_length;
+    const char *character_octet_length;
+    const char *numeric_precision;
+    const char *numeric_scale;
+    const char *datetime_precision;
+    const char *character_set_name;
+    const char *collation_name;
+    const char *column_type;
+};
+
+struct information_schema_table_definition {
+    enum information_schema_table_kind kind;
+    const char *name;
+    const struct information_schema_column_definition *columns;
+    size_t column_count;
+};
+
+struct information_schema_row_set {
+    const struct information_schema_table_definition *definition;
+    char ***rows;
+    size_t row_count;
+};
+
+struct information_schema_row_order_pair {
+    size_t left_row;
+    size_t right_row;
+};
+
+struct information_schema_predicate_value {
+    char *text;
+    bool is_null;
+    bool is_numeric;
+};
+
+enum information_schema_predicate_eval_action {
+    INFORMATION_SCHEMA_PREDICATE_VISIT = 0,
+    INFORMATION_SCHEMA_PREDICATE_EVALUATE = 1,
+};
+
+struct information_schema_predicate_eval_frame {
+    const struct mylite_sql_ast_node *node;
+    enum information_schema_predicate_eval_action action;
+};
+
+struct information_schema_predicate_frame_stack {
+    struct information_schema_predicate_eval_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct information_schema_bool_stack {
+    bool *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct information_schema_query {
+    const struct information_schema_table_definition *definition;
+    char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_alias;
+    bool is_count_star;
+    const struct mylite_sql_ast_node *count_expression;
+    const struct mylite_sql_ast_node *count_alias;
+    size_t *projection_indexes;
+    char **projection_names;
+    size_t projection_count;
+    bool has_order;
+    size_t order_index;
+    enum planned_select_order_direction order_direction;
+    struct planned_select_limit limit;
+};
+
+struct information_schema_catalog_context {
+    struct mylite_db *database;
+    struct information_schema_row_set *rows;
+    const struct mylite_catalog_schema_descriptor *schema;
+};
+
+static const struct information_schema_column_definition information_schema_schemata_columns[] = {
+    {"CATALOG_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"SCHEMA_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"DEFAULT_CHARACTER_SET_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"DEFAULT_COLLATION_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"SQL_PATH", NULL, "YES", "varbinary", "0", "0", NULL, NULL, NULL, NULL, NULL, "varbinary(0)"},
+    {"DEFAULT_ENCRYPTION",
+     NULL,
+     "NO",
+     "enum",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('NO','YES')"},
+};
+
+static const struct information_schema_column_definition information_schema_tables_columns[] = {
+    {"TABLE_CATALOG",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"TABLE_SCHEMA",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"TABLE_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"TABLE_TYPE",
+     NULL,
+     "NO",
+     "enum",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('BASE TABLE','VIEW','SYSTEM VIEW')"},
+    {"ENGINE",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"VERSION", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+    {"ROW_FORMAT",
+     NULL,
+     "YES",
+     "enum",
+     "10",
+     "30",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('Fixed','Dynamic','Compressed','Redundant','Compact','Paged')"},
+    {"TABLE_ROWS",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"AVG_ROW_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"DATA_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"MAX_DATA_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"INDEX_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"DATA_FREE",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"AUTO_INCREMENT",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"CREATE_TIME", NULL, "NO", "timestamp", NULL, NULL, NULL, NULL, "0", NULL, NULL, "timestamp"},
+    {"UPDATE_TIME", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"CHECK_TIME", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"TABLE_COLLATION",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"CHECKSUM", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+    {"CREATE_OPTIONS",
+     NULL,
+     "YES",
+     "varchar",
+     "256",
+     "768",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(256)"},
+    {"TABLE_COMMENT",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "text"},
+};
+
+static const struct information_schema_column_definition information_schema_columns_columns[] = {
+    {"TABLE_CATALOG",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"TABLE_SCHEMA",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"TABLE_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"COLUMN_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"ORDINAL_POSITION",
+     NULL,
+     "NO",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+    {"COLUMN_DEFAULT",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+    {"IS_NULLABLE",
+     "",
+     "NO",
+     "varchar",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"DATA_TYPE",
+     NULL,
+     "YES",
+     "longtext",
+     "4294967295",
+     "4294967295",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "longtext"},
+    {"CHARACTER_MAXIMUM_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "19",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint"},
+    {"CHARACTER_OCTET_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "19",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint"},
+    {"NUMERIC_PRECISION",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"NUMERIC_SCALE",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"DATETIME_PRECISION",
+     NULL,
+     "YES",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+    {"CHARACTER_SET_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"COLLATION_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"COLUMN_TYPE",
+     NULL,
+     "NO",
+     "mediumtext",
+     "16777215",
+     "16777215",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "mediumtext"},
+    {"COLUMN_KEY",
+     NULL,
+     "NO",
+     "enum",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('','PRI','UNI','MUL')"},
+    {"EXTRA",
+     NULL,
+     "YES",
+     "varchar",
+     "256",
+     "768",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(256)"},
+    {"PRIVILEGES",
+     NULL,
+     "YES",
+     "varchar",
+     "154",
+     "462",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(154)"},
+    {"COLUMN_COMMENT",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+    {"GENERATION_EXPRESSION",
+     NULL,
+     "NO",
+     "longtext",
+     "4294967295",
+     "4294967295",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "longtext"},
+    {"SRS_ID", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const struct information_schema_table_definition information_schema_table_definitions[] = {
+    {INFORMATION_SCHEMA_TABLE_SCHEMATA,
+     "SCHEMATA",
+     information_schema_schemata_columns,
+     information_schema_schemata_column_count},
+    {INFORMATION_SCHEMA_TABLE_TABLES,
+     "TABLES",
+     information_schema_tables_columns,
+     information_schema_tables_column_count},
+    {INFORMATION_SCHEMA_TABLE_COLUMNS,
+     "COLUMNS",
+     information_schema_columns_columns,
+     information_schema_columns_column_count},
+};
+
 struct show_databases_context {
     mylite_result *result;
     const struct show_like_filter *filter;
@@ -1324,6 +1962,316 @@ static int execute_select_statement(
 static int reject_select_modifier_usage_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
+);
+static int execute_information_schema_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int select_statement_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+);
+static int resolve_information_schema_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct information_schema_query *out_query
+);
+static void information_schema_query_deinit(struct information_schema_query *query);
+static int execute_information_schema_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    mylite_result **out_result
+);
+static int build_information_schema_rows(
+    struct mylite_db *database,
+    const struct information_schema_table_definition *definition,
+    struct information_schema_row_set *out_rows
+);
+static void information_schema_row_set_deinit(struct information_schema_row_set *rows);
+static int append_information_schema_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_catalog_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_catalog_schema(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
+static int append_information_schema_catalog_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int append_information_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *const *values
+);
+static int append_information_schema_schemata_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_schemata_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema
+);
+static int append_information_schema_tables_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_tables_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_columns_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_columns_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct information_schema_table_definition *definition
+);
+static int append_information_schema_columns_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_columns_base_column_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct primary_key_info *primary_key
+);
+static int information_schema_append_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_query *query
+);
+static int information_schema_append_result_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+);
+static int information_schema_append_count_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+);
+static int information_schema_matching_row_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t **out_indexes,
+    size_t *out_index_count
+);
+static int information_schema_sort_row_indexes(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t *indexes,
+    size_t index_count
+);
+static int information_schema_compare_rows(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    struct information_schema_row_order_pair pair
+);
+static int information_schema_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+);
+static void information_schema_predicate_frame_stack_deinit(
+    struct information_schema_predicate_frame_stack *stack
+);
+static int information_schema_predicate_frame_stack_push(
+    struct mylite_db *database,
+    struct information_schema_predicate_frame_stack *stack,
+    struct information_schema_predicate_eval_frame frame
+);
+static bool information_schema_predicate_frame_stack_pop(
+    struct information_schema_predicate_frame_stack *stack,
+    struct information_schema_predicate_eval_frame *out_frame
+);
+static void information_schema_bool_stack_deinit(struct information_schema_bool_stack *stack);
+static int information_schema_bool_stack_push(
+    struct mylite_db *database,
+    struct information_schema_bool_stack *stack,
+    bool value
+);
+static bool information_schema_bool_stack_pop(
+    struct information_schema_bool_stack *stack,
+    bool *out_value
+);
+static int information_schema_visit_predicate(
+    struct mylite_db *database,
+    struct information_schema_predicate_frame_stack *frame_stack,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_evaluate_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    struct information_schema_bool_stack *bool_stack
+);
+static int information_schema_is_null_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+);
+static int information_schema_compound_predicate_matches(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind predicate_kind,
+    struct information_schema_bool_stack *bool_stack,
+    bool *out_matches
+);
+static bool information_schema_bool_from_int(int condition);
+static int information_schema_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+);
+static int information_schema_numeric_comparison_matches(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left_text,
+    const char *right_text,
+    bool *out_matches
+);
+static int information_schema_text_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_column_definition *column,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left_text,
+    const char *right_text,
+    bool right_is_numeric,
+    bool *out_matches
+);
+static int information_schema_predicate_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+);
+static int information_schema_predicate_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+);
+static int information_schema_predicate_integer_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+);
+static int information_schema_format_signed_magnitude(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    char *buffer,
+    size_t buffer_size
+);
+static int information_schema_resolve_column_reference(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *column_node,
+    enum column_reference_diagnostic_context diagnostic_context,
+    size_t *out_column_index
+);
+static int information_schema_column_reference_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char **out_text
+);
+static int information_schema_plan_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    struct information_schema_query *out_query
+);
+static int information_schema_append_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    size_t column_index,
+    const struct mylite_sql_ast_node *alias
+);
+static int information_schema_plan_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    struct information_schema_query *out_query
+);
+static int information_schema_plan_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct information_schema_query *out_query
+);
+static int information_schema_resolve_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct information_schema_query *out_query
+);
+static const struct information_schema_table_definition *find_information_schema_table_definition(
+    const char *table_name
+);
+static int information_schema_table_definition_index(
+    const struct information_schema_table_definition *definition,
+    const char *column_name,
+    size_t *out_index
+);
+static int information_schema_compare_text(
+    const struct information_schema_table_definition *definition,
+    size_t column_index,
+    const char *left,
+    const char *right
+);
+static int information_schema_compare_column_text(
+    const struct information_schema_column_definition *column,
+    const char *left,
+    const char *right
+);
+static int compare_ascii_case_insensitive_text(const char *left, const char *right);
+static bool information_schema_column_uses_case_insensitive_collation(
+    const struct information_schema_column_definition *column
+);
+static bool information_schema_column_is_numeric(
+    const struct information_schema_table_definition *definition,
+    size_t column_index
+);
+static int information_schema_text_to_i64(const char *text, int64_t *out_value);
+static int information_schema_format_i64(
+    struct mylite_db *database,
+    int64_t value,
+    char *buffer,
+    size_t buffer_size
+);
+static const char *information_schema_data_type_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
+);
+static const char *information_schema_numeric_precision_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
+);
+static const char *information_schema_numeric_scale_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
 );
 static int execute_show_tables_statement(
     struct mylite_db *database,
@@ -4963,6 +5911,10 @@ static void set_create_table_select_locking_clause_error(
     const char *source_table_name,
     const char *target_table_name
 );
+static void set_unknown_information_schema_table_error(
+    struct mylite_db *database,
+    const char *table_name
+);
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
@@ -7346,6 +8298,7 @@ static int execute_select_statement(
     struct planned_count count_plan = {false};
     struct planned_column_aggregate aggregate_plan = {0};
     const char *argument_count_error_function = NULL;
+    bool is_information_schema_query = false;
     int rc = MYLITE_OK;
 
     argument_count_error_function = select_statement_argument_count_error_function(statement);
@@ -7356,6 +8309,17 @@ static int execute_select_statement(
     rc = reject_select_modifier_usage_if_needed(database, statement);
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    rc = select_statement_targets_information_schema(
+        database,
+        statement,
+        &is_information_schema_query
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_information_schema_query) {
+        return execute_information_schema_select_statement(database, statement, out_result);
     }
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
@@ -7460,6 +8424,2156 @@ static int reject_select_modifier_usage_if_needed(
     }
 
     return MYLITE_OK;
+}
+
+static int execute_information_schema_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct information_schema_query query = {0};
+    int rc = resolve_information_schema_query(database, statement, &query);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_information_schema_query(database, statement, &query, out_result);
+    }
+    information_schema_query_deinit(&query);
+    return rc;
+}
+
+static int select_statement_targets_information_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U && text_equals_ascii_case_insensitive(parts[0], "information_schema")) {
+        *out_matches = true;
+        return MYLITE_OK;
+    }
+    if (part_count == 1U && database != NULL && database->session.has_selected_schema &&
+        text_equals_ascii_case_insensitive(
+            database->session.selected_schema,
+            "information_schema"
+        )) {
+        *out_matches = true;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_information_schema_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct information_schema_query *out_query
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int rc = MYLITE_OK;
+
+    *out_query = (struct information_schema_query){0};
+    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA SELECT supports only non-distinct metadata queries"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = information_schema_resolve_source(database, from_clause, out_query);
+    while (rc == MYLITE_OK && optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA SELECT supports only WHERE, ORDER BY, and LIMIT"
+            );
+            rc = MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_plan_projection(database, select_list, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        out_query->limit = (struct planned_select_limit){
+            .has_limit = false,
+            .row_count = 0,
+            .has_offset = false,
+            .offset = 0,
+        };
+        rc = information_schema_plan_order(database, order_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_plan_limit(database, limit_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
+        (void)where_clause;
+        return MYLITE_OK;
+    }
+
+    information_schema_query_deinit(out_query);
+    return rc;
+}
+
+static void information_schema_query_deinit(struct information_schema_query *query) {
+    if (query == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < query->projection_count; ++index) {
+        free(query->projection_names[index]);
+    }
+    free((void *)query->projection_names);
+    free(query->projection_indexes);
+    *query = (struct information_schema_query){0};
+}
+
+static int execute_information_schema_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    mylite_result **out_result
+) {
+    struct information_schema_row_set rows = {0};
+    mylite_result *result = NULL;
+    int rc = build_information_schema_rows(database, query->definition, &rows);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_append_result_columns(database, result, query);
+    }
+    if (rc == MYLITE_OK && query->is_count_star) {
+        rc = information_schema_append_count_result(database, statement, query, &rows, result);
+    } else if (rc == MYLITE_OK) {
+        rc = information_schema_append_result_rows(database, statement, query, &rows, result);
+    }
+    information_schema_row_set_deinit(&rows);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int build_information_schema_rows(
+    struct mylite_db *database,
+    const struct information_schema_table_definition *definition,
+    struct information_schema_row_set *out_rows
+) {
+    int rc = MYLITE_OK;
+
+    *out_rows = (struct information_schema_row_set){.definition = definition};
+    rc = append_information_schema_system_rows(database, out_rows);
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_catalog_rows(database, out_rows);
+    }
+    if (rc != MYLITE_OK) {
+        information_schema_row_set_deinit(out_rows);
+    }
+    return rc;
+}
+
+static void information_schema_row_set_deinit(struct information_schema_row_set *rows) {
+    if (rows == NULL) {
+        return;
+    }
+    for (size_t row_index = 0U; row_index < rows->row_count; ++row_index) {
+        for (size_t column_index = 0U; column_index < rows->definition->column_count;
+             ++column_index) {
+            free(rows->rows[row_index][column_index]);
+        }
+        free((void *)rows->rows[row_index]);
+    }
+    free((void *)rows->rows);
+    *rows = (struct information_schema_row_set){0};
+}
+
+static int append_information_schema_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    switch (rows->definition->kind) {
+    case INFORMATION_SCHEMA_TABLE_SCHEMATA:
+        return append_information_schema_schemata_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_TABLES:
+        return append_information_schema_tables_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_COLUMNS:
+        return append_information_schema_columns_system_rows(database, rows);
+    }
+
+    set_runtime_error(database, "invalid INFORMATION_SCHEMA table");
+    return MYLITE_ERROR;
+}
+
+static int append_information_schema_catalog_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct information_schema_catalog_context context = {
+        .database = database,
+        .rows = rows,
+        .schema = NULL,
+    };
+
+    return mylite_catalog_for_each_schema(
+        database,
+        append_information_schema_catalog_schema,
+        &context
+    );
+}
+
+static int append_information_schema_catalog_schema(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct information_schema_catalog_context *context = user_data;
+
+    if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_SCHEMATA) {
+        return append_information_schema_schemata_schema_row(
+            context->database,
+            context->rows,
+            schema
+        );
+    }
+
+    context->schema = schema;
+    return mylite_catalog_for_each_table_in_schema(
+        context->database,
+        schema->schema_id,
+        append_information_schema_catalog_table,
+        context
+    );
+}
+
+static int append_information_schema_catalog_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct information_schema_catalog_context *context = user_data;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
+        context->schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_TABLES) {
+        return append_information_schema_tables_base_row(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_COLUMNS) {
+        return append_information_schema_columns_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    return MYLITE_OK;
+}
+
+static int append_information_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *const *values
+) {
+    char ***grown_rows = NULL;
+    char **row = NULL;
+    size_t required_count = rows->row_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_rows)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    grown_rows = (char ***)realloc((void *)rows->rows, required_count * sizeof(*grown_rows));
+    if (grown_rows == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    rows->rows = grown_rows;
+
+    row = (char **)calloc(rows->definition->column_count, sizeof(*row));
+    if (row == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t column_index = 0U; column_index < rows->definition->column_count; ++column_index) {
+        if (values[column_index] == NULL) {
+            continue;
+        }
+        int rc = duplicate_text(database, values[column_index], &row[column_index]);
+
+        if (rc != MYLITE_OK) {
+            for (size_t rollback_index = 0U; rollback_index < column_index; ++rollback_index) {
+                free(row[rollback_index]);
+            }
+            free((void *)row);
+            return rc;
+        }
+    }
+
+    rows->rows[rows->row_count] = row;
+    rows->row_count = required_count;
+    return MYLITE_OK;
+}
+
+static int append_information_schema_schemata_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_schemata_column_count] = {
+        "def",
+        "information_schema",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        NULL,
+        "NO",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_schemata_schema_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema
+) {
+    const char *values[information_schema_schemata_column_count] = {
+        "def",
+        schema->name,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "NO",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_tables_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(information_schema_table_definitions) /
+                                              sizeof(information_schema_table_definitions[0]);
+         ++table_index) {
+        const struct information_schema_table_definition *definition =
+            &information_schema_table_definitions[table_index];
+        const char *values[information_schema_tables_column_count] = {
+            "def",
+            "information_schema",
+            definition->name,
+            "SYSTEM VIEW",
+            NULL,
+            "10",
+            NULL,
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            "utf8mb3_general_ci",
+            NULL,
+            "",
+            "",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_tables_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    char row_count_text[integer_text_capacity];
+    char average_row_length_text[integer_text_capacity];
+    char auto_increment_text[integer_text_capacity];
+    int64_t row_count = 0;
+    int64_t average_row_length = 0;
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    bool has_auto_increment = false;
+    const char *values[information_schema_tables_column_count] = {
+        "def",
+        schema->name,
+        table->name,
+        "BASE TABLE",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        row_count_text,
+        average_row_length_text,
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "",
+        "",
+    };
+    int rc = read_show_table_status_row_count(database, table, &row_count);
+
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA.TABLES row count");
+        return MYLITE_ERROR;
+    }
+    if (row_count > 0) {
+        average_row_length = show_table_status_data_length / row_count;
+    }
+    rc = information_schema_format_i64(database, row_count, row_count_text, sizeof(row_count_text));
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            average_row_length,
+            average_row_length_text,
+            sizeof(average_row_length_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        if (column_descriptor_is_auto_increment(&columns[column_index])) {
+            has_auto_increment = true;
+            break;
+        }
+    }
+    free(columns);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (has_auto_increment) {
+        rc = information_schema_format_i64(
+            database,
+            table->auto_increment_next,
+            auto_increment_text,
+            sizeof(auto_increment_text)
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        values[information_schema_tables_auto_increment_column] = auto_increment_text;
+    }
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_columns_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(information_schema_table_definitions) /
+                                              sizeof(information_schema_table_definitions[0]);
+         ++table_index) {
+        rc = append_information_schema_columns_system_table_rows(
+            database,
+            rows,
+            &information_schema_table_definitions[table_index]
+        );
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_system_table_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct information_schema_table_definition *definition
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < definition->column_count;
+         ++column_index) {
+        const struct information_schema_column_definition *column =
+            &definition->columns[column_index];
+        char ordinal_text[integer_text_capacity];
+        const char *values[information_schema_columns_column_count] = {
+            "def",
+            "information_schema",
+            definition->name,
+            column->name,
+            ordinal_text,
+            column->column_default,
+            column->is_nullable,
+            column->data_type,
+            column->character_maximum_length,
+            column->character_octet_length,
+            column->numeric_precision,
+            column->numeric_scale,
+            column->datetime_precision,
+            column->character_set_name,
+            column->collation_name,
+            column->column_type,
+            "",
+            "",
+            "select",
+            "",
+            "",
+            NULL,
+        };
+
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)column_index + 1,
+            ordinal_text,
+            sizeof(ordinal_text)
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+    return rc;
+}
+
+static int append_information_schema_columns_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    struct primary_key_info primary_key = primary_key_info_init();
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(database, table->table_id, columns, column_count, &primary_key);
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        rc = append_information_schema_columns_base_column_row(
+            database,
+            rows,
+            schema,
+            table,
+            &columns[column_index],
+            &primary_key
+        );
+    }
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_columns_base_column_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct primary_key_info *primary_key
+) {
+    char ordinal_text[integer_text_capacity];
+    char default_text[integer_text_capacity];
+    char varchar_length_text[integer_text_capacity];
+    char varchar_octet_text[integer_text_capacity];
+    char column_type_text[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
+    const char *column_type = NULL;
+    const char *character_maximum_length = NULL;
+    const char *character_octet_length = NULL;
+    const char *character_set_name = NULL;
+    const char *collation_name = NULL;
+    const char *column_default = NULL;
+    const char *column_key = "";
+    const char *extra = "";
+    const char *is_nullable = "NO";
+    const char *values[information_schema_columns_column_count] = {
+        "def",
+        schema->name,
+        table->name,
+        column->name,
+        ordinal_text,
+        NULL,
+        is_nullable,
+        information_schema_data_type_for_descriptor(column),
+        NULL,
+        NULL,
+        information_schema_numeric_precision_for_descriptor(column),
+        information_schema_numeric_scale_for_descriptor(column),
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "",
+        "",
+        "select,insert,update,references",
+        "",
+        "",
+        NULL,
+    };
+    int rc = information_schema_format_i64(
+        database,
+        column->ordinal_position,
+        ordinal_text,
+        sizeof(ordinal_text)
+    );
+
+    if (column->is_nullable) {
+        is_nullable = "YES";
+        values[information_schema_columns_is_nullable_column] = is_nullable;
+    }
+    if (rc == MYLITE_OK && !column->is_auto_increment &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        rc = information_schema_format_i64(
+            database,
+            column->default_integer,
+            default_text,
+            sizeof(default_text)
+        );
+        column_default = default_text;
+    }
+    if (rc == MYLITE_OK) {
+        rc = show_column_type_text(
+            database,
+            column->logical_type,
+            column_type_text,
+            sizeof(column_type_text),
+            &column_type
+        );
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_varchar(column)) {
+        size_t varchar_length = 0U;
+
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "INFORMATION_SCHEMA.COLUMNS supports only baseline VARCHAR descriptors",
+            &varchar_length
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)varchar_length,
+                varchar_length_text,
+                sizeof(varchar_length_text)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                ((int64_t)varchar_length) * 4,
+                varchar_octet_text,
+                sizeof(varchar_octet_text)
+            );
+        }
+        character_maximum_length = varchar_length_text;
+        character_octet_length = varchar_octet_text;
+        character_set_name = "utf8mb4";
+        collation_name = "utf8mb4_0900_ai_ci";
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (primary_key->has_primary_key && column->column_id == primary_key->index_column.column_id) {
+        column_key = "PRI";
+    }
+    if (column->is_auto_increment && !column->is_visible) {
+        extra = "auto_increment INVISIBLE";
+    } else if (column->is_auto_increment) {
+        extra = "auto_increment";
+    } else if (!column->is_visible) {
+        extra = "INVISIBLE";
+    }
+
+    values[information_schema_columns_default_column] = column_default;
+    values[information_schema_columns_character_maximum_length_column] = character_maximum_length;
+    values[information_schema_columns_character_octet_length_column] = character_octet_length;
+    values[information_schema_columns_character_set_name_column] = character_set_name;
+    values[information_schema_columns_collation_name_column] = collation_name;
+    values[information_schema_columns_column_type_column] = column_type;
+    values[information_schema_columns_column_key_column] = column_key;
+    values[information_schema_columns_extra_column] = extra;
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int information_schema_append_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_query *query
+) {
+    int rc = MYLITE_OK;
+
+    if (query->is_count_star) {
+        char *column_name = NULL;
+
+        if (query->count_alias != NULL) {
+            rc = copy_select_item_alias_text(database, query->count_alias, &column_name);
+        } else {
+            rc = copy_aggregate_result_column_name(
+                database,
+                &query->count_expression->span,
+                &column_name
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_result_append_column(result, column_name);
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+            }
+        }
+        free(column_name);
+        return rc;
+    }
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < query->projection_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, query->projection_names[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int information_schema_append_result_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+) {
+    size_t *indexes = NULL;
+    size_t index_count = 0U;
+    size_t visible_count = 0U;
+    int rc = information_schema_matching_row_indexes(
+        database,
+        statement,
+        query,
+        rows,
+        &indexes,
+        &index_count
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_sort_row_indexes(query, rows, indexes, index_count);
+    }
+    for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
+        const char *values[information_schema_columns_column_count];
+        size_t row_index = indexes[output_index];
+
+        if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
+            break;
+        }
+        for (size_t column_index = 0U; column_index < query->projection_count; ++column_index) {
+            values[column_index] = rows->rows[row_index][query->projection_indexes[column_index]];
+        }
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+        ++visible_count;
+    }
+    free(indexes);
+    return rc;
+}
+
+static int information_schema_append_count_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result
+) {
+    char count_text[integer_text_capacity];
+    const char *values[1] = {count_text};
+    size_t *indexes = NULL;
+    size_t index_count = 0U;
+    int rc = information_schema_matching_row_indexes(
+        database,
+        statement,
+        query,
+        rows,
+        &indexes,
+        &index_count
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)index_count,
+            count_text,
+            sizeof(count_text)
+        );
+    }
+    if (rc == MYLITE_OK && (!query->limit.has_limit || query->limit.row_count != 0)) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    free(indexes);
+    return rc;
+}
+
+static int information_schema_matching_row_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t **out_indexes,
+    size_t *out_index_count
+) {
+    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    size_t *indexes = NULL;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_indexes = NULL;
+    *out_index_count = 0U;
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+            break;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    if (rows->row_count > SIZE_MAX / sizeof(*indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    indexes = malloc(rows->row_count * sizeof(*indexes));
+    if (indexes == NULL && rows->row_count != 0U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
+        bool matches = true;
+
+        if (where_clause != NULL) {
+            rc = information_schema_predicate_matches(
+                database,
+                query,
+                child_at(where_clause, 0U),
+                rows->rows[row_index],
+                &matches
+            );
+        }
+        if (rc == MYLITE_OK && matches) {
+            indexes[index_count] = row_index;
+            ++index_count;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        free(indexes);
+        return rc;
+    }
+
+    *out_indexes = indexes;
+    *out_index_count = index_count;
+    return MYLITE_OK;
+}
+
+static int information_schema_sort_row_indexes(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t *indexes,
+    size_t index_count
+) {
+    if (!query->has_order) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 1U; index < index_count; ++index) {
+        size_t row_index = indexes[index];
+        size_t scan = index;
+
+        while (scan > 0U && information_schema_compare_rows(
+                                query,
+                                rows,
+                                (struct information_schema_row_order_pair){
+                                    .left_row = row_index,
+                                    .right_row = indexes[scan - 1U],
+                                }
+                            ) < 0) {
+            indexes[scan] = indexes[scan - 1U];
+            --scan;
+        }
+        indexes[scan] = row_index;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_compare_rows(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    struct information_schema_row_order_pair pair
+) {
+    const char *left = rows->rows[pair.left_row][query->order_index];
+    const char *right = rows->rows[pair.right_row][query->order_index];
+    int comparison = 0;
+
+    if (left == NULL && right == NULL) {
+        return 0;
+    }
+    if (left == NULL) {
+        comparison = -1;
+    } else if (right == NULL) {
+        comparison = 1;
+    } else if (information_schema_column_is_numeric(query->definition, query->order_index)) {
+        int64_t left_value = 0;
+        int64_t right_value = 0;
+
+        if (information_schema_text_to_i64(left, &left_value) == MYLITE_OK &&
+            information_schema_text_to_i64(right, &right_value) == MYLITE_OK) {
+            comparison = (left_value > right_value) - (left_value < right_value);
+        } else {
+            comparison =
+                information_schema_compare_text(query->definition, query->order_index, left, right);
+        }
+    } else {
+        comparison =
+            information_schema_compare_text(query->definition, query->order_index, left, right);
+    }
+    if (query->order_direction == PLANNED_SELECT_ORDER_DESC) {
+        comparison = -comparison;
+    }
+    return comparison;
+}
+
+static int information_schema_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+) {
+    struct information_schema_predicate_frame_stack frame_stack = {0};
+    struct information_schema_bool_stack bool_stack = {0};
+    struct information_schema_predicate_eval_frame frame = {
+        .node = predicate_node,
+        .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+    };
+    int rc = information_schema_predicate_frame_stack_push(database, &frame_stack, frame);
+
+    *out_matches = false;
+    while (rc == MYLITE_OK && information_schema_predicate_frame_stack_pop(&frame_stack, &frame)) {
+        const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(frame.node);
+
+        if (current == NULL) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE supports metadata predicates"
+            );
+            rc = MYLITE_ERROR;
+        } else if (frame.action == INFORMATION_SCHEMA_PREDICATE_VISIT) {
+            rc = information_schema_visit_predicate(database, &frame_stack, current);
+        } else {
+            rc = information_schema_evaluate_predicate(database, query, current, row, &bool_stack);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        if (bool_stack.count != 1U ||
+            !information_schema_bool_stack_pop(&bool_stack, out_matches)) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate state");
+            rc = MYLITE_ERROR;
+        }
+    }
+
+    information_schema_bool_stack_deinit(&bool_stack);
+    information_schema_predicate_frame_stack_deinit(&frame_stack);
+    return rc;
+}
+
+static void information_schema_predicate_frame_stack_deinit(
+    struct information_schema_predicate_frame_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct information_schema_predicate_frame_stack){0};
+}
+
+static int information_schema_predicate_frame_stack_push(
+    struct mylite_db *database,
+    struct information_schema_predicate_frame_stack *stack,
+    struct information_schema_predicate_eval_frame frame
+) {
+    struct information_schema_predicate_eval_frame *grown_items = NULL;
+    size_t new_capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+
+    if (stack->count < stack->capacity) {
+        stack->items[stack->count] = frame;
+        ++stack->count;
+        return MYLITE_OK;
+    }
+    if (new_capacity < stack->capacity || new_capacity > SIZE_MAX / sizeof(*grown_items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    stack->items = grown_items;
+    stack->capacity = new_capacity;
+    stack->items[stack->count] = frame;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static bool information_schema_predicate_frame_stack_pop(
+    struct information_schema_predicate_frame_stack *stack,
+    struct information_schema_predicate_eval_frame *out_frame
+) {
+    if (stack == NULL || stack->count == 0U) {
+        return false;
+    }
+    --stack->count;
+    *out_frame = stack->items[stack->count];
+    return true;
+}
+
+static void information_schema_bool_stack_deinit(struct information_schema_bool_stack *stack) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct information_schema_bool_stack){0};
+}
+
+static int information_schema_bool_stack_push(
+    struct mylite_db *database,
+    struct information_schema_bool_stack *stack,
+    bool value
+) {
+    bool *grown_items = NULL;
+    size_t new_capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+
+    if (stack->count < stack->capacity) {
+        stack->items[stack->count] = value;
+        ++stack->count;
+        return MYLITE_OK;
+    }
+    if (new_capacity < stack->capacity || new_capacity > SIZE_MAX / sizeof(*grown_items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    stack->items = grown_items;
+    stack->capacity = new_capacity;
+    stack->items[stack->count] = value;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static bool information_schema_bool_stack_pop(
+    struct information_schema_bool_stack *stack,
+    bool *out_value
+) {
+    if (stack == NULL || stack->count == 0U) {
+        return false;
+    }
+    --stack->count;
+    *out_value = stack->items[stack->count];
+    return true;
+}
+
+static int information_schema_visit_predicate(
+    struct mylite_db *database,
+    struct information_schema_predicate_frame_stack *frame_stack,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    int rc = information_schema_predicate_frame_stack_push(
+        database,
+        frame_stack,
+        (struct information_schema_predicate_eval_frame){
+            .node = predicate_node,
+            .action = INFORMATION_SCHEMA_PREDICATE_EVALUATE,
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (predicate_node->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return information_schema_predicate_frame_stack_push(
+            database,
+            frame_stack,
+            (struct information_schema_predicate_eval_frame){
+                .node = child_at(predicate_node, 0U),
+                .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+            }
+        );
+    }
+    if (predicate_node->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+        predicate_node->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+        predicate_node->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
+        rc = information_schema_predicate_frame_stack_push(
+            database,
+            frame_stack,
+            (struct information_schema_predicate_eval_frame){
+                .node = child_at(predicate_node, 1U),
+                .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+            }
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_predicate_frame_stack_push(
+                database,
+                frame_stack,
+                (struct information_schema_predicate_eval_frame){
+                    .node = child_at(predicate_node, 0U),
+                    .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+                }
+            );
+        }
+    }
+    return rc;
+}
+
+static int information_schema_evaluate_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    struct information_schema_bool_stack *bool_stack
+) {
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (predicate_node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        rc = information_schema_comparison_matches(database, query, predicate_node, row, &matches);
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        rc = information_schema_is_null_predicate_matches(
+            database,
+            query,
+            predicate_node,
+            row,
+            &matches
+        );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        bool child_matches = false;
+
+        if (!information_schema_bool_stack_pop(bool_stack, &child_matches)) {
+            set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate stack");
+            return MYLITE_ERROR;
+        }
+        if (child_matches) {
+            matches = false;
+        } else {
+            matches = true;
+        }
+    } else if (
+        predicate_node->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+        predicate_node->kind == MYLITE_SQL_AST_OR_PREDICATE ||
+        predicate_node->kind == MYLITE_SQL_AST_XOR_PREDICATE
+    ) {
+        rc = information_schema_compound_predicate_matches(
+            database,
+            predicate_node->kind,
+            bool_stack,
+            &matches
+        );
+    } else {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE supports metadata predicates");
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = information_schema_bool_stack_push(database, bool_stack, matches);
+    }
+    return rc;
+}
+
+static int information_schema_is_null_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+) {
+    size_t column_index = 0U;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    if (rc == MYLITE_OK) {
+        bool is_null = row[column_index] == NULL;
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+
+        *out_matches = is_null;
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NULL) {
+            if (is_null) {
+                *out_matches = false;
+            } else {
+                *out_matches = true;
+            }
+        }
+    }
+    return rc;
+}
+
+static int information_schema_compound_predicate_matches(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind predicate_kind,
+    struct information_schema_bool_stack *bool_stack,
+    bool *out_matches
+) {
+    bool right_matches = false;
+    bool left_matches = false;
+
+    if (!information_schema_bool_stack_pop(bool_stack, &right_matches) ||
+        !information_schema_bool_stack_pop(bool_stack, &left_matches)) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate stack");
+        return MYLITE_ERROR;
+    }
+    if (predicate_kind == MYLITE_SQL_AST_AND_PREDICATE) {
+        if (left_matches) {
+            *out_matches = right_matches;
+        } else {
+            *out_matches = false;
+        }
+    } else if (predicate_kind == MYLITE_SQL_AST_OR_PREDICATE) {
+        if (left_matches) {
+            *out_matches = true;
+        } else {
+            *out_matches = right_matches;
+        }
+    } else {
+        *out_matches = information_schema_bool_from_int(left_matches != right_matches);
+    }
+    return MYLITE_OK;
+}
+
+static bool information_schema_bool_from_int(int condition) {
+    if (condition != 0) {
+        return true;
+    }
+    return false;
+}
+
+static int information_schema_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    bool *out_matches
+) {
+    size_t column_index = 0U;
+    struct information_schema_predicate_value right = {
+        .text = NULL,
+        .is_null = false,
+        .is_numeric = false,
+    };
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    const char *left_text = NULL;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc =
+            information_schema_predicate_value_text(database, child_at(predicate_node, 1U), &right);
+    }
+    if (rc != MYLITE_OK) {
+        free(right.text);
+        return rc;
+    }
+
+    left_text = row[column_index];
+    *out_matches = false;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        if (left_text == NULL || right.is_null) {
+            *out_matches = false;
+            if (left_text == NULL && right.is_null) {
+                *out_matches = true;
+            }
+        } else if (information_schema_column_is_numeric(query->definition, column_index)) {
+            rc = information_schema_numeric_comparison_matches(
+                database,
+                operator_kind,
+                left_text,
+                right.text,
+                out_matches
+            );
+        } else {
+            *out_matches = information_schema_bool_from_int(
+                information_schema_compare_text(
+                    query->definition,
+                    column_index,
+                    left_text,
+                    right.text
+                ) == 0
+            );
+        }
+        free(right.text);
+        return rc;
+    }
+    if (left_text == NULL || right.is_null) {
+        free(right.text);
+        return MYLITE_OK;
+    }
+
+    if (information_schema_column_is_numeric(query->definition, column_index)) {
+        rc = information_schema_numeric_comparison_matches(
+            database,
+            operator_kind,
+            left_text,
+            right.text,
+            out_matches
+        );
+    } else {
+        rc = information_schema_text_comparison_matches(
+            database,
+            &query->definition->columns[column_index],
+            operator_kind,
+            left_text,
+            right.text,
+            right.is_numeric,
+            out_matches
+        );
+    }
+
+    free(right.text);
+    return rc;
+}
+
+static int information_schema_numeric_comparison_matches(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left_text,
+    const char *right_text,
+    bool *out_matches
+) {
+    int64_t left_value = 0;
+    int64_t right_value = 0;
+
+    if (information_schema_text_to_i64(left_text, &left_value) != MYLITE_OK ||
+        information_schema_text_to_i64(right_text, &right_value) != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE comparison requires integer metadata values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        *out_matches = information_schema_bool_from_int(left_value == right_value);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
+        *out_matches = information_schema_bool_from_int(left_value != right_value);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS) {
+        *out_matches = information_schema_bool_from_int(left_value < right_value);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL) {
+        *out_matches = information_schema_bool_from_int(left_value <= right_value);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER) {
+        *out_matches = information_schema_bool_from_int(left_value > right_value);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL) {
+        *out_matches = information_schema_bool_from_int(left_value >= right_value);
+    } else {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE comparison supports equality and ordering operators"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_text_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_column_definition *column,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left_text,
+    const char *right_text,
+    bool right_is_numeric,
+    bool *out_matches
+) {
+    int comparison = 0;
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL) {
+        *out_matches = information_schema_bool_from_int(
+            information_schema_compare_column_text(column, left_text, right_text) == 0
+        );
+        return MYLITE_OK;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
+        *out_matches = information_schema_bool_from_int(
+            information_schema_compare_column_text(column, left_text, right_text) != 0
+        );
+        return MYLITE_OK;
+    }
+    if (!right_is_numeric) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE string predicates support only equality comparisons"
+        );
+        return MYLITE_ERROR;
+    }
+
+    comparison = information_schema_compare_column_text(column, left_text, right_text);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS) {
+        *out_matches = information_schema_bool_from_int(comparison < 0);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL) {
+        *out_matches = information_schema_bool_from_int(comparison <= 0);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER) {
+        *out_matches = information_schema_bool_from_int(comparison > 0);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL) {
+        *out_matches = information_schema_bool_from_int(comparison >= 0);
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_predicate_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+) {
+    *out_value = (struct information_schema_predicate_value){
+        .text = NULL,
+        .is_null = false,
+        .is_numeric = false,
+    };
+    if (value_node == NULL) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE supports string, integer, DATABASE(), and SCHEMA() values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        value_node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
+        return information_schema_predicate_function_value(database, value_node, out_value);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        size_t text_length = 0U;
+
+        return decode_sql_string_literal(database, value_node, &out_value->text, &text_length);
+    }
+
+    return information_schema_predicate_integer_value_text(database, value_node, out_value);
+}
+
+static int information_schema_predicate_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = session_scalar_value(database, value_node, &cell);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (cell.value == NULL) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+    return duplicate_text(database, cell.value, &out_value->text);
+}
+
+static int information_schema_predicate_integer_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    char buffer[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE supports only decimal integer predicate values"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE supports string, integer, DATABASE(), and SCHEMA() values"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_limit_out_of_range_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+
+    rc = information_schema_format_signed_magnitude(
+        database,
+        is_negative,
+        magnitude,
+        buffer,
+        sizeof(buffer)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_numeric = true;
+    return duplicate_text(database, buffer, &out_value->text);
+}
+
+static int information_schema_format_signed_magnitude(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    char *buffer,
+    size_t buffer_size
+) {
+    const uint64_t int64_positive_max = (uint64_t)INT64_MAX;
+    const uint64_t int64_negative_abs_max = ((uint64_t)INT64_MAX) + 1U;
+    int written = 0;
+
+    if (is_negative) {
+        if (magnitude > int64_negative_abs_max) {
+            set_limit_out_of_range_error(database);
+            return MYLITE_ERROR;
+        }
+        if (magnitude == int64_negative_abs_max) {
+            written = snprintf(buffer, buffer_size, "%" PRId64, INT64_MIN);
+        } else {
+            written = snprintf(buffer, buffer_size, "-%" PRIu64, magnitude);
+        }
+    } else {
+        if (magnitude > int64_positive_max) {
+            set_limit_out_of_range_error(database);
+            return MYLITE_ERROR;
+        }
+        written = snprintf(buffer, buffer_size, "%" PRIu64, magnitude);
+    }
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format INFORMATION_SCHEMA predicate value");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_resolve_column_reference(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *column_node,
+    enum column_reference_diagnostic_context diagnostic_context,
+    size_t *out_column_index
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *display_text = NULL;
+    size_t part_count = 0U;
+    const char *column_name = NULL;
+    bool qualifier_matches = false;
+    int rc = collect_identifier_parts(
+        column_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        column_name = parts[0];
+    } else {
+        if (part_count == 2U) {
+            if (query->has_alias) {
+                qualifier_matches = text_equals_ascii_case_insensitive(parts[0], query->alias);
+            } else {
+                qualifier_matches =
+                    text_equals_ascii_case_insensitive(parts[0], query->definition->name);
+            }
+        }
+        if (qualifier_matches) {
+            column_name = parts[1];
+        } else {
+            rc = information_schema_column_reference_text(database, column_node, &display_text);
+            if (rc == MYLITE_OK) {
+                set_unknown_column_reference_error(database, diagnostic_context, display_text);
+                rc = MYLITE_ERROR;
+            }
+            free(display_text);
+            return rc;
+        }
+    }
+
+    rc =
+        information_schema_table_definition_index(query->definition, column_name, out_column_index);
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    rc = information_schema_column_reference_text(database, column_node, &display_text);
+    if (rc == MYLITE_OK) {
+        set_unknown_column_reference_error(database, diagnostic_context, display_text);
+        rc = MYLITE_ERROR;
+    }
+    free(display_text);
+    return rc;
+}
+
+static int information_schema_column_reference_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char **out_text
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct dynamic_string string;
+    size_t part_count = 0U;
+    int rc = collect_identifier_parts(
+        column_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    dynamic_string_init(&string);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append_char(&string, '.');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, parts[part_index]);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_text = dynamic_string_take(&string);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+            set_nomem_error(database);
+        }
+    }
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int information_schema_plan_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    struct information_schema_query *out_query
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (select_list_is_wildcard(select_list)) {
+        for (size_t column_index = 0U; column_index < out_query->definition->column_count;
+             ++column_index) {
+            int rc = information_schema_append_projection(database, out_query, column_index, NULL);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+        return MYLITE_OK;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        const struct mylite_sql_ast_node *expression =
+            unwrap_parenthesized_expression(child_at(item, 0U));
+        enum planned_count_function count_function = count_function_from_expression(expression);
+        size_t column_index = 0U;
+        int rc = MYLITE_OK;
+
+        if (count_function == PLANNED_COUNT_STAR) {
+            if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+                set_unsupported_error(
+                    database,
+                    "INFORMATION_SCHEMA SELECT supports either COUNT(*) or metadata columns"
+                );
+                return MYLITE_ERROR;
+            }
+            out_query->is_count_star = true;
+            out_query->count_expression = expression;
+            out_query->count_alias = child_at(item, 1U);
+            return MYLITE_OK;
+        }
+        if (count_function != PLANNED_COUNT_NONE ||
+            (expression == NULL || (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                                    expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER))) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA SELECT supports only metadata columns and COUNT(*)"
+            );
+            return MYLITE_ERROR;
+        }
+
+        rc = information_schema_resolve_column_reference(
+            database,
+            out_query,
+            expression,
+            COLUMN_REFERENCE_FIELD,
+            &column_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_append_projection(
+                database,
+                out_query,
+                column_index,
+                child_at(item, 1U)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int information_schema_append_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    size_t column_index,
+    const struct mylite_sql_ast_node *alias
+) {
+    size_t required_count = query->projection_count + 1U;
+    size_t *indexes = NULL;
+    char **names = NULL;
+    char *column_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (required_count > SIZE_MAX / sizeof(*indexes) ||
+        required_count > SIZE_MAX / sizeof(*names)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    indexes = realloc(query->projection_indexes, required_count * sizeof(*indexes));
+    if (indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    query->projection_indexes = indexes;
+
+    names = (char **)realloc((void *)query->projection_names, required_count * sizeof(*names));
+    if (names == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    query->projection_names = names;
+
+    if (alias != NULL) {
+        rc = copy_select_item_alias_text(database, alias, &column_name);
+    } else {
+        rc = duplicate_text(database, query->definition->columns[column_index].name, &column_name);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    query->projection_indexes[query->projection_count] = column_index;
+    query->projection_names[query->projection_count] = column_name;
+    query->projection_count = required_count;
+    return MYLITE_OK;
+}
+
+static int information_schema_plan_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    struct information_schema_query *out_query
+) {
+    const struct mylite_sql_ast_node *direction = NULL;
+    int rc = MYLITE_OK;
+
+    out_query->has_order = false;
+    out_query->order_direction = PLANNED_SELECT_ORDER_DEFAULT;
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT supports one ORDER BY column");
+        return MYLITE_ERROR;
+    }
+    rc = information_schema_resolve_column_reference(
+        database,
+        out_query,
+        child_at(order_clause, 0U),
+        COLUMN_REFERENCE_ORDER,
+        &out_query->order_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_query->has_order = true;
+    out_query->order_direction = PLANNED_SELECT_ORDER_ASC;
+    direction = child_at(order_clause, 1U);
+    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+        out_query->order_direction = PLANNED_SELECT_ORDER_DESC;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_plan_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct information_schema_query *out_query
+) {
+    out_query->limit = (struct planned_select_limit){
+        .has_limit = false,
+        .row_count = 0,
+        .has_offset = false,
+        .offset = 0,
+    };
+    if (limit_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE || child_at(limit_clause, 1U) != NULL) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT supports only LIMIT row_count");
+        return MYLITE_ERROR;
+    }
+
+    return plan_delete_limit(database, limit_clause, &out_query->limit);
+}
+
+static int information_schema_resolve_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct information_schema_query *out_query
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA SELECT requires a schema-qualified metadata table"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count != 2U || !text_equals_ascii_case_insensitive(parts[0], "information_schema")) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA SELECT requires a schema-qualified metadata table"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_query->definition = find_information_schema_table_definition(parts[1]);
+    if (out_query->definition == NULL) {
+        set_unknown_information_schema_table_error(database, parts[1]);
+        return MYLITE_ERROR;
+    }
+    if (child_at(from_clause, 1U) != NULL) {
+        rc = copy_identifier_text(
+            child_at(from_clause, 1U),
+            out_query->alias,
+            sizeof(out_query->alias),
+            database
+        );
+        if (rc == MYLITE_OK) {
+            out_query->has_alias = true;
+        }
+    }
+    return rc;
+}
+
+static const struct information_schema_table_definition *find_information_schema_table_definition(
+    const char *table_name
+) {
+    for (size_t table_index = 0U; table_index < sizeof(information_schema_table_definitions) /
+                                                    sizeof(information_schema_table_definitions[0]);
+         ++table_index) {
+        if (text_equals_ascii_case_insensitive(
+                information_schema_table_definitions[table_index].name,
+                table_name
+            )) {
+            return &information_schema_table_definitions[table_index];
+        }
+    }
+    return NULL;
+}
+
+static int information_schema_table_definition_index(
+    const struct information_schema_table_definition *definition,
+    const char *column_name,
+    size_t *out_index
+) {
+    for (size_t column_index = 0U; column_index < definition->column_count; ++column_index) {
+        if (text_equals_ascii_case_insensitive(
+                definition->columns[column_index].name,
+                column_name
+            )) {
+            *out_index = column_index;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static int information_schema_compare_text(
+    const struct information_schema_table_definition *definition,
+    size_t column_index,
+    const char *left,
+    const char *right
+) {
+    return information_schema_compare_column_text(&definition->columns[column_index], left, right);
+}
+
+static int information_schema_compare_column_text(
+    const struct information_schema_column_definition *column,
+    const char *left,
+    const char *right
+) {
+    if (information_schema_column_uses_case_insensitive_collation(column)) {
+        return compare_ascii_case_insensitive_text(left, right);
+    }
+    return strcmp(left, right);
+}
+
+static int compare_ascii_case_insensitive_text(const char *left, const char *right) {
+    size_t index = 0U;
+
+    while (left[index] != '\0' && right[index] != '\0') {
+        unsigned char left_byte = (unsigned char)ascii_lower((unsigned char)left[index]);
+        unsigned char right_byte = (unsigned char)ascii_lower((unsigned char)right[index]);
+
+        if (left_byte < right_byte) {
+            return -1;
+        }
+        if (left_byte > right_byte) {
+            return 1;
+        }
+        ++index;
+    }
+    if (left[index] == '\0' && right[index] == '\0') {
+        return 0;
+    }
+    if (left[index] == '\0') {
+        return -1;
+    }
+    return 1;
+}
+
+static bool information_schema_column_uses_case_insensitive_collation(
+    const struct information_schema_column_definition *column
+) {
+    const char *collation = column->collation_name;
+
+    if (collation == NULL) {
+        return false;
+    }
+    if (text_equals_ascii_case_insensitive(collation, "utf8mb3_general_ci") ||
+        text_equals_ascii_case_insensitive(collation, "utf8mb3_tolower_ci") ||
+        text_equals_ascii_case_insensitive(collation, "utf8mb4_0900_ai_ci")) {
+        return true;
+    }
+    return false;
+}
+
+static bool information_schema_column_is_numeric(
+    const struct information_schema_table_definition *definition,
+    size_t column_index
+) {
+    const char *data_type = definition->columns[column_index].data_type;
+
+    if (data_type == NULL) {
+        return false;
+    }
+    if (strcmp(data_type, "int") == 0 || strcmp(data_type, "bigint") == 0) {
+        return true;
+    }
+    return false;
+}
+
+static int information_schema_text_to_i64(const char *text, int64_t *out_value) {
+    char *end = NULL;
+    long long value = 0;
+
+    if (text == NULL || text[0] == '\0') {
+        return MYLITE_ERROR;
+    }
+    value = strtoll(text, &end, decimal_base);
+    if (end == NULL || *end != '\0') {
+        return MYLITE_ERROR;
+    }
+    *out_value = (int64_t)value;
+    return MYLITE_OK;
+}
+
+static int information_schema_format_i64(
+    struct mylite_db *database,
+    int64_t value,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = snprintf(buffer, buffer_size, "%" PRId64, value);
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format INFORMATION_SCHEMA value");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static const char *information_schema_data_type_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *logical_type = column->logical_type;
+
+    if (column_descriptor_is_varchar(column)) {
+        return "varchar";
+    }
+    if (logical_type == NULL) {
+        return "";
+    }
+    if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
+        strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        return "tinyint";
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        return "smallint";
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        return "mediumint";
+    }
+    if (strcmp(logical_type, "BIGINT") == 0 || strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        return "bigint";
+    }
+    return "int";
+}
+
+static const char *information_schema_numeric_precision_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *logical_type = column->logical_type;
+
+    if (column_descriptor_is_varchar(column)) {
+        return NULL;
+    }
+    if (logical_type == NULL) {
+        return "10";
+    }
+    if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
+        strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        return "3";
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        return "5";
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        return "7";
+    }
+    if (strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        return "20";
+    }
+    if (strcmp(logical_type, "BIGINT") == 0) {
+        return "19";
+    }
+    return "10";
+}
+
+static const char *information_schema_numeric_scale_for_descriptor(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_varchar(column)) {
+        return NULL;
+    }
+    return "0";
 }
 
 static int execute_show_tables_statement(
@@ -35897,6 +39011,25 @@ static void set_unknown_column_in_table_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown_column,
         "42S22",
+        message
+    );
+}
+
+static void set_unknown_information_schema_table_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown table '%s' in information_schema", table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_table_in_schema,
+        "42S02",
         message
     );
 }

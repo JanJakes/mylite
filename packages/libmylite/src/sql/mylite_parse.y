@@ -2580,6 +2580,9 @@ identifier(A) ::= AUTO_INCREMENT(T). {
 identifier(A) ::= DATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= DATETIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 create_table_item_list(A) ::= create_table_item(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
@@ -2702,6 +2705,9 @@ column_type(A) ::= decimal_type(T). {
     A = T;
 }
 column_type(A) ::= date_type(T). {
+    A = T;
+}
+column_type(A) ::= datetime_type(T). {
     A = T;
 }
 
@@ -2838,6 +2844,10 @@ decimal_unsigned_opt(A) ::= UNSIGNED(U). {
 
 date_type(A) ::= DATE(T). {
     A = mylite_sql_parser_make_date_type(state, T);
+}
+
+datetime_type(A) ::= DATETIME(T). {
+    A = mylite_sql_parser_make_datetime_type(state, T);
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {

@@ -529,6 +529,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "decimal_type";
     case MYLITE_SQL_AST_DATE_TYPE:
         return "date_type";
+    case MYLITE_SQL_AST_DATETIME_TYPE:
+        return "datetime_type";
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
         return "primary_key_definition";
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:

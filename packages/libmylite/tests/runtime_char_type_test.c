@@ -560,7 +560,7 @@ static int test_char_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ORDER BY supports only integer or DATE descriptor columns",
+            .message_part = "ORDER BY supports only integer, DATE, or DATETIME descriptor columns",
         }
     );
     failures += execute_error(

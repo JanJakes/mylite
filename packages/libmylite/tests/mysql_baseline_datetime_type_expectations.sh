@@ -328,6 +328,11 @@ alter_expected=$(cat <<\EXPECTED
 2	NULL	2025-01-02 03:04:05
 3	2026-02-03 04:05:06	2025-01-02 03:04:05
 d	datetime	YES		2026-02-03 04:05:06	
+alter_t	CREATE TABLE `alter_t` (
+  `id` int DEFAULT NULL,
+  `d` datetime,
+  `n` datetime NOT NULL DEFAULT '2025-01-02 03:04:05'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 EXPECTED
 )
 expect_output \
@@ -340,7 +345,17 @@ expect_output \
 "ALTER TABLE alter_t ALTER COLUMN d SET DEFAULT '2026-02-03 04:05:06'; "\
 "INSERT INTO alter_t (id, n) VALUES (3, DEFAULT); "\
 "SELECT id, d, n FROM alter_t WHERE id = 3; "\
-"SHOW COLUMNS FROM alter_t LIKE 'd';" \
+"SHOW COLUMNS FROM alter_t LIKE 'd'; "\
+"ALTER TABLE alter_t ALTER COLUMN d DROP DEFAULT; "\
+"SHOW CREATE TABLE alter_t;" \
+    "$DATABASE"
+
+expect_error \
+    "datetime dropped default rejects omitted insert" \
+    1364 \
+    HY000 \
+    "Field 'd' doesn't have a default value" \
+    "INSERT INTO alter_t (id, n) VALUES (4, DEFAULT);" \
     "$DATABASE"
 
 expect_error \

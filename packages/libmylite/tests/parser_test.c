@@ -13,6 +13,7 @@ enum {
     integer_default_column_count = 5,
     decimal_column_count = 6,
     date_column_count = 3,
+    datetime_column_count = 3,
     decimal_fixed_column_index = 5,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
@@ -74,6 +75,7 @@ static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_decimal_type_statements(void);
 static int test_date_type_statements(void);
+static int test_datetime_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
@@ -248,6 +250,7 @@ int main(void) {
     failures += test_text_type_statements();
     failures += test_decimal_type_statements();
     failures += test_date_type_statements();
+    failures += test_datetime_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
@@ -7436,6 +7439,131 @@ static int test_date_type_statements(void) {
         child_at(assignment, 1U),
         MYLITE_SQL_AST_LITERAL_STRING,
         "date update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_datetime_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE datetime_types (d DATETIME, nn DATETIME NOT NULL DEFAULT "
+        "'2024-05-06 07:08:09', datetime INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, datetime_column_count, "datetime column list");
+    column = child_at(columns, 0U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATETIME_TYPE, "datetime column type");
+    failures += expect_span_text(child_at(column, 1U), "DATETIME", "datetime column span");
+    column = child_at(columns, 1U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATETIME_TYPE, "not null datetime type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "not null datetime"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "datetime string default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "datetime", "datetime keyword identifier");
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_INTEGER_TYPE, "datetime identifier type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE datetime_types ADD COLUMN created DATETIME DEFAULT "
+        "'1000-01-01 00:00:00';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATETIME_TYPE, "alter add datetime");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter datetime default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM datetime_types WHERE d BETWEEN '2024-01-01 00:00:00' "
+        "AND '2024-12-31 23:59:59';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_BETWEEN_PREDICATE, "datetime between");
+    failures += expect_literal(
+        child_at(predicate, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "datetime between lower"
+    );
+    failures += expect_literal(
+        child_at(predicate, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "datetime between upper"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM datetime_types WHERE d IN ('2024-05-06 07:08:09', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    predicate = child_at(child_at(statement, 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "datetime in predicate");
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "datetime in string"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "datetime in null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE datetime_types SET d = '2025-01-02 03:04:05';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "datetime update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE datetime_fractional (d DATETIME(3));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

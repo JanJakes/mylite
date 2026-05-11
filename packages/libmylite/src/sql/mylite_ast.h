@@ -221,6 +221,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST = 212,
     MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION = 213,
     MYLITE_SQL_AST_INLINE_UNIQUE_KEY = 214,
+    MYLITE_SQL_AST_DATETIME_TYPE = 215,
 };
 
 enum mylite_sql_ast_literal_kind {

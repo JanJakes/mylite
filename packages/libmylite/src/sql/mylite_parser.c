@@ -3809,6 +3809,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_date_type(
     return make_node(state, MYLITE_SQL_AST_DATE_TYPE, span_from_token(&date_token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_datetime_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token datetime_token
+) {
+    return make_node(state, MYLITE_SQL_AST_DATETIME_TYPE, span_from_token(&datetime_token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_nullability nullability,
@@ -4203,6 +4210,7 @@ static bool map_keyword_token(
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"FIXED", MYLITE_SQL_PARSE_FIXED},
         {"DATE", MYLITE_SQL_PARSE_DATE},
+        {"DATETIME", MYLITE_SQL_PARSE_DATETIME},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},

@@ -106,6 +106,21 @@ enum {
     date_second_separator_offset = 7,
     date_day_text_offset = 8,
     date_day_text_length = 2,
+    datetime_text_length = 19,
+    datetime_date_text_length = 10,
+    datetime_date_time_separator_offset = 10,
+    datetime_hour_text_offset = 11,
+    datetime_hour_text_length = 2,
+    datetime_first_time_separator_offset = 13,
+    datetime_minute_text_offset = 14,
+    datetime_minute_text_length = 2,
+    datetime_second_time_separator_offset = 16,
+    datetime_second_text_offset = 17,
+    datetime_second_text_length = 2,
+    datetime_minimum_hour = 0,
+    datetime_maximum_hour = 23,
+    datetime_minimum_minute_or_second = 0,
+    datetime_maximum_minute_or_second = 59,
     date_decimal_base = 10,
     date_minimum_year = 1000,
     date_maximum_year = 9999,
@@ -154,6 +169,7 @@ enum {
     information_schema_columns_character_octet_length_column = 9,
     information_schema_columns_numeric_precision_column = 10,
     information_schema_columns_numeric_scale_column = 11,
+    information_schema_columns_datetime_precision_column = 12,
     information_schema_columns_character_set_name_column = 13,
     information_schema_columns_collation_name_column = 14,
     information_schema_columns_column_type_column = 15,
@@ -3432,6 +3448,11 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 );
+static int reject_nonempty_temporal_add_column_without_default(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct planned_column *column
+);
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
@@ -3691,6 +3712,13 @@ static int validate_insert_select_decimal_value(
     size_t row_number
 );
 static int validate_insert_select_date_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+);
+static int validate_insert_select_datetime_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     int selected_column_index,
@@ -5554,6 +5582,10 @@ static int finalize_planned_column_date_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_datetime_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static void planned_column_descriptor_for_default(
     const struct planned_column *column,
     struct mylite_catalog_column_descriptor *out_descriptor
@@ -5626,6 +5658,7 @@ static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_decimal(const struct planned_column *column);
 static bool planned_column_is_date(const struct planned_column *column);
+static bool planned_column_is_datetime(const struct planned_column *column);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column);
@@ -5634,6 +5667,7 @@ static bool column_descriptor_is_string_family(
 );
 static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_date(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_datetime(const struct mylite_catalog_column_descriptor *column);
 static int decimal_type_info_for_logical_type(
     const char *logical_type,
     struct decimal_type_info *out_info
@@ -6027,7 +6061,24 @@ static int convert_date_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_datetime_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int canonicalize_date_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int canonicalize_datetime_text(
     struct mylite_db *database,
     char *text,
     size_t text_length,
@@ -6039,10 +6090,15 @@ static int canonicalize_date_text(
 static bool date_text_is_canonical_valid(const char *text, size_t text_length);
 static bool date_text_has_canonical_shape(const char *text, size_t text_length);
 static bool date_text_is_zero_date(const char *text, size_t text_length);
+static bool datetime_text_is_canonical_valid(const char *text, size_t text_length);
+static bool datetime_text_has_canonical_shape(const char *text, size_t text_length);
+static bool datetime_text_is_zero_datetime(const char *text, size_t text_length);
+static bool datetime_time_components_valid(uint32_t hour, uint32_t minute, uint32_t second);
 static bool date_component_text_to_u32(const char *text, size_t length, uint32_t *out_value);
 static bool date_year_month_day_valid(uint32_t year, uint32_t month, uint32_t day);
 static bool date_year_is_leap(uint32_t year);
 static int make_zero_date_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_zero_datetime_value(struct mylite_db *database, struct planned_value *out_value);
 static int assign_text_value(
     struct mylite_db *database,
     char *text,
@@ -6537,6 +6593,12 @@ static int convert_predicate_value(
     struct planned_value *out_value
 );
 static int convert_predicate_date_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_datetime_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
@@ -7293,6 +7355,12 @@ static void set_incorrect_date_value_error(
     const char *column_name,
     size_t row_number
 );
+static void set_incorrect_datetime_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+);
 static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
 static int append_no_default_warning(struct mylite_db *database, const char *column_name);
 static int append_out_of_range_warning(
@@ -7653,6 +7721,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
+    case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
@@ -10572,6 +10641,9 @@ static int append_information_schema_columns_base_column_row(
             values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
         }
     }
+    if (rc == MYLITE_OK && column_descriptor_is_datetime(column)) {
+        values[information_schema_columns_datetime_precision_column] = "0";
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -12295,6 +12367,9 @@ static const char *information_schema_data_type_for_descriptor(
     if (column_descriptor_is_date(column)) {
         return "date";
     }
+    if (column_descriptor_is_datetime(column)) {
+        return "datetime";
+    }
     if (logical_type == NULL) {
         return "";
     }
@@ -12320,7 +12395,7 @@ static const char *information_schema_numeric_precision_for_descriptor(
     const char *logical_type = column->logical_type;
 
     if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_date(column)) {
+        column_descriptor_is_date(column) || column_descriptor_is_datetime(column)) {
         return NULL;
     }
     if (logical_type == NULL) {
@@ -12349,7 +12424,7 @@ static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
     if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_date(column)) {
+        column_descriptor_is_date(column) || column_descriptor_is_datetime(column)) {
         return NULL;
     }
     return "0";
@@ -14437,7 +14512,8 @@ static int show_create_table_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW CREATE TABLE supports only integer, string, decimal, and DATE column descriptors",
+        "SHOW CREATE TABLE supports only integer, string, decimal, DATE, and DATETIME column "
+        "descriptors",
         out_type_text
     );
 }
@@ -14500,6 +14576,10 @@ static int show_descriptor_type_text(
     }
     if (strcmp(logical_type, "DATE") == 0) {
         *out_type_text = "date";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "DATETIME") == 0) {
+        *out_type_text = "datetime";
         return MYLITE_OK;
     }
 
@@ -14724,6 +14804,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
+    case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
@@ -15537,7 +15618,7 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         return MYLITE_ERROR;
     }
     if (planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
-        planned_column_is_date(column)) {
+        planned_column_is_date(column) || planned_column_is_datetime(column)) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
         }
@@ -15600,7 +15681,7 @@ static int validate_auto_increment_column(
 
     column = &plan->columns[column_index];
     if (planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
-        planned_column_is_date(column)) {
+        planned_column_is_date(column) || planned_column_is_datetime(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -15754,22 +15835,24 @@ static int validate_create_table_like_source_columns(
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
-            column_descriptor_is_date(&columns[column_index])) {
+            column_descriptor_is_date(&columns[column_index]) ||
+            column_descriptor_is_datetime(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE LIKE supports only integer, string, decimal, and DATE descriptor "
-                "columns"
+                "CREATE TABLE LIKE supports only integer, string, decimal, DATE, and DATETIME "
+                "descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE LIKE supports only integer, string, decimal, and DATE descriptor columns",
+            "CREATE TABLE LIKE supports only integer, string, decimal, DATE, and DATETIME "
+            "descriptor columns",
             &range
         );
 
@@ -16025,23 +16108,24 @@ static int validate_create_table_select_source_columns(
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
-            column_descriptor_is_date(&columns[column_index])) {
+            column_descriptor_is_date(&columns[column_index]) ||
+            column_descriptor_is_datetime(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE SELECT supports only integer, string, decimal, and DATE descriptor "
-                "columns"
+                "CREATE TABLE SELECT supports only integer, string, decimal, DATE, and DATETIME "
+                "descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE SELECT supports only integer, string, decimal, and DATE descriptor "
-            "columns",
+            "CREATE TABLE SELECT supports only integer, string, decimal, DATE, and DATETIME "
+            "descriptor columns",
             &range
         );
         if (rc != MYLITE_OK) {
@@ -17321,16 +17405,12 @@ static int plan_alter_table_add_column(
         );
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && planned_column_is_date(&out_plan->column) &&
-        !out_plan->column.is_nullable &&
-        out_plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE) {
-        int64_t row_count = 0;
-
-        rc = read_show_table_status_row_count(database, &out_plan->table, &row_count);
-        if (rc == MYLITE_OK && row_count > 0) {
-            set_incorrect_date_value_error(database, "0000-00-00", out_plan->column.name, 1U);
-            rc = MYLITE_ERROR;
-        }
+    if (rc == MYLITE_OK) {
+        rc = reject_nonempty_temporal_add_column_without_default(
+            database,
+            &out_plan->table,
+            &out_plan->column
+        );
     }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
@@ -17352,6 +17432,33 @@ static int plan_alter_table_add_column(
     free(columns);
 
     return rc;
+}
+
+static int reject_nonempty_temporal_add_column_without_default(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct planned_column *column
+) {
+    int64_t row_count = 0;
+    int rc = MYLITE_OK;
+
+    if ((!planned_column_is_date(column) && !planned_column_is_datetime(column)) ||
+        column->is_nullable || column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_NONE) {
+        return MYLITE_OK;
+    }
+
+    rc = read_show_table_status_row_count(database, table, &row_count);
+    if (rc != MYLITE_OK || row_count <= 0) {
+        return rc;
+    }
+
+    if (planned_column_is_date(column)) {
+        set_incorrect_date_value_error(database, "0000-00-00", column->name, 1U);
+    } else {
+        set_incorrect_datetime_value_error(database, "0000-00-00 00:00:00", column->name, 1U);
+    }
+
+    return MYLITE_ERROR;
 }
 
 static int alter_table_add_column_from_plan(
@@ -18693,8 +18800,10 @@ static int complete_alter_table_modify_column_plan(
     if (column_descriptor_is_string_family(&out_plan->original_column) ||
         column_descriptor_is_decimal(&out_plan->original_column) ||
         column_descriptor_is_date(&out_plan->original_column) ||
+        column_descriptor_is_datetime(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
-        planned_column_is_decimal(&out_plan->column) || planned_column_is_date(&out_plan->column)) {
+        planned_column_is_decimal(&out_plan->column) || planned_column_is_date(&out_plan->column) ||
+        planned_column_is_datetime(&out_plan->column)) {
         set_unsupported_error(database, out_plan->integer_support_message);
         return MYLITE_ERROR;
     }
@@ -20471,6 +20580,15 @@ static int validate_insert_select_value(
             row_number
         );
     }
+    if (column_descriptor_is_datetime(target_column)) {
+        return validate_insert_select_datetime_value(
+            database,
+            statement,
+            selected_column_index,
+            target_column,
+            row_number
+        );
+    }
 
     return validate_insert_select_integer_value(
         database,
@@ -20595,6 +20713,43 @@ static int validate_insert_select_date_value(
     if (!date_text_is_canonical_valid((const char *)text, (size_t)byte_count) &&
         !date_text_is_zero_date((const char *)text, (size_t)byte_count)) {
         set_incorrect_date_value_error(
+            database,
+            (const char *)text,
+            target_column->name,
+            row_number
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_insert_select_datetime_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+) {
+    const unsigned char *text = NULL;
+    int byte_count = 0;
+
+    if (sqlite3_column_type(statement, selected_column_index) != SQLITE_TEXT) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT does not support implicit DATETIME conversion"
+        );
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_column_text(statement, selected_column_index);
+    byte_count = sqlite3_column_bytes(statement, selected_column_index);
+    if (text == NULL || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!datetime_text_is_canonical_valid((const char *)text, (size_t)byte_count) &&
+        !datetime_text_is_zero_datetime((const char *)text, (size_t)byte_count)) {
+        set_incorrect_datetime_value_error(
             database,
             (const char *)text,
             target_column->name,
@@ -21941,6 +22096,91 @@ static int canonicalize_date_text(
     return make_zero_date_value(database, out_value);
 }
 
+static int convert_datetime_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "DATETIME values support only string, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "DATETIME values support only string literals",
+        "DATETIME values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return canonicalize_datetime_text(
+        database,
+        text,
+        text_length,
+        column->name,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int canonicalize_datetime_text(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (text == NULL || column_name == NULL || out_value == NULL) {
+        free(text);
+        return MYLITE_MISUSE;
+    }
+    if (datetime_text_is_canonical_valid(text, text_length)) {
+        return assign_text_value(database, text, text_length, out_value);
+    }
+    if (!datetime_text_has_canonical_shape(text, text_length)) {
+        set_unsupported_error(
+            database,
+            "DATETIME values support only canonical YYYY-MM-DD HH:MM:SS strings"
+        );
+        free(text);
+        return MYLITE_ERROR;
+    }
+
+    if (!ignore_errors) {
+        set_incorrect_datetime_value_error(database, text, column_name, row_number);
+        free(text);
+        return MYLITE_ERROR;
+    }
+
+    rc = append_out_of_range_warning(database, column_name, row_number);
+    free(text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return make_zero_datetime_value(database, out_value);
+}
+
 static bool date_text_is_canonical_valid(const char *text, size_t text_length) {
     uint32_t year = 0U;
     uint32_t month = 0U;
@@ -21988,6 +22228,88 @@ static bool date_text_is_zero_date(const char *text, size_t text_length) {
 
     return (text != NULL && text_length == date_text_length &&
             memcmp(text, zero_date, date_text_length) == 0) != 0;
+}
+
+static bool datetime_text_is_canonical_valid(const char *text, size_t text_length) {
+    uint32_t year = 0U;
+    uint32_t month = 0U;
+    uint32_t day = 0U;
+    uint32_t hour = 0U;
+    uint32_t minute = 0U;
+    uint32_t second = 0U;
+
+    if (!datetime_text_has_canonical_shape(text, text_length)) {
+        return false;
+    }
+    if (datetime_text_is_zero_datetime(text, text_length)) {
+        return false;
+    }
+    if (!date_component_text_to_u32(text + date_year_text_offset, date_year_text_length, &year) ||
+        !date_component_text_to_u32(
+            text + date_month_text_offset,
+            date_month_text_length,
+            &month
+        ) ||
+        !date_component_text_to_u32(text + date_day_text_offset, date_day_text_length, &day) ||
+        !date_component_text_to_u32(
+            text + datetime_hour_text_offset,
+            datetime_hour_text_length,
+            &hour
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_minute_text_offset,
+            datetime_minute_text_length,
+            &minute
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_second_text_offset,
+            datetime_second_text_length,
+            &second
+        )) {
+        return false;
+    }
+
+    return (date_year_month_day_valid(year, month, day) &&
+            datetime_time_components_valid(hour, minute, second)) != 0;
+}
+
+static bool datetime_text_has_canonical_shape(const char *text, size_t text_length) {
+    if (text == NULL || text_length != datetime_text_length ||
+        text[date_first_separator_offset] != '-' || text[date_second_separator_offset] != '-' ||
+        text[datetime_date_time_separator_offset] != ' ' ||
+        text[datetime_first_time_separator_offset] != ':' ||
+        text[datetime_second_time_separator_offset] != ':') {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (index == date_first_separator_offset || index == date_second_separator_offset ||
+            index == datetime_date_time_separator_offset ||
+            index == datetime_first_time_separator_offset ||
+            index == datetime_second_time_separator_offset) {
+            continue;
+        }
+        if (byte < '0' || byte > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool datetime_text_is_zero_datetime(const char *text, size_t text_length) {
+    static const char zero_datetime[] = "0000-00-00 00:00:00";
+
+    return (text != NULL && text_length == datetime_text_length &&
+            memcmp(text, zero_datetime, datetime_text_length) == 0) != 0;
+}
+
+static bool datetime_time_components_valid(uint32_t hour, uint32_t minute, uint32_t second) {
+    return (hour >= datetime_minimum_hour && hour <= datetime_maximum_hour &&
+            minute >= datetime_minimum_minute_or_second &&
+            minute <= datetime_maximum_minute_or_second &&
+            second >= datetime_minimum_minute_or_second &&
+            second <= datetime_maximum_minute_or_second) != 0;
 }
 
 static bool date_component_text_to_u32(const char *text, size_t length, uint32_t *out_value) {
@@ -33212,6 +33534,9 @@ static int finalize_planned_column_default(
     if (planned_column_is_date(column)) {
         return finalize_planned_column_date_default(database, column);
     }
+    if (planned_column_is_datetime(column)) {
+        return finalize_planned_column_datetime_default(database, column);
+    }
 
     rc = convert_column_default_value(
         database,
@@ -33279,6 +33604,43 @@ static int finalize_planned_column_date_default(
 
     planned_column_descriptor_for_default(column, &descriptor);
     rc = convert_date_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        &value
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
+}
+
+static int finalize_planned_column_datetime_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_datetime_literal(
         database,
         child_at(column->default_node, 0U),
         &descriptor,
@@ -33503,6 +33865,23 @@ static int map_column_type(
             out_column->logical_type_storage,
             sizeof(out_column->logical_type_storage),
             "DATE"
+        );
+        snprintf(
+            out_column->physical_type_storage,
+            sizeof(out_column->physical_type_storage),
+            "TEXT"
+        );
+        out_column->logical_type = out_column->logical_type_storage;
+        out_column->physical_type = out_column->physical_type_storage;
+        return MYLITE_OK;
+    }
+    if (type_node->kind == MYLITE_SQL_AST_DATETIME_TYPE) {
+        (void)database;
+        (void)column_name;
+        snprintf(
+            out_column->logical_type_storage,
+            sizeof(out_column->logical_type_storage),
+            "DATETIME"
         );
         snprintf(
             out_column->physical_type_storage,
@@ -33934,6 +34313,14 @@ static bool planned_column_is_date(const struct planned_column *column) {
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
+static bool planned_column_is_datetime(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strcmp(column->logical_type, "DATETIME") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
     bool has_varchar_logical_type = false;
     bool has_text_physical_type = false;
@@ -34016,6 +34403,14 @@ static bool column_descriptor_is_date(const struct mylite_catalog_column_descrip
         return false;
     }
     return (strcmp(column->logical_type, "DATE") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
+static bool column_descriptor_is_datetime(const struct mylite_catalog_column_descriptor *column) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    return (strcmp(column->logical_type, "DATETIME") == 0 &&
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
@@ -35430,6 +35825,9 @@ static int make_insert_ignore_implicit_value(
     if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
     }
+    if (column_descriptor_is_datetime(column)) {
+        return make_zero_datetime_value(database, out_value);
+    }
 
     out_value->is_null = false;
     out_value->is_text = false;
@@ -35490,6 +35888,16 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_date(column)) {
         return convert_date_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_datetime_literal(
             database,
             value_node,
             column,
@@ -35573,6 +35981,9 @@ static int convert_null_insert_value(
     if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
     }
+    if (column_descriptor_is_datetime(column)) {
+        return make_zero_datetime_value(database, out_value);
+    }
 
     out_value->is_null = false;
     out_value->is_text = false;
@@ -35628,6 +36039,8 @@ static int materialize_dml_default_value(
         return rc;
     } else if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
+    } else if (column_descriptor_is_datetime(column)) {
+        return make_zero_datetime_value(database, out_value);
     } else {
         *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
     }
@@ -36213,6 +36626,10 @@ static int assign_decimal_text_value(
 
 static int make_zero_date_value(struct mylite_db *database, struct planned_value *out_value) {
     return copy_text_value(database, "0000-00-00", out_value);
+}
+
+static int make_zero_datetime_value(struct mylite_db *database, struct planned_value *out_value) {
+    return copy_text_value(database, "0000-00-00 00:00:00", out_value);
 }
 
 static int assign_text_value(
@@ -38556,6 +38973,9 @@ static int convert_predicate_value(
     if (column_descriptor_is_date(column)) {
         return convert_predicate_date_literal(database, value_node, column, out_value);
     }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_predicate_datetime_literal(database, value_node, column, out_value);
+    }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
 }
 
@@ -38589,6 +39009,43 @@ static int convert_predicate_date_literal(
     if (!date_text_is_canonical_valid(text, text_length) &&
         !date_text_is_zero_date(text, text_length)) {
         set_incorrect_date_value_error(database, text, column->name, 1U);
+        free(text);
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}
+
+static int convert_predicate_datetime_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "WHERE DATETIME predicates support only string literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE DATETIME predicates support only string literals",
+        "WHERE DATETIME predicate literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!datetime_text_is_canonical_valid(text, text_length) &&
+        !datetime_text_is_zero_datetime(text, text_length)) {
+        set_incorrect_datetime_value_error(database, text, column->name, 1U);
         free(text);
         return MYLITE_ERROR;
     }
@@ -38681,13 +39138,14 @@ static int plan_select_order(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (rc == MYLITE_OK && !column_descriptor_is_date(&out_order->column)) {
+    if (rc == MYLITE_OK && !column_descriptor_is_date(&out_order->column) &&
+        !column_descriptor_is_datetime(&out_order->column)) {
         struct integer_column_range range = {0};
 
         rc = integer_range_for_column(
             database,
             &out_order->column,
-            "ORDER BY supports only integer or DATE descriptor columns",
+            "ORDER BY supports only integer, DATE, or DATETIME descriptor columns",
             &range
         );
     }
@@ -38936,6 +39394,9 @@ static int convert_update_value(
     }
     if (column_descriptor_is_date(column)) {
         return convert_date_literal(database, value_node, column, 1U, false, out_value);
+    }
+    if (column_descriptor_is_datetime(column)) {
+        return convert_datetime_literal(database, value_node, column, 1U, false, out_value);
     }
 
     return convert_update_integer_literal(database, value_node, column, out_value);
@@ -39419,7 +39880,8 @@ static int show_column_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW COLUMNS supports only integer, string, decimal, and DATE column descriptors",
+        "SHOW COLUMNS supports only integer, string, decimal, DATE, and DATETIME column "
+        "descriptors",
         out_type_text
     );
 }
@@ -40107,6 +40569,9 @@ static int append_alter_table_add_column_default(
     }
     if (planned_column_is_date(&plan->column)) {
         return dynamic_string_append(string, " DEFAULT '0000-00-00'");
+    }
+    if (planned_column_is_datetime(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT '0000-00-00 00:00:00'");
     }
 
     return dynamic_string_append(string, " DEFAULT 0");
@@ -44536,6 +45001,33 @@ static void set_incorrect_date_value_error(
         message,
         sizeof(message),
         "Incorrect date value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_date_value,
+        "22007",
+        message
+    );
+}
+
+static void set_incorrect_datetime_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect datetime value: '%s' for column '%s' at row %zu",
         value_text,
         column_name,
         row_number

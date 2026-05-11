@@ -211,13 +211,13 @@ static int evaluate_approximate_numeric_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *)
+    void (*unsupported_error_callback)(struct mylite_db *)
 );
 static int evaluate_approximate_numeric_direct_value_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *),
+    void (*unsupported_error_callback)(struct mylite_db *),
     bool *out_handled
 );
 static bool should_format_scientific_integer_double(double value);
@@ -2298,19 +2298,19 @@ static int evaluate_approximate_numeric_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *)
+    void (*unsupported_error_callback)(struct mylite_db *)
 ) {
     struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
     bool handled = false;
     int rc = MYLITE_OK;
 
-    if (out_value == NULL || set_unsupported_error == NULL) {
+    if (out_value == NULL || unsupported_error_callback == NULL) {
         return MYLITE_MISUSE;
     }
     *out_value = (struct approximate_numeric_input_value){.is_null = false, .is_negative = false};
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
-        set_unsupported_error(database);
+        unsupported_error_callback(database);
         return MYLITE_ERROR;
     }
 
@@ -2318,7 +2318,7 @@ static int evaluate_approximate_numeric_operand(
         database,
         expression,
         out_value,
-        set_unsupported_error,
+        unsupported_error_callback,
         &handled
     );
     if (rc != MYLITE_OK || handled) {
@@ -2337,7 +2337,7 @@ static int evaluate_approximate_numeric_operand(
         return MYLITE_OK;
     }
     if (!mylite_execution_is_scalar_arithmetic_projection_expression(expression)) {
-        set_unsupported_error(database);
+        unsupported_error_callback(database);
         return MYLITE_ERROR;
     }
 
@@ -2364,7 +2364,7 @@ static int evaluate_approximate_numeric_direct_value_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct approximate_numeric_input_value *out_value,
-    void (*set_unsupported_error)(struct mylite_db *),
+    void (*unsupported_error_callback)(struct mylite_db *),
     bool *out_handled
 ) {
     const struct mylite_sql_ast_node *literal = expression;
@@ -2373,7 +2373,7 @@ static int evaluate_approximate_numeric_direct_value_operand(
     bool has_sign = false;
     uint64_t magnitude = 0U;
 
-    if (out_value == NULL || set_unsupported_error == NULL || out_handled == NULL) {
+    if (out_value == NULL || unsupported_error_callback == NULL || out_handled == NULL) {
         return MYLITE_MISUSE;
     }
     *out_handled = false;
@@ -2423,7 +2423,7 @@ static int evaluate_approximate_numeric_direct_value_operand(
     *out_handled = true;
 
     if (mylite_execution_parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
-        set_unsupported_error(database);
+        unsupported_error_callback(database);
         return MYLITE_ERROR;
     }
     out_value->is_negative = false;

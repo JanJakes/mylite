@@ -793,7 +793,13 @@ static int expect_text(const char *actual, const char *expected, const char *con
         if (actual == expected) {
             return 0;
         }
-        fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+        fprintf(
+            stderr,
+            "%s: expected %s, got %s\n",
+            context,
+            expected == NULL ? "(null)" : expected,
+            actual == NULL ? "(null)" : actual
+        );
         return 1;
     }
     if (strcmp(actual, expected) != 0) {

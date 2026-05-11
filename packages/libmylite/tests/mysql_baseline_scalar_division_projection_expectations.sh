@@ -151,11 +151,16 @@ expect_output \
 
 expect_output \
     "division null child warning behavior" \
-    "NULL	NULL	NULL	0
+    "NULL	NULL	NULL	NULL	NULL	NULL	NULL	0
 Warning	1365	Division by 0
 Warning	1365	Division by 0
-2	-1" \
-    "DO 0; SELECT NULL/(5/0),NULLIF(1,1)/(5/0),(5/0)/(5/0),@@warning_count;
+Warning	1365	Division by 0
+Warning	1365	Division by 0
+Warning	1365	Division by 0
+5	-1" \
+    "DO 0; SELECT NULL/(5/0),NULLIF(1,1)/(5/0),(5/0)/(5/0),
+            IF(0,1,NULL)/(5/0),IFNULL(NULL,NULL)/(5/0),
+            COALESCE(NULL,NULL)/(5/0),(NULL+0)/(5/0),@@warning_count;
      SHOW WARNINGS; SELECT @@warning_count,ROW_COUNT();" \
     "$DATABASE"
 
@@ -192,14 +197,15 @@ expect_error \
     "$DATABASE"
 
 accepted_but_deferred=$(run_mysql_with_headers \
-    "SELECT 1+5/2*3,5/2/2,5/2%2,5/2 DIV 1,5.5/2,5e0/2,'5'/2,0x10/2,b'1010'/2,X'35'/2;
+    "SELECT 1+5/2*3,5/2/2,5/2%2,5/2 DIV 1,ABS(5/2),IF(1,5/2,3),
+            CASE WHEN TRUE THEN 5/2 END,5.5/2,5e0/2,'5'/2,0x10/2,b'1010'/2,X'35'/2;
      SELECT id,n,id/2,n/2 FROM t ORDER BY id;" \
     "$DATABASE"
 )
 expect_value \
     "mysql accepted forms deferred by this slice" \
-    "1+5/2*3	5/2/2	5/2%2	5/2 DIV 1	5.5/2	5e0/2	'5'/2	0x10/2	b'1010'/2	X'35'/2
-8.5000	1.25000000	0.5000	2	2.75000	2.5	2.5	8.0000	5.0000	26.5000
+    "1+5/2*3	5/2/2	5/2%2	5/2 DIV 1	ABS(5/2)	IF(1,5/2,3)	CASE WHEN TRUE THEN 5/2 END	5.5/2	5e0/2	'5'/2	0x10/2	b'1010'/2	X'35'/2
+8.5000	1.25000000	0.5000	2	2.5000	2.5000	2.5000	2.75000	2.5	2.5	8.0000	5.0000	26.5000
 id	n	id/2	n/2
 -1	-2	-0.5000	-1.0000
 0	NULL	0.0000	NULL

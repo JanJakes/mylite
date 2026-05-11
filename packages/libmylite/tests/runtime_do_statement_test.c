@@ -302,7 +302,7 @@ static int test_do_statement_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "DO 1/0",
+        "DO 1+1/0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

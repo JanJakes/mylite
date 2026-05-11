@@ -18,29 +18,29 @@
 
 ## Implementation
 
-- [ ] Add the MySQL-runtime expectation artifact for the baseline scalar `/`
+- [x] Add the MySQL-runtime expectation artifact for the baseline scalar `/`
   projection slice.
-- [ ] Extend parser tests for `/` AST and precedence coverage if existing
+- [x] Extend parser tests for `/` AST and precedence coverage if existing
   coverage is incomplete.
-- [ ] Implement MyLite-owned top-level no-source/`DUAL`/`DO` division
+- [x] Implement MyLite-owned top-level no-source/`DUAL`/`DO` division
   evaluation over the admitted signed-64 scalar arithmetic operand domain.
-- [ ] Preserve warning staging, child diagnostics, unsupported-form
+- [x] Preserve warning staging, child diagnostics, unsupported-form
   diagnostics, row-count behavior, and public result conventions.
-- [ ] Add runtime tests for successful values, aliases, `FROM DUAL`, `DO`,
+- [x] Add runtime tests for successful values, aliases, `FROM DUAL`, `DO`,
   warnings, unsupported forms, file safety, independent handles, and
   catalog/schema-generation immutability.
-- [ ] Update compatibility documentation for only the admitted limited scalar
+- [x] Update compatibility documentation for only the admitted limited scalar
   division subset.
 
 ## Verification
 
-- [ ] Run `packages/libmylite/tests/mysql_baseline_scalar_division_projection_expectations.sh`.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run focused parser/runtime CTest entries for scalar division and adjacent
+- [x] Run `packages/libmylite/tests/mysql_baseline_scalar_division_projection_expectations.sh`.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run focused parser/runtime CTest entries for scalar division and adjacent
   scalar-expression surfaces.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, MySQL 8.4.9 evidence,
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, MySQL 8.4.9 evidence,
   decimal formatting correctness, warning behavior, file-format safety, scope
   control, and compatibility-doc accuracy.
-- [ ] Commit atomically, run a subagent release-gate review, amend if needed,
+- [x] Commit atomically, run a subagent release-gate review, amend if needed,
   and push `main`.

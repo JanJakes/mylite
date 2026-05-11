@@ -2471,6 +2471,22 @@ static int scalar_arithmetic_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int scalar_division_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int format_scalar_division_value(
+    struct mylite_db *database,
+    int64_t numerator,
+    int64_t denominator,
+    char *buffer,
+    size_t buffer_size
+);
+static bool scalar_division_left_null_short_circuits(
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_arithmetic_value *left
+);
 static int evaluate_scalar_arithmetic_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2570,6 +2586,7 @@ static bool checked_int64_modulo(int64_t left, int64_t right, int64_t *out_resul
 static bool checked_int64_divide(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_negate(int64_t value, int64_t *out_result);
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database);
+static void set_scalar_division_unsupported_error(struct mylite_db *database);
 static void set_scalar_arithmetic_operand_out_of_range_error(struct mylite_db *database);
 static void set_scalar_arithmetic_overflow_error(struct mylite_db *database);
 static void set_scalar_bitwise_unsupported_error(struct mylite_db *database);
@@ -2870,6 +2887,7 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
 static bool is_scalar_arithmetic_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
+static bool is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_bitwise_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_logical_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_comparison_projection_expression(
@@ -6528,10 +6546,10 @@ static int execute_do_statement(
             database,
             "DO supports only session scalar values, integer/boolean/NULL values, scalar "
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
-            "arithmetic, %, MOD, DIV, limited numeric bitwise operators, signed 64-bit scalar "
-            "comparison, keyword scalar logical operators, scalar IS predicates, limited numeric "
-            "ABS()/SIGN()/BIT_COUNT() and CEIL()/CEILING()/FLOOR(), and top-level CASE "
-            "expressions"
+            "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
+            "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
+            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT() and CEIL()/CEILING()/FLOOR(), "
+            "and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -6630,7 +6648,8 @@ static int execute_select_statement(
             database,
             "SELECT scalar projection supports only session scalar values, integer/boolean/NULL, "
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
-            "arithmetic, %, MOD, DIV, limited numeric bitwise, scalar functions, "
+            "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
+            "functions, "
             "ABS()/SIGN()/BIT_COUNT()/CEIL()/CEILING()/FLOOR()"
         );
         return MYLITE_ERROR;
@@ -16489,6 +16508,9 @@ static int session_binary_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    if (is_scalar_division_projection_expression(expression)) {
+        return scalar_division_value(database, expression, out_cell);
+    }
     if (is_scalar_bitwise_projection_expression(expression)) {
         return scalar_bitwise_value(database, expression, out_cell);
     }
@@ -16499,6 +16521,162 @@ static int session_binary_scalar_value(
         return scalar_comparison_value(database, expression, out_cell);
     }
     return scalar_arithmetic_value(database, expression, out_cell);
+}
+
+static int scalar_division_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_arithmetic_value left = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value right = {.is_null = false, .integer = 0};
+    size_t warning_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (!is_scalar_division_projection_expression(expression)) {
+        set_scalar_division_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_scalar_arithmetic_expression(database, child_at(expression, 0U), &left);
+    if (rc == MYLITE_OK &&
+        scalar_division_left_null_short_circuits(child_at(expression, 0U), &left)) {
+        out_cell->staged_division_by_zero_warning_count = left.division_by_zero_warning_count;
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_scalar_arithmetic_expression(database, child_at(expression, 1U), &right);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = accumulate_staged_division_by_zero_warnings(
+        database,
+        left.division_by_zero_warning_count,
+        &warning_count
+    );
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            right.division_by_zero_warning_count,
+            &warning_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (left.is_null || right.is_null) {
+        out_cell->staged_division_by_zero_warning_count = warning_count;
+        return MYLITE_OK;
+    }
+    if (right.integer == 0) {
+        rc = accumulate_staged_division_by_zero_warnings(database, 1U, &warning_count);
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = warning_count;
+        }
+        return rc;
+    }
+
+    rc = format_scalar_division_value(
+        database,
+        left.integer,
+        right.integer,
+        out_cell->integer_text,
+        sizeof(out_cell->integer_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->integer_text;
+        out_cell->staged_division_by_zero_warning_count = warning_count;
+    }
+    return rc;
+}
+
+static bool scalar_division_left_null_short_circuits(
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_arithmetic_value *left
+) {
+    if (left == NULL || !left->is_null) {
+        return false;
+    }
+    if (left->division_by_zero_warning_count != 0U) {
+        return true;
+    }
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IF_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_NULLIF_FUNCTION) {
+        return true;
+    }
+    return false;
+}
+
+static int format_scalar_division_value(
+    struct mylite_db *database,
+    int64_t numerator,
+    int64_t denominator,
+    char *buffer,
+    size_t buffer_size
+) {
+    uint64_t numerator_magnitude = absolute_int64_magnitude(numerator);
+    uint64_t denominator_magnitude = absolute_int64_magnitude(denominator);
+    uint64_t integer_part = 0U;
+    uint64_t remainder = 0U;
+    unsigned int fraction = 0U;
+    int round_digit = 0;
+    bool is_negative = (numerator < 0) != (denominator < 0);
+    int written = 0;
+
+    if (buffer == NULL || denominator_magnitude == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    integer_part = numerator_magnitude / denominator_magnitude;
+    remainder = numerator_magnitude % denominator_magnitude;
+    for (size_t digit_index = 0U; digit_index < avg_fraction_digits; ++digit_index) {
+        int digit = next_decimal_digit(&remainder, denominator_magnitude);
+
+        if (digit < 0) {
+            set_runtime_error(database, "failed to format scalar division value");
+            return MYLITE_ERROR;
+        }
+        fraction = (fraction * decimal_base) + (unsigned int)digit;
+    }
+    round_digit = next_decimal_digit(&remainder, denominator_magnitude);
+    if (round_digit < 0) {
+        set_runtime_error(database, "failed to format scalar division value");
+        return MYLITE_ERROR;
+    }
+    if (round_digit >= avg_round_half_digit) {
+        ++fraction;
+        if (fraction == avg_fraction_scale) {
+            fraction = 0U;
+            ++integer_part;
+        }
+    }
+
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%s%" PRIu64 ".%04u",
+        is_negative && (integer_part != 0U || fraction != 0U) ? "-" : "",
+        integer_part,
+        fraction
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format scalar division value");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int scalar_bitwise_value(
@@ -19484,6 +19662,14 @@ static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database) 
     );
 }
 
+static void set_scalar_division_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "SELECT scalar division projection supports only top-level / over signed 64-bit scalar "
+        "arithmetic operands without nested / division"
+    );
+}
+
 static void set_scalar_arithmetic_operand_out_of_range_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -21651,6 +21837,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_scalar_comparison_projection_expression(expression)) {
         return true;
     }
+    if (is_scalar_division_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_bitwise_projection_expression(expression)) {
         return true;
     }
@@ -21743,6 +21932,19 @@ static bool is_scalar_arithmetic_projection_expression(
     scalar_arithmetic_node_stack_deinit(&stack);
 
     return result;
+}
+
+static bool is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_DIVIDE) {
+        return false;
+    }
+
+    if (!is_scalar_arithmetic_projection_expression(child_at(expression, 0U))) {
+        return false;
+    }
+    return is_scalar_arithmetic_projection_expression(child_at(expression, 1U));
 }
 
 static bool is_scalar_bitwise_projection_expression(const struct mylite_sql_ast_node *expression) {

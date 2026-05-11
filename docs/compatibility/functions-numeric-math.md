@@ -4,6 +4,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |
+| `/` | 🟡 | Limited no-source/`DUAL` top-level scalar division and limited `DO` expression execution over signed-64 scalar arithmetic operands, returning four fractional digits for integer/integer inputs; no nested slash composition, table-backed expression support, decimal/float/string/hex/bit conversion, or expression metadata |
 | `ABS()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; direct decimal integer magnitudes are admitted within the unsigned-64 envelope except `ABS(-9223372036854775808)` reports MySQL overflow; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `ACOS()` | ❌ | Return arc cosine |
 | `ASIN()` | ❌ | Return arc sine |

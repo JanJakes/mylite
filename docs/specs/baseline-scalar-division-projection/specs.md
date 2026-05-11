@@ -64,7 +64,15 @@ expectations for this slice:
 - warning-producing `/` expressions in scalar `SELECT` do not affect
   `@@warning_count` or `ROW_COUNT()` values read inside the same select list;
 - child arithmetic warnings and overflow keep their existing behavior before
-  the parent `/` result is applied;
+  the parent `/` result is applied, except for MySQL-observed left-null
+  short-circuit forms;
+- MySQL 8.4.9 short-circuits a limited set of evaluated `NULL` left operands
+  before evaluating the right operand. This slice mirrors the observed admitted
+  cases for `IF()` / `NULLIF()` left results and left operands that already
+  became `NULL` from division-by-zero arithmetic. Plain `NULL`,
+  `IFNULL(NULL, NULL)`, `COALESCE(NULL, NULL)`, and ordinary arithmetic
+  `NULL` results do not short-circuit the right operand in the observed MySQL
+  behavior;
 - `/` shares MySQL's multiplicative precedence tier with `*`, `%`, `MOD`, and
   `DIV`, but this phase admits only top-level `/`; nested composition with
   other multiplicative operators remains deferred;
@@ -176,15 +184,21 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    arithmetic expressions without `/`.
 2. Preserve existing function wrong-arity diagnostics and child arithmetic
    diagnostics before generic unsupported diagnostics.
-3. Evaluate the left operand and right operand using the existing signed-64
-   scalar arithmetic evaluator. This preserves `NULL`, child
-   division-by-zero warnings from `%`, `MOD`, and `DIV`, and child overflow
-   behavior.
-4. If either evaluated operand is `NULL`, return `NULL`. Child warnings
+3. Evaluate the left operand using the existing signed-64 scalar arithmetic
+   evaluator. This preserves `NULL`, child division-by-zero warnings from `%`,
+   `MOD`, and `DIV`, and child overflow behavior.
+4. If the evaluated left operand is `NULL` and the left expression is an
+   observed MySQL short-circuit form for this slice (`IF()` / `NULLIF()` that
+   produced `NULL`, or division/modulo/integer-division arithmetic that already
+   produced `NULL` with a division-by-zero warning), return `NULL` without
+   evaluating the right operand.
+5. Otherwise evaluate the right operand with the same signed-64 scalar
+   arithmetic evaluator.
+6. If either evaluated operand is `NULL`, return `NULL`. Child warnings
    accumulated while reaching that `NULL` are preserved.
-5. If both operands are non-`NULL` and the right operand is zero, return `NULL`
+7. If both operands are non-`NULL` and the right operand is zero, return `NULL`
    and stage one warning `1365` / SQLSTATE `22012`, `Division by 0`.
-6. Otherwise format `left / right` as exact decimal text with four fractional
+8. Otherwise format `left / right` as exact decimal text with four fractional
    digits:
    - use unsigned magnitudes internally so `INT64_MIN / -1` can produce
      `9223372036854775808.0000`;
@@ -193,7 +207,7 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    - round the fourth fractional digit up when the next digit is at least `5`;
    - carry from `9999` fractional text into the integer part; and
    - suppress a negative sign when the rounded value is exactly `0.0000`.
-7. Append staged division-by-zero warnings after scalar select-item or `DO`
+9. Append staged division-by-zero warnings after scalar select-item or `DO`
    expression evaluation through the existing scalar warning path.
 
 Supported in-range division statements report `warning_count == 0` unless an

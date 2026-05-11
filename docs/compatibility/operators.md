@@ -18,7 +18,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `+` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection and limited `DO` expression execution only; no table-backed expression support |
 | `-` (binary) | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection and limited `DO` expression execution only; no table-backed expression support |
 | `-` (unary) | 🟡 | Limited no-source/`DUAL` signed-64 scalar unary arithmetic projection and limited `DO` expression execution with unary `+` and unary `-`; no table-backed expression support or unsigned-width expression results |
-| `/` | ❌ | Division operator |
+| `/` | 🟡 | Limited no-source/`DUAL` top-level scalar division and limited `DO` expression execution over signed-64 scalar arithmetic operands, returning four fractional digits for integer/integer inputs; no nested slash composition, table-backed expression support, decimal/float/string/hex/bit conversion, or expression metadata |
 | `:=` | ❌ | Assign a value |
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, `NULL`, or descriptor-resolved `DEFAULT`; limited fixed no-op system-variable `SET` assignments; expression assignments remain unsupported |
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only; limited no-source/`DUAL` signed-64 scalar comparison projection and limited `DO` expression execution; no table-backed expression support |

@@ -367,7 +367,7 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 1/0",
+        "SELECT 1+1/0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

@@ -412,6 +412,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "primary_key_part_list";
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
         return "inline_primary_key";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+        return "column_attribute_list";
+    case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+        return "column_auto_increment";
+    case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
+        return "table_auto_increment_option";
     case MYLITE_SQL_AST_NULLABILITY:
         return "nullability";
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:

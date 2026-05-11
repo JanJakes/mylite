@@ -28,6 +28,13 @@ struct mylite_sql_parse_error {
     struct mylite_sql_token token;
 };
 
+struct column_attribute_positions {
+    size_t nullability;
+    size_t default_value;
+    size_t primary_key;
+    size_t auto_increment;
+};
+
 static bool map_lexer_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
@@ -65,6 +72,21 @@ static struct mylite_sql_source_span span_join(
     struct mylite_sql_source_span left,
     struct mylite_sql_source_span right
 );
+static int scan_column_attribute_positions(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *attributes,
+    struct column_attribute_positions *out_positions
+);
+static int record_column_attribute_position(
+    struct mylite_sql_parser_state *state,
+    size_t *slot,
+    size_t position
+);
+static int validate_legacy_column_attribute_order(
+    struct mylite_sql_parser_state *state,
+    const struct column_attribute_positions *positions
+);
+static bool column_attribute_position_is_set(size_t position);
 
 enum mylite_sql_parse_status mylite_sql_parse(
     struct mylite_sql_parse_config config,
@@ -793,6 +815,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
     }
 
     mylite_sql_ast_node_append_child(option, collation_name);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token auto_increment_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&auto_increment_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
     return option;
 }
 
@@ -3302,6 +3345,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_attribute_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attribute
+) {
+    struct mylite_sql_source_span span =
+        attribute == NULL ? (struct mylite_sql_source_span){0} : attribute->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, attribute);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *attribute
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, attribute);
+    if (attribute != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, attribute->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token auto_increment_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        span_from_token(&auto_increment_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -3338,6 +3423,140 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     mylite_sql_ast_node_append_child(column, default_null);
     mylite_sql_ast_node_append_child(column, primary_key);
     return column;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_with_attributes(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *attributes
+) {
+    struct mylite_sql_source_span span =
+        name == NULL ? (struct mylite_sql_source_span){0} : name->span;
+    struct column_attribute_positions positions = {0};
+    struct mylite_sql_ast_node *column = NULL;
+    struct mylite_sql_ast_node *attribute = NULL;
+    int rc = MYLITE_SQL_PARSE_OK;
+
+    if (column_type != NULL) {
+        span = span_join(span, column_type->span);
+    }
+    if (attributes != NULL) {
+        span = span_join(span, attributes->span);
+    }
+
+    rc = scan_column_attribute_positions(state, attributes, &positions);
+    if (rc == MYLITE_SQL_PARSE_OK) {
+        rc = validate_legacy_column_attribute_order(state, &positions);
+    }
+    if (rc != MYLITE_SQL_PARSE_OK) {
+        return NULL;
+    }
+
+    column = make_node(state, MYLITE_SQL_AST_COLUMN_DEFINITION, span);
+    if (column == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(column, name);
+    mylite_sql_ast_node_append_child(column, column_type);
+    attribute = attributes == NULL ? NULL : attributes->first_child;
+    while (attribute != NULL) {
+        struct mylite_sql_ast_node *next = attribute->next_sibling;
+
+        mylite_sql_ast_node_append_child(column, attribute);
+        attribute = next;
+    }
+
+    return column;
+}
+
+static int scan_column_attribute_positions(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *attributes,
+    struct column_attribute_positions *out_positions
+) {
+    const struct mylite_sql_ast_node *attribute = NULL;
+    size_t position = 0U;
+    int rc = MYLITE_SQL_PARSE_OK;
+
+    *out_positions = (struct column_attribute_positions){
+        .nullability = (size_t)-1,
+        .default_value = (size_t)-1,
+        .primary_key = (size_t)-1,
+        .auto_increment = (size_t)-1,
+    };
+
+    attribute = attributes == NULL ? NULL : attributes->first_child;
+    while (rc == MYLITE_SQL_PARSE_OK && attribute != NULL) {
+        switch (attribute->kind) {
+        case MYLITE_SQL_AST_NULLABILITY:
+            rc = record_column_attribute_position(state, &out_positions->nullability, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
+        case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
+            rc = record_column_attribute_position(state, &out_positions->default_value, position);
+            break;
+        case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
+            rc = record_column_attribute_position(state, &out_positions->primary_key, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+            rc = record_column_attribute_position(state, &out_positions->auto_increment, position);
+            break;
+        default:
+            break;
+        }
+
+        ++position;
+        attribute = attribute->next_sibling;
+    }
+
+    return rc;
+}
+
+static int record_column_attribute_position(
+    struct mylite_sql_parser_state *state,
+    size_t *slot,
+    size_t position
+) {
+    if (column_attribute_position_is_set(*slot)) {
+        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+
+    *slot = position;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static int validate_legacy_column_attribute_order(
+    struct mylite_sql_parser_state *state,
+    const struct column_attribute_positions *positions
+) {
+    bool invalid_order = false;
+
+    if (column_attribute_position_is_set(positions->auto_increment)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    invalid_order = ((column_attribute_position_is_set(positions->nullability) &&
+                      column_attribute_position_is_set(positions->default_value) &&
+                      positions->nullability > positions->default_value) ||
+                     (column_attribute_position_is_set(positions->nullability) &&
+                      column_attribute_position_is_set(positions->primary_key) &&
+                      positions->nullability > positions->primary_key) ||
+                     (column_attribute_position_is_set(positions->default_value) &&
+                      column_attribute_position_is_set(positions->primary_key) &&
+                      positions->default_value > positions->primary_key)) != 0;
+    if (invalid_order) {
+        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool column_attribute_position_is_set(size_t position) {
+    return position != (size_t)-1;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
@@ -3721,6 +3940,7 @@ static bool map_keyword_token(
         {"CURRENT_USER", MYLITE_SQL_PARSE_CURRENT_USER},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
+        {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
         {"LAST_INSERT_ID", MYLITE_SQL_PARSE_LAST_INSERT_ID},
         {"MAX", MYLITE_SQL_PARSE_MAX},
         {"MIN", MYLITE_SQL_PARSE_MIN},

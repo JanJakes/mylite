@@ -6898,6 +6898,72 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE auto_inline (id INT AUTO_INCREMENT PRIMARY KEY, amount INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    column = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_node(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        "inline auto increment marker"
+    );
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
+        "inline auto increment primary key"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE auto_table_pk (id INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (id));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    column = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        "table pk auto increment marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE auto_option (id INT PRIMARY KEY AUTO_INCREMENT) AUTO_INCREMENT=7;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    column = child_at(items, 0U);
+    failures += expect_node(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
+        "auto option primary key before auto increment"
+    );
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        "auto option column marker"
+    );
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "auto increment table option list"
+    );
+    failures += expect_node(
+        child_at(child_at(statement, 2U), 0U),
+        MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION,
+        "auto increment table option"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "auto increment table option value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE table_pk (id INT, PRIMARY KEY (id));",
         MYLITE_SQL_PARSE_OK,
         &result

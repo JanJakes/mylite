@@ -80,8 +80,11 @@ slice:
   "auto column ... key" diagnostic.
 - Non-integer auto-increment columns fail. `VARCHAR(3) AUTO_INCREMENT PRIMARY
   KEY` fails with error `1063`, SQLSTATE `42000`.
-- An auto-increment column cannot have a default. `DEFAULT 7 AUTO_INCREMENT`
-  fails with error `1067`, SQLSTATE `42000`.
+- An auto-increment column cannot declare a default in `CREATE TABLE`.
+  `DEFAULT 7 AUTO_INCREMENT` fails with error `1067`, SQLSTATE `42000`.
+  Existing `ALTER TABLE ... ALTER id SET DEFAULT 7` syntax is accepted by
+  MySQL; the default remains hidden from `SHOW COLUMNS` and `SHOW CREATE
+  TABLE`, but later omitted/default values use it as an explicit value.
 - Explicit `NULL` on a primary-key auto-increment column fails with the primary
   key `1171` diagnostic before auto-increment allocation matters.
 - `AUTO_INCREMENT = 0` table option is accepted and normalizes to the default
@@ -115,7 +118,9 @@ slice:
   the admitted InnoDB/default-mode surface.
 - When a small integer auto-increment column reaches its maximum value, the
   next generated insert fails with duplicate-key error `1062` using the maximum
-  key value.
+  key value. When the stored next value already exceeds the column maximum
+  before assignment, the generated insert fails with error `1467`, SQLSTATE
+  `HY000`.
 
 ## Scope
 
@@ -149,8 +154,8 @@ The implementation must add:
   `LAST_INSERT_ID()` changes on failed inserts;
 - duplicate-key diagnostics and `INSERT IGNORE` demotion for explicit duplicate
   auto-increment primary-key values through the existing primary-key path;
-- duplicate-key exhaustion diagnostics when the next generated value exceeds
-  the admitted column's positive range;
+- duplicate-key or storage-engine-style exhaustion diagnostics for generated
+  allocation at or beyond the admitted column's positive range;
 - descriptor-backed `SHOW COLUMNS` `Extra = auto_increment`;
 - descriptor-backed `SHOW CREATE TABLE` column rendering with
   `AUTO_INCREMENT`, and table-level `AUTO_INCREMENT=N` rendering only when the
@@ -179,6 +184,8 @@ This feature must not implement:
 - `ALTER TABLE ... AUTO_INCREMENT = N`, adding/dropping/modifying
   auto-increment through `ALTER TABLE`, or key-aware column replacement for
   auto-increment columns;
+- full auto-increment default semantics beyond the observed hidden
+  `ALTER TABLE ... ALTER column SET DEFAULT literal` surface;
 - mixed-mode multi-row auto-increment allocation gaps;
 - `INSERT ... SELECT` into auto-increment tables;
 - `REPLACE` into auto-increment tables while key-aware `REPLACE` remains
@@ -335,13 +342,15 @@ An admitted auto-increment column:
 - must be an integer-family descriptor column;
 - must be the same column as the admitted single-column primary key;
 - is effectively `NOT NULL`;
-- cannot have a descriptor default;
+- cannot declare a default in `CREATE TABLE`;
 - is the only auto-increment column in the table.
 
 If the table option `AUTO_INCREMENT=N` is present, `N = 0` is accepted and
 normalizes to next value `1`. Positive `N` is stored as the next counter value
-when it is within MyLite's signed-64 physical range and within the admitted
-column's positive range. Negative, decimal, float, hex, bit, string, parameter,
+when it is within MyLite's signed-64 physical range, even when it is beyond
+the admitted column's positive range. A later generated insert from such an
+out-of-range stored next value fails with `1467`/`HY000`, matching observed
+MySQL 8.4.9 behavior. Negative, decimal, float, hex, bit, string, parameter,
 or expression table-option values are syntax errors or deterministic
 unsupported diagnostics for this slice.
 
@@ -353,15 +362,20 @@ or `DEFAULT`. This follows the current fixed SQL-mode surface where
 `NO_AUTO_VALUE_ON_ZERO` is not enabled.
 
 Generated values use the table's durable `auto_increment_next` value. After a
-generated value is assigned, the in-statement next value increments by one. The
-first generated value successfully inserted by the statement is staged as the
-new `LAST_INSERT_ID()` value.
+generated value below the column maximum is assigned, the in-statement next
+value increments by one. If the generated value is the column maximum, the
+counter remains at that maximum so a later generated insert reaches the same
+duplicate-key surface MySQL exposes for small integer exhaustion. The first
+generated value successfully inserted by the statement is staged as the new
+`LAST_INSERT_ID()` value.
 
 Explicit non-generated integer values are validated through the existing
 integer-column conversion rules. They are bound as ordinary values. If a
 successful explicit value is greater than or equal to the current next counter,
-the durable next counter advances to explicit value plus one, subject to the
-column's supported positive range and MyLite's signed-64 physical range.
+the durable next counter advances to explicit value plus one, except that an
+explicit value equal to the column's positive maximum leaves the counter at
+that maximum. Values remain subject to the column's supported positive range
+and MyLite's signed-64 physical range.
 Explicit negative values for signed columns do not advance the counter and do
 not update `LAST_INSERT_ID()`.
 
@@ -381,9 +395,12 @@ duplicate primary-key values. Generated successful values update
 `LAST_INSERT_ID()` as normal. Ignored explicit duplicate rows do not update
 `LAST_INSERT_ID()`.
 
-If generated allocation would exceed the admitted column's positive maximum,
-the insert fails with duplicate-key error `1062` using the maximum key value,
-matching the observed tinyint-exhaustion surface.
+If generated allocation starts from a stored next value greater than the
+admitted column's positive maximum, the insert fails with error `1467`,
+SQLSTATE `HY000`, and the observed "Failed to read auto-increment value from
+storage engine" diagnostic. If the next generated value is still the column
+maximum and that key already exists, normal primary-key enforcement reports
+duplicate-key error `1062` using the maximum key value.
 
 ### Counters, Transactions, And Persistence
 
@@ -398,8 +415,9 @@ the counter. `TRUNCATE TABLE` resets the counter to `1` after deleting rows.
 `UPDATE` of an auto-increment primary-key column remains in scope only for the
 existing explicit assignment subset. If a successful update sets the
 auto-increment column to a positive value greater than or equal to the current
-next counter, MyLite advances the counter to value plus one. It does not update
-`LAST_INSERT_ID()`.
+next counter, MyLite advances the counter to value plus one, except that a
+value equal to the column's positive maximum leaves the counter at that
+maximum. It does not update `LAST_INSERT_ID()`.
 
 ### Metadata
 
@@ -418,6 +436,11 @@ non-auto-increment tables.
 
 `SHOW INDEX` remains driven by the primary-key descriptor and does not need
 additional auto-increment-specific rows.
+
+If the existing `ALTER TABLE ... ALTER column SET DEFAULT literal` surface is
+used on an auto-increment column, MyLite stores the descriptor default so
+omitted/default DML values behave like MySQL's explicit hidden default. That
+default is not rendered in `SHOW COLUMNS` or `SHOW CREATE TABLE`.
 
 ## Diagnostics
 
@@ -501,6 +524,9 @@ Cover:
   inserts, after failed inserts, and across independent handles;
 - duplicate explicit primary-key errors and `INSERT IGNORE` demotion;
 - counter exhaustion on a small unsigned integer type;
+- out-of-range initial table-option counters producing `1467`;
+- hidden `ALTER TABLE ... ALTER column SET DEFAULT` behavior for
+  auto-increment metadata and later omitted inserts;
 - table option `AUTO_INCREMENT=0` and positive starting values;
 - schema-qualified and unqualified table resolution through existing policy;
 - missing default schema, unknown schema, unknown table, and reserved-name

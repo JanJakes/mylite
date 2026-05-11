@@ -226,6 +226,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
     struct mylite_sql_token collate_token,
     struct mylite_sql_ast_node *collation_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token auto_increment_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -936,6 +941,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_token primary_token,
     struct mylite_sql_token key_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_attribute_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attribute
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *attribute
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token auto_increment_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -943,6 +961,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_ast_node *nullability,
     struct mylite_sql_ast_node *default_null,
     struct mylite_sql_ast_node *primary_key
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_with_attributes(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *attributes
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
     struct mylite_sql_parser_state *state,

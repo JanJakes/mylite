@@ -1449,6 +1449,10 @@ static int make_catalog_look_like_v1(sqlite3 *sqlite) {
 
     failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_index_columns");
     failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_indexes");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN auto_increment_next");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_auto_increment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN default_kind");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN default_integer");
@@ -1467,6 +1471,8 @@ static int make_catalog_look_like_v2(sqlite3 *sqlite) {
 
     failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_index_columns");
     failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_indexes");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN auto_increment_next");
     failures += execute_sql(
         sqlite,
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v3;"

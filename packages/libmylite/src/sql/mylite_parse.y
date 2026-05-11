@@ -384,6 +384,12 @@ table_option(A) ::= default_opt CHARACTER(C) SET equal_opt option_name(N). {
 table_option(A) ::= default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
 }
+table_option(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_table_auto_increment_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
 
 default_opt ::= .
 default_opt ::= DEFAULT.
@@ -2505,6 +2511,9 @@ identifier(A) ::= VISIBLE(T). {
 identifier(A) ::= INVISIBLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= AUTO_INCREMENT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 create_table_item_list(A) ::= create_table_item(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
@@ -2535,17 +2544,35 @@ primary_key_part(A) ::= qualified_identifier(B). {
     A = B;
 }
 
-column_definition(A) ::=
-    identifier(N) column_type(T) nullability_opt(U) column_default_opt(D)
-    column_primary_key_opt(K). {
-    A = mylite_sql_parser_make_column_definition(state, N, T, U, D, K);
+column_definition(A) ::= identifier(N) column_type(T) column_attribute_list_opt(L). {
+    A = mylite_sql_parser_make_column_definition_with_attributes(state, N, T, L);
 }
 
-column_primary_key_opt(A) ::= . {
+column_attribute_list_opt(A) ::= . {
     A = NULL;
 }
-column_primary_key_opt(A) ::= PRIMARY(P) KEY(K). {
+column_attribute_list_opt(A) ::= column_attribute_list(B). {
+    A = B;
+}
+
+column_attribute_list(A) ::= column_attribute(B). {
+    A = mylite_sql_parser_make_column_attribute_list(state, B);
+}
+column_attribute_list(A) ::= column_attribute_list(B) column_attribute(C). {
+    A = mylite_sql_parser_append_column_attribute(state, B, C);
+}
+
+column_attribute(A) ::= nullability(B). {
+    A = B;
+}
+column_attribute(A) ::= column_default(B). {
+    A = B;
+}
+column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
+}
+column_attribute(A) ::= AUTO_INCREMENT(T). {
+    A = mylite_sql_parser_make_column_auto_increment(state, T);
 }
 
 column_type(A) ::= integer_type(T). {
@@ -2692,25 +2719,19 @@ integer_signedness_opt(A) ::= UNSIGNED(U). {
     };
 }
 
-nullability_opt(A) ::= . {
-    A = NULL;
-}
-nullability_opt(A) ::= NULL(T). {
+nullability(A) ::= NULL(T). {
     A = mylite_sql_parser_make_nullability(
         state, MYLITE_SQL_AST_NULLABILITY_NULL, T, T);
 }
-nullability_opt(A) ::= NOT(N) NULL(T). {
+nullability(A) ::= NOT(N) NULL(T). {
     A = mylite_sql_parser_make_nullability(
         state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
 }
 
-column_default_opt(A) ::= . {
-    A = NULL;
-}
-column_default_opt(A) ::= DEFAULT(D) NULL(N). {
+column_default(A) ::= DEFAULT(D) NULL(N). {
     A = mylite_sql_parser_make_column_default_null(state, D, N);
 }
-column_default_opt(A) ::= DEFAULT(D) column_default_value(V). {
+column_default(A) ::= DEFAULT(D) column_default_value(V). {
     A = mylite_sql_parser_make_column_default_value(state, D, V);
 }
 

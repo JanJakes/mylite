@@ -46,6 +46,8 @@ enum {
     mysql_error_unknown = 1105,
     mysql_error_column_specified_twice = 1110,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_incorrect_column_specifier = 1063,
+    mysql_error_wrong_auto_key = 1075,
     mysql_error_column_count_mismatch = 1136,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
@@ -66,6 +68,7 @@ enum {
     mysql_error_data_too_long = 1406,
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
+    mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
@@ -88,6 +91,7 @@ enum {
     show_create_table_result_column_count = 2,
     show_create_database_result_column_count = 2,
     show_table_status_result_column_count = 18,
+    show_table_status_auto_increment_column = 10,
     show_table_status_data_length = 16384,
     show_character_set_result_column_count = 4,
     show_collation_result_column_count = 7,
@@ -175,6 +179,7 @@ struct planned_column {
     bool is_nullable;
     bool is_visible;
     bool is_primary_key;
+    bool is_auto_increment;
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
@@ -188,6 +193,7 @@ struct planned_create_table {
     size_t primary_key_column_index;
     int64_t primary_key_index_id;
     char primary_key_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t auto_increment_next;
 };
 
 struct planned_create_table_like {
@@ -364,6 +370,16 @@ struct planned_insert_row {
     struct planned_value *values;
 };
 
+struct insert_auto_increment_mode_counts {
+    size_t generated_count;
+    size_t explicit_count;
+};
+
+struct insert_execution_counters {
+    int64_t affected_rows;
+    int64_t auto_increment_next_after_rows;
+};
+
 struct planned_insert {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -374,6 +390,13 @@ struct planned_insert {
     bool ignore_errors;
     bool has_primary_key;
     size_t primary_key_column_index;
+    bool has_auto_increment;
+    size_t auto_increment_column_index;
+    struct integer_column_range auto_increment_range;
+    int64_t auto_increment_next;
+    int64_t auto_increment_next_after_statement;
+    int64_t first_generated_auto_increment;
+    bool generated_auto_increment;
 };
 
 enum planned_select_predicate_kind {
@@ -1492,6 +1515,11 @@ static int validate_create_table_options(
 static int validate_create_table_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_option
+);
+static int apply_create_table_auto_increment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
 );
 static int validate_create_table_engine_option(
     struct mylite_db *database,
@@ -3485,6 +3513,12 @@ static int step_update_statement(
     int64_t *out_affected_rows,
     const struct planned_update *plan
 );
+static int advance_auto_increment_after_update(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct planned_value *assignment_value,
+    int64_t affected_rows
+);
 static int update_matches_any_row(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -3594,6 +3628,15 @@ static int mark_primary_key_column(
     size_t column_index
 );
 static int validate_primary_key_column(struct mylite_db *database, struct planned_column *column);
+static int validate_create_table_auto_increment_columns(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+);
+static int validate_auto_increment_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    size_t column_index
+);
 static int find_planned_column_index(
     const struct planned_column *columns,
     size_t column_count,
@@ -3604,6 +3647,11 @@ static int plan_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *out_column
+);
+static int validate_column_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct planned_column *column
 );
 static int validate_column_default(
     struct mylite_db *database,
@@ -3662,6 +3710,9 @@ static int append_integer_display_width_warning(struct mylite_db *database);
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
 static bool planned_column_is_varchar(const struct planned_column *column);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_auto_increment(
+    const struct mylite_catalog_column_descriptor *column
+);
 static bool modify_column_integer_value_domain_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -3702,6 +3753,11 @@ static int reject_primary_key_column_alter(
     const char *message
 );
 static int reject_inline_primary_key_column_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_definition,
+    const char *message
+);
+static int reject_auto_increment_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,
     const char *message
@@ -3815,6 +3871,10 @@ static int validate_insert_row_shapes(
     const struct mylite_sql_ast_node *row_list,
     size_t target_count
 );
+static int initialize_insert_auto_increment_plan(
+    struct mylite_db *database,
+    struct planned_insert *plan
+);
 static int plan_insert_rows(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *row_list,
@@ -3830,6 +3890,55 @@ static int plan_insert_row(
     size_t target_count,
     struct planned_insert *plan,
     struct planned_insert_row *out_row
+);
+static int plan_insert_auto_increment_values(
+    struct mylite_db *database,
+    struct planned_insert *plan
+);
+static int count_insert_auto_increment_modes(
+    const struct planned_insert *plan,
+    struct insert_auto_increment_mode_counts *out_counts
+);
+static int plan_insert_auto_increment_row_value(
+    struct mylite_db *database,
+    struct planned_insert *plan,
+    const struct integer_column_range *range,
+    size_t row_index,
+    int64_t *next_value
+);
+static int generated_auto_increment_value_for_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_generated
+);
+static int assign_generated_auto_increment_value(
+    struct mylite_db *database,
+    struct planned_insert *plan,
+    size_t row_index,
+    int64_t generated_value
+);
+static int next_auto_increment_after_value(
+    int64_t current_next,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+);
+static int execute_insert_plan_rows(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters
+);
+static int execute_insert_plan_row(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    int *out_sqlite_step_rc
+);
+static int advance_auto_increment_after_insert_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
 );
 static int append_insert_omitted_column_warnings(
     struct mylite_db *database,
@@ -3850,6 +3959,14 @@ static int allocate_insert_row_values(
     struct planned_insert_row *out_row
 );
 static int convert_insert_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_auto_increment_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
@@ -4873,6 +4990,7 @@ static int append_unknown_table_note(
     const char *table_name
 );
 static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
+static void set_failed_read_auto_increment_error(struct mylite_db *database);
 static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name);
 static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name);
 static void set_table_does_not_exist_error(
@@ -4882,6 +5000,11 @@ static void set_table_does_not_exist_error(
 );
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
 static void set_multiple_primary_key_error(struct mylite_db *database);
+static void set_wrong_auto_key_error(struct mylite_db *database);
+static void set_incorrect_column_specifier_error(
+    struct mylite_db *database,
+    const char *column_name
+);
 static void set_key_column_missing_error(struct mylite_db *database, const char *column_name);
 static void set_primary_key_part_null_error(struct mylite_db *database);
 static void set_duplicate_key_error(
@@ -5263,6 +5386,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+    case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
@@ -9118,6 +9244,7 @@ static int build_show_create_table_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
+    bool has_auto_increment = false;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -9132,6 +9259,9 @@ static int build_show_create_table_sql(
     }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
+        if (column_descriptor_is_auto_increment(&plan->columns[column_index])) {
+            has_auto_increment = true;
+        }
         rc = append_show_create_table_column_definition(
             database,
             &string,
@@ -9143,10 +9273,26 @@ static int build_show_create_table_sql(
         rc = append_show_create_table_primary_key(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(
-            &string,
-            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+        rc = dynamic_string_append(&string, ") ENGINE=InnoDB");
+    }
+    if (rc == MYLITE_OK && has_auto_increment && plan->table.auto_increment_next > 1) {
+        char auto_increment_text[integer_text_capacity + sizeof(" AUTO_INCREMENT=")];
+        int written = snprintf(
+            auto_increment_text,
+            sizeof(auto_increment_text),
+            " AUTO_INCREMENT=%" PRId64,
+            plan->table.auto_increment_next
         );
+
+        if (written < 0 || (size_t)written >= sizeof(auto_increment_text)) {
+            set_runtime_error(database, "failed to format auto-increment table option");
+            rc = MYLITE_ERROR;
+        } else {
+            rc = dynamic_string_append(&string, auto_increment_text);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci");
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -9208,6 +9354,9 @@ static int append_show_create_table_column_default(
     char default_text[show_create_integer_default_text_capacity];
     int written = 0;
 
+    if (column->is_auto_increment) {
+        return MYLITE_OK;
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
         return dynamic_string_append(string, " DEFAULT NULL");
     }
@@ -9236,7 +9385,10 @@ static int append_show_create_table_column_suffix(
 ) {
     int rc = MYLITE_OK;
 
-    if (!column->is_visible) {
+    if (column->is_auto_increment) {
+        rc = dynamic_string_append(string, " AUTO_INCREMENT");
+    }
+    if (rc == MYLITE_OK && !column->is_visible) {
         rc = dynamic_string_append(string, " /*!80023 INVISIBLE */");
     }
     if (rc == MYLITE_OK && !is_last_column) {
@@ -9503,6 +9655,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
+    case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+    case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
@@ -9705,6 +9860,7 @@ static int plan_create_table(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_create_table){0};
+    out_plan->auto_increment_next = 1;
     rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc != MYLITE_OK) {
         return rc;
@@ -9719,6 +9875,18 @@ static int plan_create_table(
     }
 
     rc = plan_create_table_items(database, item_list, out_plan);
+    if (rc != MYLITE_OK) {
+        planned_create_table_deinit(out_plan);
+        return rc;
+    }
+    rc = apply_create_table_auto_increment_option(
+        database,
+        create_table_options_node(statement),
+        out_plan
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_auto_increment_columns(database, out_plan);
+    }
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
         return rc;
@@ -9924,6 +10092,9 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         return MYLITE_ERROR;
     }
     if (planned_column_is_varchar(column)) {
+        if (column->is_auto_increment) {
+            return MYLITE_OK;
+        }
         set_unsupported_error(database, "PRIMARY KEY supports only integer columns");
         return MYLITE_ERROR;
     }
@@ -9933,6 +10104,65 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
     }
     if (column->default_node != NULL &&
         column->default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_create_table_auto_increment_columns(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+) {
+    size_t auto_increment_count = 0U;
+    size_t auto_increment_column_index = 0U;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid auto-increment table plan");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_auto_increment) {
+            ++auto_increment_count;
+            auto_increment_column_index = column_index;
+        }
+    }
+    if (auto_increment_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (auto_increment_count > 1U) {
+        set_wrong_auto_key_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return validate_auto_increment_column(database, plan, auto_increment_column_index);
+}
+
+static int validate_auto_increment_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    size_t column_index
+) {
+    const struct planned_column *column = NULL;
+
+    if (plan == NULL || column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid auto-increment column");
+        return MYLITE_ERROR;
+    }
+
+    column = &plan->columns[column_index];
+    if (planned_column_is_varchar(column)) {
+        set_incorrect_column_specifier_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (!plan->has_primary_key || column_index != plan->primary_key_column_index ||
+        !column->is_primary_key) {
+        set_wrong_auto_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (column->default_node != NULL) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -10025,6 +10255,7 @@ static int clone_create_table_like_columns(
     }
     if (rc == MYLITE_OK) {
         out_plan->column_count = source_column_count;
+        out_plan->auto_increment_next = 1;
         for (size_t column_index = 0U; column_index < source_column_count; ++column_index) {
             planned_column_from_catalog_descriptor(
                 &source_columns[column_index],
@@ -10047,6 +10278,9 @@ static int clone_create_table_like_columns(
         out_plan->primary_key_column_index = primary_key.column_index;
         out_plan->columns[primary_key.column_index].is_primary_key = true;
         out_plan->columns[primary_key.column_index].is_nullable = false;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_auto_increment_columns(database, out_plan);
     }
 
     free(source_columns);
@@ -10256,6 +10490,7 @@ static int infer_create_table_select_columns(
     }
     if (rc == MYLITE_OK) {
         plan->create_table.column_count = plan->source.column_count;
+        plan->create_table.auto_increment_next = 1;
         for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->source.column_count;
              ++column_index) {
             struct planned_column *column = &plan->create_table.columns[column_index];
@@ -10464,9 +10699,63 @@ static int validate_create_table_option(
     if (table_option->kind == MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
         return validate_create_table_collation_option(database, table_option);
     }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION) {
+        return MYLITE_OK;
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
+}
+
+static int apply_create_table_auto_increment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
+) {
+    const uint64_t sqlite_int64_positive_max = 9223372036854775807ULL;
+    const struct mylite_sql_ast_node *table_option = NULL;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid auto-increment table plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->auto_increment_next <= 0) {
+        plan->auto_increment_next = 1;
+    }
+    if (table_options == NULL) {
+        return MYLITE_OK;
+    }
+    if (table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (table_option != NULL) {
+        if (table_option->kind == MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION) {
+            const struct mylite_sql_ast_node *literal = child_at(table_option, 0U);
+            uint64_t magnitude = 0U;
+            int rc = MYLITE_OK;
+
+            if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+                mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
+            rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+            if (rc != MYLITE_OK || magnitude > sqlite_int64_positive_max) {
+                set_unsupported_error(
+                    database,
+                    "AUTO_INCREMENT table option supports only signed 64-bit nonnegative values"
+                );
+                return MYLITE_ERROR;
+            }
+            plan->auto_increment_next = magnitude == 0U ? 1 : (int64_t)magnitude;
+        }
+        table_option = table_option->next_sibling;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_create_table_engine_option(
@@ -10828,6 +11117,7 @@ static int insert_create_table_catalog_rows(
         plan->target.table_name,
         physical_name,
         MYLITE_CATALOG_TABLE_KIND_BASE,
+        plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
         out_table
     );
 
@@ -10846,6 +11136,7 @@ static int insert_create_table_catalog_rows(
             column->physical_type,
             column->is_nullable,
             column->is_visible,
+            column->is_auto_increment,
             column->default_kind,
             column->default_integer,
             &inserted_column
@@ -11185,6 +11476,9 @@ static int execute_truncate_from_plan(
     }
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
+    if (rc == MYLITE_OK && plan->table.auto_increment_next != 1) {
+        rc = mylite_catalog_update_table_auto_increment_next(database, plan->table.table_id, 1);
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
         if (rc == MYLITE_OK) {
@@ -11386,6 +11680,13 @@ static int plan_alter_table_add_column(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_auto_increment_column_definition(
+            database,
+            child_at(statement, 1U),
+            "ALTER TABLE ADD COLUMN does not support AUTO_INCREMENT"
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
@@ -11451,6 +11752,7 @@ static int alter_table_add_column_from_plan(
             plan->column.physical_type,
             plan->column.is_nullable,
             true,
+            false,
             plan->column.default_kind,
             plan->column.default_integer,
             NULL
@@ -11874,6 +12176,13 @@ static int plan_alter_table_modify_column(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_auto_increment_column_definition(
+            database,
+            child_at(statement, 1U),
+            "ALTER TABLE MODIFY COLUMN does not support AUTO_INCREMENT"
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
@@ -11937,6 +12246,13 @@ static int plan_alter_table_change_column(
             database,
             child_at(statement, 2U),
             "ALTER TABLE CHANGE COLUMN does not support PRIMARY KEY"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_auto_increment_column_definition(
+            database,
+            child_at(statement, 2U),
+            "ALTER TABLE CHANGE COLUMN does not support AUTO_INCREMENT"
         );
     }
     if (rc == MYLITE_OK) {
@@ -12050,6 +12366,7 @@ static int alter_table_set_default_from_plan(
             plan->original_column.physical_type,
             plan->original_column.is_nullable,
             plan->original_column.is_visible,
+            plan->original_column.is_auto_increment,
             plan->column.default_kind,
             plan->column.default_integer
         );
@@ -12165,6 +12482,7 @@ static int alter_table_drop_default_from_plan(
             plan->column.physical_type,
             plan->column.is_nullable,
             plan->column.is_visible,
+            plan->column.is_auto_increment,
             MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT,
             0
         );
@@ -12635,6 +12953,7 @@ static void planned_column_from_catalog_descriptor(
     out_column->physical_type = out_column->physical_type_storage;
     out_column->is_nullable = descriptor->is_nullable;
     out_column->is_visible = descriptor->is_visible;
+    out_column->is_auto_increment = descriptor->is_auto_increment;
     out_column->default_node = default_node;
     out_column->default_kind = descriptor->default_kind;
     out_column->default_integer = descriptor->default_integer;
@@ -12867,6 +13186,7 @@ static int alter_table_modify_column_from_plan(
             plan->column.physical_type,
             plan->column.is_nullable,
             true,
+            plan->column.is_auto_increment,
             plan->column.default_kind,
             plan->column.default_integer
         );
@@ -13452,6 +13772,9 @@ static int plan_insert(
         }
     }
     if (rc == MYLITE_OK) {
+        rc = initialize_insert_auto_increment_plan(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = collect_insert_target_indexes(
             database,
             column_list,
@@ -13476,6 +13799,9 @@ static int plan_insert(
     }
     if (rc == MYLITE_OK) {
         rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_auto_increment_values(database, out_plan);
     }
 
     free(target_indexes);
@@ -13534,6 +13860,9 @@ static int plan_insert_set(
         }
     }
     if (rc == MYLITE_OK) {
+        rc = initialize_insert_auto_increment_plan(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = collect_insert_set_target_indexes(
             database,
             assignment_list,
@@ -13559,6 +13888,9 @@ static int plan_insert_set(
     if (rc == MYLITE_OK) {
         rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
     }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_auto_increment_values(database, out_plan);
+    }
 
     free(target_indexes);
     if (rc != MYLITE_OK) {
@@ -13566,6 +13898,224 @@ static int plan_insert_set(
     }
 
     return rc;
+}
+
+static int initialize_insert_auto_increment_plan(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    size_t auto_increment_count = 0U;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid auto-increment insert plan");
+        return MYLITE_ERROR;
+    }
+
+    plan->auto_increment_next =
+        plan->table.auto_increment_next > 0 ? plan->table.auto_increment_next : 1;
+    plan->auto_increment_next_after_statement = plan->auto_increment_next;
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (!column_descriptor_is_auto_increment(&plan->columns[column_index])) {
+            continue;
+        }
+        ++auto_increment_count;
+        plan->has_auto_increment = true;
+        plan->auto_increment_column_index = column_index;
+    }
+    if (auto_increment_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (auto_increment_count > 1U || !plan->has_primary_key ||
+        plan->auto_increment_column_index != plan->primary_key_column_index) {
+        set_unsupported_error(database, "INSERT supports only primary-key AUTO_INCREMENT tables");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_insert_auto_increment_values(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    struct integer_column_range range = {0};
+    struct insert_auto_increment_mode_counts mode_counts = {0};
+    struct mylite_catalog_column_descriptor *column = NULL;
+    int64_t next_value = 0;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || !plan->has_auto_increment) {
+        return MYLITE_OK;
+    }
+    if (plan->auto_increment_column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid auto-increment column index");
+        return MYLITE_ERROR;
+    }
+
+    column = &plan->columns[plan->auto_increment_column_index];
+    rc = integer_range_for_column(
+        database,
+        column,
+        "AUTO_INCREMENT supports only baseline integer columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    plan->auto_increment_range = range;
+
+    rc = count_insert_auto_increment_modes(plan, &mode_counts);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (plan->row_count > 1U && mode_counts.generated_count != 0U &&
+        mode_counts.explicit_count != 0U) {
+        set_unsupported_error(
+            database,
+            "mixed explicit and generated AUTO_INCREMENT values are not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    next_value = plan->auto_increment_next;
+    for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+        rc = plan_insert_auto_increment_row_value(database, plan, &range, row_index, &next_value);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    plan->auto_increment_next_after_statement = next_value;
+    return MYLITE_OK;
+}
+
+static int count_insert_auto_increment_modes(
+    const struct planned_insert *plan,
+    struct insert_auto_increment_mode_counts *out_counts
+) {
+    int rc = MYLITE_OK;
+
+    *out_counts = (struct insert_auto_increment_mode_counts){0};
+    for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+        bool generated = false;
+
+        rc = generated_auto_increment_value_for_row(plan, row_index, &generated);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (generated) {
+            ++out_counts->generated_count;
+        } else {
+            ++out_counts->explicit_count;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_insert_auto_increment_row_value(
+    struct mylite_db *database,
+    struct planned_insert *plan,
+    const struct integer_column_range *range,
+    size_t row_index,
+    int64_t *next_value
+) {
+    struct planned_value *value = &plan->rows[row_index].values[plan->auto_increment_column_index];
+    bool generated = false;
+    int rc = generated_auto_increment_value_for_row(plan, row_index, &generated);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (generated) {
+        if (*next_value <= 0 || (uint64_t)*next_value > range->positive_max) {
+            set_failed_read_auto_increment_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = assign_generated_auto_increment_value(database, plan, row_index, *next_value);
+        if (rc == MYLITE_OK && !plan->generated_auto_increment) {
+            plan->first_generated_auto_increment = *next_value;
+            plan->generated_auto_increment = true;
+        }
+        if (rc == MYLITE_OK) {
+            rc = next_auto_increment_after_value(*next_value, *next_value, range, next_value);
+        }
+    } else if (!value->is_text && value->integer > 0) {
+        rc = next_auto_increment_after_value(*next_value, value->integer, range, next_value);
+    }
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "AUTO_INCREMENT counter is out of range");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int generated_auto_increment_value_for_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_generated
+) {
+    const struct planned_value *value = NULL;
+
+    if (plan == NULL || out_generated == NULL || row_index >= plan->row_count ||
+        plan->auto_increment_column_index >= plan->column_count ||
+        plan->rows[row_index].values == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    value = &plan->rows[row_index].values[plan->auto_increment_column_index];
+    *out_generated = (value->is_null || (!value->is_text && value->integer == 0)) != 0;
+    return MYLITE_OK;
+}
+
+static int assign_generated_auto_increment_value(
+    struct mylite_db *database,
+    struct planned_insert *plan,
+    size_t row_index,
+    int64_t generated_value
+) {
+    struct planned_value *value = NULL;
+
+    if (plan == NULL || row_index >= plan->row_count ||
+        plan->auto_increment_column_index >= plan->column_count ||
+        plan->rows[row_index].values == NULL || generated_value <= 0) {
+        set_runtime_error(database, "invalid generated auto-increment value");
+        return MYLITE_ERROR;
+    }
+
+    value = &plan->rows[row_index].values[plan->auto_increment_column_index];
+    planned_value_deinit(value);
+    *value = (struct planned_value){
+        .is_null = false,
+        .is_text = false,
+        .integer = generated_value,
+    };
+    return MYLITE_OK;
+}
+
+static int next_auto_increment_after_value(
+    int64_t current_next,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+) {
+    if (out_next == NULL || range == NULL || current_next <= 0 || value <= 0) {
+        return MYLITE_ERROR;
+    }
+    *out_next = current_next;
+    if (value < current_next) {
+        return MYLITE_OK;
+    }
+    if ((uint64_t)value > range->positive_max) {
+        return MYLITE_ERROR;
+    }
+    if ((uint64_t)value == range->positive_max) {
+        *out_next = value;
+        return MYLITE_OK;
+    }
+    *out_next = value + 1;
+    return MYLITE_OK;
 }
 
 static void planned_insert_deinit(struct planned_insert *plan) {
@@ -13610,10 +14160,13 @@ static int execute_insert_from_plan(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    struct insert_execution_counters counters = {0};
     bool transaction_started = false;
-    int64_t affected_rows = 0;
     int rc = build_insert_sql(plan, &sql);
 
+    if (plan->has_auto_increment) {
+        counters.auto_increment_next_after_rows = plan->auto_increment_next;
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
     }
@@ -13621,21 +14174,19 @@ static int execute_insert_from_plan(
         transaction_started = true;
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
-    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < plan->row_count; ++row_index) {
-        int sqlite_step_rc = SQLITE_OK;
-
-        rc = bind_insert_row(statement, plan, row_index);
-        if (rc == MYLITE_OK) {
-            rc = step_insert_row(statement, &sqlite_step_rc);
-        }
-        if (rc == MYLITE_OK) {
-            ++affected_rows;
-        } else if (sqlite_status_is_constraint(sqlite_step_rc) && plan->has_primary_key) {
-            rc = handle_insert_primary_key_conflict(database, statement, plan, row_index);
-        }
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_plan_rows(database, statement, plan, &counters);
     }
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
+    if (rc == MYLITE_OK && plan->has_auto_increment &&
+        counters.auto_increment_next_after_rows != plan->auto_increment_next) {
+        rc = mylite_catalog_update_table_auto_increment_next(
+            database,
+            plan->table.table_id,
+            counters.auto_increment_next_after_rows
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
         if (rc == MYLITE_OK) {
@@ -13659,9 +14210,76 @@ static int execute_insert_from_plan(
         return MYLITE_ERROR;
     }
 
-    mylite_result_set_affected_rows(result, affected_rows);
+    mylite_result_set_affected_rows(result, counters.affected_rows);
+    if (plan->has_auto_increment && plan->generated_auto_increment && counters.affected_rows > 0) {
+        database->session.last_insert_id = (uint64_t)plan->first_generated_auto_increment;
+    }
 
     return MYLITE_OK;
+}
+
+static int execute_insert_plan_rows(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    struct insert_execution_counters *counters
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < plan->row_count; ++row_index) {
+        int sqlite_step_rc = SQLITE_OK;
+
+        rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
+        if (rc == MYLITE_OK) {
+            ++counters->affected_rows;
+            if (plan->has_auto_increment) {
+                rc = advance_auto_increment_after_insert_row(
+                    plan,
+                    row_index,
+                    &counters->auto_increment_next_after_rows
+                );
+            }
+        } else if (sqlite_status_is_constraint(sqlite_step_rc) && plan->has_primary_key) {
+            rc = handle_insert_primary_key_conflict(database, statement, plan, row_index);
+        }
+    }
+
+    return rc;
+}
+
+static int execute_insert_plan_row(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    int *out_sqlite_step_rc
+) {
+    int rc = bind_insert_row(statement, plan, row_index);
+
+    if (rc == MYLITE_OK) {
+        rc = step_insert_row(statement, out_sqlite_step_rc);
+    }
+
+    return rc;
+}
+
+static int advance_auto_increment_after_insert_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
+) {
+    const struct planned_value *auto_value =
+        &plan->rows[row_index].values[plan->auto_increment_column_index];
+
+    if (auto_value->is_null || auto_value->is_text || auto_value->integer <= 0) {
+        return MYLITE_OK;
+    }
+
+    return next_auto_increment_after_value(
+        *auto_increment_next_after_rows,
+        auto_value->integer,
+        &plan->auto_increment_range,
+        auto_increment_next_after_rows
+    );
 }
 
 static int handle_insert_primary_key_conflict(
@@ -14261,6 +14879,14 @@ static int execute_update_from_plan(
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
     if (rc == MYLITE_OK) {
+        rc = advance_auto_increment_after_update(
+            database,
+            plan,
+            &executable_plan.assignment_value,
+            affected_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
         if (rc == MYLITE_OK) {
             transaction_started = false;
@@ -14287,6 +14913,49 @@ static int execute_update_from_plan(
     mylite_result_set_affected_rows(result, affected_rows);
 
     return MYLITE_OK;
+}
+
+static int advance_auto_increment_after_update(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct planned_value *assignment_value,
+    int64_t affected_rows
+) {
+    struct integer_column_range range = {0};
+    int64_t next_value = plan->table.auto_increment_next;
+    int rc = MYLITE_OK;
+
+    if (affected_rows <= 0 || !column_descriptor_is_auto_increment(&plan->assignment_column) ||
+        assignment_value->is_null || assignment_value->is_text || assignment_value->integer <= 0) {
+        return MYLITE_OK;
+    }
+    if (next_value <= 0) {
+        next_value = 1;
+    }
+
+    rc = integer_range_for_column(
+        database,
+        &plan->assignment_column,
+        "AUTO_INCREMENT supports only baseline integer columns",
+        &range
+    );
+    if (rc == MYLITE_OK) {
+        rc = next_auto_increment_after_value(
+            next_value,
+            assignment_value->integer,
+            &range,
+            &next_value
+        );
+    }
+    if (rc == MYLITE_OK && next_value != plan->table.auto_increment_next) {
+        rc = mylite_catalog_update_table_auto_increment_next(
+            database,
+            plan->table.table_id,
+            next_value
+        );
+    }
+
+    return rc;
 }
 
 static int step_update_statement(
@@ -26306,8 +26975,55 @@ static int plan_column(
         }
         rc = validate_column_default(database, out_column->default_node, out_column);
     }
+    if (rc == MYLITE_OK) {
+        out_column->is_auto_increment =
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL;
+        rc = validate_column_attributes(database, column_node, out_column);
+    }
 
     return rc;
+}
+
+static int validate_column_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
+    size_t nullability_count = 0U;
+    size_t default_count = 0U;
+    size_t primary_key_count = 0U;
+    size_t auto_increment_count = 0U;
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
+            ++nullability_count;
+        } else if (
+            child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
+            child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+        ) {
+            ++default_count;
+        } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
+            ++primary_key_count;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
+            ++auto_increment_count;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        child = child->next_sibling;
+    }
+
+    if (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
+        auto_increment_count > 1U) {
+        set_unsupported_error(database, "duplicate column attributes are not supported");
+        return MYLITE_ERROR;
+    }
+    if (column != NULL && column->is_auto_increment && column->default_node != NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int validate_column_default(
@@ -26742,6 +27458,12 @@ static bool column_descriptor_is_varchar(const struct mylite_catalog_column_desc
     return true;
 }
 
+static bool column_descriptor_is_auto_increment(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return (column != NULL && column->is_auto_increment) != 0;
+}
+
 static bool modify_column_integer_value_domain_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -26964,6 +27686,19 @@ static int reject_inline_primary_key_column_definition(
     const char *message
 ) {
     if (child_with_kind(column_definition, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL) {
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_auto_increment_column_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_definition,
+    const char *message
+) {
+    if (child_with_kind(column_definition, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL) {
         set_unsupported_error(database, message);
         return MYLITE_ERROR;
     }
@@ -27468,6 +28203,7 @@ static int check_insert_omitted_columns(
             }
         }
         if (!column_is_targeted &&
+            !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
@@ -27736,6 +28472,16 @@ static int convert_insert_value(
 
     planned_value_deinit(out_value);
     *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (column_descriptor_is_auto_increment(column)) {
+        return convert_auto_increment_insert_value(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, ignore_errors, out_value);
     }
@@ -27763,6 +28509,35 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_varchar(column)) {
         return convert_varchar_literal(database, value_node, column, row_number, out_value);
+    }
+
+    return convert_integer_literal(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_auto_increment_insert_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE ||
+        (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL)) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
     }
 
     return convert_integer_literal(
@@ -30424,6 +31199,10 @@ static int append_show_table_status(
     int64_t average_row_length = 0;
     char row_count_text[integer_text_capacity];
     char average_row_length_text[integer_text_capacity];
+    char auto_increment_text[integer_text_capacity];
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    bool has_auto_increment = false;
     const char *values[show_table_status_result_column_count] = {
         NULL,
         "InnoDB",
@@ -30486,6 +31265,32 @@ static int append_show_table_status(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+            if (column_descriptor_is_auto_increment(&columns[column_index])) {
+                has_auto_increment = true;
+                break;
+            }
+        }
+    }
+    free(columns);
+    if (rc != MYLITE_OK) {
+        set_runtime_error(context->database, "failed to read SHOW TABLE STATUS columns");
+        return MYLITE_ERROR;
+    }
+    if (has_auto_increment) {
+        rc = format_show_table_status_integer(
+            context->database,
+            table->auto_increment_next,
+            auto_increment_text,
+            sizeof(auto_increment_text)
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        values[show_table_status_auto_increment_column] = auto_increment_text;
+    }
 
     values[0] = table->name;
 
@@ -30535,7 +31340,8 @@ static int append_show_column(
     if (context->has_primary_key && column->column_id == context->primary_key_column_id) {
         values[3] = "PRI";
     }
-    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+    if (!column->is_auto_increment &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         int written =
             snprintf(default_text, sizeof(default_text), "%" PRId64, column->default_integer);
 
@@ -30545,7 +31351,11 @@ static int append_show_column(
         }
         values[4] = default_text;
     }
-    if (!column->is_visible) {
+    if (column->is_auto_increment && !column->is_visible) {
+        values[show_columns_extra_column] = "auto_increment INVISIBLE";
+    } else if (column->is_auto_increment) {
+        values[show_columns_extra_column] = "auto_increment";
+    } else if (!column->is_visible) {
         values[show_columns_extra_column] = "INVISIBLE";
     }
 
@@ -34842,6 +35652,15 @@ static void set_unknown_storage_engine_error(struct mylite_db *database, const c
     );
 }
 
+static void set_failed_read_auto_increment_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_failed_read_auto_increment,
+        "HY000",
+        "Failed to read auto-increment value from storage engine"
+    );
+}
+
 static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Unknown character set: '%s'", charset_name);
@@ -34893,6 +35712,39 @@ static void set_multiple_primary_key_error(struct mylite_db *database) {
         mysql_error_multiple_primary_key,
         "42000",
         "Multiple primary key defined"
+    );
+}
+
+static void set_wrong_auto_key_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_wrong_auto_key,
+        "42000",
+        "Incorrect table definition; there can be only one auto column and it must be defined as a "
+        "key"
+    );
+}
+
+static void set_incorrect_column_specifier_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect column specifier for column '%s'",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_column_specifier,
+        "42000",
+        message
     );
 }
 

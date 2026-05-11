@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 5,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 5,
+    MYLITE_CATALOG_SCHEMA_VERSION = 6,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 6,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -55,6 +55,7 @@ struct mylite_catalog_table_descriptor {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     enum mylite_catalog_table_kind kind;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t auto_increment_next;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -69,6 +70,7 @@ struct mylite_catalog_column_descriptor {
     char physical_type[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     bool is_nullable;
     bool is_visible;
+    bool is_auto_increment;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
     uint64_t descriptor_version;
@@ -165,6 +167,7 @@ int mylite_catalog_insert_table_in_mutation(
     const char *name,
     const char *physical_name,
     enum mylite_catalog_table_kind kind,
+    int64_t auto_increment_next,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_insert_column_in_mutation(
@@ -177,6 +180,7 @@ int mylite_catalog_insert_column_in_mutation(
     const char *physical_type,
     bool is_nullable,
     bool is_visible,
+    bool is_auto_increment,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
@@ -230,6 +234,7 @@ int mylite_catalog_replace_column_in_mutation(
     const char *physical_type,
     bool is_nullable,
     bool is_visible,
+    bool is_auto_increment,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer
 );
@@ -252,6 +257,11 @@ int mylite_catalog_update_table_identity_in_mutation(
     int64_t schema_id,
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_update_table_auto_increment_next(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t auto_increment_next
 );
 int mylite_catalog_for_each_schema(
     struct mylite_db *database,

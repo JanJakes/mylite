@@ -204,6 +204,70 @@ expect_output \
 "SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM set_t;" \
     "$DATABASE"
 
+update_expected=$(cat <<\EXPECTED
+1	0	1
+1	0	6
+5:10,6:20
+EXPECTED
+)
+expect_output \
+    "update auto increment column advances counter" \
+    "$update_expected" \
+    "CREATE TABLE update_t (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"INSERT INTO update_t (v) VALUES (10); "\
+"UPDATE update_t SET id = 5 WHERE id = 1; "\
+"SELECT ROW_COUNT(), @@warning_count, LAST_INSERT_ID(); "\
+"INSERT INTO update_t (v) VALUES (20); "\
+"SELECT ROW_COUNT(), @@warning_count, LAST_INSERT_ID(); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM update_t;" \
+    "$DATABASE"
+
+hidden_default_columns_expected=$(printf '%b' 'id\tint\tNO\tPRI\tNULL\tauto_increment\nv\tint\tYES\t\tNULL\t')
+expect_output \
+    "alter set default on auto increment hides metadata default" \
+    "$hidden_default_columns_expected" \
+    "CREATE TABLE default_set (id INT AUTO_INCREMENT PRIMARY KEY, v INT); "\
+"ALTER TABLE default_set ALTER id SET DEFAULT 7; "\
+"SHOW COLUMNS FROM default_set;" \
+    "$DATABASE"
+
+hidden_default_expected=$(cat <<\EXPECTED
+default_set	CREATE TABLE `default_set` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `v` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+1	0
+7:70
+default_set	CREATE TABLE `default_set` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `v` int DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+EXPECTED
+)
+expect_output \
+    "alter set default on auto increment is explicit hidden default" \
+    "$hidden_default_expected" \
+    "SHOW CREATE TABLE default_set; "\
+"INSERT INTO default_set (v) VALUES (70); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM default_set; "\
+"SHOW CREATE TABLE default_set;" \
+    "$DATABASE"
+expect_show_table_status_auto_increment \
+    "alter set default on auto increment advances status after explicit default" \
+    "default_set" \
+    "8" \
+    "$DATABASE"
+expect_error \
+    "alter set default on auto increment duplicate default" \
+    1062 \
+    23000 \
+    "Duplicate entry '7' for key 'default_set.PRIMARY'" \
+    "INSERT INTO default_set (v) VALUES (80);" \
+    "$DATABASE"
+
 option_expected=$(cat <<\EXPECTED
 opt	CREATE TABLE `opt` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -280,6 +344,21 @@ expect_error \
     23000 \
     "Duplicate entry '255' for key 'tiny_t.PRIMARY'" \
     "INSERT INTO tiny_t (v) VALUES (2);" \
+    "$DATABASE"
+
+expect_show_table_status_auto_increment_after_sql \
+    "tinyint unsigned initial counter beyond maximum status" \
+    "tiny_over" \
+    "256" \
+    "CREATE TABLE tiny_over (id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, v INT) "\
+"AUTO_INCREMENT=256;" \
+    "$DATABASE"
+expect_error \
+    "tinyint unsigned initial counter beyond maximum insert" \
+    1467 \
+    HY000 \
+    "Failed to read auto-increment value from storage engine" \
+    "INSERT INTO tiny_over (v) VALUES (1);" \
     "$DATABASE"
 
 expect_error \

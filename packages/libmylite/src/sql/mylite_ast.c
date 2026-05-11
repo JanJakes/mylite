@@ -473,6 +473,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "asin_function";
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
         return "asin_argument_count_error";
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+        return "atan_function";
+    case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
+        return "atan_argument_count_error";
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
+        return "atan2_function";
+    case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
+        return "atan2_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

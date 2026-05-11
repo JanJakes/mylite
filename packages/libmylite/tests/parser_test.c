@@ -46,6 +46,7 @@ static int test_pi_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
+static int test_atan_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
@@ -189,6 +190,7 @@ int main(void) {
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
+    failures += test_atan_functions();
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
@@ -2674,6 +2676,123 @@ static int test_inverse_trig_functions(void) {
     failures += expect_span_text(first_expression, "ACOS", "bare acos span");
     failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare asin");
     failures += expect_span_text(second_expression, "ASIN", "bare asin span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_atan_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT ATAN(1), Atan(0, -1), atan2(-1), ATAN2(1, -1) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ATAN_FUNCTION, "atan function");
+    failures += expect_span_text(first_expression, "ATAN(1)", "atan function span");
+    failures += expect_child_count(first_expression, 1U, "atan one-argument count");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "atan arg");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ATAN_FUNCTION, "mixed atan");
+    failures += expect_span_text(second_expression, "Atan(0, -1)", "mixed atan span");
+    failures += expect_child_count(second_expression, 2U, "atan two-argument count");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_ATAN2_FUNCTION, "lower atan2");
+    failures += expect_span_text(third_expression, "atan2(-1)", "lower atan2 span");
+    failures += expect_child_count(third_expression, 1U, "atan2 one-argument count");
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_ATAN2_FUNCTION, "atan2 two args");
+    failures += expect_child_count(fourth_expression, 2U, "atan2 two-argument count");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "atan dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ATAN (0), (ATAN2(NULL, 1));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ATAN_FUNCTION, "spaced atan");
+    failures += expect_span_text(first_expression, "ATAN (0)", "spaced atan span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped atan2");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_ATAN2_FUNCTION, "atan2 child");
+    failures += expect_span_text(parenthesized, "(ATAN2(NULL, 1))", "parenthesized atan2 span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ATAN(1) AS a, ATAN2(1,-1) t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ATAN_FUNCTION, "aliased atan");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 1U), "a", "atan alias");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ATAN2_FUNCTION, "aliased atan2");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 1U), "t", "atan2 alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ATAN(), ATAN(1, 2, 3), ATAN2(), ATAN2(1, 2, 3);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR,
+        "atan empty argument error"
+    );
+    failures += expect_child_count(first_expression, 0U, "atan empty error child count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR,
+        "atan multiple argument error"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "atan multiple argument count");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR,
+        "atan2 empty argument error"
+    );
+    failures += expect_child_count(third_expression, 0U, "atan2 empty error child count");
+    failures += expect_node(
+        fourth_expression,
+        MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR,
+        "atan2 multiple argument error"
+    );
+    arguments = child_at(fourth_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "atan2 multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE atan (atan2 INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "atan ids");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ATAN, ATAN2;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare atan");
+    failures += expect_span_text(first_expression, "ATAN", "bare atan span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare atan2");
+    failures += expect_span_text(second_expression, "ATAN2", "bare atan2 span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

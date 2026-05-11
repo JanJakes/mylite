@@ -278,6 +278,8 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"ASIN", 0U},
         {"ASSIGN_GTIDS_TO_ANONYMOUS_TRANSACTIONS", 0U},
         {"AT", 0U},
+        {"ATAN", 0U},
+        {"ATAN2", 0U},
         {"ATTRIBUTE", 0U},
         {"AUTHENTICATION", 0U},
         {"AUTO", 0U},

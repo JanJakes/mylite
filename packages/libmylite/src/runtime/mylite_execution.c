@@ -2655,6 +2655,34 @@ static int inverse_trig_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int atan_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int atan_one_argument_function_value(
+    struct mylite_db *database,
+    const struct approximate_numeric_input_value *first,
+    const char *function_name,
+    struct session_scalar_cell *out_cell
+);
+static int atan_two_argument_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct approximate_numeric_input_value *first,
+    const char *function_name,
+    struct session_scalar_cell *out_cell
+);
+static int finish_atan_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t warning_count,
+    struct session_scalar_cell *out_cell
+);
+static double approximate_numeric_input_to_double(
+    const struct approximate_numeric_input_value *value
+);
 static int evaluate_approximate_numeric_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2819,6 +2847,7 @@ static void set_rounding_unsupported_error(struct mylite_db *database);
 static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_angle_conversion_unsupported_error(struct mylite_db *database);
 static void set_inverse_trig_unsupported_error(struct mylite_db *database);
+static void set_atan_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
@@ -3111,6 +3140,7 @@ static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *
 static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -4997,6 +5027,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
+    case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6805,7 +6839,7 @@ static int execute_do_statement(
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
             "predicates, limited numeric "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "ACOS()/ASIN() "
+            "ACOS()/ASIN()/ATAN()/ATAN2() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
@@ -6922,7 +6956,7 @@ static int execute_select_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "ACOS()/ASIN()/CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -9094,6 +9128,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
+    case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16179,7 +16217,9 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         !text_equals_ascii_case_insensitive(column_name, "degrees") &&
         !text_equals_ascii_case_insensitive(column_name, "radians") &&
         !text_equals_ascii_case_insensitive(column_name, "acos") &&
-        !text_equals_ascii_case_insensitive(column_name, "asin")) {
+        !text_equals_ascii_case_insensitive(column_name, "asin") &&
+        !text_equals_ascii_case_insensitive(column_name, "atan") &&
+        !text_equals_ascii_case_insensitive(column_name, "atan2")) {
         return MYLITE_OK;
     }
 
@@ -16732,6 +16772,10 @@ static const char *argument_count_error_node_function_name(
         return "ACOS";
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
         return "ASIN";
+    case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
+        return "ATAN";
+    case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
+        return "ATAN2";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -16887,6 +16931,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
         return inverse_trig_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
+        return atan_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
@@ -17900,6 +17947,183 @@ static int inverse_trig_function_value(
         out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     }
     return rc;
+}
+
+static int atan_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value first = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    const char *function_name = NULL;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_ATAN_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_ATAN2_FUNCTION)) {
+        set_atan_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count != 1U && child_count != 2U) {
+        set_atan_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    function_name = expression->kind == MYLITE_SQL_AST_ATAN_FUNCTION ? "ATAN" : "ATAN2";
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &first,
+        set_atan_unsupported_error
+    );
+    if (rc != MYLITE_OK || first.is_null) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = first.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    if (child_count == 1U) {
+        return atan_one_argument_function_value(database, &first, function_name, out_cell);
+    }
+
+    return atan_two_argument_function_value(database, expression, &first, function_name, out_cell);
+}
+
+static int atan_one_argument_function_value(
+    struct mylite_db *database,
+    const struct approximate_numeric_input_value *first,
+    const char *function_name,
+    struct session_scalar_cell *out_cell
+) {
+    size_t warning_count = 0U;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (first == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = accumulate_staged_division_by_zero_warnings(
+        database,
+        first->division_by_zero_warning_count,
+        &warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    output = atan2(approximate_numeric_input_to_double(first), 1.0);
+    return finish_atan_function_value(database, output, function_name, warning_count, out_cell);
+}
+
+static int atan_two_argument_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct approximate_numeric_input_value *first,
+    const char *function_name,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value second = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    size_t warning_count = 0U;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || first == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 1U),
+        &second,
+        set_atan_unsupported_error
+    );
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            first->division_by_zero_warning_count,
+            &warning_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_division_by_zero_warnings(
+            database,
+            second.division_by_zero_warning_count,
+            &warning_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (second.is_null) {
+        out_cell->staged_division_by_zero_warning_count = warning_count;
+        return MYLITE_OK;
+    }
+
+    output = atan2(
+        approximate_numeric_input_to_double(first),
+        approximate_numeric_input_to_double(&second)
+    );
+    return finish_atan_function_value(database, output, function_name, warning_count, out_cell);
+}
+
+static int finish_atan_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t warning_count,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = format_double_text(
+        database,
+        output,
+        function_name,
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_cell->value = out_cell->double_text;
+    out_cell->staged_division_by_zero_warning_count = warning_count;
+    return MYLITE_OK;
+}
+
+static double approximate_numeric_input_to_double(
+    const struct approximate_numeric_input_value *value
+) {
+    double input = 0.0;
+
+    if (value == NULL) {
+        return 0.0;
+    }
+
+    input = (double)value->magnitude;
+    if (value->is_negative) {
+        input = -input;
+    }
+    return input;
 }
 
 static int evaluate_approximate_numeric_operand(
@@ -21486,6 +21710,15 @@ static void set_inverse_trig_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_atan_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "ATAN()/ATAN2() support only top-level no-source SELECT, FROM DUAL SELECT, and DO "
+        "arc tangent over integer, boolean, NULL, signed 64-bit scalar arithmetic, and limited "
+        "numeric bitwise operands"
+    );
+}
+
 static void set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -23605,6 +23838,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_inverse_trig_projection_expression(expression)) {
         return true;
     }
+    if (is_atan_projection_expression(expression)) {
+        return true;
+    }
     if (is_base_conversion_projection_expression(expression)) {
         return true;
     }
@@ -23725,6 +23961,31 @@ static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_no
         return false;
     }
     return child_at(expression, 0U) != NULL;
+}
+
+static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression) {
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind != MYLITE_SQL_AST_ATAN_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_ATAN2_FUNCTION) {
+        return false;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count != 1U && child_count != 2U) {
+        return false;
+    }
+    if (child_at(expression, 0U) == NULL) {
+        return false;
+    }
+    if (child_count == 2U) {
+        return child_at(expression, 1U) != NULL;
+    }
+    return true;
 }
 
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -24310,6 +24571,8 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:

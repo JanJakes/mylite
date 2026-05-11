@@ -406,6 +406,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "integer_type";
     case MYLITE_SQL_AST_VARCHAR_TYPE:
         return "varchar_type";
+    case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
+        return "primary_key_definition";
+    case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
+        return "primary_key_part_list";
+    case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
+        return "inline_primary_key";
     case MYLITE_SQL_AST_NULLABILITY:
         return "nullability";
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:

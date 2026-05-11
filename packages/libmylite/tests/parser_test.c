@@ -67,6 +67,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_varchar_type_statements(void);
+static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
@@ -217,6 +218,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_varchar_type_statements();
+    failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
@@ -6845,6 +6847,133 @@ static int test_varchar_type_statements(void) {
         child_at(child_at(child_at(statement, 2U), 0U), 0U),
         MYLITE_SQL_AST_LITERAL_STRING,
         "string insert value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_primary_key_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *primary_key = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE inline_pk (id INT PRIMARY KEY, amount BIGINT NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    column = child_at(items, 0U);
+    primary_key = child_at(column, 2U);
+    failures += expect_node(items, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "inline pk item list");
+    failures += expect_child_count(items, 2U, "inline pk item count");
+    failures += expect_node(column, MYLITE_SQL_AST_COLUMN_DEFINITION, "inline pk column");
+    failures += expect_span_text(child_at(column, 0U), "id", "inline pk column name");
+    failures += expect_node(primary_key, MYLITE_SQL_AST_INLINE_PRIMARY_KEY, "inline pk marker");
+    failures += expect_span_text(primary_key, "PRIMARY KEY", "inline pk marker span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE inline_pk_full (id INT NOT NULL DEFAULT +1 PRIMARY KEY);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(child_at(statement, 1U), 0U);
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "inline pk not null"
+    );
+    failures +=
+        expect_node(child_at(column, 3U), MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE, "inline pk default");
+    failures +=
+        expect_node(child_at(column, 4U), MYLITE_SQL_AST_INLINE_PRIMARY_KEY, "inline pk final");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE table_pk (id INT, PRIMARY KEY (id));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    primary_key = child_at(items, 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_child_count(items, 2U, "table pk item count");
+    failures += expect_node(primary_key, MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION, "table pk");
+    failures += expect_span_text(primary_key, "PRIMARY KEY (id)", "table pk span");
+    failures += expect_node(key_parts, MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST, "table pk parts");
+    failures += expect_child_count(key_parts, 1U, "table pk part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "id", "table pk part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE parser_composite_pk (a INT, b INT, PRIMARY KEY (a, `b`));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_child_count(key_parts, 2U, "composite pk parser part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "a", "composite pk first part");
+    failures += expect_span_text(child_at(key_parts, 1U), "`b`", "composite pk second part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE parser_qualified_pk (id INT, PRIMARY KEY (parser_qualified_pk.id));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_node(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified pk parser part"
+    );
+    failures +=
+        expect_span_text(child_at(key_parts, 0U), "parser_qualified_pk.id", "qualified pk span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_named_pk (id INT, CONSTRAINT pk PRIMARY KEY (id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_unique_key (id INT, UNIQUE KEY (id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_pk_prefix (id INT, PRIMARY KEY (id(4)));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_pk_order (id INT, PRIMARY KEY (id DESC));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_pk_using (id INT, PRIMARY KEY USING BTREE (id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

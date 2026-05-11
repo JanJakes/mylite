@@ -3241,12 +3241,74 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token primary_token,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&primary_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *primary_key =
+        make_node(state, MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION, span);
+    if (primary_key == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(primary_key, key_parts);
+    return primary_key;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_part_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *key_part
+) {
+    struct mylite_sql_source_span span =
+        key_part == NULL ? (struct mylite_sql_source_span){0} : key_part->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_primary_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *key_part
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    if (key_part != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, key_part->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token primary_token,
+    struct mylite_sql_token key_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
+        span_join(span_from_token(&primary_token), span_from_token(&key_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
     struct mylite_sql_ast_node *column_type,
     struct mylite_sql_ast_node *nullability,
-    struct mylite_sql_ast_node *default_null
+    struct mylite_sql_ast_node *default_null,
+    struct mylite_sql_ast_node *primary_key
 ) {
     struct mylite_sql_source_span span =
         name == NULL ? (struct mylite_sql_source_span){0} : name->span;
@@ -3261,6 +3323,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     if (default_null != NULL) {
         span = span_join(span, default_null->span);
     }
+    if (primary_key != NULL) {
+        span = span_join(span, primary_key->span);
+    }
 
     column = make_node(state, MYLITE_SQL_AST_COLUMN_DEFINITION, span);
     if (column == NULL) {
@@ -3271,6 +3336,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     mylite_sql_ast_node_append_child(column, column_type);
     mylite_sql_ast_node_append_child(column, nullability);
     mylite_sql_ast_node_append_child(column, default_null);
+    mylite_sql_ast_node_append_child(column, primary_key);
     return column;
 }
 
@@ -3689,7 +3755,9 @@ static bool map_keyword_token(
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
         {"INDEX", MYLITE_SQL_PARSE_INDEX},
         {"INDEXES", MYLITE_SQL_PARSE_INDEXES},
+        {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
+        {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},

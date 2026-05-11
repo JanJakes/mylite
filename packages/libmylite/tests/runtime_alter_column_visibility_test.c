@@ -547,7 +547,11 @@ static int test_catalog_v3_visibility_migration(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open migrated v3 catalog");
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
-        failures += expect_uint64(catalog->schema_version, 4U, "migrated catalog version");
+        failures += expect_uint64(
+            catalog->schema_version,
+            MYLITE_CATALOG_SCHEMA_VERSION,
+            "migrated catalog version"
+        );
     }
     failures += execute_statement_ok(database, "USE app");
     failures += expect_query_values(
@@ -706,6 +710,8 @@ static int create_numbers_table(mylite_db *database, const char *table_name) {
 static int make_catalog_look_like_v3(sqlite3 *sqlite) {
     int failures = 0;
 
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_index_columns");
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_indexes");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_visible");
     failures += execute_sql(
         sqlite,

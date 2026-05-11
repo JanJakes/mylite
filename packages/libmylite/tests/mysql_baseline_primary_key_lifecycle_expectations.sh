@@ -84,12 +84,7 @@ esac
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 
-show_columns_expected=$(cat <<\EXPECTED
-id	int	NO	PRI	NULL	
-v	int	YES		NULL	
-n	int	YES		NULL	
-EXPECTED
-)
+show_columns_expected=$(printf '%b' 'id\tint\tNO\tPRI\tNULL\t\nv\tint\tYES\t\tNULL\t\nn\tint\tYES\t\tNULL\t')
 show_index_expected=$(cat <<\EXPECTED
 inline_pk	0	PRIMARY	1	id	A	0	NULL	NULL		BTREE			YES	NULL
 EXPECTED
@@ -131,9 +126,8 @@ expect_output \
 "SHOW INDEX FROM table_pk;" \
     "$DATABASE"
 
-unsigned_expected=$(cat <<\EXPECTED
-u	int unsigned	NO	PRI	NULL	
-b	bigint unsigned	YES		NULL	
+unsigned_columns_expected=$(printf '%b' 'u\tint unsigned\tNO\tPRI\tNULL\t\nb\tbigint unsigned\tYES\t\tNULL\t')
+unsigned_create_expected=$(cat <<\EXPECTED
 unsigned_pk	CREATE TABLE `unsigned_pk` (
   `u` int unsigned NOT NULL,
   `b` bigint unsigned DEFAULT NULL,
@@ -141,6 +135,8 @@ unsigned_pk	CREATE TABLE `unsigned_pk` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 EXPECTED
 )
+unsigned_expected="${unsigned_columns_expected}
+${unsigned_create_expected}"
 expect_output \
     "unsigned integer primary key metadata" \
     "$unsigned_expected" \
@@ -149,9 +145,8 @@ expect_output \
 "SHOW CREATE TABLE unsigned_pk;" \
     "$DATABASE"
 
-default_expected=$(cat <<\EXPECTED
-id	int	NO	PRI	7	
-v	int	YES		NULL	
+default_columns_expected=$(printf '%b' 'id\tint\tNO\tPRI\t7\t\nv\tint\tYES\t\tNULL\t')
+default_rest_expected=$(cat <<\EXPECTED
 default_pk	CREATE TABLE `default_pk` (
   `id` int NOT NULL DEFAULT '7',
   `v` int DEFAULT NULL,
@@ -160,6 +155,8 @@ default_pk	CREATE TABLE `default_pk` (
 1	0	7:10
 EXPECTED
 )
+default_expected="${default_columns_expected}
+${default_rest_expected}"
 expect_output \
     "integer default on primary key" \
     "$default_expected" \
@@ -239,6 +236,123 @@ expect_output \
 "INSERT INTO ignore_warning VALUES (1, 10); "\
 "INSERT IGNORE INTO ignore_warning VALUES (1, 11); "\
 "SHOW WARNINGS;" \
+    "$DATABASE"
+
+pk_type_expected=$(cat <<\EXPECTED
+1:10
+-2147483648:20
+9223372036854775807:30
+4294967295:40
+4294967295:50
+9223372036854775807:60
+EXPECTED
+)
+expect_output \
+    "integer-family primary key values" \
+    "$pk_type_expected" \
+    "CREATE TABLE pk_int (id INT PRIMARY KEY, v INT); "\
+"CREATE TABLE pk_integer (id INTEGER PRIMARY KEY, v INT); "\
+"CREATE TABLE pk_bigint (id BIGINT PRIMARY KEY, v INT); "\
+"CREATE TABLE pk_int_unsigned (id INT UNSIGNED PRIMARY KEY, v INT); "\
+"CREATE TABLE pk_integer_unsigned (id INTEGER UNSIGNED PRIMARY KEY, v INT); "\
+"CREATE TABLE pk_bigint_unsigned (id BIGINT UNSIGNED PRIMARY KEY, v INT); "\
+"INSERT INTO pk_int SET id = 1, v = 10; "\
+"INSERT INTO pk_integer VALUES (-2147483648, 20); "\
+"INSERT INTO pk_bigint VALUES (9223372036854775807, 30); "\
+"INSERT INTO pk_int_unsigned VALUES (4294967295, 40); "\
+"INSERT INTO pk_integer_unsigned VALUES (4294967295, 50); "\
+"INSERT INTO pk_bigint_unsigned VALUES (9223372036854775807, 60); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_int; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_integer; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_bigint; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_int_unsigned; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_integer_unsigned; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_bigint_unsigned;" \
+    "$DATABASE"
+
+expect_error \
+    "insert set duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '1' for key 'pk_int.PRIMARY'" \
+    "INSERT INTO pk_int SET id = 1, v = 11;" \
+    "$DATABASE"
+
+insert_set_ignore_expected=$(printf '%b' '0\t1\n1:10')
+expect_output \
+    "insert ignore set duplicate primary key" \
+    "$insert_set_ignore_expected" \
+    "INSERT IGNORE INTO pk_int SET id = 1, v = 12; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM pk_int;" \
+    "$DATABASE"
+
+expect_error \
+    "integer duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '-2147483648' for key 'pk_integer.PRIMARY'" \
+    "INSERT INTO pk_integer VALUES (-2147483648, 21);" \
+    "$DATABASE"
+
+expect_error \
+    "bigint duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '9223372036854775807' for key 'pk_bigint.PRIMARY'" \
+    "INSERT INTO pk_bigint VALUES (9223372036854775807, 31);" \
+    "$DATABASE"
+
+expect_error \
+    "int unsigned duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '4294967295' for key 'pk_int_unsigned.PRIMARY'" \
+    "INSERT INTO pk_int_unsigned VALUES (4294967295, 41);" \
+    "$DATABASE"
+
+expect_error \
+    "integer unsigned duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '4294967295' for key 'pk_integer_unsigned.PRIMARY'" \
+    "INSERT INTO pk_integer_unsigned VALUES (4294967295, 51);" \
+    "$DATABASE"
+
+expect_error \
+    "bigint unsigned duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '9223372036854775807' for key 'pk_bigint_unsigned.PRIMARY'" \
+    "INSERT INTO pk_bigint_unsigned VALUES (9223372036854775807, 61);" \
+    "$DATABASE"
+
+delete_truncate_expected=$(cat <<\EXPECTED
+1:15,2:20
+delete_pk	0	PRIMARY	1	id	A	0	NULL	NULL		BTREE			YES	NULL
+1:30
+EXPECTED
+)
+expect_output \
+    "delete and truncate preserve primary key" \
+    "$delete_truncate_expected" \
+    "CREATE TABLE delete_pk (id INT PRIMARY KEY, v INT); "\
+"INSERT INTO delete_pk VALUES (1, 10), (2, 20); "\
+"DELETE FROM delete_pk WHERE id = 1; "\
+"INSERT INTO delete_pk VALUES (1, 15); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM delete_pk; "\
+"TRUNCATE TABLE delete_pk; "\
+"SHOW INDEX FROM delete_pk; "\
+"INSERT INTO delete_pk VALUES (1, 30); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM delete_pk;" \
+    "$DATABASE"
+
+expect_error \
+    "truncate duplicate primary key" \
+    1062 \
+    23000 \
+    "Duplicate entry '1' for key 'delete_pk.PRIMARY'" \
+    "INSERT INTO delete_pk VALUES (1, 31);" \
     "$DATABASE"
 
 like_expected=$(cat <<\EXPECTED

@@ -1447,6 +1447,8 @@ static int expect_single_value_not_contains(
 static int make_catalog_look_like_v1(sqlite3 *sqlite) {
     int failures = 0;
 
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_index_columns");
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_indexes");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN default_kind");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN default_integer");
@@ -1463,6 +1465,8 @@ static int make_catalog_look_like_v1(sqlite3 *sqlite) {
 static int make_catalog_look_like_v2(sqlite3 *sqlite) {
     int failures = 0;
 
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_index_columns");
+    failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_indexes");
     failures += execute_sql(
         sqlite,
         "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v3;"

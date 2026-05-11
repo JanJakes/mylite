@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 4,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 4,
+    MYLITE_CATALOG_SCHEMA_VERSION = 5,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 5,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -24,6 +24,11 @@ enum mylite_catalog_column_default_kind {
     MYLITE_CATALOG_COLUMN_DEFAULT_NONE = 0,
     MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER = 1,
     MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT = 2,
+};
+
+enum mylite_catalog_index_kind {
+    MYLITE_CATALOG_INDEX_KIND_INVALID = 0,
+    MYLITE_CATALOG_INDEX_KIND_PRIMARY = 1,
 };
 
 struct mylite_db;
@@ -71,6 +76,29 @@ struct mylite_catalog_column_descriptor {
     uint64_t updated_catalog_generation;
 };
 
+struct mylite_catalog_index_descriptor {
+    int64_t index_id;
+    int64_t table_id;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    enum mylite_catalog_index_kind kind;
+    bool is_unique;
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    uint64_t descriptor_version;
+    uint64_t created_catalog_generation;
+    uint64_t updated_catalog_generation;
+};
+
+struct mylite_catalog_index_column_descriptor {
+    int64_t index_column_id;
+    int64_t index_id;
+    int64_t table_id;
+    int64_t column_id;
+    int64_t ordinal_position;
+    uint64_t descriptor_version;
+    uint64_t created_catalog_generation;
+    uint64_t updated_catalog_generation;
+};
+
 struct mylite_catalog_mutation {
     bool active;
     uint64_t next_generation;
@@ -86,6 +114,14 @@ typedef int (*mylite_catalog_schema_callback)(
 );
 typedef int (*mylite_catalog_column_callback)(
     const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+);
+typedef int (*mylite_catalog_index_callback)(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+);
+typedef int (*mylite_catalog_index_column_callback)(
+    const struct mylite_catalog_index_column_descriptor *index_column,
     void *user_data
 );
 
@@ -116,6 +152,11 @@ int mylite_catalog_allocate_table_id_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t *out_table_id
 );
+int mylite_catalog_allocate_index_id_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t *out_index_id
+);
 int mylite_catalog_insert_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -139,6 +180,26 @@ int mylite_catalog_insert_column_in_mutation(
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
+);
+int mylite_catalog_insert_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t index_id,
+    int64_t table_id,
+    const char *name,
+    const char *physical_name,
+    enum mylite_catalog_index_kind kind,
+    bool is_unique,
+    struct mylite_catalog_index_descriptor *out_index
+);
+int mylite_catalog_insert_index_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t index_id,
+    int64_t table_id,
+    int64_t column_id,
+    int64_t ordinal_position,
+    struct mylite_catalog_index_column_descriptor *out_index_column
 );
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
@@ -208,6 +269,24 @@ int mylite_catalog_for_each_column_in_table(
     int64_t table_id,
     mylite_catalog_column_callback callback,
     void *user_data
+);
+int mylite_catalog_for_each_index_in_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    mylite_catalog_index_callback callback,
+    void *user_data
+);
+int mylite_catalog_for_each_index_column_in_index(
+    struct mylite_db *database,
+    int64_t index_id,
+    mylite_catalog_index_column_callback callback,
+    void *user_data
+);
+int mylite_catalog_try_read_primary_index_by_table_id(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_index_descriptor *out_index,
+    bool *out_found
 );
 
 int mylite_catalog_create_schema(

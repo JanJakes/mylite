@@ -916,12 +916,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
     struct mylite_sql_ast_node *list,
     struct mylite_sql_ast_node *column
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token primary_token,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_part_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *key_part
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_primary_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *key_part
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token primary_token,
+    struct mylite_sql_token key_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
     struct mylite_sql_ast_node *column_type,
     struct mylite_sql_ast_node *nullability,
-    struct mylite_sql_ast_node *default_null
+    struct mylite_sql_ast_node *default_null,
+    struct mylite_sql_ast_node *primary_key
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
     struct mylite_sql_parser_state *state,

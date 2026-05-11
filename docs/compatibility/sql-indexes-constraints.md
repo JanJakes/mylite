@@ -15,7 +15,7 @@ Standalone index statements plus index, key, constraint, foreign-key, and check 
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Primary keys | ❌ | Definitions, metadata, errors |
+| Primary keys | 🟡 | Limited descriptor-owned primary keys declared in `CREATE TABLE`: exactly one existing integer-family column, inline `PRIMARY KEY` or table-level `PRIMARY KEY (column)`, implicit `NOT NULL`, generated SQLite unique-index enforcement, duplicate-key diagnostics for current `INSERT ... VALUES` / `INSERT ... SET` and single-assignment `UPDATE`, `INSERT IGNORE` duplicate warning demotion, `CREATE TABLE ... LIKE` cloning, and `SHOW COLUMNS` / `SHOW INDEX` / `SHOW CREATE TABLE` metadata. No composite keys, `VARCHAR` keys, named constraints, secondary or unique indexes, `ALTER` primary-key DDL, `AUTO_INCREMENT`, foreign keys, optimizer/index-use guarantees, or information-schema metadata |
 | Unique indexes | ❌ | NULLs, prefixes, functional parts |
 | Nonunique indexes | ❌ | BTREE/HASH clauses, visibility, comments, and parser options |
 | Descending indexes | ❌ | DESC key-part syntax and ordering semantics |
@@ -26,7 +26,7 @@ Standalone index statements plus index, key, constraint, foreign-key, and check 
 | SPATIAL indexes | ❌ | Geometry column requirements and spatial metadata |
 | Foreign keys | ❌ | Cascades, checks, metadata |
 | Foreign key checks variable | 🟡 | Limited scalar `@@foreign_key_checks` reads report fixed enabled value `1`; no mutable checking state, foreign key DDL, enforcement, cascades, metadata, or dependency checks |
-| Unique checks variable | 🟡 | Limited scalar `@@unique_checks` reads report fixed enabled value `1`; no mutable checking state, unique index DDL, duplicate-key enforcement, index metadata, optimizer effects, or import optimizations |
+| Unique checks variable | 🟡 | Limited scalar `@@unique_checks` reads report fixed enabled value `1`; no mutable checking state, secondary unique-index DDL, toggleable enforcement, optimizer effects, or import optimizations |
 | CHECK constraints | ❌ | Expression validation, enforcement, names, and metadata |
 | Constraint naming | ❌ | Names, scope, SHOW CREATE |
 | CREATE INDEX options | ❌ | ALGORITHM, LOCK, visibility |

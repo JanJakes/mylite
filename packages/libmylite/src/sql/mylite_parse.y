@@ -330,7 +330,7 @@ set_system_variable_value(A) ::= STRING(T). {
 
 create_table_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN
-    column_definition_list(L) RPAREN(R) table_option_list_opt(O). {
+    create_table_item_list(L) RPAREN(R) table_option_list_opt(O). {
     A = mylite_sql_parser_make_create_table_statement(state, C, E, T, L, R, O);
 }
 create_table_like_statement(A) ::=
@@ -2506,15 +2506,46 @@ identifier(A) ::= INVISIBLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 
-column_definition_list(A) ::= column_definition(B). {
+create_table_item_list(A) ::= create_table_item(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
 }
-column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(C). {
+create_table_item_list(A) ::= create_table_item_list(B) COMMA create_table_item(C). {
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(N) column_type(T) nullability_opt(U) column_default_opt(D). {
-    A = mylite_sql_parser_make_column_definition(state, N, T, U, D);
+create_table_item(A) ::= column_definition(B). {
+    A = B;
+}
+create_table_item(A) ::= primary_key_definition(B). {
+    A = B;
+}
+
+primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
+}
+
+primary_key_part_list(A) ::= primary_key_part(B). {
+    A = mylite_sql_parser_make_primary_key_part_list(state, B);
+}
+primary_key_part_list(A) ::= primary_key_part_list(B) COMMA primary_key_part(C). {
+    A = mylite_sql_parser_append_primary_key_part(state, B, C);
+}
+
+primary_key_part(A) ::= qualified_identifier(B). {
+    A = B;
+}
+
+column_definition(A) ::=
+    identifier(N) column_type(T) nullability_opt(U) column_default_opt(D)
+    column_primary_key_opt(K). {
+    A = mylite_sql_parser_make_column_definition(state, N, T, U, D, K);
+}
+
+column_primary_key_opt(A) ::= . {
+    A = NULL;
+}
+column_primary_key_opt(A) ::= PRIMARY(P) KEY(K). {
+    A = mylite_sql_parser_make_inline_primary_key(state, P, K);
 }
 
 column_type(A) ::= integer_type(T). {

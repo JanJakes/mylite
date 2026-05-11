@@ -9,7 +9,7 @@ are compiled in MySQL 8.4.9.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` row for `utf8mb4_0900_ai_ci` only; no alternate collations, `INFORMATION_SCHEMA.COLLATIONS`, `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or `mysql.collations` |
-| Default collation selection | 🟡 | Limited `CREATE TABLE` acceptance of fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table options, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, static `SHOW CHARACTER SET` / `SHOW COLLATION` rows, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve the default collation; no mutable database/table defaults, conversion, string semantics, mutable connection/server/database state, or full charset/collation catalogs |
+| Default collation selection | 🟡 | Limited `CREATE TABLE` acceptance of fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table options, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, static `SHOW CHARACTER SET` / `SHOW COLLATION` rows, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve the default collation; limited `VARCHAR` storage exists, but no mutable database/table defaults, conversion, collation comparison/order/group/distinct semantics, mutable connection/server/database state, or full charset/collation catalogs |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
 | Binary collations | ❌ | Binary ordering and metadata |
 | PAD SPACE and NO PAD collations | ❌ | Trailing-space semantics |

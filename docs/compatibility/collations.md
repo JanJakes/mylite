@@ -8,11 +8,11 @@ are compiled in MySQL 8.4.9.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` row for `utf8mb4_0900_ai_ci` only; no alternate collations, `INFORMATION_SCHEMA.COLLATIONS`, `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or `mysql.collations` |
-| Default collation selection | 🟡 | Limited `CREATE TABLE` acceptance of fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table options, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, static `SHOW CHARACTER SET` / `SHOW COLLATION` rows, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve the default collation; limited `CHAR`, `VARCHAR`, and baseline `TEXT` family storage exists, but no mutable database/table defaults, conversion, collation comparison/order/group/distinct semantics, mutable connection/server/database state, or full charset/collation catalogs |
+| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` row and one-row `INFORMATION_SCHEMA.COLLATIONS` metadata for `utf8mb4_0900_ai_ci` only; no alternate collations, `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or `mysql.collations` |
+| Default collation selection | 🟡 | Limited `CREATE TABLE` acceptance of fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table options, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, static `SHOW CHARACTER SET` / `SHOW COLLATION` rows, limited one-row `INFORMATION_SCHEMA.CHARACTER_SETS` / `COLLATIONS`, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve the default collation; limited `CHAR`, `VARCHAR`, and baseline `TEXT` family storage exists, but no mutable database/table defaults, conversion, collation comparison/order/group/distinct semantics, mutable connection/server/database state, or full charset/collation catalogs |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
 | Binary collations | ❌ | Binary ordering and metadata |
-| PAD SPACE and NO PAD collations | 🟡 | Limited default-mode `CHAR` storage/readback trims trailing spaces as verified for MySQL 8.4.9; no collation catalog pad attributes, comparison semantics, string indexes, or `PAD_CHAR_TO_FULL_LENGTH` mode |
+| PAD SPACE and NO PAD collations | 🟡 | Limited default-mode `CHAR` storage/readback trims trailing spaces as verified for MySQL 8.4.9, and limited `SHOW COLLATION` / `INFORMATION_SCHEMA.COLLATIONS` report `NO PAD` for `utf8mb4_0900_ai_ci`; no comparison semantics, string indexes, or `PAD_CHAR_TO_FULL_LENGTH` mode |
 | Collation coercibility rules | ❌ | Coercibility and diagnostics |
 
 ## MySQL 8.4.9 default collation catalog
@@ -242,7 +242,7 @@ are compiled in MySQL 8.4.9.
 | `utf8mb4_croatian_ci` | ❌ | utf8mb4; id 245; sortlen 8; PAD SPACE |
 | `utf8mb4_unicode_520_ci` | ❌ | utf8mb4; id 246; sortlen 8; PAD SPACE |
 | `utf8mb4_vietnamese_ci` | ❌ | utf8mb4; id 247; sortlen 8; PAD SPACE |
-| `utf8mb4_0900_ai_ci` | 🟡 | Limited static `SHOW COLLATION` row, fixed `CREATE TABLE` option acceptance, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES ... COLLATE utf8mb4_0900_ai_ci`; utf8mb4; id 255; default; sortlen 0; NO PAD; no comparison semantics |
+| `utf8mb4_0900_ai_ci` | 🟡 | Limited static `SHOW COLLATION` row, one-row `INFORMATION_SCHEMA.COLLATIONS` metadata, fixed `CREATE TABLE` option acceptance, fixed metadata no-op `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci`, scalar `@@collation_connection` / `@@collation_server` / `@@collation_database` reads, and fixed no-op `SET NAMES ... COLLATE utf8mb4_0900_ai_ci`; utf8mb4; id 255; default; sortlen 0; NO PAD; no comparison semantics |
 | `utf8mb4_de_pb_0900_ai_ci` | ❌ | utf8mb4; id 256; sortlen 0; NO PAD |
 | `utf8mb4_is_0900_ai_ci` | ❌ | utf8mb4; id 257; sortlen 0; NO PAD |
 | `utf8mb4_lv_0900_ai_ci` | ❌ | utf8mb4; id 258; sortlen 0; NO PAD |

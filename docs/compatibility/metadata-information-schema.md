@@ -6,17 +6,17 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | ❌ | Grantable users or roles for current user or role |
 | `INFORMATION_SCHEMA.APPLICABLE_ROLES` | ❌ | Applicable roles for current user |
-| `INFORMATION_SCHEMA.CHARACTER_SETS` | ❌ | Character set catalog |
+| `INFORMATION_SCHEMA.CHARACTER_SETS` | 🟡 | Limited queryable synthetic one-row catalog for MyLite's fixed `utf8mb4` character set, with MySQL 8.4.9-shaped columns and system-view metadata; no alternate character sets, conversion, privileges, or complete MySQL catalog |
 | `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` | ❌ | Table and column CHECK constraints |
 | `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` | ❌ | Charset for each collation |
-| `INFORMATION_SCHEMA.COLLATIONS` | ❌ | Collation catalog |
+| `INFORMATION_SCHEMA.COLLATIONS` | 🟡 | Limited queryable synthetic one-row catalog for MyLite's fixed `utf8mb4_0900_ai_ci` collation, with MySQL 8.4.9-shaped columns and system-view metadata; no alternate collations, collation applicability table, comparison semantics, privileges, or complete MySQL catalog |
 | `INFORMATION_SCHEMA.COLUMN_PRIVILEGES` | ❌ | Privileges on columns |
 | `INFORMATION_SCHEMA.COLUMN_STATISTICS` | ❌ | Histogram statistics for column values |
 | `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/exact `DECIMAL`/canonical `DATE`/`CHAR`/`VARCHAR`/baseline `TEXT` family metadata, nullability, integer, decimal, and canonical date-string defaults, visibility, primary-key plus supported unique/nonunique secondary-index `COLUMN_KEY` markers, auto-increment `EXTRA`, decimal `NUMERIC_PRECISION` / `NUMERIC_SCALE`, and `NULL` temporal precision for `DATE`; no privileges, generated columns, comments, string defaults outside canonical `DATE`, full charset/collation behavior, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.COLUMNS_EXTENSIONS` | ❌ | Column attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | Failed login attempts per account |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | Roles enabled within current session |
-| `INFORMATION_SCHEMA.ENGINES` | ❌ | Storage engine properties |
+| `INFORMATION_SCHEMA.ENGINES` | 🟡 | Limited queryable synthetic one-row catalog for MyLite's fixed default `InnoDB` engine, with MySQL 8.4.9-shaped columns and system-view metadata; no alternate engines, plugins, privileges, or engine internals |
 | `INFORMATION_SCHEMA.EVENTS` | ❌ | Event Manager events |
 | `INFORMATION_SCHEMA.FILES` | ❌ | Files that store tablespace data |
 | `INFORMATION_SCHEMA.INNODB_BUFFER_PAGE` | ❌ | Pages in InnoDB buffer pool |

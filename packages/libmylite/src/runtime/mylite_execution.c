@@ -141,6 +141,9 @@ enum {
     information_schema_schemata_column_count = 6,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
+    information_schema_character_sets_column_count = 4,
+    information_schema_collations_column_count = 7,
+    information_schema_engines_column_count = 6,
     information_schema_table_constraints_column_count = 7,
     information_schema_key_column_usage_column_count = 12,
     information_schema_statistics_column_count = 18,
@@ -863,9 +866,12 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SCHEMATA = 0,
     INFORMATION_SCHEMA_TABLE_TABLES = 1,
     INFORMATION_SCHEMA_TABLE_COLUMNS = 2,
-    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 3,
-    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 4,
-    INFORMATION_SCHEMA_TABLE_STATISTICS = 5,
+    INFORMATION_SCHEMA_TABLE_CHARACTER_SETS = 3,
+    INFORMATION_SCHEMA_TABLE_COLLATIONS = 4,
+    INFORMATION_SCHEMA_TABLE_ENGINES = 5,
+    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 6,
+    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 7,
+    INFORMATION_SCHEMA_TABLE_STATISTICS = 8,
 };
 
 struct information_schema_column_definition {
@@ -1479,6 +1485,187 @@ static const struct information_schema_column_definition information_schema_colu
 };
 
 static const struct information_schema_column_definition
+    information_schema_character_sets_columns[] = {
+        {"CHARACTER_SET_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"DEFAULT_COLLATE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"DESCRIPTION",
+         NULL,
+         "NO",
+         "varchar",
+         "2048",
+         "6144",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(2048)"},
+        {"MAXLEN", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const struct information_schema_column_definition information_schema_collations_columns[] = {
+    {"COLLATION_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"CHARACTER_SET_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"ID", "0", "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"},
+    {"IS_DEFAULT",
+     "",
+     "NO",
+     "varchar",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"IS_COMPILED",
+     "",
+     "NO",
+     "varchar",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"SORTLEN", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"PAD_ATTRIBUTE",
+     NULL,
+     "NO",
+     "enum",
+     "9",
+     "27",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "enum('PAD SPACE','NO PAD')"},
+};
+
+static const struct information_schema_column_definition information_schema_engines_columns[] = {
+    {"ENGINE",
+     "",
+     "NO",
+     "varchar",
+     "21",
+     "64",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"SUPPORT",
+     "",
+     "NO",
+     "varchar",
+     "2",
+     "8",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(8)"},
+    {"COMMENT",
+     "",
+     "NO",
+     "varchar",
+     "26",
+     "80",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(80)"},
+    {"TRANSACTIONS",
+     "",
+     "YES",
+     "varchar",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"XA",
+     "",
+     "YES",
+     "varchar",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"SAVEPOINTS",
+     "",
+     "YES",
+     "varchar",
+     "1",
+     "3",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+};
+
+static const struct information_schema_column_definition
     information_schema_table_constraints_columns[] = {
         {"CONSTRAINT_CATALOG",
          NULL,
@@ -1891,6 +2078,18 @@ static const struct information_schema_table_definition information_schema_table
      "COLUMNS",
      information_schema_columns_columns,
      information_schema_columns_column_count},
+    {INFORMATION_SCHEMA_TABLE_CHARACTER_SETS,
+     "CHARACTER_SETS",
+     information_schema_character_sets_columns,
+     information_schema_character_sets_column_count},
+    {INFORMATION_SCHEMA_TABLE_COLLATIONS,
+     "COLLATIONS",
+     information_schema_collations_columns,
+     information_schema_collations_column_count},
+    {INFORMATION_SCHEMA_TABLE_ENGINES,
+     "ENGINES",
+     information_schema_engines_columns,
+     information_schema_engines_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS,
      "TABLE_CONSTRAINTS",
      information_schema_table_constraints_columns,
@@ -2570,6 +2769,18 @@ static int append_information_schema_schemata_schema_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema
+);
+static int append_information_schema_character_sets_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_collations_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_engines_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
 );
 static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
@@ -9749,6 +9960,12 @@ static int append_information_schema_system_rows(
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
         return append_information_schema_columns_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_CHARACTER_SETS:
+        return append_information_schema_character_sets_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_COLLATIONS:
+        return append_information_schema_collations_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_ENGINES:
+        return append_information_schema_engines_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
@@ -9768,6 +9985,20 @@ static int append_information_schema_catalog_rows(
         .rows = rows,
         .schema = NULL,
     };
+
+    switch (rows->definition->kind) {
+    case INFORMATION_SCHEMA_TABLE_CHARACTER_SETS:
+    case INFORMATION_SCHEMA_TABLE_COLLATIONS:
+    case INFORMATION_SCHEMA_TABLE_ENGINES:
+        return MYLITE_OK;
+    case INFORMATION_SCHEMA_TABLE_SCHEMATA:
+    case INFORMATION_SCHEMA_TABLE_TABLES:
+    case INFORMATION_SCHEMA_TABLE_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
+    case INFORMATION_SCHEMA_TABLE_STATISTICS:
+        break;
+    }
 
     return mylite_catalog_for_each_schema(
         database,
@@ -9931,6 +10162,53 @@ static int append_information_schema_schemata_schema_row(
         "utf8mb4_0900_ai_ci",
         NULL,
         "NO",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_character_sets_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_character_sets_column_count] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "UTF-8 Unicode",
+        "4",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_collations_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_collations_column_count] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_engines_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    const char *values[information_schema_engines_column_count] = {
+        "InnoDB",
+        "DEFAULT",
+        "Supports transactions, row-level locking, and foreign keys",
+        "YES",
+        "YES",
+        "YES",
     };
 
     return append_information_schema_row(database, rows, values);

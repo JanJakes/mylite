@@ -12,23 +12,23 @@
 
 ## Implementation
 
-- [ ] Add `ENGINES`, `CHARACTER_SETS`, and `COLLATIONS` table definitions to
+- [x] Add `ENGINES`, `CHARACTER_SETS`, and `COLLATIONS` table definitions to
   the limited information-schema registry.
-- [ ] Add static system row builders for the three new information-schema
+- [x] Add static system row builders for the three new information-schema
   tables.
-- [ ] Add system `TABLES` and `COLUMNS` rows for the new views through the
+- [x] Add system `TABLES` and `COLUMNS` rows for the new views through the
   existing system-view metadata path.
-- [ ] Preserve descriptor authority, physical-name privacy, file-format safety,
+- [x] Preserve descriptor authority, physical-name privacy, file-format safety,
   independent handles, reopen behavior, and zero-init cleanup.
 
 ## Tests and Docs
 
-- [ ] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add focused C runtime tests for supported rows, metadata, query reuse,
+- [x] Add the MySQL 8.4.9 expectation script for the feature surface.
+- [x] Add focused C runtime tests for supported rows, metadata, query reuse,
   diagnostics, and handle/reopen behavior.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   implemented limited subset.
-- [ ] Run focused build/tests, the new MySQL expectation script, and
+- [x] Run focused build/tests, the new MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, metadata claims, performance,
+- [x] Review the final diff for MySQL behavior, metadata claims, performance,
   file-format safety, and scope control.

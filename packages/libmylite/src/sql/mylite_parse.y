@@ -1665,6 +1665,13 @@ expression(A) ::= CONV(T) LPAREN expression(B) COMMA expression(C) COMMA express
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_CONV_FUNCTION, B, C, D, R);
 }
+expression(A) ::= PI(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(state, T, MYLITE_SQL_AST_PI_FUNCTION, R);
+}
+expression(A) ::= PI(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR, B, R);
+}
 expression(A) ::= ABS(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ABS_FUNCTION, B, R);
@@ -2252,6 +2259,9 @@ identifier(A) ::= OCT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONV(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PI(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ABS(T). {

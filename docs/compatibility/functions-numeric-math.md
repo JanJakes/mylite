@@ -28,7 +28,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `LOG2()` | ❌ | Return base-2 logarithm of the argument |
 | `MOD()` | 🟡 | Limited no-source/`DUAL` signed-64 scalar modulo projection and limited `DO` expression execution with `MOD(left, right)`, `%`, and infix `MOD`; no table-backed expression support |
 | `OCT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned/signed envelopes, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; returns unsigned 64-bit base-8 text with no leading zeroes; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
-| `PI()` | ❌ | Return value of pi |
+| `PI()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution as a top-level pi constant returning MySQL's default visible text `3.141593`; no table-backed expression support, nesting, approximate arithmetic, or expression metadata |
 | `POW()` | ❌ | Return argument raised to the specified power |
 | `POWER()` | ❌ | Return argument raised to the specified power |
 | `RADIANS()` | ❌ | Return argument converted to radians |

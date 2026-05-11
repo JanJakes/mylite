@@ -111,6 +111,8 @@ enum {
     base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
 };
 
+static const char scalar_pi_text[] = "3.141593";
+
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
     char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -2137,6 +2139,10 @@ static int column_aggregate_execution_error(struct mylite_db *database, int rc);
 static int grouped_aggregate_execution_error(struct mylite_db *database, int rc);
 static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
+static int reject_bare_pi_identifier_lookup_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static bool select_statement_is_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
@@ -4901,6 +4907,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CONV_FUNCTION:
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PI_FUNCTION:
+    case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6707,7 +6715,7 @@ static int execute_do_statement(
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
-            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV() and "
+            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI() and "
             "CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
@@ -6779,6 +6787,10 @@ static int execute_select_statement(
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
+    rc = reject_bare_pi_identifier_lookup_if_needed(database, statement);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (select_statement_has_group_by_clause(statement)) {
         rc = plan_grouped_aggregate(database, statement, &grouped_plan);
         if (rc == MYLITE_OK) {
@@ -6819,7 +6831,7 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -8979,6 +8991,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CONV_FUNCTION:
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PI_FUNCTION:
+    case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16028,6 +16042,45 @@ static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_n
     return false;
 }
 
+static int reject_bare_pi_identifier_lookup_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (!select_statement_has_no_source_or_dual(statement) || child_at(statement, 2U) != NULL) {
+        return MYLITE_OK;
+    }
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        mylite_sql_ast_node_child_count(select_list) != 1U) {
+        return MYLITE_OK;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        return MYLITE_OK;
+    }
+    expression = unwrap_parenthesized_expression(child_at(select_item, 0U));
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_identifier_text(expression, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(column_name, "pi")) {
+        return MYLITE_OK;
+    }
+
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
 static bool select_statement_is_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
@@ -16561,6 +16614,8 @@ static const char *argument_count_error_node_function_name(
         return "CONNECTION_ID";
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
         return "VERSION";
+    case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+        return "PI";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -16645,6 +16700,9 @@ static int session_scalar_value(
     }
     case MYLITE_SQL_AST_VERSION_FUNCTION:
         out_cell->value = mylite_version();
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_PI_FUNCTION:
+        out_cell->value = scalar_pi_text;
         return MYLITE_OK;
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
@@ -22157,6 +22215,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_VERSION_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_PI_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {

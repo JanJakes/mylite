@@ -449,6 +449,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "conv_function";
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
         return "conv_argument_count_error";
+    case MYLITE_SQL_AST_PI_FUNCTION:
+        return "pi_function";
+    case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+        return "pi_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

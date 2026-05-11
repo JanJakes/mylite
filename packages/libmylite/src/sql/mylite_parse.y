@@ -143,6 +143,9 @@ statement(A) ::= show_engines_statement(B). {
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
+statement(A) ::= show_variables_statement(B). {
+    A = B;
+}
 statement(A) ::= describe_table_statement(B). {
     A = B;
 }
@@ -615,6 +618,23 @@ show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
 }
 show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
+}
+
+show_variables_statement(A) ::= SHOW(S) show_variables_scope_opt(O) VARIABLES(V) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_variables_statement(state, S, O, V, L);
+}
+
+show_variables_scope_opt(A) ::= . {
+    A = NULL;
+}
+show_variables_scope_opt(A) ::= GLOBAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+show_variables_scope_opt(A) ::= SESSION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+show_variables_scope_opt(A) ::= LOCAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
@@ -1903,6 +1923,9 @@ identifier(A) ::= GLOBAL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= OFF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= VARIABLES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= IFNULL(T). {

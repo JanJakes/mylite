@@ -11,16 +11,16 @@
       snippets and explicit ownership boundaries.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility docs for the exact supported subset.
-- [ ] Implement parser/AST support for limited `SHOW VARIABLES`.
-- [ ] Implement runtime result generation from the MyLite system-variable
+- [x] Implement parser/AST support for limited `SHOW VARIABLES`.
+- [x] Implement runtime result generation from the MyLite system-variable
       registry without SQLite SQL generation.
-- [ ] Add fast C parser/runtime tests and register any new test binary in
+- [x] Add fast C parser/runtime tests and register any new test binary in
       `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime tests and the MySQL expectation script.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, MySQL evidence,
+- [x] Run focused parser/runtime tests and the MySQL expectation script.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, MySQL evidence,
       fixed state handling, diagnostics, performance, docs accuracy, and test
       relevance.
-- [ ] Commit, push `main`, review with a subagent, amend if needed, then
+- [x] Commit, push `main`, review with a subagent, amend if needed, then
       continue to the next baseline slice.

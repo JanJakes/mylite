@@ -240,6 +240,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_databases_statement(
     struct mylite_sql_token databases_token,
     struct mylite_sql_ast_node *like_pattern
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *scope,
+    struct mylite_sql_token variables_token,
+    struct mylite_sql_ast_node *like_pattern
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

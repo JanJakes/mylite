@@ -784,6 +784,13 @@ struct system_variable_component {
     bool quoted;
 };
 
+struct system_variable_descriptor {
+    const char *name;
+    enum session_system_variable_kind kind;
+    bool show_session;
+    bool show_global;
+};
+
 enum set_system_variable_scope {
     SET_SYSTEM_VARIABLE_SCOPE_NONE = 0,
     SET_SYSTEM_VARIABLE_SCOPE_SESSION = 1,
@@ -795,6 +802,46 @@ struct resolved_set_system_variable_target {
     enum session_system_variable_kind kind;
     enum set_system_variable_scope scope;
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+static const struct system_variable_descriptor system_variable_descriptors[] = {
+    {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT, true, true},
+    {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT, true, true},
+    {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION, true, true},
+    {"character_set_database", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE, true, true},
+    {"character_set_filesystem", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM, true, true},
+    {"character_set_results", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS, true, true},
+    {"character_set_server", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER, true, true},
+    {"character_set_system", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM, true, true},
+    {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION, true, true},
+    {"collation_database", SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE, true, true},
+    {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER, true, true},
+    {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
+    {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
+    {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS, true, true},
+    {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
+    {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
+    {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
+    {"sql_generate_invisible_primary_key",
+     SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY,
+     true,
+     true},
+    {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN, true, false},
+    {"sql_log_off", SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF, true, true},
+    {"sql_mode", SESSION_SYSTEM_VARIABLE_SQL_MODE, true, true},
+    {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES, true, true},
+    {"sql_quote_show_create", SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE, true, true},
+    {"sql_replica_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER, true, true},
+    {"sql_require_primary_key", SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY, true, true},
+    {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES, true, true},
+    {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT, true, true},
+    {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER, true, true},
+    {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS, true, true},
+    {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS, true, true},
+    {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
+    {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
+    {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT, true, true},
+    {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT, true, false},
 };
 
 static int execute_parsed_statement(
@@ -1115,6 +1162,11 @@ static int execute_show_character_set_statement(
     mylite_result **out_result
 );
 static int execute_show_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_variables_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -2468,9 +2520,31 @@ static bool resolve_system_variable_kind(
     const struct system_variable_component *name,
     enum session_system_variable_kind *out_kind
 );
+static const struct system_variable_descriptor *system_variable_descriptor_for_kind(
+    enum session_system_variable_kind kind
+);
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
+static int show_system_variable_value(
+    struct mylite_db *database,
+    enum session_system_variable_kind kind,
+    char *integer_buffer,
+    size_t integer_buffer_size,
+    const char **out_value
+);
+static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope);
+static int append_show_variable(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    bool global_scope,
+    const struct system_variable_descriptor *descriptor
+);
+static bool show_variable_descriptor_visible(
+    const struct system_variable_descriptor *descriptor,
+    bool global_scope
+);
 static int validate_if_value_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -4273,6 +4347,8 @@ static int execute_parsed_statement(
         return execute_show_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
         return execute_show_collation_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+        return execute_show_variables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
         return execute_show_triggers_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
@@ -6574,6 +6650,134 @@ static int execute_show_collation_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_variables_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[2] = {"Variable_name", "Value"};
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *scope = NULL;
+    const struct mylite_sql_ast_node *like_pattern = NULL;
+    bool global_scope = false;
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        scope = first_child;
+        like_pattern = child_at(statement, 1U);
+    } else {
+        like_pattern = first_child;
+    }
+    global_scope = show_variables_scope_is_global(scope);
+
+    rc = make_show_like_filter(database, like_pattern, &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(system_variable_descriptors) /
+                                                           sizeof(system_variable_descriptors[0]);
+         ++index) {
+        rc = append_show_variable(
+            database,
+            result,
+            &filter,
+            global_scope,
+            &system_variable_descriptors[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
+static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope) {
+    static const char expected[] = "global";
+
+    if (scope == NULL) {
+        return false;
+    }
+    if (scope->span.text == NULL || scope->span.length != sizeof(expected) - 1U) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(expected) - 1U; ++index) {
+        if (ascii_lower((unsigned char)scope->span.text[index]) != expected[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int append_show_variable(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    bool global_scope,
+    const struct system_variable_descriptor *descriptor
+) {
+    char integer_buffer[integer_text_capacity];
+    const char *values[2] = {NULL, NULL};
+    int rc = MYLITE_OK;
+
+    if (!show_variable_descriptor_visible(descriptor, global_scope)) {
+        return MYLITE_OK;
+    }
+    if (!show_like_filter_matches(filter, descriptor->name, false)) {
+        return MYLITE_OK;
+    }
+
+    values[0] = descriptor->name;
+    rc = show_system_variable_value(
+        database,
+        descriptor->kind,
+        integer_buffer,
+        sizeof(integer_buffer),
+        &values[1]
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static bool show_variable_descriptor_visible(
+    const struct system_variable_descriptor *descriptor,
+    bool global_scope
+) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (global_scope) {
+        return descriptor->show_global;
+    }
+    return descriptor->show_session;
+}
+
 static int execute_show_triggers_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8138,6 +8342,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
@@ -18617,56 +18822,30 @@ static bool resolve_system_variable_kind(
     const struct system_variable_component *name,
     enum session_system_variable_kind *out_kind
 ) {
-    struct system_variable_name {
-        const char *name;
-        enum session_system_variable_kind kind;
-    };
-    static const struct system_variable_name names[] = {
-        {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT},
-        {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT},
-        {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT},
-        {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION},
-        {"character_set_results", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS},
-        {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION},
-        {"character_set_server", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER},
-        {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER},
-        {"character_set_database", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE},
-        {"collation_database", SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE},
-        {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE},
-        {"character_set_system", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM},
-        {"character_set_filesystem", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM},
-        {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT},
-        {"sql_quote_show_create", SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE},
-        {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS},
-        {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS},
-        {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT},
-        {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL},
-        {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS},
-        {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT},
-        {"sql_generate_invisible_primary_key",
-         SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY},
-        {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN},
-        {"sql_log_off", SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF},
-        {"sql_mode", SESSION_SYSTEM_VARIABLE_SQL_MODE},
-        {"sql_replica_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER},
-        {"sql_require_primary_key", SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY},
-        {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
-        {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT},
-        {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER},
-        {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES},
-        {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS},
-        {"version", SESSION_SYSTEM_VARIABLE_VERSION},
-        {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
-    };
-
-    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
-        if (system_variable_component_equals(name, names[index].name)) {
-            *out_kind = names[index].kind;
+    for (size_t index = 0U;
+         index < sizeof(system_variable_descriptors) / sizeof(system_variable_descriptors[0]);
+         ++index) {
+        if (system_variable_component_equals(name, system_variable_descriptors[index].name)) {
+            *out_kind = system_variable_descriptors[index].kind;
             return true;
         }
     }
 
     return false;
+}
+
+static const struct system_variable_descriptor *system_variable_descriptor_for_kind(
+    enum session_system_variable_kind kind
+) {
+    for (size_t index = 0U;
+         index < sizeof(system_variable_descriptors) / sizeof(system_variable_descriptors[0]);
+         ++index) {
+        if (system_variable_descriptors[index].kind == kind) {
+            return &system_variable_descriptors[index];
+        }
+    }
+
+    return NULL;
 }
 
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind) {
@@ -18723,6 +18902,100 @@ static bool system_variable_kind_allows_session_scope(enum session_system_variab
 
 static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind) {
     return kind == SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER;
+}
+
+static int show_system_variable_value(
+    struct mylite_db *database,
+    enum session_system_variable_kind kind,
+    char *integer_buffer,
+    size_t integer_buffer_size,
+    const char **out_value
+) {
+    if (out_value == NULL || system_variable_descriptor_for_kind(kind) == NULL) {
+        set_runtime_error(database, "invalid SHOW VARIABLES descriptor");
+        return MYLITE_ERROR;
+    }
+    *out_value = NULL;
+
+    switch (kind) {
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+        *out_value = database->session.character_set_client;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
+        *out_value = database->session.character_set_connection;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+        *out_value = database->session.character_set_results;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+        *out_value = database->session.collation_connection;
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
+        *out_value = "utf8mb4";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
+    case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
+        *out_value = "utf8mb4_0900_ai_ci";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+        *out_value = "InnoDB";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
+        *out_value = "YES";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+        *out_value = "utf8mb3";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
+        *out_value = "binary";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
+        *out_value = default_sql_mode_value();
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
+    case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
+    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
+    case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+    case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
+    case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
+    case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
+    case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
+    case SESSION_SYSTEM_VARIABLE_ERROR_COUNT:
+    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+        *out_value = "0";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
+        int rc = format_uint64(database, UINT64_MAX, integer_buffer, integer_buffer_size);
+        if (rc == MYLITE_OK) {
+            *out_value = integer_buffer;
+        }
+        return rc;
+    }
+    case SESSION_SYSTEM_VARIABLE_VERSION:
+        *out_value = mylite_version();
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+        *out_value = "MyLite";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_NONE:
+        break;
+    }
+
+    set_runtime_error(database, "unsupported SHOW VARIABLES value");
+    return MYLITE_ERROR;
 }
 
 static int append_system_variable_read_warning(

@@ -69,6 +69,7 @@ static int test_show_processlist_introspection_statements(void);
 static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
+static int test_show_variables_statement(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_select_group_by_clause(void);
@@ -198,6 +199,7 @@ int main(void) {
     failures += test_show_warnings_diagnostics_statements();
     failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
+    failures += test_show_variables_statement();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
     failures += test_select_group_by_clause();
@@ -6746,6 +6748,70 @@ static int test_show_index_empty_introspection_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_variables_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW VARIABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show variables");
+    failures += expect_child_count(statement, 0U, "show variables child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GLOBAL VARIABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show global variables");
+    failures += expect_span_text(child_at(statement, 0U), "GLOBAL", "global variables scope");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW SESSION VARIABLES LIKE 'sql\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show session variables");
+    failures += expect_span_text(child_at(statement, 0U), "SESSION", "session variables scope");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "variables like");
+    failures += expect_span_text(child_at(statement, 1U), "'sql\\_%'", "variables like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW LOCAL VARIABLES LIKE 'autocommit';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show local variables");
+    failures += expect_span_text(child_at(statement, 0U), "LOCAL", "local variables scope");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW VARIABLES LIKE 'SQL\\_LOG\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show variables like");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "bare variables like"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "'SQL\\_LOG\\_%'", "bare like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE variables (global INT, session INT, local INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "variables nonreserved identifiers"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "variables", "variables table");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

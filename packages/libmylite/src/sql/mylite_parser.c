@@ -924,6 +924,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *scope,
+    struct mylite_sql_token variables_token,
+    struct mylite_sql_ast_node *like_pattern
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&variables_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (like_pattern != NULL) {
+        span = span_join(span, like_pattern->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, scope);
+    mylite_sql_ast_node_append_child(statement, like_pattern);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -3568,6 +3593,7 @@ static bool map_keyword_token(
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
+        {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},

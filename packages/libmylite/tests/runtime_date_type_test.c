@@ -16,16 +16,11 @@
 enum {
     test_path_capacity = 1024,
     show_columns_field_count = 6,
+    information_schema_column_count = 9,
     mysql_error_parse = 1064,
-    mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
-    mysql_error_no_default = 1364,
-    mysql_error_data_too_long = 1406,
-    mysql_error_incorrect_column_specifier = 1063,
-    text_family_row_count = 3,
-    text_family_column_count = 6,
-    information_schema_text_column_count = 11,
-    tinytext_overlength_byte_count = 256,
+    mysql_error_invalid_default = 1067,
+    mysql_error_incorrect_date_value = 1292,
 };
 
 struct expected_sql_error {
@@ -47,12 +42,17 @@ struct expected_dml_result {
     size_t warning_count;
 };
 
-static int test_text_success_persistence_and_introspection(void);
-static int test_text_diagnostics(void);
-static int test_text_independent_handles(void);
+static int test_date_success_metadata_dml_and_persistence(void);
+static int test_date_diagnostics(void);
+static int test_date_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_statement_result(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_result expected
+);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_dml_result(
     mylite_db *database,
@@ -88,135 +88,105 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_text_success_persistence_and_introspection();
-    failures += test_text_diagnostics();
-    failures += test_text_independent_handles();
+    failures += test_date_success_metadata_dml_and_persistence();
+    failures += test_date_diagnostics();
+    failures += test_date_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_text_success_persistence_and_introspection(void) {
+static int test_date_success_metadata_dml_and_persistence(void) {
     static const char *const show_columns_rows[] = {
-        "id", "int",      "NO",  "", NULL, "", "tt", "tinytext",   "YES", "", NULL, "",
-        "t",  "text",     "YES", "", NULL, "", "mt", "mediumtext", "YES", "", NULL, "",
-        "lt", "longtext", "YES", "", NULL, "", "nn", "text",       "NO",  "", NULL, "",
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "d",
+        "date",
+        "YES",
+        "",
+        NULL,
+        "",
+        "nn",
+        "date",
+        "NO",
+        "",
+        "2024-02-29",
+        "",
     };
     static const char *const show_create_rows[] = {
-        "text_family",
-        "CREATE TABLE `text_family` (\n"
+        "dates",
+        "CREATE TABLE `dates` (\n"
         "  `id` int NOT NULL,\n"
-        "  `tt` tinytext,\n"
-        "  `t` text,\n"
-        "  `mt` mediumtext,\n"
-        "  `lt` longtext,\n"
-        "  `nn` text NOT NULL\n"
+        "  `d` date DEFAULT NULL,\n"
+        "  `nn` date NOT NULL DEFAULT '2024-02-29'\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const information_schema_rows[] = {
-        "id",
-        "int",
-        NULL,
-        NULL,
-        "10",
-        "0",
-        NULL,
-        NULL,
-        "int",
-        "NO",
-        NULL,
-        "tt",
-        "tinytext",
-        "255",
-        "255",
-        NULL,
-        NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "tinytext",
+        "d",
+        "date",
+        "date",
         "YES",
         NULL,
-        "t",
-        "text",
-        "65535",
-        "65535",
         NULL,
         NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "text",
-        "YES",
         NULL,
-        "mt",
-        "mediumtext",
-        "16777215",
-        "16777215",
-        NULL,
-        NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "mediumtext",
-        "YES",
-        NULL,
-        "lt",
-        "longtext",
-        "4294967295",
-        "4294967295",
-        NULL,
-        NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "longtext",
-        "YES",
         NULL,
         "nn",
-        "text",
-        "65535",
-        "65535",
-        NULL,
-        NULL,
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "text",
+        "date",
+        "date",
         "NO",
+        "2024-02-29",
+        NULL,
+        NULL,
+        NULL,
         NULL,
     };
     static const char *const initial_rows[] = {
         "1",
-        "tiny",
-        "alpha  ",
-        "medium",
-        "long",
-        "nn1",
+        "1000-01-01",
+        "2024-02-29",
         "2",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        "nn2",
+        "9999-12-31",
+        "2024-02-29",
         "3",
-        "",
-        "",
-        "",
-        "",
-        "",
+        "2024-02-29",
+        "2024-02-29",
+        "4",
+        NULL,
+        "2024-02-29",
     };
-    static const char *const updated_row[] = {"1", NULL, "updated", "nn1"};
-    static const char *const null_tt_ids[] = {"1", "2"};
-    static const char *const order_limited_rows[] = {"1", "nn1", "2", "nn2", "3", "last"};
-    static const char *const clone_row[] = {"1", NULL, "updated", "medium", "long", "nn1"};
-    static const char *const copied_row[] = {"3", ""};
-    static const char *const add_column_rows[] = {
+    static const char *const predicate_rows[] = {"1", "3"};
+    static const char *const null_rows[] = {"4"};
+    static const char *const order_asc_rows[] = {"4", "3", "1", "2"};
+    static const char *const order_desc_rows[] = {"2", "1", "3", "4"};
+    static const char *const ignored_rows[] = {
         "1",
-        NULL,
-        "",
+        "2024-01-01",
         "2",
-        NULL,
-        "",
+        "0000-00-00",
         "3",
-        NULL,
-        "",
+        "0000-00-00",
+        "4",
+        "0000-00-00",
     };
-    static const char *const renamed_row[] = {"3", "", "last"};
+    static const char *const ordered_limit_rows[] = {"1", "1", "2", "1", "3", "0", "4", "0"};
+    static const char *const updated_count_rows[] = {"1"};
+    static const char *const delete_order_rows[] = {"2", "2024-01-01"};
+    static const char *const added_rows[] = {
+        "1",
+        "2020-01-01",
+        "2",
+        "2020-01-01",
+        "3",
+        "2020-01-01",
+        "4",
+        "2020-01-01",
+    };
+    static const char *const copied_rows[] = {"1", "2025-01-02", "2024-02-29", "2020-01-01"};
+    static const char *const created_select_rows[] = {"1", "2025-01-02"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -229,180 +199,272 @@ static int test_text_success_persistence_and_introspection(void) {
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text success file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open date success file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
         database,
-        "CREATE TABLE text_family (id INT NOT NULL, tt TINYTEXT, t TEXT, mt MEDIUMTEXT, "
-        "lt LONGTEXT, nn TEXT NOT NULL)"
+        "CREATE TABLE dates (id INT NOT NULL, d DATE, nn DATE NOT NULL DEFAULT '2024-02-29')"
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW COLUMNS FROM text_family",
+            .sql = "SHOW COLUMNS FROM dates",
             .values = show_columns_rows,
             .column_count = show_columns_field_count,
-            .row_count = text_family_column_count,
-            .context = "text SHOW COLUMNS",
+            .row_count = 3U,
+            .context = "date SHOW COLUMNS",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW CREATE TABLE text_family",
+            .sql = "SHOW CREATE TABLE dates",
             .values = show_create_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "text SHOW CREATE TABLE",
+            .context = "date SHOW CREATE TABLE",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
-                   "CHARACTER_OCTET_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, "
-                   "CHARACTER_SET_NAME, COLLATION_NAME, COLUMN_TYPE, IS_NULLABLE, "
-                   "COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
-                   "AND TABLE_NAME = 'text_family' ORDER BY ORDINAL_POSITION",
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, "
+                   "DATETIME_PRECISION, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, "
+                   "NUMERIC_SCALE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'dates' "
+                   "AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION",
             .values = information_schema_rows,
-            .column_count = information_schema_text_column_count,
-            .row_count = text_family_column_count,
-            .context = "text information schema columns",
+            .column_count = information_schema_column_count,
+            .row_count = 2U,
+            .context = "date information schema",
         }
     );
 
     failures += expect_dml_ok(
         database,
-        "INSERT INTO text_family VALUES "
-        "(1, 'tiny', 'alpha  ', 'medium', 'long', 'nn1'), "
-        "(2, NULL, NULL, NULL, NULL, 'nn2'), "
-        "(3, '', '', '', '', '')",
-        3
+        "INSERT INTO dates (id, d) VALUES "
+        "(1, '1000-01-01'), (2, '9999-12-31'), (3, '2024-02-29'), (4, NULL)",
+        4
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, tt, t, mt, lt, nn FROM text_family ORDER BY id",
+            .sql = "SELECT id, d, nn FROM dates ORDER BY id",
             .values = initial_rows,
-            .column_count = text_family_column_count,
-            .row_count = text_family_row_count,
-            .context = "text inserted values",
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "date initial rows",
         }
     );
-    failures += expect_dml_ok(database, "UPDATE text_family SET t = 'updated' WHERE id = 1", 1);
-    failures += expect_dml_ok(database, "UPDATE text_family SET t = 'updated' WHERE id = 1", 0);
-    failures += expect_dml_ok(database, "UPDATE text_family SET tt = NULL WHERE id = 1", 1);
-    failures += expect_dml_ok(database, "UPDATE text_family SET tt = NULL WHERE id = 2", 0);
+    failures += expect_dml_ok(database, "UPDATE dates SET d = '1000-01-01' WHERE id = 1", 0);
+    failures += expect_dml_ok(database, "UPDATE dates SET d = '2025-01-02' WHERE id = 1", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM text_family WHERE tt IS NULL ORDER BY id",
-            .values = null_tt_ids,
+            .sql = "SELECT id FROM dates WHERE d BETWEEN '2024-01-01' AND '2025-12-31' "
+                   "ORDER BY id",
+            .values = predicate_rows,
             .column_count = 1U,
             .row_count = 2U,
-            .context = "text IS NULL predicate",
+            .context = "date BETWEEN predicate",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, tt, t, nn FROM text_family WHERE id = 1",
-            .values = updated_row,
-            .column_count = 4U,
+            .sql = "SELECT id FROM dates WHERE d IN ('2025-01-02', NULL) ORDER BY id",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
             .row_count = 1U,
-            .context = "text update readback",
+            .context = "date IN predicate",
         }
     );
-    failures +=
-        expect_dml_ok(database, "UPDATE text_family SET nn = 'last' ORDER BY id DESC LIMIT 1", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, nn FROM text_family ORDER BY id",
-            .values = order_limited_rows,
-            .column_count = 2U,
-            .row_count = text_family_row_count,
-            .context = "text ordered limited update",
+            .sql = "SELECT id FROM dates WHERE d IS NULL",
+            .values = null_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date IS NULL predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates ORDER BY d",
+            .values = order_asc_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .context = "date ascending order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates ORDER BY d DESC",
+            .values = order_desc_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .context = "date descending order",
         }
     );
 
-    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE text_family");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE ignored (id INT NOT NULL, d DATE NOT NULL)");
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO ignored VALUES "
+        "(1, '2024-01-01'), (2, '2024-02-31'), (3, NULL), (4, DEFAULT)",
+        (struct expected_dml_result){.affected_rows = 4, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d FROM ignored ORDER BY id",
+            .values = ignored_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "date INSERT IGNORE rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ordered (id INT NOT NULL, d DATE, flag INT NOT NULL DEFAULT 0)"
+    );
     failures += expect_dml_ok(
         database,
-        "INSERT INTO clone SELECT id, tt, t, mt, lt, nn FROM text_family WHERE id = 1",
+        "INSERT INTO ordered VALUES "
+        "(1, NULL, 0), (2, '2024-01-01', 0), (3, '2025-01-01', 0), (4, '2025-01-01', 0)",
+        4
+    );
+    failures += expect_dml_ok(database, "UPDATE ordered SET flag = 1 ORDER BY d LIMIT 2", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, flag FROM ordered ORDER BY id",
+            .values = ordered_limit_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "date ordered limit update",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE ordered SET flag = 2 WHERE flag = 0 ORDER BY d DESC LIMIT 1",
+        1
+    );
+    failures += expect_dml_ok(database, "UPDATE ordered SET flag = 3 ORDER BY d DESC LIMIT 0", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM ordered WHERE flag = 2",
+            .values = updated_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date duplicate-order tie count",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE delete_order (id INT NOT NULL, d DATE)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO delete_order VALUES "
+        "(1, NULL), (2, '2024-01-01'), (3, '2025-01-01')",
+        3
+    );
+    failures += expect_dml_ok(database, "DELETE FROM delete_order ORDER BY d LIMIT 1", 1);
+    failures += expect_dml_ok(database, "DELETE FROM delete_order ORDER BY d DESC LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d FROM delete_order",
+            .values = delete_order_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "date delete order limit",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE alter_empty (id INT NOT NULL)");
+    failures += expect_statement_ok(database, "ALTER TABLE alter_empty ADD COLUMN d DATE NOT NULL");
+    failures += expect_statement_ok(database, "CREATE TABLE alter_nonempty (id INT NOT NULL)");
+    failures += expect_dml_ok(database, "INSERT INTO alter_nonempty VALUES (1)", 1);
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_nonempty ADD COLUMN d DATE NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect date value: '0000-00-00' for column 'd' at row 1",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE dates ADD COLUMN added DATE DEFAULT '2020-01-01'"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM dates ORDER BY id",
+            .values = added_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "date alter add default backfill",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE copied LIKE dates");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO copied (id, d, nn, added) "
+        "SELECT id, d, nn, added FROM dates WHERE id = 1",
         1
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, tt, t, mt, lt, nn FROM clone ORDER BY id",
-            .values = clone_row,
-            .column_count = text_family_column_count,
+            .sql = "SELECT id, d, nn, added FROM copied",
+            .values = copied_rows,
+            .column_count = 4U,
             .row_count = 1U,
-            .context = "text create table like insert select",
+            .context = "date insert select copy",
         }
     );
-    failures += expect_statement_ok(
-        database,
-        "CREATE TABLE copied AS SELECT id, t FROM text_family WHERE id = 3"
-    );
+    failures += expect_statement_ok(database, "CREATE TABLE selected AS SELECT id, d FROM dates");
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, t FROM copied ORDER BY id",
-            .values = copied_row,
+            .sql = "SELECT id, d FROM selected WHERE id = 1",
+            .values = created_select_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "text create table select",
+            .context = "date create table select",
         }
     );
-
-    failures += expect_statement_ok(database, "ALTER TABLE text_family ADD COLUMN extra TEXT");
-    failures +=
-        expect_statement_ok(database, "ALTER TABLE text_family ADD COLUMN req TINYTEXT NOT NULL");
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id, extra, req FROM text_family ORDER BY id",
-            .values = add_column_rows,
-            .column_count = 3U,
-            .row_count = text_family_row_count,
-            .context = "text alter add column values",
-        }
-    );
-    failures += expect_statement_ok(database, "RENAME TABLE text_family TO text_renamed");
-    failures += expect_statement_ok(database, "DROP TABLE clone");
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id, req, nn FROM text_renamed WHERE id = 3",
-            .values = renamed_row,
-            .column_count = 3U,
-            .row_count = 1U,
-            .context = "text after rename",
-        }
-    );
-
-    mylite_close(database);
-    database = NULL;
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
-        sizeof(expected_preamble),
-        "text preserves preamble"
+        MYLITE_FILE_PREAMBLE_SIZE,
+        "date file preamble"
     );
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen text success file");
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen date success file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, req, nn FROM text_renamed WHERE id = 3",
-            .values = renamed_row,
-            .column_count = 3U,
+            .sql = "SELECT id, d FROM dates ORDER BY d DESC LIMIT 1",
+            .values = (const char *const[]){"2", "9999-12-31"},
+            .column_count = 2U,
             .row_count = 1U,
-            .context = "text persisted after reopen",
+            .context = "date reopened ordered select",
         }
     );
 
@@ -412,190 +474,129 @@ static int test_text_success_persistence_and_introspection(void) {
     return failures;
 }
 
-static int test_text_diagnostics(void) {
-    static const char *const ignore_null_row[] = {"10", ""};
-    static const char *const ignore_default_row[] = {"11", ""};
+static int test_date_diagnostics(void) {
     char path[test_path_capacity];
-    char too_long_sql
-        [sizeof("INSERT INTO diag VALUES (1, '', 'x')") + tinytext_overlength_byte_count];
     mylite_db *database = NULL;
     int failures = 0;
-    const char too_long_prefix[] = "INSERT INTO diag VALUES (1, '";
-    const char too_long_suffix[] = "', 'x')";
-    size_t too_long_prefix_length = strlen(too_long_prefix);
 
     if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text diagnostics file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open date diagnostics file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
-    failures += expect_statement_ok(
-        database,
-        "CREATE TABLE diag (id INT NOT NULL, tt TINYTEXT, nn TEXT NOT NULL)"
-    );
-
-    memcpy(too_long_sql, too_long_prefix, too_long_prefix_length);
-    memset(too_long_sql + too_long_prefix_length, 'x', tinytext_overlength_byte_count);
-    memcpy(
-        too_long_sql + too_long_prefix_length + tinytext_overlength_byte_count,
-        too_long_suffix,
-        sizeof(too_long_suffix)
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE dates (id INT NOT NULL, d DATE NOT NULL)");
     failures += execute_error(
         database,
-        too_long_sql,
+        "INSERT INTO dates VALUES (1, '2024-02-31')",
         (struct expected_sql_error){
-            .code = mysql_error_data_too_long,
-            .sqlstate = "22001",
-            .message_part = "Data too long for column 'tt' at row 1",
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect date value: '2024-02-31' for column 'd' at row 1",
         }
     );
     failures += execute_error(
         database,
-        "INSERT INTO diag VALUES (1, 'a', NULL)",
+        "INSERT INTO dates VALUES (1, '0000-00-00')",
         (struct expected_sql_error){
-            .code = mysql_error_bad_null,
-            .sqlstate = "23000",
-            .message_part = "Column 'nn' cannot be null",
+            .code = mysql_error_incorrect_date_value,
+            .sqlstate = "22007",
+            .message_part = "Incorrect date value: '0000-00-00' for column 'd' at row 1",
         }
     );
     failures += execute_error(
         database,
-        "INSERT INTO diag (id, tt) VALUES (2, 'a')",
-        (struct expected_sql_error){
-            .code = mysql_error_no_default,
-            .sqlstate = "HY000",
-            .message_part = "Field 'nn' doesn't have a default value",
-        }
-    );
-    failures += expect_dml_ok(database, "INSERT INTO diag VALUES (1, 'ok', 'x')", 1);
-    failures += execute_error(
-        database,
-        "UPDATE diag SET tt = 1",
+        "INSERT INTO dates VALUES (1, '2024/01/02')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "TEXT values support only string, NULL, and DEFAULT values",
+            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
         }
     );
     failures += execute_error(
         database,
-        "UPDATE diag SET nn = NULL",
-        (struct expected_sql_error){
-            .code = mysql_error_bad_null,
-            .sqlstate = "23000",
-            .message_part = "Column 'nn' cannot be null",
-        }
-    );
-    failures += execute_error(
-        database,
-        "INSERT INTO diag VALUES (2, 1, 'x')",
+        "INSERT IGNORE INTO dates VALUES (1, '2024/01/02')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "TEXT values support only string, NULL, and DEFAULT values",
+            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
         }
     );
     failures += execute_error(
         database,
-        "INSERT INTO diag VALUES (2, 'a\\0', 'x')",
+        "INSERT IGNORE INTO dates VALUES (1, '240102')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "TEXT values do not support NUL bytes",
+            .message_part = "DATE values support only canonical YYYY-MM-DD strings",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_default (v TEXT DEFAULT 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_string_default (v TEXT DEFAULT 'x')",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_pk (v TEXT PRIMARY KEY)",
+        "INSERT IGNORE INTO dates VALUES (1, 20240102)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only integer columns",
+            .message_part = "DATE values support only string, NULL, and DEFAULT values",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_auto (v TEXT AUTO_INCREMENT PRIMARY KEY)",
-        (struct expected_sql_error){
-            .code = mysql_error_incorrect_column_specifier,
-            .sqlstate = "42000",
-            .message_part = "Incorrect column specifier for column 'v'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM diag WHERE tt = 'ok'",
+        "INSERT IGNORE INTO dates VALUES (1, DATE '2024-01-02')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM diag ORDER BY tt",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ORDER BY supports only integer or DATE descriptor columns",
-        }
-    );
-    failures += expect_dml_result(
-        database,
-        "INSERT IGNORE INTO diag (id, nn) VALUES (10, NULL)",
-        (struct expected_dml_result){
-            .affected_rows = 1,
-            .warning_count = 1U,
+            .message_part = "near 'DATE'",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, nn FROM diag WHERE id = 10",
-            .values = ignore_null_row,
-            .column_count = 2U,
+            .sql = "SELECT COUNT(*) FROM dates",
+            .values = (const char *const[]){"0"},
+            .column_count = 1U,
             .row_count = 1U,
-            .context = "text insert ignore null adjustment",
+            .context = "unsupported date inputs do not insert rows",
         }
     );
-    failures += expect_dml_result(
+    failures += execute_error(
         database,
-        "INSERT IGNORE INTO diag (id, tt) VALUES (11, 'a')",
-        (struct expected_dml_result){
-            .affected_rows = 1,
-            .warning_count = 1U,
+        "INSERT INTO dates VALUES (1, NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'd' cannot be null",
         }
     );
-    failures += expect_query_values(
+    failures += expect_dml_ok(database, "INSERT INTO dates VALUES (9, '2024-01-01')", 1);
+    failures += execute_error(
         database,
-        (struct expected_query){
-            .sql = "SELECT id, nn FROM diag WHERE id = 11",
-            .values = ignore_default_row,
-            .column_count = 2U,
-            .row_count = 1U,
-            .context = "text insert ignore no-default adjustment",
+        "CREATE TABLE bad_default (d DATE DEFAULT '2024-02-31')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'd'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE dates SET d = 1 WHERE id = 9",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "DATE values support only string, NULL, and DEFAULT values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE DATE predicates support only string literals",
         }
     );
 
@@ -605,57 +606,57 @@ static int test_text_diagnostics(void) {
     return failures;
 }
 
-static int test_text_independent_handles(void) {
-    static const char *const first_expected[] = {"one"};
-    static const char *const second_expected[] = {"two"};
+static int test_date_independent_handles(void) {
+    static const char *const first_rows[] = {"2025-05-01"};
+    static const char *const second_rows[] = {"2026-06-02"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
 
-    if (make_test_path(first_path, sizeof(first_path), "independent_first") != 0 ||
-        make_test_path(second_path, sizeof(second_path), "independent_second") != 0) {
+    if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "second") != 0) {
         return 1;
     }
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first text file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second text file");
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first date file");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second date file");
     failures += expect_statement_ok(first, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
     failures += expect_statement_ok(second, "USE app");
-    failures += expect_statement_ok(first, "CREATE TABLE t (id INT, body TEXT)");
-    failures += expect_statement_ok(second, "CREATE TABLE t (id INT, body TEXT)");
-    failures += expect_dml_ok(first, "INSERT INTO t VALUES (1, 'one')", 1);
-    failures += expect_dml_ok(second, "INSERT INTO t VALUES (1, 'two')", 1);
+    failures += expect_statement_ok(first, "CREATE TABLE dates (d DATE)");
+    failures += expect_statement_ok(second, "CREATE TABLE dates (d DATE)");
+    failures += expect_dml_ok(first, "INSERT INTO dates VALUES ('2025-05-01')", 1);
+    failures += expect_dml_ok(second, "INSERT INTO dates VALUES ('2026-06-02')", 1);
     failures += expect_query_values(
         first,
         (struct expected_query){
-            .sql = "SELECT body FROM t WHERE id = 1",
-            .values = first_expected,
+            .sql = "SELECT d FROM dates",
+            .values = first_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "first independent text state",
+            .context = "first independent date file",
         }
     );
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT body FROM t WHERE id = 1",
-            .values = second_expected,
+            .sql = "SELECT d FROM dates",
+            .values = second_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "second independent text state",
+            .context = "second independent date file",
         }
     );
 
-    mylite_close(second);
     mylite_close(first);
-    remove_related_files(second_path);
+    mylite_close(second);
     remove_related_files(first_path);
+    remove_related_files(second_path);
 
     return failures;
 }
@@ -666,7 +667,7 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
     if (rc != MYLITE_OK) {
         fprintf(
             stderr,
-            "execute '%s': expected OK, got %d / %d %s %s\n",
+            "execute '%s': expected MYLITE_OK, got %d (%d %s %s)\n",
             sql,
             rc,
             mylite_errcode(database),
@@ -698,12 +699,31 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 }
 
 static int expect_statement_ok(mylite_db *database, const char *sql) {
+    return expect_statement_result(
+        database,
+        sql,
+        (struct expected_dml_result){
+            .affected_rows = 0,
+            .warning_count = 0U,
+        }
+    );
+}
+
+static int expect_statement_result(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_result expected
+) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
     failures += expect_size(mylite_result_column_count(result), 0U, "statement column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "statement row count");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "statement warning count");
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        expected.warning_count,
+        "statement warning count"
+    );
     mylite_result_free(result);
 
     return failures;
@@ -790,7 +810,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_text_type_%d_%s.mylite",
+        "%s/mylite_date_type_%d_%s.mylite",
         directory,
         current_process_id(),
         name
@@ -898,7 +918,13 @@ static int expect_true(int condition, const char *context) {
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
     if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected '%s', got '%s'\n", context, expected, actual);
+        fprintf(
+            stderr,
+            "%s: expected text '%s', got '%s'\n",
+            context,
+            expected == NULL ? "(null)" : expected,
+            actual == NULL ? "(null)" : actual
+        );
         return 1;
     }
 
@@ -907,7 +933,13 @@ static int expect_text(const char *actual, const char *expected, const char *con
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
     if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected '%s' to contain '%s'\n", context, actual, needle);
+        fprintf(
+            stderr,
+            "%s: expected '%s' to contain '%s'\n",
+            context,
+            actual == NULL ? "(null)" : actual,
+            needle == NULL ? "(null)" : needle
+        );
         return 1;
     }
 

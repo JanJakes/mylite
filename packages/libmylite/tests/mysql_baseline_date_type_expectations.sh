@@ -351,6 +351,12 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
+    "mysql accepts relaxed date conversion with ignore deferred by MyLite" \
+    "CREATE TABLE upstream_relaxed_ignore (d DATE); "\
+"INSERT IGNORE INTO upstream_relaxed_ignore VALUES ('2024/01/02'), ('240102'), (20240102);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
     "mysql accepts standard date literal deferred by MyLite" \
     "CREATE TABLE upstream_literal (d DATE); "\
 "INSERT INTO upstream_literal VALUES (DATE '2024-01-02');" \

@@ -68,10 +68,10 @@ the runtime probes for this feature. Observed behavior that shapes this slice:
   canonical valid date strings store and read back unchanged, while direct
   invalid canonical dates and direct zero dates fail with error `1292` /
   SQLSTATE `22007`.
-- `INSERT IGNORE` demotes invalid date inputs, zero-date inputs, and explicit
-  `NULL` into a `NOT NULL` date column to warnings and stores `0000-00-00`.
-  The observed invalid-date and zero-date warning is `1264`; the observed
-  explicit-`NULL` warning is `1048`.
+- `INSERT IGNORE` demotes invalid canonical-shaped date inputs, zero-date
+  inputs, and explicit `NULL` into a `NOT NULL` date column to warnings and
+  stores `0000-00-00`. The observed invalid-date and zero-date warning is
+  `1264`; the observed explicit-`NULL` warning is `1048`.
 - Omitted or explicit `DEFAULT` for a `DATE NOT NULL` column with no explicit
   default fails with error `1364`; `INSERT IGNORE` demotes that condition to
   warning `1364` and stores `0000-00-00`.
@@ -132,8 +132,9 @@ The implementation must add:
 - MyLite-owned date conversion before SQLite binding: exact canonical string
   syntax, leap-year validation, normal supported range checking, direct
   zero-date rejection under the fixed default SQL mode, strict error `1292`,
-  invalid-default error `1067`, supported `INSERT IGNORE` warning adjustment to
-  `0000-00-00`, and canonical text output;
+  invalid-default error `1067`, supported `INSERT IGNORE` warning adjustment of
+  canonical-shaped invalid or zero dates to `0000-00-00`, and canonical text
+  output;
 - descriptor-backed `WHERE` predicates for date columns using canonical string
   right operands for comparison operators, `BETWEEN` bounds, and `IN` list
   values, with `NULL` preserved in admitted `IN` lists;
@@ -357,7 +358,9 @@ Successful DATE DDL and DML follow existing public result conventions:
 - `INSERT`, `REPLACE`, `UPDATE`, and `DELETE` report affected rows through the
   existing result object;
 - supported in-range DATE operations record `warning_count == 0`;
-- adjusted `INSERT IGNORE` records the MySQL-runtime-verified warnings above;
+- adjusted `INSERT IGNORE` records the MySQL-runtime-verified warnings above,
+  while deferred relaxed/nondelimited/numeric/temporal-literal inputs remain
+  unsupported instead of being coerced to zero dates;
 - `SELECT` readback returns DATE text exactly as stored.
 
 ## Diagnostics
@@ -377,7 +380,8 @@ The implementation must provide deterministic diagnostics for:
 - invalid date defaults with MySQL error `1067`;
 - `NULL` into `DATE NOT NULL` with MySQL error or warning `1048`;
 - no default for `DATE NOT NULL` with MySQL error or warning `1364`;
-- `INSERT IGNORE` invalid or zero date adjustment with MySQL warning `1264`;
+- `INSERT IGNORE` canonical-shaped invalid or zero date adjustment with MySQL
+  warning `1264`;
 - nonempty `ALTER TABLE ... ADD COLUMN d DATE NOT NULL` with MySQL error
   `1292` for the implicit zero date at row 1;
 - unsupported DATE conversion inputs with a MyLite-specific unsupported
@@ -419,4 +423,3 @@ Run:
 2. `cmake --build --preset dev`
 3. the new CTest entry and relevant parser/runtime lifecycle entries
 4. `cmake --workflow --preset check`
-

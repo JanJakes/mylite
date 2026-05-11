@@ -34,6 +34,7 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_incorrect_column_name = 1166,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_invalid_default = 1067,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
 };
@@ -766,9 +767,9 @@ static int test_change_column_diagnostics_and_rollback(void) {
         database,
         "ALTER TABLE numbers CHANGE n changed BIGINT DEFAULT '5'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "Invalid default value for 'changed'",
         }
     );
     failures += execute_error(

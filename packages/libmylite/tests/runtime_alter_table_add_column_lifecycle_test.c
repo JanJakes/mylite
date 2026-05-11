@@ -25,6 +25,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_invalid_default = 1067,
     mysql_error_unknown_column = 1054,
     mysql_error_unknown = 1105,
     mysql_error_duplicate_column = 1060,
@@ -557,9 +558,9 @@ static int test_add_column_diagnostics(void) {
         database,
         "ALTER TABLE numbers ADD COLUMN added INT DEFAULT '5'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "Invalid default value for 'added'",
         }
     );
     failures += execute_error(

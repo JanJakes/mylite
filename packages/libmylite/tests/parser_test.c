@@ -12,6 +12,7 @@ enum {
     bool_alias_column_count = 3,
     integer_default_column_count = 5,
     decimal_column_count = 6,
+    date_column_count = 3,
     decimal_fixed_column_index = 5,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
@@ -72,6 +73,7 @@ static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_decimal_type_statements(void);
+static int test_date_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
@@ -245,6 +247,7 @@ int main(void) {
     failures += test_char_type_statements();
     failures += test_text_type_statements();
     failures += test_decimal_type_statements();
+    failures += test_date_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
@@ -7331,6 +7334,114 @@ static int test_decimal_type_statements(void) {
     return failures;
 }
 
+static int test_date_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE date_types (d DATE, nn DATE NOT NULL DEFAULT '2024-02-29', date INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, date_column_count, "date column list");
+    column = child_at(columns, 0U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATE_TYPE, "date column type");
+    failures += expect_span_text(child_at(column, 1U), "DATE", "date column span");
+    column = child_at(columns, 1U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATE_TYPE, "not null date type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "not null date"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date string default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "date", "date keyword identifier");
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_INTEGER_TYPE, "date identifier type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE date_types ADD COLUMN created DATE DEFAULT '1000-01-01';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_DATE_TYPE, "alter add date");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter date default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM date_types WHERE d BETWEEN '2024-01-01' AND '2024-12-31';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_BETWEEN_PREDICATE, "date between");
+    failures += expect_literal(
+        child_at(predicate, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date between lower"
+    );
+    failures += expect_literal(
+        child_at(predicate, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date between upper"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM date_types WHERE d IN ('2024-02-29', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    predicate = child_at(child_at(statement, 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "date in predicate");
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date in string"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "date in null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE date_types SET d = '2025-01-02';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_create_table_primary_key_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -9279,8 +9390,13 @@ static int test_select_where_predicates(void) {
 
     failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id IN ('1');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string IN value"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -11791,8 +11907,18 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE t (id INT DEFAULT '5');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE TABLE t (id INT DEFAULT '5');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_literal(
+        child_at(
+            first_child_kind(
+                child_at(child_at(child_at(result.root, 0U), 1U), 0U),
+                MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string integer default"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE t (id INT DEFAULT 1.5);", MYLITE_SQL_PARSE_OK, &result);
@@ -12411,8 +12537,13 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name ALTER old_col SET DEFAULT '1';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter set string default"
     );
     mylite_sql_parse_result_deinit(&result);
 

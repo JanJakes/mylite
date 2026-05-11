@@ -17,6 +17,7 @@ enum {
     test_path_capacity = 1024,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
+    mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_no_default = 1364,
     mysql_error_data_too_long = 1406,
@@ -559,7 +560,7 @@ static int test_char_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ORDER BY supports only integer descriptor columns",
+            .message_part = "ORDER BY supports only integer or DATE descriptor columns",
         }
     );
     failures += execute_error(
@@ -593,9 +594,9 @@ static int test_char_diagnostics(void) {
         database,
         "CREATE TABLE bad_default (v CHAR(2) DEFAULT 'x')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "syntax near ''x''",
+            .message_part = "Invalid default value for 'v'",
         }
     );
     failures += execute_error(

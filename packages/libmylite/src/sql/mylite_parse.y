@@ -1495,12 +1495,12 @@ predicate_atom(A) ::= qualified_identifier(C) IS(I) NOT UNKNOWN(T). {
     A = mylite_sql_parser_make_is_boolean_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN, T);
 }
-predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) predicate_integer_value(L) AND
-        predicate_integer_value(U). {
+predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) predicate_range_value(L) AND
+        predicate_range_value(U). {
     A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) predicate_integer_value(L) AND
-        predicate_integer_value(U). {
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) predicate_range_value(L) AND
+        predicate_range_value(U). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
 }
@@ -1523,8 +1523,18 @@ predicate_in_value_list(A) ::= predicate_in_value_list(L) COMMA predicate_in_val
 predicate_in_value(A) ::= predicate_integer_value(V). {
     A = V;
 }
+predicate_in_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 predicate_in_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+predicate_range_value(A) ::= predicate_integer_value(V). {
+    A = V;
+}
+predicate_range_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
@@ -2567,6 +2577,9 @@ identifier(A) ::= INVISIBLE(T). {
 identifier(A) ::= AUTO_INCREMENT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 create_table_item_list(A) ::= create_table_item(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
@@ -2641,6 +2654,9 @@ column_type(A) ::= text_type(T). {
     A = T;
 }
 column_type(A) ::= decimal_type(T). {
+    A = T;
+}
+column_type(A) ::= date_type(T). {
     A = T;
 }
 
@@ -2773,6 +2789,10 @@ decimal_unsigned_opt(A) ::= UNSIGNED(U). {
         .attribute_token = U,
         .is_unsigned = 1,
     };
+}
+
+date_type(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_date_type(state, T);
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {
@@ -2923,6 +2943,9 @@ column_default_value(A) ::= INTEGER(T). {
 }
 column_default_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+column_default_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 column_default_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(

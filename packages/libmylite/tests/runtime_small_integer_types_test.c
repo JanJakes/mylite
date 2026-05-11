@@ -2525,9 +2525,9 @@ static int test_explicit_default_null_lifecycle(void) {
         database,
         "CREATE TABLE unsupported_default (a INT DEFAULT '0')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "Invalid default value for 'a'",
         }
     );
     failures += execute_error(

@@ -216,6 +216,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION = 207,
     MYLITE_SQL_AST_TEXT_TYPE = 208,
     MYLITE_SQL_AST_DECIMAL_TYPE = 209,
+    MYLITE_SQL_AST_DATE_TYPE = 210,
 };
 
 enum mylite_sql_ast_literal_kind {

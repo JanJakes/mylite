@@ -548,7 +548,8 @@ static int test_create_table_like_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "CREATE TABLE LIKE supports only integer descriptor columns",
+            .message_part =
+                "CREATE TABLE LIKE supports only integer and VARCHAR descriptor columns",
         }
     );
 

@@ -27,6 +27,12 @@ struct mylite_sql_integer_signedness_tokens {
     int is_unsigned;
 };
 
+struct mylite_sql_varchar_type_tokens {
+    struct mylite_sql_token type_token;
+    struct mylite_sql_token length_token;
+    struct mylite_sql_token end_token;
+};
+
 struct mylite_sql_show_count_warnings_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token count;
@@ -913,7 +919,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
-    struct mylite_sql_ast_node *integer_type,
+    struct mylite_sql_ast_node *column_type,
     struct mylite_sql_ast_node *nullability,
     struct mylite_sql_ast_node *default_null
 );
@@ -936,6 +942,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_token attribute_token,
     int is_unsigned,
     int is_bool_alias
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_varchar_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,

@@ -577,7 +577,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer columns",
         }
     );
     failures += execute_error(

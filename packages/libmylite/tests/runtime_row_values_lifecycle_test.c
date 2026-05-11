@@ -593,7 +593,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
         }
     );
     failures += execute_error(

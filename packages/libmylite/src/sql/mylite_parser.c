@@ -3244,7 +3244,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
-    struct mylite_sql_ast_node *integer_type,
+    struct mylite_sql_ast_node *column_type,
     struct mylite_sql_ast_node *nullability,
     struct mylite_sql_ast_node *default_null
 ) {
@@ -3252,8 +3252,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
         name == NULL ? (struct mylite_sql_source_span){0} : name->span;
     struct mylite_sql_ast_node *column = NULL;
 
-    if (integer_type != NULL) {
-        span = span_join(span, integer_type->span);
+    if (column_type != NULL) {
+        span = span_join(span, column_type->span);
     }
     if (nullability != NULL) {
         span = span_join(span, nullability->span);
@@ -3268,7 +3268,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     }
 
     mylite_sql_ast_node_append_child(column, name);
-    mylite_sql_ast_node_append_child(column, integer_type);
+    mylite_sql_ast_node_append_child(column, column_type);
     mylite_sql_ast_node_append_child(column, nullability);
     mylite_sql_ast_node_append_child(column, default_null);
     return column;
@@ -3339,6 +3339,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
             .has_display_width = display_width_token.text != NULL,
             .is_bool_alias = is_bool_alias,
             .display_width_span = span_from_token(&display_width_token),
+        }
+    );
+    return type;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_varchar_type_tokens tokens
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token));
+    struct mylite_sql_ast_node *type = make_node(state, MYLITE_SQL_AST_VARCHAR_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_varchar_type(
+        type,
+        (struct mylite_sql_ast_varchar_type_payload){
+            .length_span = span_from_token(&tokens.length_token),
         }
     );
     return type;
@@ -3728,6 +3748,7 @@ static bool map_keyword_token(
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
+        {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},

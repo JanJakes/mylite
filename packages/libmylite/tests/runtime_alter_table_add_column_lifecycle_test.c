@@ -609,7 +609,7 @@ static int test_add_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers ADD COLUMN added VARCHAR(10)",
+        "ALTER TABLE numbers ADD COLUMN added VARCHAR",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

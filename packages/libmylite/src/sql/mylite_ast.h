@@ -206,6 +206,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR = 197,
     MYLITE_SQL_AST_ATAN2_FUNCTION = 198,
     MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR = 199,
+    MYLITE_SQL_AST_VARCHAR_TYPE = 200,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -331,6 +332,10 @@ struct mylite_sql_ast_integer_type_payload {
     struct mylite_sql_source_span display_width_span;
 };
 
+struct mylite_sql_ast_varchar_type_payload {
+    struct mylite_sql_source_span length_span;
+};
+
 struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
@@ -348,6 +353,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
+    struct mylite_sql_ast_varchar_type_payload varchar_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
@@ -409,6 +415,10 @@ void mylite_sql_ast_node_set_integer_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_integer_type_payload payload
 );
+void mylite_sql_ast_node_set_varchar_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_varchar_type_payload payload
+);
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -442,6 +452,9 @@ int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_nod
 int mylite_sql_ast_node_integer_type_has_display_width(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_integer_type_is_bool_alias(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
+    const struct mylite_sql_ast_node *node
+);
+struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(

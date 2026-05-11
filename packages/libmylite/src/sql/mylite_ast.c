@@ -154,6 +154,17 @@ void mylite_sql_ast_node_set_integer_type(
     node->payload.integer_type = payload;
 }
 
+void mylite_sql_ast_node_set_varchar_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_varchar_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.varchar_type = payload;
+}
+
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -309,6 +320,16 @@ struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_spa
     return node->payload.integer_type.display_width_span;
 }
 
+struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_VARCHAR_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.varchar_type.length_span;
+}
+
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 ) {
@@ -383,6 +404,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_definition";
     case MYLITE_SQL_AST_INTEGER_TYPE:
         return "integer_type";
+    case MYLITE_SQL_AST_VARCHAR_TYPE:
+        return "varchar_type";
     case MYLITE_SQL_AST_NULLABILITY:
         return "nullability";
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:

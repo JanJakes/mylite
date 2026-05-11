@@ -1034,6 +1034,9 @@ insert_value(A) ::= TRUE(T). {
 insert_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
+insert_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 insert_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
@@ -1059,6 +1062,9 @@ update_value(A) ::= TRUE(T). {
 }
 update_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+update_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
@@ -2507,8 +2513,25 @@ column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U) column_default_opt(D). {
+column_definition(A) ::= identifier(N) column_type(T) nullability_opt(U) column_default_opt(D). {
     A = mylite_sql_parser_make_column_definition(state, N, T, U, D);
+}
+
+column_type(A) ::= integer_type(T). {
+    A = T;
+}
+column_type(A) ::= varchar_type(T). {
+    A = T;
+}
+
+varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+        });
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {

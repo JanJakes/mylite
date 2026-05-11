@@ -452,7 +452,8 @@ static int test_show_create_descriptor_failure_paths(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SHOW CREATE TABLE supports only integer column descriptors",
+            .message_part =
+                "SHOW CREATE TABLE supports only integer and VARCHAR column descriptors",
         }
     );
     failures += execute_error(

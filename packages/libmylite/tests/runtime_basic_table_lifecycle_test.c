@@ -482,7 +482,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_type (name VARCHAR(10))",
+        "CREATE TABLE unsupported_type (name VARCHAR)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

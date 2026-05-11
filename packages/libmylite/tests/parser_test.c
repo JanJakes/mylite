@@ -66,6 +66,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_varchar_type_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
@@ -145,6 +146,11 @@ static int expect_integer_type(
     int expected_unsigned,
     const char *context
 );
+static int expect_varchar_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+);
 static int expect_integer_display_width(
     const struct mylite_sql_ast_node *node,
     const char *expected_width,
@@ -210,6 +216,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_varchar_type_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
@@ -6751,6 +6758,99 @@ static int test_table_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_varchar_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE string_types (v0 VARCHAR(0), label VARCHAR(255) NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 2U, "varchar column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "v0", "varchar zero column name");
+    failures += expect_varchar_type(column_type, "0", "varchar zero column type");
+    failures += expect_span_text(column_type, "VARCHAR(0)", "varchar zero span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "label", "varchar max column name");
+    failures += expect_varchar_type(column_type, "255", "varchar max column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "varchar max not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN label VARCHAR(12) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_varchar_type(column_type, "12", "alter add varchar column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter add varchar not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col VARCHAR(15) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_varchar_type(column_type, "15", "varchar alter modify column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "varchar alter modify nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_text VARCHAR(20) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_varchar_type(column_type, "20", "varchar alter change column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "varchar alter change nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO simple_lifecycle VALUES ('text');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string insert value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_create_table_like_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -10568,6 +10668,17 @@ static int test_update_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("UPDATE simple_lifecycle SET amount = 'text';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "update string assignment value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -10963,8 +11074,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("CREATE TABLE a.b.c (id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE t (id VARCHAR(10));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE TABLE t (id VARCHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -11141,7 +11251,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name ADD COLUMN added VARCHAR(10);",
+        "ALTER TABLE old_name ADD COLUMN added VARCHAR;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -11496,7 +11606,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name MODIFY old_col VARCHAR(10);",
+        "ALTER TABLE old_name MODIFY old_col VARCHAR;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -11559,7 +11669,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name CHANGE old_col new_col VARCHAR(10);",
+        "ALTER TABLE old_name CHANGE old_col new_col VARCHAR;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -11653,7 +11763,7 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t VALUES (1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -11665,8 +11775,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("INSERT INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("REPLACE INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -11775,8 +11884,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("REPLACE INTO t SET id = 'text';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -11900,7 +12008,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("DELETE LOW_PRIORITY FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE t SET id = '1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -12194,6 +12302,34 @@ static int expect_integer_type(
             expected_unsigned,
             mylite_sql_ast_integer_type_name(actual_type),
             actual_unsigned
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_varchar_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+
+    if (expect_node(node, MYLITE_SQL_AST_VARCHAR_TYPE, context) != 0) {
+        return 1;
+    }
+
+    span = mylite_sql_ast_node_varchar_type_length_span(node);
+    if (span.text == NULL || span.length != strlen(expected_length) ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected VARCHAR length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
         );
         return 1;
     }

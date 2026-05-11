@@ -3606,6 +3606,8 @@ static bool map_keyword_token(
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
+        {"BIN", MYLITE_SQL_PARSE_BIN},
+        {"OCT", MYLITE_SQL_PARSE_OCT},
         {"ABS", MYLITE_SQL_PARSE_ABS},
         {"SIGN", MYLITE_SQL_PARSE_SIGN},
         {"CEIL", MYLITE_SQL_PARSE_CEIL},

@@ -437,6 +437,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "round_function";
     case MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR:
         return "round_argument_count_error";
+    case MYLITE_SQL_AST_BIN_FUNCTION:
+        return "bin_function";
+    case MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR:
+        return "bin_argument_count_error";
+    case MYLITE_SQL_AST_OCT_FUNCTION:
+        return "oct_function";
+    case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
+        return "oct_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

@@ -40,6 +40,7 @@ static int test_isnull_function(void);
 static int test_abs_function(void);
 static int test_sign_function(void);
 static int test_rounding_functions(void);
+static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
@@ -178,6 +179,7 @@ int main(void) {
     failures += test_abs_function();
     failures += test_sign_function();
     failures += test_rounding_functions();
+    failures += test_base_conversion_functions();
     failures += test_bit_count_function();
     failures += test_case_operator();
     failures += test_do_statement();
@@ -2304,6 +2306,118 @@ static int test_bit_count_function(void) {
     failures += parse_sql("CREATE TABLE bit_count (bit_count INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "bit_count identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_base_conversion_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT BIN(64), Oct(NULL), bin(~0), oct(1+2) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_BIN_FUNCTION, "bin function");
+    failures += expect_span_text(first_expression, "BIN(64)", "bin function span");
+    failures += expect_child_count(first_expression, 1U, "bin argument count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "bin integer"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_OCT_FUNCTION, "mixed oct");
+    failures +=
+        expect_literal(child_at(second_expression, 0U), MYLITE_SQL_AST_LITERAL_NULL, "oct NULL");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_BIN_FUNCTION, "lower bin");
+    failures += expect_operator(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_BITWISE_NOT,
+        "bin bitwise argument"
+    );
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_OCT_FUNCTION, "lower oct");
+    failures += expect_operator(
+        child_at(fourth_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "oct arithmetic argument"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "base conversion from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT BIN (1), (OCT(1)), BIN(IFNULL(NULL,7));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_BIN_FUNCTION, "spaced bin");
+    failures += expect_span_text(first_expression, "BIN (1)", "spaced bin span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized oct");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_OCT_FUNCTION, "wrapped oct");
+    failures += expect_span_text(parenthesized, "(OCT(1))", "parenthesized oct span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_BIN_FUNCTION, "nested bin value");
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_IFNULL_FUNCTION,
+        "ifnull bin value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT BIN();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR,
+        "empty bin argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIN(1,2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR,
+        "two bin argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT OCT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR,
+        "empty oct argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT OCT(1,2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR,
+        "two oct argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE bin (oct INT, bin INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "base conversion identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

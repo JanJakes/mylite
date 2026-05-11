@@ -10,7 +10,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `ASIN()` | ❌ | Return arc sine |
 | `ATAN()` | ❌ | Return arc tangent |
 | `ATAN2(), ATAN()` | ❌ | Return arc tangent of the two arguments |
-| `BIN()` | ❌ | Return a string containing binary representation of a number |
+| `BIN()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned/signed envelopes, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; returns unsigned 64-bit base-2 text with no leading zeroes; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `BIT_COUNT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support or binary-string bit counting |
 | `CEIL()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `CEILING()` | 🟡 | Synonym for the limited `CEIL()` subset |
@@ -27,7 +27,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `LOG10()` | ❌ | Return base-10 logarithm of the argument |
 | `LOG2()` | ❌ | Return base-2 logarithm of the argument |
 | `MOD()` | 🟡 | Limited no-source/`DUAL` signed-64 scalar modulo projection and limited `DO` expression execution with `MOD(left, right)`, `%`, and infix `MOD`; no table-backed expression support |
-| `OCT()` | ❌ | Return a string containing octal representation of a number |
+| `OCT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned/signed envelopes, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; returns unsigned 64-bit base-8 text with no leading zeroes; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `PI()` | ❌ | Return value of pi |
 | `POW()` | ❌ | Return argument raised to the specified power |
 | `POWER()` | ❌ | Return argument raised to the specified power |

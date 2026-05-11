@@ -60,6 +60,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
+    mysql_error_cannot_update_table_while_creating = 1746,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_division_by_zero = 1365,
@@ -436,6 +437,7 @@ struct planned_insert_select {
 struct planned_create_table_select {
     struct planned_create_table create_table;
     struct planned_select source;
+    enum mylite_sql_ast_select_locking_clause source_locking_clause;
 };
 
 enum planned_count_function {
@@ -4068,6 +4070,11 @@ static void set_cant_drop_database_error(struct mylite_db *database, const char 
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
 static int append_table_exists_note(struct mylite_db *database, const char *table_name);
+static void set_create_table_select_locking_clause_error(
+    struct mylite_db *database,
+    const char *source_table_name,
+    const char *target_table_name
+);
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
@@ -8841,6 +8848,10 @@ static int plan_create_table_select(
 
     *out_plan = (struct planned_create_table_select){0};
     rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+    if (rc == MYLITE_OK) {
+        out_plan->source_locking_clause =
+            mylite_sql_ast_node_select_locking_clause(child_at(statement, 1U));
+    }
     if (rc == MYLITE_OK && out_plan->source.calc_found_rows) {
         set_unsupported_error(
             database,
@@ -8900,6 +8911,14 @@ static int create_table_select_from_plan(
     }
     if (existing_table_found) {
         set_table_exists_error(database, plan->create_table.target.table_name);
+        return MYLITE_ERROR;
+    }
+    if (plan->source_locking_clause != MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        set_create_table_select_locking_clause_error(
+            database,
+            plan->source.source.table_name,
+            plan->create_table.target.table_name
+        );
         return MYLITE_ERROR;
     }
 
@@ -28772,6 +28791,31 @@ static int append_table_exists_note(struct mylite_db *database, const char *tabl
         mylite_connection_diagnostics(database),
         mysql_error_table_exists,
         "42S01",
+        message
+    );
+}
+
+static void set_create_table_select_locking_clause_error(
+    struct mylite_db *database,
+    const char *source_table_name,
+    const char *target_table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't update table '%s' while '%s' is being created.",
+        source_table_name,
+        target_table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cannot_update_table_while_creating,
+        "HY000",
         message
     );
 }

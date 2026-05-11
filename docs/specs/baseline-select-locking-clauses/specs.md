@@ -99,8 +99,11 @@ The admitted simple locking clauses are supported as no-ops on:
 rejected. MySQL 8.4.9 rejects this shape with error `1746`, SQLSTATE `HY000`,
 and a message saying the source table cannot be updated while the target table
 is being created. MyLite should use that diagnostic when it can identify the
-single source descriptor table; otherwise it may fall back to a deterministic
-unsupported-statement diagnostic for malformed or unsupported source shapes.
+single source descriptor table and the target table does not already exist;
+otherwise it preserves normal target-exists handling, including
+`CREATE TABLE IF NOT EXISTS ... SELECT` no-op behavior for an existing target.
+It may fall back to a deterministic unsupported-statement diagnostic for
+malformed or unsupported source shapes.
 
 ## Semantics
 
@@ -153,6 +156,7 @@ Expected diagnostics:
 | `NOWAIT`, `SKIP LOCKED`, `OF table_name` | Deterministic syntax or unsupported diagnostic |
 | Multiple locking clauses | Deterministic syntax or unsupported diagnostic; MySQL exact `3569` may be deferred |
 | `CREATE TABLE ... SELECT ... locking_clause` with one descriptor source table | Error `1746`, SQLSTATE `HY000`, message naming the source and target tables |
+| `CREATE TABLE ... SELECT ... locking_clause` with an existing target table | Existing target diagnostics or `IF NOT EXISTS` no-op note take precedence |
 | Unknown schema/table/column in the underlying statement | Existing descriptor-driven diagnostics |
 | Unsupported object kind once non-base descriptors exist | Existing unsupported-object diagnostic |
 | Allocation failure | Existing `MYLITE_NOMEM` / out-of-memory diagnostic |
@@ -171,7 +175,8 @@ underlying statement already produces warnings, such as `SQL_NO_CACHE`,
 - Do not materialize extra rows in memory. The existing descriptor-built SQLite
   plans should run exactly as before.
 - Reject `CREATE TABLE ... SELECT` locking clauses before creating the target
-  descriptor or physical table.
+  descriptor or physical table, after target existence / `IF NOT EXISTS`
+  precedence has been preserved.
 - `INSERT ... SELECT` and `REPLACE ... SELECT` may ignore admitted source
   locking clauses after source planning succeeds.
 - Preserve zero-initialized cleanup behavior for any touched statement/planner

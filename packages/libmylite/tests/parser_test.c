@@ -77,6 +77,7 @@ static int test_select_group_by_clause(void);
 static int test_select_distinct_clause(void);
 static int test_select_sql_calc_found_rows_clause(void);
 static int test_select_noop_modifier_clause(void);
+static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
@@ -210,6 +211,7 @@ int main(void) {
     failures += test_select_distinct_clause();
     failures += test_select_sql_calc_found_rows_clause();
     failures += test_select_noop_modifier_clause();
+    failures += test_select_locking_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
     failures += test_select_item_alias_clause();
@@ -8131,6 +8133,156 @@ static int test_select_noop_modifier_clause(void) {
 
     failures += parse_sql(
         "SELECT SQL_CALC_FOUND_ROWS SQL_NO_CACHE id FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_locking_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_source = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT 1 FOR UPDATE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "scalar select for update"
+    );
+    failures += expect_span_text(statement, "SELECT 1 FOR UPDATE", "scalar select for update span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 FROM DUAL FOR SHARE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
+        "dual select for share"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id = 1 ORDER BY id LIMIT 1 FOR UPDATE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "table select for update"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "locking select order clause"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE),
+        MYLITE_SQL_AST_LIMIT_CLAUSE,
+        "locking select limit clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle LOCK IN SHARE MODE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_LOCK_IN_SHARE_MODE,
+        "table select lock in share mode"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT n, COUNT(*) FROM simple_lifecycle GROUP BY n ORDER BY n FOR SHARE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
+        "grouped select for share"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO copy SELECT id FROM simple_lifecycle FOR UPDATE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_source = child_at(statement, 2U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(select_source) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "insert select for update"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE INTO copy SELECT id FROM simple_lifecycle FOR SHARE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_source = child_at(statement, 2U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(select_source) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
+        "replace select for share"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE copy AS SELECT id FROM simple_lifecycle FOR UPDATE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_source = child_at(statement, 1U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_locking_clause(select_source) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "ctas select for update"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE NOWAIT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FOR SHARE SKIP LOCKED;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE FOR SHARE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE ORDER BY id;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -110,6 +110,17 @@ void mylite_sql_ast_node_set_select_calc_found_rows(
     node->payload.select.calc_found_rows = calc_found_rows != 0;
 }
 
+void mylite_sql_ast_node_set_select_locking_clause(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_locking_clause locking_clause
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.select.locking_clause = locking_clause;
+}
+
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -216,6 +227,16 @@ int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node 
     }
 
     return node->payload.select.calc_found_rows;
+}
+
+enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_clause(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE;
+    }
+
+    return node->payload.select.locking_clause;
 }
 
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(

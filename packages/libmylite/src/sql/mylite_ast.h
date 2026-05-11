@@ -259,10 +259,18 @@ enum mylite_sql_ast_select_option {
     MYLITE_SQL_AST_SELECT_OPTION_SQL_NO_CACHE = 1U << 5U,
 };
 
+enum mylite_sql_ast_select_locking_clause {
+    MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE = 0,
+    MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE = 1,
+    MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE = 2,
+    MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_LOCK_IN_SHARE_MODE = 3,
+};
+
 struct mylite_sql_ast_select_payload {
     enum mylite_sql_ast_select_modifier modifier;
     unsigned int options;
     int calc_found_rows;
+    enum mylite_sql_ast_select_locking_clause locking_clause;
 };
 
 struct mylite_sql_ast_literal_payload {
@@ -343,6 +351,10 @@ void mylite_sql_ast_node_set_select_calc_found_rows(
     struct mylite_sql_ast_node *node,
     int calc_found_rows
 );
+void mylite_sql_ast_node_set_select_locking_clause(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_locking_clause locking_clause
+);
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -374,6 +386,9 @@ enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
 );
 unsigned int mylite_sql_ast_node_select_options(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_clause(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );

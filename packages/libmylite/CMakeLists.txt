@@ -425,6 +425,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_select_noop_modifiers_test)
 
+  add_executable(mylite_runtime_select_locking_clauses_test
+    tests/runtime_select_locking_clauses_test.c
+  )
+  target_link_libraries(mylite_runtime_select_locking_clauses_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_select_locking_clauses_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_select_locking_clauses_test)
+
   add_executable(mylite_runtime_last_insert_id_function_test
     tests/runtime_last_insert_id_function_test.c
   )
@@ -1517,6 +1528,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.select_noop_modifiers
     COMMAND mylite_runtime_select_noop_modifiers_test
+  )
+  add_test(
+    NAME libmylite.runtime.select_locking_clauses
+    COMMAND mylite_runtime_select_locking_clauses_test
   )
   add_test(
     NAME libmylite.runtime.last_insert_id_function

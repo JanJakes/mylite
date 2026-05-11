@@ -291,7 +291,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifie
     struct mylite_sql_ast_node *group_clause,
     struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
-    struct mylite_sql_ast_node *limit_clause
+    struct mylite_sql_ast_node *limit_clause,
+    struct mylite_sql_select_locking_clause locking_clause
 ) {
     struct mylite_sql_ast_node *statement = mylite_sql_parser_make_select_statement(
         state,
@@ -308,6 +309,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifie
     mylite_sql_ast_node_set_select_modifier(statement, modifiers.duplicate_modifier);
     mylite_sql_ast_node_set_select_options(statement, modifiers.options);
     mylite_sql_ast_node_set_select_calc_found_rows(statement, modifiers.calc_found_rows);
+    mylite_sql_ast_node_set_select_locking_clause(statement, locking_clause.kind);
+    if (statement != NULL && locking_clause.kind != MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        mylite_sql_ast_node_set_span(statement, span_join(statement->span, locking_clause.span));
+    }
     return statement;
 }
 
@@ -3677,6 +3682,7 @@ static bool map_keyword_token(
         {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
         {"CHANGE", MYLITE_SQL_PARSE_CHANGE},
         {"COLUMN", MYLITE_SQL_PARSE_COLUMN},
+        {"FOR", MYLITE_SQL_PARSE_FOR},
         {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
@@ -3684,6 +3690,8 @@ static bool map_keyword_token(
         {"HIGH_PRIORITY", MYLITE_SQL_PARSE_HIGH_PRIORITY},
         {"DELAYED", MYLITE_SQL_PARSE_DELAYED},
         {"INTO", MYLITE_SQL_PARSE_INTO},
+        {"LOCK", MYLITE_SQL_PARSE_LOCK},
+        {"MODE", MYLITE_SQL_PARSE_MODE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"TO", MYLITE_SQL_PARSE_TO},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
@@ -3725,6 +3733,7 @@ static bool map_keyword_token(
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"SHARE", MYLITE_SQL_PARSE_SHARE},
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
         {"SQL_BIG_RESULT", MYLITE_SQL_PARSE_SQL_BIG_RESULT},
         {"SQL_SMALL_RESULT", MYLITE_SQL_PARSE_SQL_SMALL_RESULT},

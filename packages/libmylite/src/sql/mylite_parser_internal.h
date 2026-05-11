@@ -47,6 +47,11 @@ struct mylite_sql_select_modifiers {
     int calc_found_rows;
 };
 
+struct mylite_sql_select_locking_clause {
+    enum mylite_sql_ast_select_locking_clause kind;
+    struct mylite_sql_source_span span;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root
@@ -91,7 +96,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifie
     struct mylite_sql_ast_node *group_clause,
     struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
-    struct mylite_sql_ast_node *limit_clause
+    struct mylite_sql_ast_node *limit_clause,
+    struct mylite_sql_select_locking_clause locking_clause
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_parser_state *state,

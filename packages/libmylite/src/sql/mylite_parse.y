@@ -46,6 +46,7 @@
 %type select_sql_buffer_result_opt { int }
 %type select_sql_no_cache_opt { int }
 %type select_sql_calc_found_rows_opt { int }
+%type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1059,39 +1060,42 @@ update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
 
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
+    select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
+        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
+    select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
-        NULL);
+        NULL, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
-    limit_clause_opt(L). {
+    limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+        state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        NULL, NULL, NULL, NULL, NULL, NULL);
+        NULL, NULL, NULL, NULL, NULL, NULL, K);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
+    select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
-    limit_clause_opt(L). {
+    limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
 }
 
 select_modifiers(A) ::=
@@ -1164,6 +1168,49 @@ select_sql_calc_found_rows_opt(A) ::= . {
 }
 select_sql_calc_found_rows_opt(A) ::= SQL_CALC_FOUND_ROWS. {
     A = 1;
+}
+
+select_locking_clause_opt(A) ::= . {
+    A = (struct mylite_sql_select_locking_clause){
+        .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE,
+        .span = {0},
+    };
+}
+select_locking_clause_opt(A) ::= FOR(F) UPDATE(U). {
+    A = (struct mylite_sql_select_locking_clause){
+        .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        .span = {
+            .text = F.text,
+            .length = (U.offset + U.length) - F.offset,
+            .offset = F.offset,
+            .line = F.line,
+            .column = F.column,
+        },
+    };
+}
+select_locking_clause_opt(A) ::= FOR(F) SHARE(S). {
+    A = (struct mylite_sql_select_locking_clause){
+        .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
+        .span = {
+            .text = F.text,
+            .length = (S.offset + S.length) - F.offset,
+            .offset = F.offset,
+            .line = F.line,
+            .column = F.column,
+        },
+    };
+}
+select_locking_clause_opt(A) ::= LOCK(L) IN SHARE MODE(M). {
+    A = (struct mylite_sql_select_locking_clause){
+        .kind = MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_LOCK_IN_SHARE_MODE,
+        .span = {
+            .text = L.text,
+            .length = (M.offset + M.length) - L.offset,
+            .offset = L.offset,
+            .line = L.line,
+            .column = L.column,
+        },
+    };
 }
 
 table_alias_opt(A) ::= . {
@@ -2089,6 +2136,12 @@ identifier(A) ::= CHARSET(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NAMES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MODE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SHARE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHARACTER(T). {

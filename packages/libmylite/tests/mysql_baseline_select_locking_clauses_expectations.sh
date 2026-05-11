@@ -199,6 +199,39 @@ expect_error \
     "USE ${DATABASE}; CREATE TABLE copy AS SELECT id FROM t FOR UPDATE;"
 
 expect_error \
+    "ctas if-not-exists locking clause rejected for missing target" \
+    1746 \
+    HY000 \
+    "Can't update table 't' while 'copy_if_missing' is being created" \
+    "USE ${DATABASE}; CREATE TABLE IF NOT EXISTS copy_if_missing AS SELECT id FROM t FOR UPDATE;"
+
+run_mysql "USE ${DATABASE}; CREATE TABLE copy(id INT NOT NULL) ENGINE=InnoDB;" >/dev/null
+
+expect_error \
+    "ctas locking target-exists precedence" \
+    1050 \
+    42S01 \
+    "Table 'copy' already exists" \
+    "USE ${DATABASE}; CREATE TABLE copy AS SELECT id FROM t FOR UPDATE;"
+
+ctas_if_not_exists_existing=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE IF NOT EXISTS copy AS SELECT id FROM t FOR UPDATE;
+         SHOW COUNT(*) WARNINGS;
+         SHOW WARNINGS;
+         SELECT ROW_COUNT(), @@warning_count, @@error_count;
+         SELECT COUNT(*) FROM copy;"
+)
+expect_value \
+    "ctas locking if-not-exists existing target no-op" \
+    "1
+Note	1050	Table 'copy' already exists
+-1	1	0
+0" \
+    "$ctas_if_not_exists_existing"
+
+expect_error \
     "repeated locking clause rejected" \
     3569 \
     HY000 \

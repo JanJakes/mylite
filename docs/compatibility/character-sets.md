@@ -39,7 +39,7 @@
 | `ucs2` | ❌ | Metadata and conversions |
 | `ujis` | ❌ | Metadata and conversions |
 | `utf8mb3` | 🟡 | Limited scalar `@@character_set_system` placeholder value only; no table/column/literal storage, metadata catalogs, conversions, collations, or identifier character-set semantics |
-| `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row, fixed `CREATE TABLE` option acceptance, fixed metadata no-op `ALTER TABLE ... [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4`, scalar `@@character_set_client` / `@@character_set_connection` / `@@character_set_results` reads, scalar `@@character_set_server`, scalar `@@character_set_database`, fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve `utf8mb4`, and limited UTF-8 validation for `VARCHAR(0..255)` storage; no conversions, alternate column charsets, mutable connection/server/database/table state, or full catalog semantics |
+| `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row, fixed `CREATE TABLE` option acceptance, fixed metadata no-op `ALTER TABLE ... [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4`, scalar `@@character_set_client` / `@@character_set_connection` / `@@character_set_results` reads, scalar `@@character_set_server`, scalar `@@character_set_database`, fixed no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve `utf8mb4`, and limited UTF-8 validation for `VARCHAR(0..255)` and baseline `TEXT` family storage; no conversions, alternate column charsets, mutable connection/server/database/table state, or full catalog semantics |
 | `utf16` | ❌ | Metadata and conversions |
 | `utf16le` | ❌ | Metadata and conversions |
 | `utf32` | ❌ | Metadata and conversions |

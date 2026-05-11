@@ -12,7 +12,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.COLLATIONS` | ❌ | Collation catalog |
 | `INFORMATION_SCHEMA.COLUMN_PRIVILEGES` | ❌ | Privileges on columns |
 | `INFORMATION_SCHEMA.COLUMN_STATISTICS` | ❌ | Histogram statistics for column values |
-| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/`VARCHAR` metadata, nullability, integer defaults, visibility, primary-key markers, and auto-increment `EXTRA`; no privileges, generated columns, comments, string defaults, secondary index metadata, full charset/collation behavior, or complete MySQL system catalogs |
+| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/`VARCHAR`/baseline `TEXT` family metadata, nullability, integer defaults, visibility, primary-key markers, and auto-increment `EXTRA`; no privileges, generated columns, comments, string defaults, secondary index metadata, full charset/collation behavior, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.COLUMNS_EXTENSIONS` | ❌ | Column attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | Failed login attempts per account |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | Roles enabled within current session |

@@ -11,7 +11,7 @@ miscellaneous system helpers.
 | `CURRENT_USER(), CURRENT_USER` | 🟡 | Limited one-row scalar select and `DO` expression execution return MyLite's embedded current identity `root@%`; no accounts, definers, roles, privileges, or table-backed evaluation |
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE() [AS alias]` with optional `FROM DUAL` plus limited `DO` expression execution; returns selected MyLite catalog schema or `NULL`; no table-backed evaluation, clauses, or general expression support |
 | `ExtractValue()` | ❌ | Extract a value from an XML string using XPath notation |
-| `FOUND_ROWS()` | ❌ | Rows before LIMIT |
+| `FOUND_ROWS()` | 🟡 | Limited zero-argument one-row scalar `SELECT FOUND_ROWS() [AS alias]` with optional `FROM DUAL`; returns connection-local found-row state for supported `SELECT` statements, records MySQL deprecation warning 1287 per invocation, and works with the limited `SQL_CALC_FOUND_ROWS` select modifier subset; no arguments, table-backed evaluation, protocol metadata, `CLIENT_FOUND_ROWS`, replication semantics, or full diagnostics-area behavior |
 | `GET_LOCK()` | ❌ | Get a named lock |
 | `ICU_VERSION()` | ❌ | ICU library version |
 | `INET_ATON()` | ❌ | Return numeric value of an IP address |

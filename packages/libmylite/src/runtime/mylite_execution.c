@@ -54,6 +54,7 @@ enum {
     mysql_warning_found_rows_deprecated = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
     mysql_warning_sql_calc_found_rows_deprecated = 1287,
+    mysql_warning_sql_no_cache_deprecated = 1681,
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
@@ -1149,6 +1150,10 @@ static int execute_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int reject_select_modifier_usage_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int execute_show_tables_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2088,8 +2093,13 @@ static int append_session_scalar_expression_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+static int append_select_modifier_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int append_found_rows_deprecation_warning(struct mylite_db *database);
 static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *database);
+static int append_sql_no_cache_deprecation_warning(struct mylite_db *database);
 static int accumulate_staged_division_by_zero_warnings(
     struct mylite_db *database,
     size_t cell_warning_count,
@@ -5183,6 +5193,9 @@ static int execute_create_table_select_statement(
         );
     }
     if (rc == MYLITE_OK && !finished) {
+        rc = append_select_modifier_warnings(database, child_at(statement, 1U));
+    }
+    if (rc == MYLITE_OK && !finished) {
         rc = create_table_select_from_plan(database, &plan, &affected_rows);
     }
     planned_create_table_select_deinit(&plan);
@@ -6164,6 +6177,9 @@ static int execute_planned_insert_select_statement(
 
     rc = plan_insert_select(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, child_at(statement, 2U));
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_select_from_plan(database, &plan, result);
     }
     planned_insert_select_deinit(&plan);
@@ -6359,21 +6375,18 @@ static int execute_select_statement(
         set_native_function_parameter_count_error(database, argument_count_error_function);
         return MYLITE_ERROR;
     }
+    rc = reject_select_modifier_usage_if_needed(database, statement);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
-    if (mylite_sql_ast_node_select_calc_found_rows(statement) &&
-        (select_statement_has_group_by_clause(statement) ||
-         select_statement_has_count_aggregate(statement) ||
-         select_statement_has_column_aggregate(statement))) {
-        set_unsupported_error(
-            database,
-            "SQL_CALC_FOUND_ROWS supports only descriptor-backed column-list and wildcard SELECT"
-        );
-        return MYLITE_ERROR;
-    }
     if (select_statement_has_group_by_clause(statement)) {
         rc = plan_grouped_aggregate(database, statement, &grouped_plan);
+        if (rc == MYLITE_OK) {
+            rc = append_select_modifier_warnings(database, statement);
+        }
         if (rc == MYLITE_OK) {
             rc = execute_grouped_aggregate_from_plan(database, &grouped_plan, out_result);
         }
@@ -6383,6 +6396,9 @@ static int execute_select_statement(
     if (select_statement_has_count_aggregate(statement)) {
         rc = plan_count(database, statement, &count_plan);
         if (rc == MYLITE_OK) {
+            rc = append_select_modifier_warnings(database, statement);
+        }
+        if (rc == MYLITE_OK) {
             rc = execute_count_from_plan(database, &count_plan, out_result);
         }
         planned_count_deinit(&count_plan);
@@ -6390,6 +6406,9 @@ static int execute_select_statement(
     }
     if (select_statement_has_column_aggregate(statement)) {
         rc = plan_column_aggregate(database, statement, &aggregate_plan);
+        if (rc == MYLITE_OK) {
+            rc = append_select_modifier_warnings(database, statement);
+        }
         if (rc == MYLITE_OK) {
             rc = execute_column_aggregate_from_plan(database, &aggregate_plan, out_result);
         }
@@ -6410,11 +6429,54 @@ static int execute_select_statement(
 
     rc = plan_select(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_select_from_plan(database, &plan, out_result);
     }
     planned_select_deinit(&plan);
 
     return rc;
+}
+
+static int reject_select_modifier_usage_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    bool has_descriptor_table_source = false;
+
+    if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        has_descriptor_table_source = true;
+    }
+
+    if (mylite_sql_ast_node_select_calc_found_rows(statement) && !has_descriptor_table_source) {
+        set_unsupported_error(
+            database,
+            "SQL_CALC_FOUND_ROWS supports only descriptor-backed column-list and wildcard SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT &&
+        !has_descriptor_table_source) {
+        set_unsupported_error(
+            database,
+            "SELECT DISTINCT supports only descriptor-backed table reads"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_calc_found_rows(statement) &&
+        (select_statement_has_group_by_clause(statement) ||
+         select_statement_has_count_aggregate(statement) ||
+         select_statement_has_column_aggregate(statement))) {
+        set_unsupported_error(
+            database,
+            "SQL_CALC_FOUND_ROWS supports only descriptor-backed column-list and wildcard SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int execute_show_tables_statement(
@@ -15606,7 +15668,10 @@ static int execute_scalar_projection_select_statement(
         return MYLITE_NOMEM;
     }
 
-    rc = append_session_scalar_select_warnings(database, select_list);
+    rc = append_select_modifier_warnings(database, statement);
+    if (rc == MYLITE_OK) {
+        rc = append_session_scalar_select_warnings(database, select_list);
+    }
     while (rc == MYLITE_OK && select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
         const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
@@ -15804,6 +15869,19 @@ static int append_session_scalar_expression_warnings(
     return rc;
 }
 
+static int append_select_modifier_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    unsigned int options = mylite_sql_ast_node_select_options(statement);
+
+    if ((options & MYLITE_SQL_AST_SELECT_OPTION_SQL_NO_CACHE) == 0U) {
+        return MYLITE_OK;
+    }
+
+    return append_sql_no_cache_deprecation_warning(database);
+}
+
 static int append_found_rows_deprecation_warning(struct mylite_db *database) {
     return mylite_diagnostics_append_warning(
         mylite_connection_diagnostics(database),
@@ -15821,6 +15899,15 @@ static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *data
         "HY000",
         "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future release. Consider "
         "using two separate queries instead."
+    );
+}
+
+static int append_sql_no_cache_deprecation_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_sql_no_cache_deprecated,
+        "HY000",
+        "'SQL_NO_CACHE' is deprecated and will be removed in a future release."
     );
 }
 

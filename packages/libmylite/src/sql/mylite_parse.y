@@ -37,6 +37,15 @@
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
 %type integer_signedness_opt { struct mylite_sql_integer_signedness_tokens }
+%type select_modifiers { struct mylite_sql_select_modifiers }
+%type select_duplicate_modifier_opt { enum mylite_sql_ast_select_modifier }
+%type select_high_priority_opt { int }
+%type select_straight_join_opt { int }
+%type select_sql_small_result_opt { int }
+%type select_sql_big_result_opt { int }
+%type select_sql_buffer_result_opt { int }
+%type select_sql_no_cache_opt { int }
+%type select_sql_calc_found_rows_opt { int }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1050,117 +1059,111 @@ update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
 
-select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL, NULL);
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) ALL select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL, NULL);
-}
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
-}
-select_statement(A) ::= SELECT(T) ALL select_item_list(B) FROM(F) DUAL(D). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
+        NULL);
 }
 select_statement(A) ::=
-    SELECT(T) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
+    limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
-select_statement(A) ::=
-    SELECT(T) ALL select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
-}
-select_statement(A) ::=
-    SELECT(T) SQL_CALC_FOUND_ROWS select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_calc_found_rows_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
-}
-select_statement(A) ::=
-    SELECT(T) ALL SQL_CALC_FOUND_ROWS select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_calc_found_rows_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
-}
-select_statement(A) ::=
-    SELECT(T) DISTINCT select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
-}
-select_statement(A) ::=
-    SELECT(T) DISTINCTROW select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
-}
-select_statement(A) ::= SELECT(T) STAR(S). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         NULL, NULL, NULL, NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) ALL STAR(S). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        NULL, NULL, NULL, NULL, NULL, NULL);
-}
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
-}
-select_statement(A) ::= SELECT(T) ALL STAR(S) FROM(F) DUAL(D). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::=
-    SELECT(T) STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
+    limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
-select_statement(A) ::=
-    SELECT(T) ALL STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+
+select_modifiers(A) ::=
+    select_duplicate_modifier_opt(D) select_high_priority_opt(HP) select_straight_join_opt(SJ)
+    select_sql_small_result_opt(SM) select_sql_big_result_opt(BG)
+    select_sql_buffer_result_opt(BF) select_sql_no_cache_opt(NC)
+    select_sql_calc_found_rows_opt(CF). {
+    A = (struct mylite_sql_select_modifiers){
+        .duplicate_modifier = D,
+        .options =
+            (HP ? MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY : 0U) |
+            (SJ ? MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN : 0U) |
+            (SM ? MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT : 0U) |
+            (BG ? MYLITE_SQL_AST_SELECT_OPTION_SQL_BIG_RESULT : 0U) |
+            (BF ? MYLITE_SQL_AST_SELECT_OPTION_SQL_BUFFER_RESULT : 0U) |
+            (NC ? MYLITE_SQL_AST_SELECT_OPTION_SQL_NO_CACHE : 0U),
+        .calc_found_rows = CF,
+    };
 }
-select_statement(A) ::=
-    SELECT(T) SQL_CALC_FOUND_ROWS STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_calc_found_rows_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+select_duplicate_modifier_opt(A) ::= . {
+    A = MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT;
 }
-select_statement(A) ::=
-    SELECT(T) ALL SQL_CALC_FOUND_ROWS STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_calc_found_rows_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+select_duplicate_modifier_opt(A) ::= ALL. {
+    A = MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT;
 }
-select_statement(A) ::=
-    SELECT(T) DISTINCT STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+select_duplicate_modifier_opt(A) ::= DISTINCT. {
+    A = MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
 }
-select_statement(A) ::=
-    SELECT(T) DISTINCTROW STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
-    A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+select_duplicate_modifier_opt(A) ::= DISTINCTROW. {
+    A = MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+}
+select_high_priority_opt(A) ::= . {
+    A = 0;
+}
+select_high_priority_opt(A) ::= HIGH_PRIORITY. {
+    A = 1;
+}
+select_straight_join_opt(A) ::= . {
+    A = 0;
+}
+select_straight_join_opt(A) ::= STRAIGHT_JOIN. {
+    A = 1;
+}
+select_sql_small_result_opt(A) ::= . {
+    A = 0;
+}
+select_sql_small_result_opt(A) ::= SQL_SMALL_RESULT. {
+    A = 1;
+}
+select_sql_big_result_opt(A) ::= . {
+    A = 0;
+}
+select_sql_big_result_opt(A) ::= SQL_BIG_RESULT. {
+    A = 1;
+}
+select_sql_buffer_result_opt(A) ::= . {
+    A = 0;
+}
+select_sql_buffer_result_opt(A) ::= SQL_BUFFER_RESULT. {
+    A = 1;
+}
+select_sql_no_cache_opt(A) ::= . {
+    A = 0;
+}
+select_sql_no_cache_opt(A) ::= SQL_NO_CACHE. {
+    A = 1;
+}
+select_sql_calc_found_rows_opt(A) ::= . {
+    A = 0;
+}
+select_sql_calc_found_rows_opt(A) ::= SQL_CALC_FOUND_ROWS. {
+    A = 1;
 }
 
 table_alias_opt(A) ::= . {

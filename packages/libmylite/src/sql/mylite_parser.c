@@ -31,6 +31,7 @@ struct mylite_sql_parse_error {
 static bool map_lexer_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
+    int previous_parser_token,
     struct mylite_sql_parser_token_map *out_map
 );
 static void record_parse_error(
@@ -41,10 +42,12 @@ static bool is_comment_token(enum mylite_sql_token_kind kind);
 static bool map_keyword_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
+    int previous_parser_token,
     int *out_parser_token
 );
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
+static bool previous_token_allows_select_noop_modifier(int previous_parser_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static char ascii_upper(unsigned char byte);
 static bool is_parse_ok(const struct mylite_sql_parser_state *state);
@@ -71,6 +74,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
     struct mylite_sql_lexer lexer;
     void *parser = NULL;
     bool previous_token_was_dot = false;
+    int previous_parser_token = 0;
 
     if (out_result == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
@@ -129,7 +133,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
             break;
         }
 
-        if (!map_lexer_token(&token, previous_token_was_dot, &token_map)) {
+        if (!map_lexer_token(&token, previous_token_was_dot, previous_parser_token, &token_map)) {
             record_parse_error(
                 out_result,
                 (struct mylite_sql_parse_error){
@@ -143,6 +147,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
         mylite_sql_lemon(parser, token_map.parser_token, token, &state);
         previous_token_was_dot = token_map.previous_token_was_dot;
+        previous_parser_token = token_map.parser_token;
 
         if (out_result->status != MYLITE_SQL_PARSE_OK || token.kind == MYLITE_SQL_TOKEN_EOF) {
             break;
@@ -274,6 +279,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_statement(
         mylite_sql_ast_node_set_span(script, span_join(script->span, statement->span));
     }
     return script;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifiers(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_select_modifiers modifiers,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_select_statement(
+        state,
+        select_token,
+        select_list,
+        from_clause,
+        where_clause,
+        group_clause,
+        having_clause,
+        order_clause,
+        limit_clause
+    );
+
+    mylite_sql_ast_node_set_select_modifier(statement, modifiers.duplicate_modifier);
+    mylite_sql_ast_node_set_select_options(statement, modifiers.options);
+    mylite_sql_ast_node_set_select_calc_found_rows(statement, modifiers.calc_found_rows);
+    return statement;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
@@ -3436,6 +3471,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(
 static bool map_lexer_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
+    int previous_parser_token,
     struct mylite_sql_parser_token_map *out_map
 ) {
     int parser_token = 0;
@@ -3460,7 +3496,12 @@ static bool map_lexer_token(
         parser_token = MYLITE_SQL_PARSE_QUOTED_IDENTIFIER;
         break;
     case MYLITE_SQL_TOKEN_KEYWORD:
-        if (!map_keyword_token(token, previous_token_was_dot, &parser_token)) {
+        if (!map_keyword_token(
+                token,
+                previous_token_was_dot,
+                previous_parser_token,
+                &parser_token
+            )) {
             return false;
         }
         break;
@@ -3539,6 +3580,7 @@ static bool is_comment_token(enum mylite_sql_token_kind kind) {
 static bool map_keyword_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
+    int previous_parser_token,
     int *out_parser_token
 ) {
     static const struct {
@@ -3684,12 +3726,26 @@ static bool map_keyword_token(
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
+        {"SQL_BIG_RESULT", MYLITE_SQL_PARSE_SQL_BIG_RESULT},
+        {"SQL_SMALL_RESULT", MYLITE_SQL_PARSE_SQL_SMALL_RESULT},
+        {"STRAIGHT_JOIN", MYLITE_SQL_PARSE_STRAIGHT_JOIN},
         {"SYSTEM_USER", MYLITE_SQL_PARSE_SYSTEM_USER},
     };
 
     if (previous_token_was_dot) {
         *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
         return true;
+    }
+
+    if (previous_token_allows_select_noop_modifier(previous_parser_token)) {
+        if (token_text_equals(token, "SQL_BUFFER_RESULT")) {
+            *out_parser_token = MYLITE_SQL_PARSE_SQL_BUFFER_RESULT;
+            return true;
+        }
+        if (token_text_equals(token, "SQL_NO_CACHE")) {
+            *out_parser_token = MYLITE_SQL_PARSE_SQL_NO_CACHE;
+            return true;
+        }
     }
 
     for (size_t index = 0U; index < sizeof(keyword_mappings) / sizeof(keyword_mappings[0]);
@@ -3793,6 +3849,25 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     }
 
     return false;
+}
+
+static bool previous_token_allows_select_noop_modifier(int previous_parser_token) {
+    switch (previous_parser_token) {
+    case MYLITE_SQL_PARSE_SELECT:
+    case MYLITE_SQL_PARSE_ALL:
+    case MYLITE_SQL_PARSE_DISTINCT:
+    case MYLITE_SQL_PARSE_DISTINCTROW:
+    case MYLITE_SQL_PARSE_HIGH_PRIORITY:
+    case MYLITE_SQL_PARSE_STRAIGHT_JOIN:
+    case MYLITE_SQL_PARSE_SQL_SMALL_RESULT:
+    case MYLITE_SQL_PARSE_SQL_BIG_RESULT:
+    case MYLITE_SQL_PARSE_SQL_BUFFER_RESULT:
+    case MYLITE_SQL_PARSE_SQL_NO_CACHE:
+    case MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text) {

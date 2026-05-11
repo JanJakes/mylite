@@ -193,7 +193,7 @@ distinct_aggregate_grouped=$(
            SQL_BUFFER_RESULT n FROM t ORDER BY n;
          SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT COUNT(*) FROM t
            WHERE n IS NOT NULL;
-         SELECT SQL_BIG_RESULT SQL_SMALL_RESULT SQL_BUFFER_RESULT n, COUNT(*) FROM t
+         SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT n, COUNT(*) FROM t
            GROUP BY n ORDER BY n;"
 )
 expect_value \
@@ -214,11 +214,19 @@ source_selects=$(
          INSERT INTO inserted SELECT SQL_NO_CACHE id FROM t ORDER BY id LIMIT 1;
          SHOW COUNT(*) WARNINGS;
          SHOW WARNINGS;
-         SELECT COUNT(*), MIN(id) FROM inserted;"
+         SELECT COUNT(*), MIN(id) FROM inserted;
+         CREATE TABLE replaced(id INT NOT NULL);
+         REPLACE INTO replaced SELECT SQL_NO_CACHE id FROM t ORDER BY id LIMIT 1;
+         SHOW COUNT(*) WARNINGS;
+         SHOW WARNINGS;
+         SELECT COUNT(*), MIN(id) FROM replaced;"
 )
 expect_value \
     "source select no-op modifiers" \
     "1	1
+1
+Warning	1681	'SQL_NO_CACHE' is deprecated and will be removed in a future release.
+1	1
 1
 Warning	1681	'SQL_NO_CACHE' is deprecated and will be removed in a future release.
 1	1" \

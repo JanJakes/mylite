@@ -414,6 +414,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_found_rows_function_test)
 
+  add_executable(mylite_runtime_select_noop_modifiers_test
+    tests/runtime_select_noop_modifiers_test.c
+  )
+  target_link_libraries(mylite_runtime_select_noop_modifiers_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_select_noop_modifiers_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_select_noop_modifiers_test)
+
   add_executable(mylite_runtime_last_insert_id_function_test
     tests/runtime_last_insert_id_function_test.c
   )
@@ -1502,6 +1513,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.found_rows_function
     COMMAND mylite_runtime_found_rows_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.select_noop_modifiers
+    COMMAND mylite_runtime_select_noop_modifiers_test
   )
   add_test(
     NAME libmylite.runtime.last_insert_id_function

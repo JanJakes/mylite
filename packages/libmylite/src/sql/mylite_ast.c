@@ -88,6 +88,17 @@ void mylite_sql_ast_node_set_select_modifier(
     node->payload.select.modifier = modifier;
 }
 
+void mylite_sql_ast_node_set_select_options(
+    struct mylite_sql_ast_node *node,
+    unsigned int options
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.select.options = options;
+}
+
 void mylite_sql_ast_node_set_select_calc_found_rows(
     struct mylite_sql_ast_node *node,
     int calc_found_rows
@@ -189,6 +200,14 @@ enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
     }
 
     return node->payload.select.modifier;
+}
+
+unsigned int mylite_sql_ast_node_select_options(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return 0U;
+    }
+
+    return node->payload.select.options;
 }
 
 int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node) {

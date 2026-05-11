@@ -250,8 +250,18 @@ enum mylite_sql_ast_select_modifier {
     MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT = 1,
 };
 
+enum mylite_sql_ast_select_option {
+    MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY = 1U << 0U,
+    MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN = 1U << 1U,
+    MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT = 1U << 2U,
+    MYLITE_SQL_AST_SELECT_OPTION_SQL_BIG_RESULT = 1U << 3U,
+    MYLITE_SQL_AST_SELECT_OPTION_SQL_BUFFER_RESULT = 1U << 4U,
+    MYLITE_SQL_AST_SELECT_OPTION_SQL_NO_CACHE = 1U << 5U,
+};
+
 struct mylite_sql_ast_select_payload {
     enum mylite_sql_ast_select_modifier modifier;
+    unsigned int options;
     int calc_found_rows;
 };
 
@@ -328,6 +338,7 @@ void mylite_sql_ast_node_set_select_modifier(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_select_modifier modifier
 );
+void mylite_sql_ast_node_set_select_options(struct mylite_sql_ast_node *node, unsigned int options);
 void mylite_sql_ast_node_set_select_calc_found_rows(
     struct mylite_sql_ast_node *node,
     int calc_found_rows
@@ -361,6 +372,7 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
     const struct mylite_sql_ast_node *node
 );
+unsigned int mylite_sql_ast_node_select_options(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node

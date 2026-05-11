@@ -41,6 +41,12 @@ struct mylite_sql_show_count_errors_tokens {
     struct mylite_sql_token errors;
 };
 
+struct mylite_sql_select_modifiers {
+    enum mylite_sql_ast_select_modifier duplicate_modifier;
+    unsigned int options;
+    int calc_found_rows;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root
@@ -67,6 +73,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifiers(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_select_modifiers modifiers,
     struct mylite_sql_ast_node *select_list,
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,

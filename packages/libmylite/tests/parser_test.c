@@ -76,6 +76,7 @@ static int test_select_order_limit_clauses(void);
 static int test_select_group_by_clause(void);
 static int test_select_distinct_clause(void);
 static int test_select_sql_calc_found_rows_clause(void);
+static int test_select_noop_modifier_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
@@ -208,6 +209,7 @@ int main(void) {
     failures += test_select_group_by_clause();
     failures += test_select_distinct_clause();
     failures += test_select_sql_calc_found_rows_clause();
+    failures += test_select_noop_modifier_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
     failures += test_select_item_alias_clause();
@@ -7914,14 +7916,33 @@ static int test_select_distinct_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT DISTINCT n;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT DISTINCT n;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinct scalar parsed for runtime rejection"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT DISTINCT n FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT DISTINCT n FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinct dual parsed for runtime rejection"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT DISTINCTROW n;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT DISTINCTROW n;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinctrow scalar parsed for runtime rejection"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parse_sql("SELECT DISTINCTROW n FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT DISTINCTROW n FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinctrow dual parsed for runtime rejection"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -8000,18 +8021,33 @@ static int test_select_sql_calc_found_rows_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT SQL_CALC_FOUND_ROWS 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT SQL_CALC_FOUND_ROWS 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc scalar parsed for runtime rejection"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql(
-        "SELECT SQL_CALC_FOUND_ROWS n FROM DUAL;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures += parse_sql("SELECT SQL_CALC_FOUND_ROWS n FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc dual parsed for runtime rejection"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT DISTINCT SQL_CALC_FOUND_ROWS n FROM simple_lifecycle;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "distinct sql calc modifier parsed for runtime rejection"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "distinct sql calc flag parsed for runtime rejection"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
@@ -8022,6 +8058,79 @@ static int test_select_sql_calc_found_rows_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT SQL_CALC_FOUND_ROWS ALL n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_noop_modifier_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    unsigned int expected_options =
+        MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY | MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN |
+        MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT |
+        MYLITE_SQL_AST_SELECT_OPTION_SQL_BIG_RESULT |
+        MYLITE_SQL_AST_SELECT_OPTION_SQL_BUFFER_RESULT | MYLITE_SQL_AST_SELECT_OPTION_SQL_NO_CACHE;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT HIGH_PRIORITY STRAIGHT_JOIN SQL_SMALL_RESULT SQL_BIG_RESULT "
+        "SQL_BUFFER_RESULT SQL_NO_CACHE 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_options(statement) == expected_options,
+        "scalar noop select modifiers"
+    );
+    failures += expect_true(
+        !mylite_sql_ast_node_select_calc_found_rows(statement),
+        "scalar noop select no sql calc flag"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DISTINCT HIGH_PRIORITY STRAIGHT_JOIN SQL_SMALL_RESULT SQL_BIG_RESULT "
+        "SQL_BUFFER_RESULT SQL_NO_CACHE SQL_CALC_FOUND_ROWS n FROM simple_lifecycle "
+        "ORDER BY n DESC LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "table noop select distinct modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_select_options(statement) == expected_options,
+        "table noop select modifiers"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "table noop select sql calc flag"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SQL_NO_CACHE SQL_BUFFER_RESULT id FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT HIGH_PRIORITY HIGH_PRIORITY id FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS SQL_NO_CACHE id FROM simple_lifecycle;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -13,15 +13,15 @@
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility docs for the exact supported subset.
 - [x] Commit and push the start-feature artifacts.
-- [ ] Implement parser/AST support for canonical no-op SELECT modifiers.
-- [ ] Implement planner/runtime warning behavior for `SQL_NO_CACHE`.
-- [ ] Add fast C parser/runtime tests and register any new test binary in
+- [x] Implement parser/AST support for canonical no-op SELECT modifiers.
+- [x] Implement planner/runtime warning behavior for `SQL_NO_CACHE`.
+- [x] Add fast C parser/runtime tests and register any new test binary in
       `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime tests and the MySQL expectation script.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, MySQL evidence,
+- [x] Run focused parser/runtime tests and the MySQL expectation script.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, MySQL evidence,
       warning order, no-op SQLite SQL generation, docs accuracy, and test
       relevance.
-- [ ] Commit, review with a subagent, amend if needed, push `main`, then
+- [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.

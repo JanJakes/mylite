@@ -303,6 +303,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_calc_found_rows_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_select_statement(
+        state,
+        select_token,
+        select_list,
+        from_clause,
+        where_clause,
+        NULL,
+        NULL,
+        order_clause,
+        limit_clause
+    );
+
+    mylite_sql_ast_node_set_select_calc_found_rows(statement, 1);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,
@@ -3651,12 +3676,14 @@ static bool map_keyword_token(
         {"IN", MYLITE_SQL_PARSE_IN},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
+        {"FOUND_ROWS", MYLITE_SQL_PARSE_FOUND_ROWS},
         {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
         {"SYSTEM_USER", MYLITE_SQL_PARSE_SYSTEM_USER},
     };
 

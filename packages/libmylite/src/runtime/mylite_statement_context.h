@@ -33,6 +33,7 @@ struct mylite_statement_context {
     time_t statement_time;
     int64_t affected_rows;
     int64_t previous_row_count;
+    uint64_t previous_found_rows;
     uint64_t first_insert_id;
     bool has_first_insert_id;
     bool active;
@@ -67,6 +68,13 @@ void mylite_statement_context_set_previous_row_count(
     int64_t previous_row_count
 );
 int64_t mylite_statement_context_previous_row_count(const struct mylite_statement_context *context);
+void mylite_statement_context_set_previous_found_rows(
+    struct mylite_statement_context *context,
+    uint64_t previous_found_rows
+);
+uint64_t mylite_statement_context_previous_found_rows(
+    const struct mylite_statement_context *context
+);
 
 void mylite_statement_context_set_first_insert_id(
     struct mylite_statement_context *context,

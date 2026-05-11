@@ -105,6 +105,31 @@ void mylite_result_set_warning_count(mylite_result *result, size_t warning_count
     result->warning_count = warning_count;
 }
 
+void mylite_result_set_found_row_count(mylite_result *result, uint64_t found_row_count) {
+    if (result == NULL) {
+        return;
+    }
+
+    result->has_found_row_count = true;
+    result->found_row_count = found_row_count;
+}
+
+bool mylite_result_has_found_row_count(const mylite_result *result) {
+    if (result == NULL) {
+        return false;
+    }
+
+    return result->has_found_row_count;
+}
+
+uint64_t mylite_result_found_row_count(const mylite_result *result) {
+    if (result == NULL) {
+        return 0U;
+    }
+
+    return result->found_row_count;
+}
+
 size_t mylite_result_column_count(const mylite_result *result) {
     if (result == NULL) {
         return 0U;

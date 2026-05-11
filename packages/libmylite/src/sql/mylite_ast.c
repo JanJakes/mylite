@@ -88,6 +88,17 @@ void mylite_sql_ast_node_set_select_modifier(
     node->payload.select.modifier = modifier;
 }
 
+void mylite_sql_ast_node_set_select_calc_found_rows(
+    struct mylite_sql_ast_node *node,
+    int calc_found_rows
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.select.calc_found_rows = calc_found_rows != 0;
+}
+
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -178,6 +189,14 @@ enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
     }
 
     return node->payload.select.modifier;
+}
+
+int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return 0;
+    }
+
+    return node->payload.select.calc_found_rows;
 }
 
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
@@ -480,6 +499,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "function_argument_list";
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
         return "row_count_function";
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+        return "found_rows_function";
+    case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
+        return "found_rows_argument_count_error";
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
         return "last_insert_id_function";
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:

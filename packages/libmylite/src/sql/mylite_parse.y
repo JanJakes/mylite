@@ -1077,6 +1077,18 @@ select_statement(A) ::=
         state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
+    SELECT(T) SQL_CALC_FOUND_ROWS select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_calc_found_rows_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) ALL SQL_CALC_FOUND_ROWS select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_calc_found_rows_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+}
+select_statement(A) ::=
     SELECT(T) DISTINCT select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
     group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
@@ -1121,6 +1133,20 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) SQL_CALC_FOUND_ROWS STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_calc_found_rows_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) ALL SQL_CALC_FOUND_ROWS STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
+    where_clause_opt(W) order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_calc_found_rows_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
@@ -1680,6 +1706,14 @@ expression(A) ::= ROW_COUNT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_ROW_COUNT_FUNCTION, R);
 }
+expression(A) ::= FOUND_ROWS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_FOUND_ROWS_FUNCTION, R);
+}
+expression(A) ::= FOUND_ROWS(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR, B, R);
+}
 expression(A) ::= LAST_INSERT_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION, R);
@@ -1998,6 +2032,9 @@ identifier(A) ::= VERSION(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ROW_COUNT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FOUND_ROWS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LAST_INSERT_ID(T). {

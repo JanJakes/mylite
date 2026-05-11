@@ -134,6 +134,27 @@ int64_t mylite_statement_context_previous_row_count(
     return context->previous_row_count;
 }
 
+void mylite_statement_context_set_previous_found_rows(
+    struct mylite_statement_context *context,
+    uint64_t previous_found_rows
+) {
+    if (context == NULL) {
+        return;
+    }
+
+    context->previous_found_rows = previous_found_rows;
+}
+
+uint64_t mylite_statement_context_previous_found_rows(
+    const struct mylite_statement_context *context
+) {
+    if (context == NULL) {
+        return 0U;
+    }
+
+    return context->previous_found_rows;
+}
+
 void mylite_statement_context_set_first_insert_id(
     struct mylite_statement_context *context,
     uint64_t first_insert_id
@@ -227,6 +248,7 @@ static void reset_statement_fields(
     context->statement_time = time(NULL);
     context->affected_rows = 0;
     context->previous_row_count = 0;
+    context->previous_found_rows = 0U;
     context->first_insert_id = 0U;
     context->has_first_insert_id = false;
     context->active = true;

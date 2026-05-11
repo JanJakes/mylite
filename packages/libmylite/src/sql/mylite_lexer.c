@@ -468,6 +468,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"FOREIGN", MYLITE_SQL_KEYWORD_RESERVED},
         {"FORMAT", 0U},
         {"FOUND", 0U},
+        {"FOUND_ROWS", 0U},
         {"FROM", MYLITE_SQL_KEYWORD_RESERVED},
         {"FULL", 0U},
         {"FULLTEXT", MYLITE_SQL_KEYWORD_RESERVED},

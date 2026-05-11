@@ -246,7 +246,11 @@ failed-statement policy and does not promise a found-row update.
 
 For ordinary selects without `SQL_CALC_FOUND_ROWS`, found-row tracking should
 use the result row count and parsed limit envelope already available to MyLite.
-It must not materialize additional rows.
+It must not materialize additional rows. When MySQL-compatible capping for
+positive-offset empty envelopes requires knowing the matched row count, MyLite
+may run the same descriptor-built `SELECT COUNT(*)` shape used by
+`SQL_CALC_FOUND_ROWS`; it must still avoid reading full rows into MyLite
+memory.
 
 For admitted `SQL_CALC_FOUND_ROWS`, the baseline may run a second
 descriptor-built `SELECT COUNT(*)` over the same table source and `WHERE`

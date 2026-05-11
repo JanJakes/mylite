@@ -51,7 +51,9 @@ enum {
     mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
     mysql_warning_deprecated_system_variable = 1287,
+    mysql_warning_found_rows_deprecated = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
+    mysql_warning_sql_calc_found_rows_deprecated = 1287,
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
@@ -417,6 +419,7 @@ struct planned_select {
     const struct mylite_sql_ast_node **column_aliases;
     size_t column_count;
     bool is_distinct;
+    bool calc_found_rows;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
@@ -1253,9 +1256,15 @@ static int finish_parse_failure(
 static int finish_failed_statement(struct mylite_db *database, int rc, mylite_result **out_result);
 static int finish_completed_statement(
     struct mylite_db *database,
+    bool completed_statement_is_select,
     int64_t completed_row_count,
     bool preserve_diagnostics_snapshot,
     mylite_result **out_result
+);
+static void update_found_rows_for_completed_statement(
+    struct mylite_db *database,
+    bool completed_statement_is_select,
+    const mylite_result *result
 );
 static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement);
 static int snapshot_current_diagnostics(struct mylite_db *database);
@@ -1716,6 +1725,22 @@ static int execute_select_from_plan(
     const struct planned_select *plan,
     mylite_result **out_result
 );
+static int set_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    mylite_result *result
+);
+static int found_row_count_for_select_limit_envelope(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    size_t visible_row_count,
+    uint64_t *out_found_row_count
+);
+static int read_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    int64_t *out_count
+);
 static bool select_statement_has_group_by_clause(const struct mylite_sql_ast_node *statement);
 static int plan_grouped_aggregate(
     struct mylite_db *database,
@@ -2059,6 +2084,12 @@ static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
 );
+static int append_session_scalar_expression_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_found_rows_deprecation_warning(struct mylite_db *database);
+static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *database);
 static int accumulate_staged_division_by_zero_warnings(
     struct mylite_db *database,
     size_t cell_warning_count,
@@ -3729,6 +3760,7 @@ static int append_create_table_select_source_projection(
     const struct planned_create_table_select *plan
 );
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
+static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
 static int append_column_aggregate_select_list_sql(
@@ -4120,6 +4152,7 @@ int mylite_execute(
     int64_t completed_row_count = -1;
     size_t statement_count = 0U;
     bool preserve_diagnostics_snapshot = false;
+    bool completed_statement_is_select = false;
     int rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -4153,6 +4186,7 @@ int mylite_execute(
         return rc;
     }
     mylite_statement_context_set_previous_row_count(&context, database->session.previous_row_count);
+    mylite_statement_context_set_previous_found_rows(&context, database->session.found_rows);
 
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
@@ -4184,6 +4218,9 @@ int mylite_execute(
     if (rc == MYLITE_OK) {
         completed_row_count = row_count_for_completed_statement(statement, *out_result);
         preserve_diagnostics_snapshot = statement_preserves_diagnostics_snapshot(statement);
+        if (statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+            completed_statement_is_select = true;
+        }
     }
     mylite_sql_parse_result_deinit(&parse_result);
     if (rc != MYLITE_OK) {
@@ -4191,6 +4228,7 @@ int mylite_execute(
     } else {
         rc = finish_completed_statement(
             database,
+            completed_statement_is_select,
             completed_row_count,
             preserve_diagnostics_snapshot,
             out_result
@@ -4235,6 +4273,7 @@ static int finish_failed_statement(struct mylite_db *database, int rc, mylite_re
 
 static int finish_completed_statement(
     struct mylite_db *database,
+    bool completed_statement_is_select,
     int64_t completed_row_count,
     bool preserve_diagnostics_snapshot,
     mylite_result **out_result
@@ -4252,7 +4291,25 @@ static int finish_completed_statement(
     }
 
     database->session.previous_row_count = completed_row_count;
+    update_found_rows_for_completed_statement(database, completed_statement_is_select, *out_result);
     return MYLITE_OK;
+}
+
+static void update_found_rows_for_completed_statement(
+    struct mylite_db *database,
+    bool completed_statement_is_select,
+    const mylite_result *result
+) {
+    if (database == NULL || !completed_statement_is_select || result == NULL) {
+        return;
+    }
+
+    if (mylite_result_has_found_row_count(result)) {
+        database->session.found_rows = mylite_result_found_row_count(result);
+        return;
+    }
+
+    database->session.found_rows = (uint64_t)mylite_result_row_count(result);
 }
 
 static int execute_parsed_statement(
@@ -4465,6 +4522,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
@@ -6302,6 +6361,16 @@ static int execute_select_statement(
     }
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
+    }
+    if (mylite_sql_ast_node_select_calc_found_rows(statement) &&
+        (select_statement_has_group_by_clause(statement) ||
+         select_statement_has_count_aggregate(statement) ||
+         select_statement_has_column_aggregate(statement))) {
+        set_unsupported_error(
+            database,
+            "SQL_CALC_FOUND_ROWS supports only descriptor-backed column-list and wildcard SELECT"
+        );
+        return MYLITE_ERROR;
     }
     if (select_statement_has_group_by_clause(statement)) {
         rc = plan_grouped_aggregate(database, statement, &grouped_plan);
@@ -8445,6 +8514,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
@@ -8708,6 +8779,13 @@ static int plan_create_table_select(
 
     *out_plan = (struct planned_create_table_select){0};
     rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+    if (rc == MYLITE_OK && out_plan->source.calc_found_rows) {
+        set_unsupported_error(
+            database,
+            "CREATE TABLE ... SELECT does not support SQL_CALC_FOUND_ROWS"
+        );
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
     }
@@ -12074,6 +12152,20 @@ static int plan_insert_select(
     if (rc == MYLITE_OK) {
         rc = plan_select(database, select_statement, &out_plan->source);
     }
+    if (rc == MYLITE_OK && out_plan->source.calc_found_rows) {
+        if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
+            set_unsupported_error(
+                database,
+                "REPLACE ... SELECT does not support SQL_CALC_FOUND_ROWS"
+            );
+        } else {
+            set_unsupported_error(
+                database,
+                "INSERT ... SELECT does not support SQL_CALC_FOUND_ROWS"
+            );
+        }
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK && out_plan->source.column_count != out_plan->target_count) {
         set_column_count_mismatch_error(database, 1U);
         rc = MYLITE_ERROR;
@@ -12617,6 +12709,14 @@ static int plan_select(
     *out_plan = (struct planned_select){0};
     out_plan->is_distinct =
         mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+    out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
+    if (out_plan->calc_found_rows && out_plan->is_distinct) {
+        set_unsupported_error(
+            database,
+            "SQL_CALC_FOUND_ROWS supports only non-distinct descriptor-backed table SELECT"
+        );
+        return MYLITE_ERROR;
+    }
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
         return MYLITE_ERROR;
@@ -13747,8 +13847,142 @@ static int execute_select_from_plan(
         set_physical_sqlite_row_error(database);
         return MYLITE_ERROR;
     }
+    rc = set_select_found_row_count(database, plan, result);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+    if (plan->calc_found_rows) {
+        rc = append_sql_calc_found_rows_deprecation_warning(database);
+        if (rc != MYLITE_OK) {
+            mylite_result_free(result);
+            return rc;
+        }
+    }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int set_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    mylite_result *result
+) {
+    int64_t count = 0;
+    uint64_t found_row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (plan->calc_found_rows) {
+        rc = read_select_found_row_count(database, plan, &count);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (count < 0) {
+            set_runtime_error(database, "invalid SQL_CALC_FOUND_ROWS count");
+            return MYLITE_ERROR;
+        }
+        mylite_result_set_found_row_count(result, (uint64_t)count);
+        return MYLITE_OK;
+    }
+
+    rc = found_row_count_for_select_limit_envelope(
+        database,
+        plan,
+        mylite_result_row_count(result),
+        &found_row_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    mylite_result_set_found_row_count(result, found_row_count);
+    return MYLITE_OK;
+}
+
+static int found_row_count_for_select_limit_envelope(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    size_t visible_row_count,
+    uint64_t *out_found_row_count
+) {
+    uint64_t visible_rows = (uint64_t)visible_row_count;
+    uint64_t offset = 0U;
+    int64_t total_count = 0;
+    int rc = MYLITE_OK;
+
+    if (out_found_row_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_found_row_count = 0U;
+    if (visible_row_count > UINT64_MAX) {
+        set_runtime_error(database, "SELECT found-row count is out of range");
+        return MYLITE_ERROR;
+    }
+    if (!plan->limit.has_limit) {
+        *out_found_row_count = visible_rows;
+        return MYLITE_OK;
+    }
+    if (!plan->limit.has_offset) {
+        *out_found_row_count = visible_rows;
+        return MYLITE_OK;
+    }
+
+    offset = (uint64_t)plan->limit.offset;
+    if (plan->limit.row_count != 0 && visible_row_count != 0U) {
+        if (offset > UINT64_MAX - visible_rows) {
+            set_runtime_error(database, "SELECT found-row count is out of range");
+            return MYLITE_ERROR;
+        }
+        *out_found_row_count = offset + visible_rows;
+        return MYLITE_OK;
+    }
+    if (offset == 0U) {
+        *out_found_row_count = 0U;
+        return MYLITE_OK;
+    }
+
+    rc = read_select_found_row_count(database, plan, &total_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (total_count < 0) {
+        set_runtime_error(database, "invalid SELECT found-row count");
+        return MYLITE_ERROR;
+    }
+    *out_found_row_count = offset < (uint64_t)total_count ? offset : (uint64_t)total_count;
+    return MYLITE_OK;
+}
+
+static int read_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    int64_t *out_count
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int parameter_index = 1;
+    int rc = build_select_found_rows_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_count_statement(statement, out_count);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    return rc;
 }
 
 static bool select_statement_has_count_aggregate(const struct mylite_sql_ast_node *statement) {
@@ -15502,15 +15736,7 @@ static int append_session_scalar_do_warnings(
     int rc = MYLITE_OK;
 
     while (rc == MYLITE_OK && expression != NULL) {
-        const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(expression);
-        enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
-
-        if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
-            rc = resolve_session_system_variable(database, unwrapped, &variable);
-            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
-                rc = append_system_variable_read_warning(database, variable);
-            }
-        }
+        rc = append_session_scalar_expression_warnings(database, expression);
         expression = expression->next_sibling;
     }
 
@@ -15527,18 +15753,75 @@ static int append_session_scalar_select_warnings(
     while (rc == MYLITE_OK && select_item != NULL) {
         const struct mylite_sql_ast_node *expression =
             unwrap_parenthesized_expression(child_at(select_item, 0U));
-        enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
 
-        if (expression != NULL && expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
-            rc = resolve_session_system_variable(database, expression, &variable);
-            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
-                rc = append_system_variable_read_warning(database, variable);
-            }
-        }
+        rc = append_session_scalar_expression_warnings(database, expression);
         select_item = select_item->next_sibling;
     }
 
     return rc;
+}
+
+static int append_session_scalar_expression_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION) {
+            rc = append_found_rows_deprecation_warning(database);
+        } else if (current->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+            enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+
+            rc = resolve_session_system_variable(database, current, &variable);
+            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
+                rc = append_system_variable_read_warning(database, variable);
+            }
+        }
+
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; rc == MYLITE_OK && child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int append_found_rows_deprecation_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_found_rows_deprecated,
+        "HY000",
+        "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using "
+        "COUNT(*) instead."
+    );
+}
+
+static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_sql_calc_found_rows_deprecated,
+        "HY000",
+        "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future release. Consider "
+        "using two separate queries instead."
+    );
 }
 
 static int accumulate_staged_division_by_zero_warnings(
@@ -15651,6 +15934,10 @@ static const char *argument_count_error_function_name(
             function_name = "CURRENT_ROLE";
             break;
         }
+        if (current->kind == MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR) {
+            function_name = "FOUND_ROWS";
+            break;
+        }
         if (current->kind == MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR) {
             function_name = "IFNULL";
             break;
@@ -15735,6 +16022,20 @@ static int session_scalar_value(
         );
         if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
             set_runtime_error(database, "failed to format ROW_COUNT() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.found_rows
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format FOUND_ROWS() value");
             return MYLITE_ERROR;
         }
         out_cell->value = out_cell->integer_text;
@@ -19149,6 +19450,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION) {
@@ -26158,6 +26462,33 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);

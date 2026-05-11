@@ -168,6 +168,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET = 159,
     MYLITE_SQL_AST_SET_DEFAULT_VALUE = 160,
     MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT = 161,
+    MYLITE_SQL_AST_FOUND_ROWS_FUNCTION = 162,
+    MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR = 163,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -250,6 +252,7 @@ enum mylite_sql_ast_select_modifier {
 
 struct mylite_sql_ast_select_payload {
     enum mylite_sql_ast_select_modifier modifier;
+    int calc_found_rows;
 };
 
 struct mylite_sql_ast_literal_payload {
@@ -325,6 +328,10 @@ void mylite_sql_ast_node_set_select_modifier(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_select_modifier modifier
 );
+void mylite_sql_ast_node_set_select_calc_found_rows(
+    struct mylite_sql_ast_node *node,
+    int calc_found_rows
+);
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -354,6 +361,7 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
     const struct mylite_sql_ast_node *node
 );
+int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );

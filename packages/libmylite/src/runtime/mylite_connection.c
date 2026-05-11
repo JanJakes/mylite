@@ -309,6 +309,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->system_variables_are_placeholder = true;
     session->connection_id = allocate_session_connection_id();
     session->previous_row_count = -1;
+    session->found_rows = 1U;
     session->last_insert_id = 0U;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;

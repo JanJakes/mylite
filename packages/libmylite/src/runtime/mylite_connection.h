@@ -36,6 +36,7 @@ struct mylite_session_state {
     bool system_variables_are_placeholder;
     uint64_t connection_id;
     int64_t previous_row_count;
+    uint64_t found_rows;
     uint64_t last_insert_id;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;

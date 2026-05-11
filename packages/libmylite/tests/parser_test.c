@@ -43,6 +43,7 @@ static int test_set_fixed_system_variable_statement(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
+static int test_found_rows_function(void);
 static int test_last_insert_id_function(void);
 static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
@@ -74,6 +75,7 @@ static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_select_group_by_clause(void);
 static int test_select_distinct_clause(void);
+static int test_select_sql_calc_found_rows_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
@@ -173,6 +175,7 @@ int main(void) {
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
+    failures += test_found_rows_function();
     failures += test_last_insert_id_function();
     failures += test_diagnostics_count_system_variables();
     failures += test_count_star_aggregate();
@@ -204,6 +207,7 @@ int main(void) {
     failures += test_select_order_limit_clauses();
     failures += test_select_group_by_clause();
     failures += test_select_distinct_clause();
+    failures += test_select_sql_calc_found_rows_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
     failures += test_select_item_alias_clause();
@@ -2244,6 +2248,107 @@ static int test_row_count_function(void) {
     failures += parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT ROW_COUNT() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_found_rows_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT FOUND_ROWS(), Found_Rows(), found_rows() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_FOUND_ROWS_FUNCTION, "found rows function");
+    failures += expect_span_text(first_expression, "FOUND_ROWS()", "found rows function span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_FOUND_ROWS_FUNCTION,
+        "mixed-case found rows function"
+    );
+    failures += expect_span_text(second_expression, "Found_Rows()", "mixed-case found rows span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_FOUND_ROWS_FUNCTION,
+        "lower found rows function"
+    );
+    failures += expect_span_text(third_expression, "found_rows()", "lower found rows span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "found rows from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOUND_ROWS (), (FOUND_ROWS());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FOUND_ROWS_FUNCTION,
+        "spaced found rows function"
+    );
+    failures += expect_span_text(first_expression, "FOUND_ROWS ()", "spaced found rows span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized found rows function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_FOUND_ROWS_FUNCTION,
+        "wrapped found rows function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE found_rows (found_rows INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "found rows identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOUND_ROWS;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare found rows identifier");
+    failures += expect_span_text(first_expression, "FOUND_ROWS", "bare found rows span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOUND_ROWS(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR,
+        "found rows one-argument error"
+    );
+    failures += expect_span_text(first_expression, "FOUND_ROWS(1)", "found rows one-argument span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOUND_ROWS(NULL, 2);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR,
+        "found rows two-argument error"
+    );
+    failures +=
+        expect_span_text(first_expression, "FOUND_ROWS(NULL, 2)", "found rows two-argument span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FOUND_ROWS() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -7817,6 +7922,109 @@ static int test_select_distinct_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT DISTINCTROW n FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_sql_calc_found_rows_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS n FROM simple_lifecycle WHERE n IS NOT NULL "
+        "ORDER BY n DESC LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "sql calc default modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc found rows flag"
+    );
+    failures += expect_child_count(select_list, 1U, "sql calc item count");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 0U), "n", "sql calc column");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "sql calc table");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "sql calc where");
+    failures += expect_span_text(child_at(order_clause, 0U), "n", "sql calc order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "sql calc desc direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "sql calc limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "sql calc limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ALL SQL_CALC_FOUND_ROWS * FROM simple_lifecycle ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "all sql calc default modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "all sql calc found rows flag"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "all sql calc wildcard"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc aggregate parsed for runtime rejection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SQL_CALC_FOUND_ROWS 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS n FROM DUAL;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT DISTINCT SQL_CALC_FOUND_ROWS n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS DISTINCT n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT SQL_CALC_FOUND_ROWS ALL n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

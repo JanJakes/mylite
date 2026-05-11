@@ -2594,6 +2594,9 @@ create_table_item(A) ::= column_definition(B). {
 create_table_item(A) ::= primary_key_definition(B). {
     A = B;
 }
+create_table_item(A) ::= secondary_index_definition(B). {
+    A = B;
+}
 
 primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
@@ -2607,6 +2610,31 @@ primary_key_part_list(A) ::= primary_key_part_list(B) COMMA primary_key_part(C).
 }
 
 primary_key_part(A) ::= qualified_identifier(B). {
+    A = B;
+}
+
+secondary_index_definition(A) ::= KEY(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, L, R);
+}
+secondary_index_definition(A) ::= INDEX(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, L, R);
+}
+
+index_name_opt(A) ::= . {
+    A = NULL;
+}
+index_name_opt(A) ::= identifier(B). {
+    A = B;
+}
+
+secondary_index_part_list(A) ::= secondary_index_part(B). {
+    A = mylite_sql_parser_make_secondary_index_part_list(state, B);
+}
+secondary_index_part_list(A) ::= secondary_index_part_list(B) COMMA secondary_index_part(C). {
+    A = mylite_sql_parser_append_secondary_index_part(state, B, C);
+}
+
+secondary_index_part(A) ::= identifier(B). {
     A = B;
 }
 

@@ -14,29 +14,29 @@
 
 ## Implementation
 
-- [ ] Extend parser and AST support for admitted table-level nonunique
+- [x] Extend parser and AST support for admitted table-level nonunique
   secondary index definitions.
-- [ ] Extend catalog index descriptors from primary-only to primary plus
+- [x] Extend catalog index descriptors from primary-only to primary plus
   secondary kinds, including migration and initialization.
-- [ ] Plan admitted secondary indexes from `CREATE TABLE`, resolve names and
+- [x] Plan admitted secondary indexes from `CREATE TABLE`, resolve names and
   columns through descriptors, and reject unsupported forms deterministically.
-- [ ] Generate physical SQLite indexes from stable descriptor names and quote
+- [x] Generate physical SQLite indexes from stable descriptor names and quote
   every identifier.
-- [ ] Clone supported secondary index descriptors for `CREATE TABLE ... LIKE`
+- [x] Clone supported secondary index descriptors for `CREATE TABLE ... LIKE`
   and keep `CREATE TABLE ... SELECT` index-free.
-- [ ] Render secondary index metadata in `SHOW CREATE TABLE`, `SHOW INDEX`, and
+- [x] Render secondary index metadata in `SHOW CREATE TABLE`, `SHOW INDEX`, and
   limited `INFORMATION_SCHEMA.STATISTICS`.
-- [ ] Preserve file-format preamble, descriptor authority, DML behavior,
+- [x] Preserve file-format preamble, descriptor authority, DML behavior,
   reopen persistence, independent handles, and cleanup-on-failure behavior.
 
 ## Tests and Docs
 
-- [ ] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add focused C parser/runtime tests for supported and rejected behavior.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
+- [x] Add the MySQL 8.4.9 expectation script for the feature surface.
+- [x] Add focused C parser/runtime tests for supported and rejected behavior.
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   implemented subset.
-- [ ] Run focused build/tests, the new MySQL expectation script, and
+- [x] Run focused build/tests, the new MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog migration,
+- [x] Review the final diff for architecture boundaries, catalog migration,
   descriptor-driven SQLite SQL, metadata claims, performance, and file-format
   safety.

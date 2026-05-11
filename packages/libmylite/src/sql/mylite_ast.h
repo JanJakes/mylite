@@ -217,6 +217,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_TEXT_TYPE = 208,
     MYLITE_SQL_AST_DECIMAL_TYPE = 209,
     MYLITE_SQL_AST_DATE_TYPE = 210,
+    MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION = 211,
+    MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST = 212,
 };
 
 enum mylite_sql_ast_literal_kind {

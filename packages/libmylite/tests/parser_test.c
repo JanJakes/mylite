@@ -7598,6 +7598,47 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE secondary_keys (id INT PRIMARY KEY, v INT, KEY k_v (v), INDEX (id));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, 4U, "secondary key item count");
+    failures += expect_node(
+        child_at(items, 2U),
+        MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION,
+        "named secondary key"
+    );
+    failures += expect_span_text(child_at(child_at(items, 2U), 0U), "k_v", "secondary key name");
+    key_parts = child_at(child_at(items, 2U), 1U);
+    failures +=
+        expect_node(key_parts, MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST, "secondary key parts");
+    failures += expect_child_count(key_parts, 1U, "secondary key part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "v", "secondary key part");
+    failures += expect_node(
+        child_at(items, 3U),
+        MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION,
+        "unnamed secondary index"
+    );
+    key_parts = child_at(child_at(items, 3U), 0U);
+    failures += expect_child_count(key_parts, 1U, "unnamed secondary key part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "id", "unnamed secondary key part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE parser_composite_secondary (a INT, b INT, KEY k_ab (a, b));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
+    key_parts = child_at(key_parts, 1U);
+    failures += expect_child_count(key_parts, 2U, "composite secondary parser part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "a", "composite secondary first part");
+    failures += expect_span_text(child_at(key_parts, 1U), "b", "composite secondary second part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE unsupported_named_pk (id INT, CONSTRAINT pk PRIMARY KEY (id));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -7606,6 +7647,27 @@ static int test_create_table_primary_key_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_unique_key (id INT, UNIQUE KEY (id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_secondary_prefix (id INT, KEY k (id(4)));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_secondary_order (id INT, KEY k (id DESC));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_secondary_using (id INT, KEY k USING BTREE (id));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -157,6 +157,12 @@ specific.
 existing behavior. Physical table/index names remain stable internal names and
 are not shown to users.
 
+Existing physical table-rebuild `ALTER TABLE` paths (`ORDER BY`, `FORCE`, and
+non-metadata `MODIFY` / `CHANGE COLUMN`) do not yet recreate physical index
+objects from descriptors after swapping the rebuilt table. Until that is
+designed and tested, those paths reject secondary-index tables with deterministic
+unsupported diagnostics.
+
 ## Physical SQLite Handling
 
 For each admitted secondary index, MyLite generates a standard SQLite index:
@@ -294,6 +300,8 @@ Coverage:
 - `CREATE TABLE ... LIKE` cloning and `CREATE TABLE ... SELECT` omission;
 - persistence after close/reopen;
 - drop/rename/truncate/DML compatibility;
+- physical SQLite index creation and deterministic rejection of existing
+  physical table-rebuild `ALTER TABLE` paths for secondary-index tables;
 - physical `.mylite` preamble unchanged;
 - independent file-backed handles with independent index descriptors;
 - zero-initialized cleanup for new planner/catalog objects;

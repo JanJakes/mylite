@@ -3333,6 +3333,60 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_primary_key_part(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token index_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&index_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *secondary_index =
+        make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION, span);
+    if (secondary_index == NULL) {
+        return NULL;
+    }
+
+    if (index_name != NULL) {
+        mylite_sql_ast_node_append_child(secondary_index, index_name);
+    }
+    mylite_sql_ast_node_append_child(secondary_index, key_parts);
+    return secondary_index;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *key_part
+) {
+    struct mylite_sql_source_span span =
+        key_part == NULL ? (struct mylite_sql_source_span){0} : key_part->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_secondary_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *key_part
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    if (key_part != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, key_part->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,

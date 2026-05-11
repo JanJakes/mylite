@@ -15,6 +15,7 @@ enum {
     catalog_schema_version_v5 = 5U,
     catalog_schema_version_v6 = 6U,
     catalog_schema_version_v7 = 7U,
+    catalog_schema_version_v8 = 8U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -176,6 +177,7 @@ static int migrate_catalog_schema_v4_to_v5(sqlite3 *sqlite);
 static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite);
 static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite);
 static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite);
+static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -1746,7 +1748,7 @@ int mylite_catalog_for_each_index_in_table(
         database->sqlite,
         "SELECT index_id, table_id, name, kind, is_unique, physical_name, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
-        "FROM _mylite_catalog_indexes WHERE table_id = ?1 ORDER BY name",
+        "FROM _mylite_catalog_indexes WHERE table_id = ?1 ORDER BY index_id",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -2609,6 +2611,10 @@ static int migrate_catalog_schema(
     }
     if (rc == MYLITE_OK && schema_version == catalog_schema_version_v7) {
         rc = migrate_catalog_schema_v7_to_v8(database->sqlite);
+        schema_version = catalog_schema_version_v8;
+    }
+    if (rc == MYLITE_OK && schema_version == catalog_schema_version_v8) {
+        rc = migrate_catalog_schema_v8_to_v9(database->sqlite);
         schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
     }
     if (rc == MYLITE_OK && schema_version == MYLITE_CATALOG_SCHEMA_VERSION) {
@@ -2871,6 +2877,42 @@ static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_indexes RENAME TO _mylite_catalog_indexes_v8;"
+        "CREATE TABLE _mylite_catalog_indexes ("
+        "index_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "kind INTEGER NOT NULL CHECK(kind IN (1, 2)),"
+        "is_unique INTEGER NOT NULL CHECK(is_unique IN (0, 1)),"
+        "physical_name TEXT NOT NULL UNIQUE,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_indexes "
+        "(index_id, table_id, name, kind, is_unique, physical_name, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "SELECT index_id, table_id, name, kind, is_unique, physical_name, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_indexes_v8;"
+        "DROP TABLE _mylite_catalog_indexes_v8;"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 9, minimum_reader_schema_version = 9;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -2976,7 +3018,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "index_id INTEGER PRIMARY KEY,"
         "table_id INTEGER NOT NULL,"
         "name TEXT NOT NULL,"
-        "kind INTEGER NOT NULL CHECK(kind = 1),"
+        "kind INTEGER NOT NULL CHECK(kind IN (1, 2)),"
         "is_unique INTEGER NOT NULL CHECK(is_unique IN (0, 1)),"
         "physical_name TEXT NOT NULL UNIQUE,"
         "descriptor_version INTEGER NOT NULL,"
@@ -2999,7 +3041,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "INSERT INTO _mylite_catalog_state "
         "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
         "created_with_file_format_version) "
-        "VALUES (1, 8, 8, 1, 1);"
+        "VALUES (1, 9, 9, 1, 1);"
         "COMMIT;";
     struct mylite_catalog catalog = {.initialized = false};
     int rc = execute_sql(database->sqlite, sql);
@@ -4466,7 +4508,7 @@ static int validate_catalog_bool_i64(int64_t value, bool *out_bool) {
 }
 
 static int validate_index_kind(enum mylite_catalog_index_kind kind) {
-    if (kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+    if (kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY && kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
         return MYLITE_MISUSE;
     }
 

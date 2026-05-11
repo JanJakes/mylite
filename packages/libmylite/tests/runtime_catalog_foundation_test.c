@@ -19,6 +19,7 @@
 
 enum {
     test_path_capacity = 1024,
+    sql_buffer_capacity = 128,
     sqlite_header_size = 16,
     expected_catalog_table_count = 6,
     expected_catalog_generation_after_mutations = 5,
@@ -374,6 +375,7 @@ static int test_independent_file_backed_handles_have_independent_catalog_state(v
 
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     char path[test_path_capacity];
+    char sql[sql_buffer_capacity];
     mylite_db *database = NULL;
     sqlite3 *sqlite = NULL;
     int failures = 0;
@@ -386,7 +388,13 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-version file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
-        failures += execute_sql(sqlite, "UPDATE _mylite_catalog_state SET schema_version = 9");
+        snprintf(
+            sql,
+            sizeof(sql),
+            "UPDATE _mylite_catalog_state SET schema_version = %" PRIu32,
+            (uint32_t)(MYLITE_CATALOG_SCHEMA_VERSION + 1U)
+        );
+        failures += execute_sql(sqlite, sql);
     }
     mylite_close(database);
     database = NULL;

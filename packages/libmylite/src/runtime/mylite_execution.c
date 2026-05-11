@@ -141,6 +141,8 @@ enum {
     information_schema_schemata_column_count = 6,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
+    information_schema_table_constraints_column_count = 7,
+    information_schema_key_column_usage_column_count = 12,
     information_schema_statistics_column_count = 18,
     information_schema_tables_auto_increment_column = 13,
     information_schema_columns_default_column = 5,
@@ -861,7 +863,9 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_SCHEMATA = 0,
     INFORMATION_SCHEMA_TABLE_TABLES = 1,
     INFORMATION_SCHEMA_TABLE_COLUMNS = 2,
-    INFORMATION_SCHEMA_TABLE_STATISTICS = 3,
+    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 3,
+    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 4,
+    INFORMATION_SCHEMA_TABLE_STATISTICS = 5,
 };
 
 struct information_schema_column_definition {
@@ -1474,6 +1478,242 @@ static const struct information_schema_column_definition information_schema_colu
     {"SRS_ID", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
 };
 
+static const struct information_schema_column_definition
+    information_schema_table_constraints_columns[] = {
+        {"CONSTRAINT_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"TABLE_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "11",
+         "33",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(11)"},
+        {"ENFORCED",
+         "",
+         "NO",
+         "varchar",
+         "3",
+         "9",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(3)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_key_column_usage_columns[] = {
+        {"CONSTRAINT_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"TABLE_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"COLUMN_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"ORDINAL_POSITION",
+         "0",
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"POSITION_IN_UNIQUE_CONSTRAINT",
+         NULL,
+         "YES",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+        {"REFERENCED_TABLE_SCHEMA",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"REFERENCED_TABLE_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"REFERENCED_COLUMN_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+};
+
 static const struct information_schema_column_definition information_schema_statistics_columns[] = {
     {"TABLE_CATALOG",
      NULL,
@@ -1651,6 +1891,14 @@ static const struct information_schema_table_definition information_schema_table
      "COLUMNS",
      information_schema_columns_columns,
      information_schema_columns_column_count},
+    {INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS,
+     "TABLE_CONSTRAINTS",
+     information_schema_table_constraints_columns,
+     information_schema_table_constraints_column_count},
+    {INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE,
+     "KEY_COLUMN_USAGE",
+     information_schema_key_column_usage_columns,
+     information_schema_key_column_usage_column_count},
     {INFORMATION_SCHEMA_TABLE_STATISTICS,
      "STATISTICS",
      information_schema_statistics_columns,
@@ -2357,6 +2605,32 @@ static int append_information_schema_columns_base_column_row(
     const struct primary_key_info *primary_key,
     const struct loaded_index_info *indexes,
     size_t index_count
+);
+static int append_information_schema_table_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_table_constraints_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index
+);
+static int append_information_schema_key_column_usage_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_key_column_usage_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index
 );
 static int append_information_schema_statistics_base_rows(
     struct mylite_db *database,
@@ -9475,6 +9749,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_tables_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
         return append_information_schema_columns_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
         return MYLITE_OK;
     }
@@ -9549,6 +9825,22 @@ static int append_information_schema_catalog_table(
     }
     if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_COLUMNS) {
         return append_information_schema_columns_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS) {
+        return append_information_schema_table_constraints_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE) {
+        return append_information_schema_key_column_usage_base_rows(
             context->database,
             context->rows,
             context->schema,
@@ -10029,6 +10321,144 @@ static int append_information_schema_columns_base_column_row(
         column
     );
     values[information_schema_columns_extra_column] = extra;
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_table_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        if (!indexes[index].index.is_unique) {
+            continue;
+        }
+        rc = append_information_schema_table_constraints_index_row(
+            database,
+            rows,
+            schema,
+            table,
+            &indexes[index]
+        );
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_table_constraints_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index
+) {
+    const char *constraint_type =
+        index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY ? "PRIMARY KEY" : "UNIQUE";
+    const char *values[information_schema_table_constraints_column_count] = {
+        "def",
+        schema->name,
+        index->index.name,
+        schema->name,
+        table->name,
+        constraint_type,
+        "YES",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_key_column_usage_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        if (!indexes[index].index.is_unique) {
+            continue;
+        }
+        rc = append_information_schema_key_column_usage_index_row(
+            database,
+            rows,
+            schema,
+            table,
+            &indexes[index]
+        );
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_key_column_usage_index_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_index_info *index
+) {
+    char ordinal_text[integer_text_capacity];
+    const char *values[information_schema_key_column_usage_column_count] = {
+        "def",
+        schema->name,
+        index->index.name,
+        "def",
+        schema->name,
+        table->name,
+        index->column.name,
+        ordinal_text,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    int rc = information_schema_format_i64(
+        database,
+        index->index_column.ordinal_position,
+        ordinal_text,
+        sizeof(ordinal_text)
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     return append_information_schema_row(database, rows, values);
 }

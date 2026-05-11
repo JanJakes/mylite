@@ -50,7 +50,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.INNODB_TEMP_TABLE_INFO` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.INNODB_TRX` | ❌ | Active InnoDB transaction information |
 | `INFORMATION_SCHEMA.INNODB_VIRTUAL` | ❌ | InnoDB virtual generated column metadata |
-| `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | ❌ | Constraint key columns |
+| `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary-key and supported unique-index columns on MyLite persistent base tables; includes current system-view column metadata, one row per single-column constraint, and NULL referenced-table columns; no foreign keys, composite keys, views, temporary tables, privileges, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.KEYWORDS` | ❌ | MySQL keywords |
 | `INFORMATION_SCHEMA.MYSQL_FIREWALL_USERS` | ❌ | Deprecated table shape |
 | `INFORMATION_SCHEMA.MYSQL_FIREWALL_WHITELIST` | ❌ | Deprecated table shape |
@@ -74,7 +74,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |
 | `INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE` | ❌ | Acceptable units for ST_Distance() |
 | `INFORMATION_SCHEMA.STATISTICS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary plus supported unique and nonunique secondary indexes on MyLite persistent base tables, with fixed BTREE/statistics placeholders; no fulltext/spatial/functional/prefix/descending index metadata, views, temporary tables, privileges, storage-engine statistics, or complete MySQL system catalogs |
-| `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | ❌ | Table constraints |
+| `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary-key and supported unique-index constraints on MyLite persistent base tables, with fixed `ENFORCED='YES'`; no check constraints, foreign keys, composite keys, views, temporary tables, privileges, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | Privileges on tables |
 | `INFORMATION_SCHEMA.TABLES` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite base-table descriptors, with fixed InnoDB/table-status placeholders and descriptor-owned auto-increment metadata; no views, temporary tables, system schemas beyond the supported views, privileges, timestamps, or full storage-engine statistics |

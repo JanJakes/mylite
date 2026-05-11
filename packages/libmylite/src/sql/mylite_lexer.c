@@ -894,6 +894,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"SQL_TSI_SECOND", 0U},
         {"SQL_TSI_WEEK", 0U},
         {"SQL_TSI_YEAR", 0U},
+        {"SQRT", 0U},
         {"SRID", 0U},
         {"SSL", MYLITE_SQL_KEYWORD_RESERVED},
         {"STACKED", 0U},

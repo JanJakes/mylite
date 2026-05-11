@@ -453,6 +453,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "pi_function";
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
         return "pi_argument_count_error";
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
+        return "sqrt_function";
+    case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
+        return "sqrt_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

@@ -36,7 +36,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `ROUND()` | 🟡 | Limited one-argument no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals up to 81 significant digits, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no `ROUND(value, places)`, decimal/float rounding, table-backed expression support, string/hex/bit conversion, or expression metadata |
 | `SIGN()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct exact-decimal integer literals, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `SIN()` | ❌ | Return sine of the argument |
-| `SQRT()` | ❌ | Return square root of the argument |
+| `SQRT()` | 🟡 | Limited no-source/`DUAL` scalar projection and limited `DO` expression execution over integer/boolean/`NULL`, direct decimal integer literals in the admitted unsigned-64 magnitude envelope, signed-64 scalar arithmetic, and limited unsigned-64 numeric bitwise operands; negative inputs return `NULL` without warnings; no table-backed expression support, string/decimal/float/hex/bit conversion, or expression metadata |
 | `TAN()` | ❌ | Return tangent of the argument |
 | `TRUNCATE()` | ❌ | Truncate to specified number of decimal places |
 

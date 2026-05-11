@@ -18,6 +18,14 @@ run_mysql() {
             --batch --raw --binary-as-hex=1 --skip-column-names "$@"
 }
 
+run_mysql_force() {
+    sql=$1
+    shift
+    printf '%s\n' "$sql" \
+        | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
+            --batch --raw --binary-as-hex=1 --skip-column-names --force "$@" 2>/dev/null
+}
+
 run_mysql_with_headers() {
     sql=$1
     shift
@@ -43,6 +51,16 @@ expect_output() {
     shift 3
 
     output=$(run_mysql "$sql" "$@")
+    expect_value "$label" "$expected" "$output"
+}
+
+expect_output_force() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql_force "$sql" "$@")
     expect_value "$label" "$expected" "$output"
 }
 
@@ -99,10 +117,11 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
 
 expect_output_with_headers \
     "core sqrt values" \
-    "SQRT(NULL)	SQRT(TRUE)	SQRT(FALSE)	SQRT(0)	SQRT(-0)	SQRT(+0)	SQRT(1)	SQRT(4)	SQRT(9)	SQRT(2)	SQRT(10)	SQRT(20)	SQRT(-1)	SQRT(-16)	SQRT(-9223372036854775808)	SQRT(-18446744073709551615)	@@warning_count	ROW_COUNT()
-NULL	1	0	0	0	0	1	2	3	1.4142135623730951	3.1622776601683795	4.47213595499958	NULL	NULL	NULL	NULL	0	0" \
+    "SQRT(NULL)	SQRT(TRUE)	SQRT(FALSE)	SQRT(0)	SQRT(-0)	SQRT(+0)	SQRT(1)	SQRT(4)	SQRT(9)	SQRT(2)	SQRT(10)	SQRT(20)	SQRT(1000000000000000000)	SQRT(-1)	SQRT(-16)	SQRT(-9223372036854775808)	SQRT(-18446744073709551615)	@@warning_count	ROW_COUNT()
+NULL	1	0	0	0	0	1	2	3	1.4142135623730951	3.1622776601683795	4.47213595499958	1000000000	NULL	NULL	NULL	NULL	0	0" \
     "DO 0; SELECT SQRT(NULL),SQRT(TRUE),SQRT(FALSE),SQRT(0),SQRT(-0),
             SQRT(+0),SQRT(1),SQRT(4),SQRT(9),SQRT(2),SQRT(10),SQRT(20),
+            SQRT(1000000000000000000),
             SQRT(-1),SQRT(-16),SQRT(-9223372036854775808),
             SQRT(-18446744073709551615),@@warning_count,ROW_COUNT();" \
     "$DATABASE"
@@ -184,17 +203,39 @@ expect_error \
     "SELECT SQRT(3037000500*3037000500);" \
     "$DATABASE"
 
+expect_output_force \
+    "select warning before later error" \
+    "Warning	1365	Division by 0
+Error	1690	BIGINT value is out of range in '(3037000500 * 3037000500)'
+2	1	-1" \
+    "DO 0;
+     SELECT SQRT(5 DIV 0),SQRT(3037000500*3037000500);
+     SHOW WARNINGS; SELECT @@warning_count,@@error_count,ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output_force \
+    "do warning before later error" \
+    "Warning	1365	Division by 0
+Error	1690	BIGINT value is out of range in '(3037000500 * 3037000500)'
+2	1	-1" \
+    "DO 0;
+     DO SQRT(5 DIV 0),SQRT(3037000500*3037000500);
+     SHOW WARNINGS; SELECT @@warning_count,@@error_count,ROW_COUNT();" \
+    "$DATABASE"
+
 accepted_but_deferred=$(run_mysql_with_headers \
-    "SELECT SQRT('64'),SQRT(_binary '64'),SQRT(X'40'),SQRT(b'1111'),
+    "DO 0;
+     SELECT SQRT('64'),SQRT(_binary '64'),SQRT(X'40'),SQRT(b'1111'),
             SQRT(5.5),SQRT(1e1),SQRT(18446744073709551616),
-            SQRT(999999999999999999999999999999999999999999999999999999999999999999999999999999999);
+            SQRT(999999999999999999999999999999999999999999999999999999999999999999999999999999999),
+            SQRT(@@warning_count);
      SELECT id,SQRT(id) FROM t ORDER BY id IS NULL,id;" \
     "$DATABASE"
 )
 expect_value \
     "mysql accepted forms deferred by this slice" \
-    "SQRT('64')	SQRT(_binary '64')	SQRT(X'40')	SQRT(b'1111')	SQRT(5.5)	SQRT(1e1)	SQRT(18446744073709551616)	SQRT(999999999999999999999999999999999999999999999999999999999999999999999999999999999)
-8	8	8	3.872983346207417	2.345207879911715	3.1622776601683795	4294967296	3.162277660168379e40
+"SQRT('64')	SQRT(_binary '64')	SQRT(X'40')	SQRT(b'1111')	SQRT(5.5)	SQRT(1e1)	SQRT(18446744073709551616)	SQRT(999999999999999999999999999999999999999999999999999999999999999999999999999999999)	SQRT(@@warning_count)
+8	8	8	3.872983346207417	2.345207879911715	3.1622776601683795	4294967296	3.162277660168379e40	0
 id	SQRT(id)
 -1	NULL
 0	0

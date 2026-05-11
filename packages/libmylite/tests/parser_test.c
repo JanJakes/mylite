@@ -43,6 +43,7 @@ static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_pi_function(void);
+static int test_sqrt_function(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
@@ -183,6 +184,7 @@ int main(void) {
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
     failures += test_pi_function();
+    failures += test_sqrt_function();
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
@@ -2389,6 +2391,83 @@ static int test_pi_function(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare pi identifier");
     failures += expect_span_text(first_expression, "PI", "bare pi span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_sqrt_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT SQRT(4), Sqrt(9), sqrt(16) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SQRT_FUNCTION, "sqrt function");
+    failures += expect_span_text(first_expression, "SQRT(4)", "sqrt function span");
+    failures += expect_child_count(first_expression, 1U, "sqrt argument count");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "sqrt argument");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_SQRT_FUNCTION, "mixed sqrt function");
+    failures += expect_span_text(second_expression, "Sqrt(9)", "mixed sqrt span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SQRT_FUNCTION, "lower sqrt function");
+    failures += expect_span_text(third_expression, "sqrt(16)", "lower sqrt span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "sqrt from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SQRT (20), (SQRT(NULL));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SQRT_FUNCTION, "spaced sqrt function");
+    failures += expect_span_text(first_expression, "SQRT (20)", "spaced sqrt span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized sqrt");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_SQRT_FUNCTION, "wrapped sqrt");
+    failures += expect_span_text(parenthesized, "(SQRT(NULL))", "parenthesized sqrt span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SQRT(), SQRT(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR,
+        "sqrt empty argument error"
+    );
+    failures += expect_child_count(first_expression, 0U, "sqrt empty error child count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR,
+        "sqrt multiple argument error"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "sqrt multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE sqrt (sqrt INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "sqrt identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SQRT;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare sqrt identifier");
+    failures += expect_span_text(first_expression, "SQRT", "bare sqrt span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -73,6 +73,9 @@ target_link_libraries(mylite
   PRIVATE
     MyLite::sqlite
 )
+if(UNIX AND NOT APPLE)
+  target_link_libraries(mylite PRIVATE m)
+endif()
 
 mylite_configure_c_target(mylite)
 
@@ -446,6 +449,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_pi_function_test)
+
+  add_executable(mylite_runtime_sqrt_function_test
+    tests/runtime_sqrt_function_test.c
+  )
+  target_link_libraries(mylite_runtime_sqrt_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sqrt_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sqrt_function_test)
 
   add_executable(mylite_runtime_bit_count_function_test
     tests/runtime_bit_count_function_test.c
@@ -1646,6 +1660,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.pi_function
     COMMAND mylite_runtime_pi_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.sqrt_function
+    COMMAND mylite_runtime_sqrt_function_test
   )
   add_test(
     NAME libmylite.runtime.bit_count_function

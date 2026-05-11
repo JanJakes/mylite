@@ -12,6 +12,7 @@
 
 #include <inttypes.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -109,6 +110,7 @@ enum {
     base_conversion_octal_base = 8,
     base_conversion_max_base = 36,
     base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
+    sqrt_max_significant_digits = 17,
 };
 
 static const char scalar_pi_text[] = "3.141593";
@@ -638,6 +640,7 @@ struct session_scalar_cell {
     char integer_text[integer_text_capacity];
     char literal_text[literal_projection_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
+    char sqrt_text[integer_text_capacity];
     size_t staged_division_by_zero_warning_count;
     bool has_staged_truncated_decimal_warning;
     char staged_truncated_decimal_text[integer_text_capacity];
@@ -662,6 +665,13 @@ struct scalar_bitwise_value {
 };
 
 struct conv_input_value {
+    bool is_null;
+    bool is_negative;
+    uint64_t magnitude;
+    size_t division_by_zero_warning_count;
+};
+
+struct sqrt_input_value {
     bool is_null;
     bool is_negative;
     uint64_t magnitude;
@@ -2139,7 +2149,7 @@ static int column_aggregate_execution_error(struct mylite_db *database, int rc);
 static int grouped_aggregate_execution_error(struct mylite_db *database, int rc);
 static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
-static int reject_bare_pi_identifier_lookup_if_needed(
+static int reject_bare_native_function_identifier_lookup_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 );
@@ -2626,6 +2636,28 @@ static int scalar_division_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int sqrt_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_sqrt_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct sqrt_input_value *out_value
+);
+static int evaluate_sqrt_direct_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct sqrt_input_value *out_value,
+    bool *out_handled
+);
+static int format_sqrt_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    char *buffer,
+    size_t buffer_size
+);
 static int format_scalar_division_value(
     struct mylite_db *database,
     int64_t numerator,
@@ -2744,6 +2776,7 @@ static void set_abs_signed_minimum_overflow_error(struct mylite_db *database);
 static void set_abs_unsupported_error(struct mylite_db *database);
 static void set_sign_unsupported_error(struct mylite_db *database);
 static void set_rounding_unsupported_error(struct mylite_db *database);
+static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
@@ -3033,6 +3066,7 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -4909,6 +4943,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
+    case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6715,8 +6751,8 @@ static int execute_do_statement(
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
-            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI() and "
-            "CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
+            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT() "
+            "and CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -6787,7 +6823,7 @@ static int execute_select_statement(
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
-    rc = reject_bare_pi_identifier_lookup_if_needed(database, statement);
+    rc = reject_bare_native_function_identifier_lookup_if_needed(database, statement);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -6831,7 +6867,8 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/CEIL()/CEILING()/FLOOR()/"
+            "ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -8993,6 +9030,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
+    case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16042,7 +16081,7 @@ static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_n
     return false;
 }
 
-static int reject_bare_pi_identifier_lookup_if_needed(
+static int reject_bare_native_function_identifier_lookup_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 ) {
@@ -16073,7 +16112,8 @@ static int reject_bare_pi_identifier_lookup_if_needed(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!text_equals_ascii_case_insensitive(column_name, "pi")) {
+    if (!text_equals_ascii_case_insensitive(column_name, "pi") &&
+        !text_equals_ascii_case_insensitive(column_name, "sqrt")) {
         return MYLITE_OK;
     }
 
@@ -16616,6 +16656,8 @@ static const char *argument_count_error_node_function_name(
         return "VERSION";
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
         return "PI";
+    case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
+        return "SQRT";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -16763,6 +16805,8 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_ROUND_FUNCTION:
         return rounding_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
+        return sqrt_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
@@ -17570,6 +17614,221 @@ static int evaluate_rounding_direct_literal_operand(
         out_cell->value = out_cell->literal_text;
     }
     return rc;
+}
+
+static int sqrt_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct sqrt_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SQRT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_sqrt_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_sqrt_operand(database, child_at(expression, 0U), &value);
+    if (rc != MYLITE_OK || value.is_null || value.is_negative) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    rc = format_sqrt_value(
+        database,
+        value.magnitude,
+        out_cell->sqrt_text,
+        sizeof(out_cell->sqrt_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->sqrt_text;
+        out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+    }
+    return rc;
+}
+
+static int evaluate_sqrt_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct sqrt_input_value *out_value
+) {
+    struct scalar_arithmetic_value arithmetic = {.is_null = false, .integer = 0};
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct sqrt_input_value){.is_null = false, .is_negative = false, .magnitude = 0U};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_sqrt_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_sqrt_direct_value_operand(database, expression, out_value, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+    if (is_scalar_bitwise_projection_expression(expression)) {
+        struct scalar_bitwise_value bitwise = {.is_null = false, .integer = 0U};
+
+        rc = evaluate_scalar_bitwise_expression(database, expression, &bitwise);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_value->is_null = bitwise.is_null;
+        out_value->magnitude = bitwise.integer;
+        out_value->division_by_zero_warning_count = bitwise.division_by_zero_warning_count;
+        return MYLITE_OK;
+    }
+    if (!is_scalar_arithmetic_projection_expression(expression)) {
+        set_sqrt_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_scalar_arithmetic_expression(database, expression, &arithmetic);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = arithmetic.is_null;
+    out_value->division_by_zero_warning_count = arithmetic.division_by_zero_warning_count;
+    if (arithmetic.is_null) {
+        return MYLITE_OK;
+    }
+    if (arithmetic.integer < 0) {
+        out_value->is_negative = true;
+        out_value->magnitude = arithmetic.integer == INT64_MIN ? ((uint64_t)INT64_MAX + 1U)
+                                                               : (uint64_t)(-arithmetic.integer);
+    } else {
+        out_value->magnitude = (uint64_t)arithmetic.integer;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_sqrt_direct_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct sqrt_input_value *out_value,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return MYLITE_OK;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        has_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_OK;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_value->is_null = true;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        out_value->magnitude = 1U;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (!has_sign && literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        out_value->magnitude = 0U;
+        *out_handled = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_sqrt_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    out_value->is_negative = false;
+    if (is_negative && magnitude != 0U) {
+        out_value->is_negative = true;
+    }
+    out_value->magnitude = magnitude;
+    return MYLITE_OK;
+}
+
+static int format_sqrt_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    char *buffer,
+    size_t buffer_size
+) {
+    double value = sqrt((double)magnitude);
+    uint64_t integer_value = (uint64_t)value;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    if ((double)integer_value == value) {
+        return format_uint64(database, integer_value, buffer, buffer_size);
+    }
+
+    for (int precision = 1; precision <= sqrt_max_significant_digits; ++precision) {
+        char candidate[integer_text_capacity];
+        char *end = NULL;
+        double parsed = 0.0;
+        int written = snprintf(candidate, sizeof(candidate), "%.*g", precision, value);
+
+        if (written < 0 || (size_t)written >= sizeof(candidate)) {
+            set_runtime_error(database, "failed to format SQRT() value");
+            return MYLITE_ERROR;
+        }
+        parsed = strtod(candidate, &end);
+        if (end != candidate && end != NULL && *end == '\0' && parsed == value) {
+            written = snprintf(buffer, buffer_size, "%s", candidate);
+            if (written < 0 || (size_t)written >= buffer_size) {
+                set_runtime_error(database, "failed to format SQRT() value");
+                return MYLITE_ERROR;
+            }
+            return MYLITE_OK;
+        }
+    }
+
+    set_runtime_error(database, "failed to format SQRT() value");
+    return MYLITE_ERROR;
 }
 
 static int base_conversion_function_value(
@@ -20785,6 +21044,15 @@ static void set_rounding_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_sqrt_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "SQRT() supports only top-level no-source SELECT, FROM DUAL SELECT, and DO numeric "
+        "SQRT() over integer, boolean, NULL, signed 64-bit scalar arithmetic, and limited "
+        "numeric bitwise operands"
+    );
+}
+
 static void set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -22895,6 +23163,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_rounding_projection_expression(expression)) {
         return true;
     }
+    if (is_sqrt_projection_expression(expression)) {
+        return true;
+    }
     if (is_base_conversion_projection_expression(expression)) {
         return true;
     }
@@ -22964,6 +23235,18 @@ static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *
             return false;
         }
         return child_at(expression, 1U) != NULL;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SQRT_FUNCTION) {
+        return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
@@ -23549,6 +23832,7 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_CEILING_FUNCTION:
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_ROUND_FUNCTION:
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:

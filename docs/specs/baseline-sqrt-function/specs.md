@@ -49,6 +49,9 @@ MySQL 8.4.9 establish these expectations for this slice:
 - `TRUE` and `FALSE` behave as integer `1` and `0`;
 - exact square inputs such as `SQRT(1)`, `SQRT(4)`, and `SQRT(9)` return `1`,
   `2`, and `3`;
+- exact integer square-root results are displayed as decimal integer text,
+  including large examples such as `SQRT(1000000000000000000)` returning
+  `1000000000`;
 - non-square integer inputs return MySQL's visible shortest round-tripping
   double text, for example `SQRT(2)` returns `1.4142135623730951`,
   `SQRT(10)` returns `3.1622776601683795`, and `SQRT(20)` returns
@@ -67,13 +70,19 @@ MySQL 8.4.9 establish these expectations for this slice:
   SQLSTATE `22012`, `Division by 0`;
 - child signed arithmetic overflow raises MySQL error `1690` / SQLSTATE
   `22003`;
+- when an earlier selected or `DO` expression stages a division-by-zero warning
+  and a later expression raises overflow, MySQL preserves both diagnostics for
+  the statement;
 - `SQRT()` and `SQRT(1,2)` raise MySQL error `1582` / SQLSTATE `42000`, with
   `SQRT` as the native function name;
 - bare `SQRT` in a select list is an identifier lookup and raises MySQL error
   `1054` / SQLSTATE `42S22` when no such column is visible; and
 - MySQL accepts broader forms such as `SQRT('64')`, `SQRT(X'40')`,
   `SQRT(b'1111')`, `SQRT(5.5)`, `SQRT(1e1)`, very large decimal literals, and
-  table-backed `SQRT(column)`. Those remain deferred by this MyLite baseline.
+  table-backed `SQRT(column)`;
+- MySQL also accepts session system variables and prepared parameters such as
+  `SQRT(@@warning_count)` and prepared `SQRT(?)`. Those remain deferred by this
+  MyLite baseline.
 
 ## Ownership Boundaries
 
@@ -201,7 +210,8 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    preserving its `NULL` propagation, left-`NULL` short-circuiting, unsigned
    result representation, shift behavior, warning staging, and overflow
    behavior for evaluated children.
-9. Format non-`NULL` square roots as the shortest decimal string that
+9. Format exact integer square-root results as unsigned decimal integer text.
+   Format noninteger square roots as the shortest decimal string that
    round-trips back to the computed double value, with at most 17 significant
    digits. This matches the observed MySQL 8.4.9 text for the admitted integer
    and bitwise examples while avoiding a broader approximate-number type
@@ -259,6 +269,7 @@ Add MySQL-runtime expectation coverage for:
 - `SELECT SQRT(...) FROM DUAL`;
 - arithmetic and bitwise child operands;
 - child division-by-zero warning staging;
+- warning-before-error diagnostics for `SELECT` and `DO`;
 - successful `DO SQRT(...)` status and warnings;
 - `SHOW WARNINGS` after successful and warning-producing `SQRT()` statements;
 - wrong-arity diagnostics;
@@ -275,6 +286,7 @@ Add plain C tests for:
 - explicit aliases and mixed scalar select lists;
 - `DO SQRT(...)` with no result rows and existing affected-row behavior;
 - child division-by-zero warning staging and child overflow diagnostics;
+- warning-before-error diagnostics for `SELECT` and `DO`;
 - deterministic rejection for strings, decimals, floats, hex literals, bit
   literals, table-backed columns, parameters, system variables, nested
   arithmetic use, comparison use, and `CASE` children;

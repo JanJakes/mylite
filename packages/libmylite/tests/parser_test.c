@@ -7646,10 +7646,43 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_unique_key (id INT, UNIQUE KEY (id));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE unique_keys (id INT UNIQUE, n INT UNIQUE KEY, UNIQUE KEY u_id (id), "
+        "UNIQUE INDEX (n));",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, 4U, "unique key item count");
+    failures += expect_node(
+        child_at(child_at(items, 0U), 2U),
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        "inline unique attribute"
+    );
+    failures += expect_node(
+        child_at(child_at(items, 1U), 2U),
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        "inline unique key attribute"
+    );
+    failures += expect_node(
+        child_at(items, 2U),
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "named unique key"
+    );
+    failures += expect_span_text(child_at(child_at(items, 2U), 0U), "u_id", "unique key name");
+    key_parts = child_at(child_at(items, 2U), 1U);
+    failures +=
+        expect_node(key_parts, MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST, "unique key parts");
+    failures += expect_child_count(key_parts, 1U, "unique key part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "id", "unique key part");
+    failures += expect_node(
+        child_at(items, 3U),
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "unnamed unique index"
+    );
+    key_parts = child_at(child_at(items, 3U), 0U);
+    failures += expect_child_count(key_parts, 1U, "unnamed unique key part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "n", "unnamed unique key part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

@@ -988,7 +988,7 @@ Performance Schema variable tables remain unsupported.
 | `transaction_isolation` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_prealloc_size` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_read_only` | ❌ | Value, scope, SET, diagnostics |
-| `unique_checks` | 🟡 | Limited scalar `SELECT @@unique_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; no mutable global/session state, unique index DDL, duplicate-key enforcement, index metadata, optimizer effects, import optimizations, or Performance Schema variable tables |
+| `unique_checks` | 🟡 | Limited scalar `SELECT @@unique_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; current descriptor-owned primary-key and supported unique-index duplicate checks remain enabled; no mutable global/session state, toggleable enforcement, optimizer effects, import optimizations, or Performance Schema variable tables |
 | `updatable_views_with_limit` | 🟡 | Limited read-only scalar `SELECT @@updatable_views_with_limit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `YES`; no `SET`, mutable global/session state, view DDL, view metadata, view DML, check options, privileges, or Performance Schema variable tables |
 | `use_secondary_engine` | ❌ | Value, scope, SET, diagnostics |
 | `validate_password_check_user_name` | ❌ | Value, scope, SET, diagnostics |

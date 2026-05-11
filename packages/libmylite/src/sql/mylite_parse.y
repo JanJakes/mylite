@@ -2597,6 +2597,9 @@ create_table_item(A) ::= primary_key_definition(B). {
 create_table_item(A) ::= secondary_index_definition(B). {
     A = B;
 }
+create_table_item(A) ::= unique_index_definition(B). {
+    A = B;
+}
 
 primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
@@ -2619,6 +2622,14 @@ secondary_index_definition(A) ::= KEY(K) index_name_opt(N) LPAREN secondary_inde
 secondary_index_definition(A) ::= INDEX(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_secondary_index_definition(state, K, N, L, R);
 }
+
+unique_index_definition(A) ::= UNIQUE(U) unique_index_keyword_opt index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
+unique_index_keyword_opt ::= .
+unique_index_keyword_opt ::= KEY.
+unique_index_keyword_opt ::= INDEX.
 
 index_name_opt(A) ::= . {
     A = NULL;
@@ -2664,6 +2675,12 @@ column_attribute(A) ::= column_default(B). {
 }
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
+}
+column_attribute(A) ::= UNIQUE(U). {
+    A = mylite_sql_parser_make_inline_unique_key(state, U, U);
+}
+column_attribute(A) ::= UNIQUE(U) KEY(K). {
+    A = mylite_sql_parser_make_inline_unique_key(state, U, K);
 }
 column_attribute(A) ::= AUTO_INCREMENT(T). {
     A = mylite_sql_parser_make_column_auto_increment(state, T);

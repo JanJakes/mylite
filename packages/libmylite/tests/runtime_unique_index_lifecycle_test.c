@@ -5,6 +5,7 @@
 #include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,14 +22,13 @@ enum {
     show_columns_field_count = 6,
     show_index_field_count = 15,
     statistics_field_count = 18,
-    indexed_table_column_row_count = 7,
-    indexed_table_index_row_count = 6,
-    indexed_table_physical_index_count = 6,
-    filtered_result_column_count = 6,
+    unique_table_column_row_count = 5,
+    unique_table_index_row_count = 6,
+    unique_table_physical_index_count = 6,
     mysql_error_parse = 1064,
+    mysql_error_duplicate_key = 1062,
     mysql_error_duplicate_key_name = 1061,
     mysql_error_key_column_missing = 1072,
-    mysql_error_table_does_not_exist = 1146,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_index_name = 1280,
 };
@@ -47,14 +47,24 @@ struct expected_query {
     const char *context;
 };
 
-static int test_secondary_index_metadata_dml_and_persistence(void);
-static int test_secondary_index_diagnostics(void);
-static int test_secondary_index_independent_handles(void);
-static int create_secondary_index_schema(mylite_db *database);
+struct expected_dml_result {
+    int64_t affected_rows;
+    size_t warning_count;
+};
+
+static int test_unique_index_metadata_dml_and_persistence(void);
+static int test_unique_index_diagnostics(void);
+static int test_unique_index_independent_handles(void);
+static int create_unique_index_schema(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_dml_result(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_result expected
+);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_physical_index_count(
     mylite_db *database,
@@ -88,107 +98,132 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_secondary_index_metadata_dml_and_persistence();
-    failures += test_secondary_index_diagnostics();
-    failures += test_secondary_index_independent_handles();
+    failures += test_unique_index_metadata_dml_and_persistence();
+    failures += test_unique_index_diagnostics();
+    failures += test_unique_index_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_secondary_index_metadata_dml_and_persistence(void) {
+static int test_unique_index_metadata_dml_and_persistence(void) {
     static const char *const show_columns_rows[] = {
-        "id",   "int",  "NO",  "PRI",    NULL,           "",    "v",   "int",     "YES",
-        "MUL",  NULL,   "",    "amount", "decimal(5,2)", "YES", "MUL", NULL,      "",
-        "d",    "date", "YES", "MUL",    NULL,           "",    "c",   "char(3)", "YES",
-        "MUL",  NULL,   "",    "name",   "varchar(20)",  "YES", "MUL", NULL,      "",
-        "body", "text", "YES", "",       NULL,           "",
+        "id",     "int",          "NO",  "PRI", NULL, "", "v", "int",  "YES", "UNI", NULL, "",
+        "amount", "decimal(5,2)", "YES", "UNI", NULL, "", "d", "date", "YES", "UNI", NULL, "",
+        "n",      "int",          "NO",  "UNI", NULL, "",
     };
     static const char *const show_index_rows[] = {
-        "idx_t", "0", "PRIMARY",  "1",   "id",     "A",     "0", NULL,     NULL,  "",
-        "BTREE", "",  "",         "YES", NULL,     "idx_t", "1", "k_v",    "1",   "v",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
-        "idx_t", "1", "k_amount", "1",   "amount", "A",     "0", NULL,     NULL,  "YES",
-        "BTREE", "",  "",         "YES", NULL,     "idx_t", "1", "k_date", "1",   "d",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
-        "idx_t", "1", "k_char",   "1",   "c",      "A",     "0", NULL,     NULL,  "YES",
-        "BTREE", "",  "",         "YES", NULL,     "idx_t", "1", "k_name", "1",   "name",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
-    };
-    static const char *const renamed_show_index_rows[] = {
-        "renamed_idx", "0", "PRIMARY",  "1",   "id",
-        "A",           "0", NULL,       NULL,  "",
-        "BTREE",       "",  "",         "YES", NULL,
-        "renamed_idx", "1", "k_v",      "1",   "v",
-        "A",           "0", NULL,       NULL,  "YES",
-        "BTREE",       "",  "",         "YES", NULL,
-        "renamed_idx", "1", "k_amount", "1",   "amount",
-        "A",           "0", NULL,       NULL,  "YES",
-        "BTREE",       "",  "",         "YES", NULL,
-        "renamed_idx", "1", "k_date",   "1",   "d",
-        "A",           "0", NULL,       NULL,  "YES",
-        "BTREE",       "",  "",         "YES", NULL,
-        "renamed_idx", "1", "k_char",   "1",   "c",
-        "A",           "0", NULL,       NULL,  "YES",
-        "BTREE",       "",  "",         "YES", NULL,
-        "renamed_idx", "1", "k_name",   "1",   "name",
-        "A",           "0", NULL,       NULL,  "YES",
-        "BTREE",       "",  "",         "YES", NULL,
-    };
-    static const char *const clone_show_index_rows[] = {
-        "clone", "0", "PRIMARY",  "1",   "id",     "A",     "0", NULL,     NULL,  "",
-        "BTREE", "",  "",         "YES", NULL,     "clone", "1", "k_v",    "1",   "v",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
-        "clone", "1", "k_amount", "1",   "amount", "A",     "0", NULL,     NULL,  "YES",
-        "BTREE", "",  "",         "YES", NULL,     "clone", "1", "k_date", "1",   "d",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
-        "clone", "1", "k_char",   "1",   "c",      "A",     "0", NULL,     NULL,  "YES",
-        "BTREE", "",  "",         "YES", NULL,     "clone", "1", "k_name", "1",   "name",
-        "A",     "0", NULL,       NULL,  "YES",    "BTREE", "",  "",       "YES", NULL,
+        "unique_t", "0", "PRIMARY", "1",   "id",  "A",        "0", NULL,       NULL,  "",
+        "BTREE",    "",  "",        "YES", NULL,  "unique_t", "0", "u_n",      "1",   "n",
+        "A",        "0", NULL,      NULL,  "",    "BTREE",    "",  "",         "YES", NULL,
+        "unique_t", "0", "u_v",     "1",   "v",   "A",        "0", NULL,       NULL,  "YES",
+        "BTREE",    "",  "",        "YES", NULL,  "unique_t", "0", "u_amount", "1",   "amount",
+        "A",        "0", NULL,      NULL,  "YES", "BTREE",    "",  "",         "YES", NULL,
+        "unique_t", "0", "u_date",  "1",   "d",   "A",        "0", NULL,       NULL,  "YES",
+        "BTREE",    "",  "",        "YES", NULL,  "unique_t", "1", "k_v",      "1",   "v",
+        "A",        "0", NULL,      NULL,  "YES", "BTREE",    "",  "",         "YES", NULL,
     };
     static const char *const statistics_rows[] = {
-        "def", "app", "idx_t", "1",   "app",   "k_amount", "1", "amount", "A",
-        "0",   NULL,  NULL,    "YES", "BTREE", "",         "",  "YES",    NULL,
-        "def", "app", "idx_t", "1",   "app",   "k_char",   "1", "c",      "A",
-        "0",   NULL,  NULL,    "YES", "BTREE", "",         "",  "YES",    NULL,
-        "def", "app", "idx_t", "1",   "app",   "k_date",   "1", "d",      "A",
-        "0",   NULL,  NULL,    "YES", "BTREE", "",         "",  "YES",    NULL,
-        "def", "app", "idx_t", "1",   "app",   "k_name",   "1", "name",   "A",
-        "0",   NULL,  NULL,    "YES", "BTREE", "",         "",  "YES",    NULL,
-        "def", "app", "idx_t", "1",   "app",   "k_v",      "1", "v",      "A",
-        "0",   NULL,  NULL,    "YES", "BTREE", "",         "",  "YES",    NULL,
-        "def", "app", "idx_t", "0",   "app",   "PRIMARY",  "1", "id",     "A",
-        "0",   NULL,  NULL,    "",    "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "1",   "app",   "k_v",      "1", "v",      "A",
+        "0",   NULL,  NULL,       "YES", "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "0",   "app",   "PRIMARY",  "1", "id",     "A",
+        "0",   NULL,  NULL,       "",    "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "0",   "app",   "u_amount", "1", "amount", "A",
+        "0",   NULL,  NULL,       "YES", "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "0",   "app",   "u_date",   "1", "d",      "A",
+        "0",   NULL,  NULL,       "YES", "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "0",   "app",   "u_n",      "1", "n",      "A",
+        "0",   NULL,  NULL,       "",    "BTREE", "",         "",  "YES",    NULL,
+        "def", "app", "unique_t", "0",   "app",   "u_v",      "1", "v",      "A",
+        "0",   NULL,  NULL,       "YES", "BTREE", "",         "",  "YES",    NULL,
     };
     static const char *const show_create_rows[] = {
-        "idx_t",
-        "CREATE TABLE `idx_t` (\n"
+        "unique_t",
+        "CREATE TABLE `unique_t` (\n"
         "  `id` int NOT NULL,\n"
         "  `v` int DEFAULT NULL,\n"
         "  `amount` decimal(5,2) DEFAULT NULL,\n"
         "  `d` date DEFAULT NULL,\n"
-        "  `c` char(3) DEFAULT NULL,\n"
-        "  `name` varchar(20) DEFAULT NULL,\n"
-        "  `body` text,\n"
+        "  `n` int NOT NULL,\n"
         "  PRIMARY KEY (`id`),\n"
-        "  KEY `k_v` (`v`),\n"
-        "  KEY `k_amount` (`amount`),\n"
-        "  KEY `k_date` (`d`),\n"
-        "  KEY `k_char` (`c`),\n"
-        "  KEY `k_name` (`name`)\n"
+        "  UNIQUE KEY `u_n` (`n`),\n"
+        "  UNIQUE KEY `u_v` (`v`),\n"
+        "  UNIQUE KEY `u_amount` (`amount`),\n"
+        "  UNIQUE KEY `u_date` (`d`),\n"
+        "  KEY `k_v` (`v`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const inline_show_columns_rows[] = {
+        "v",
+        "int",
+        "YES",
+        "UNI",
+        NULL,
+        "",
+        "n",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "",
+    };
+    static const char *const inline_show_create_rows[] = {
+        "inline_unique",
+        "CREATE TABLE `inline_unique` (\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  `n` int NOT NULL,\n"
+        "  UNIQUE KEY `n` (`n`),\n"
+        "  UNIQUE KEY `v` (`v`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const unnamed_show_create_rows[] = {
-        "unnamed_idx",
-        "CREATE TABLE `unnamed_idx` (\n"
+        "unnamed_unique",
+        "CREATE TABLE `unnamed_unique` (\n"
         "  `id` int DEFAULT NULL,\n"
         "  `v` int DEFAULT NULL,\n"
-        "  KEY `v` (`v`),\n"
-        "  KEY `v_2` (`v`),\n"
-        "  KEY `id` (`id`)\n"
+        "  UNIQUE KEY `v` (`v`),\n"
+        "  UNIQUE KEY `v_2` (`v`),\n"
+        "  UNIQUE KEY `id` (`id`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
-    static const char *const filtered_rows[] = {"1", "10", "12.30", "2024-01-02", "abc", "jan"};
+    static const char *const nullable_unique_rows[] = {
+        "1",
+        "10",
+        "3",
+        "20",
+        "4",
+        NULL,
+        "5",
+        NULL,
+    };
+    static const char *const update_null_rows[] = {
+        "1",
+        "10",
+        "2",
+        NULL,
+        "3",
+        NULL,
+        "4",
+        NULL,
+    };
+    static const char *const internal_duplicate_rows[] = {
+        "1",
+        "10",
+        "2",
+        "20",
+    };
+    static const char *const clone_show_index_rows[] = {
+        "clone", "0", "PRIMARY", "1",   "id",  "A",     "0", NULL,       NULL,  "",
+        "BTREE", "",  "",        "YES", NULL,  "clone", "0", "u_n",      "1",   "n",
+        "A",     "0", NULL,      NULL,  "",    "BTREE", "",  "",         "YES", NULL,
+        "clone", "0", "u_v",     "1",   "v",   "A",     "0", NULL,       NULL,  "YES",
+        "BTREE", "",  "",        "YES", NULL,  "clone", "0", "u_amount", "1",   "amount",
+        "A",     "0", NULL,      NULL,  "YES", "BTREE", "",  "",         "YES", NULL,
+        "clone", "0", "u_date",  "1",   "d",   "A",     "0", NULL,       NULL,  "YES",
+        "BTREE", "",  "",        "YES", NULL,  "clone", "1", "k_v",      "1",   "v",
+        "A",     "0", NULL,      NULL,  "YES", "BTREE", "",  "",         "YES", NULL,
+    };
     static const char *const empty_show_index_rows[] = {0};
+    static const char *const persisted_rows[] = {"1", "31", "2", NULL};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -201,89 +236,196 @@ static int test_secondary_index_metadata_dml_and_persistence(void) {
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open secondary index file");
-    failures += create_secondary_index_schema(database);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open unique index file");
+    failures += create_unique_index_schema(database);
     failures += expect_physical_index_count(
         database,
-        indexed_table_physical_index_count,
-        "secondary index physical SQLite objects"
+        unique_table_physical_index_count,
+        "unique index physical SQLite objects"
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW COLUMNS FROM idx_t",
+            .sql = "SHOW COLUMNS FROM unique_t",
             .values = show_columns_rows,
             .column_count = show_columns_field_count,
-            .row_count = indexed_table_column_row_count,
-            .context = "secondary index SHOW COLUMNS",
+            .row_count = unique_table_column_row_count,
+            .context = "unique index SHOW COLUMNS",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW INDEX FROM idx_t",
+            .sql = "SHOW INDEX FROM unique_t",
             .values = show_index_rows,
             .column_count = show_index_field_count,
-            .row_count = indexed_table_index_row_count,
-            .context = "secondary index SHOW INDEX",
+            .row_count = unique_table_index_row_count,
+            .context = "unique index SHOW INDEX",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW CREATE TABLE idx_t",
+            .sql = "SHOW CREATE TABLE unique_t",
             .values = show_create_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "secondary index SHOW CREATE TABLE",
+            .context = "unique index SHOW CREATE TABLE",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
             .sql = "SELECT * FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
-                   "AND TABLE_NAME = 'idx_t' ORDER BY INDEX_NAME",
+                   "AND TABLE_NAME = 'unique_t' ORDER BY INDEX_NAME",
             .values = statistics_rows,
             .column_count = statistics_field_count,
-            .row_count = indexed_table_index_row_count,
-            .context = "secondary index INFORMATION_SCHEMA.STATISTICS",
+            .row_count = unique_table_index_row_count,
+            .context = "unique index INFORMATION_SCHEMA.STATISTICS",
         }
     );
-
     failures += expect_statement_ok(
         database,
-        "CREATE TABLE unnamed_idx (id INT, v INT, KEY (v), INDEX (v), KEY (id))"
+        "CREATE TABLE inline_unique (v INT UNIQUE, n INT NOT NULL UNIQUE KEY)"
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW CREATE TABLE unnamed_idx",
+            .sql = "SHOW COLUMNS FROM inline_unique",
+            .values = inline_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 2U,
+            .context = "inline unique SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE inline_unique",
+            .values = inline_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "inline unique SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE unnamed_unique (id INT, v INT, UNIQUE (v), UNIQUE KEY (v), UNIQUE (id))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE unnamed_unique",
             .values = unnamed_show_create_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "unnamed secondary index names",
+            .context = "unnamed unique index names",
         }
     );
 
     failures += expect_dml_ok(
         database,
-        "INSERT INTO idx_t (id, v, amount, d, c, name, body) VALUES "
-        "(1, 10, 12.30, '2024-01-02', 'abc', 'jan', 'body'), "
-        "(2, NULL, NULL, NULL, NULL, NULL, NULL)",
+        "INSERT INTO unique_t VALUES "
+        "(1, 10, 12.30, '2024-01-02', 11),"
+        "(2, NULL, NULL, NULL, 12)",
         2
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO unique_t VALUES (3, 10, 13.40, '2024-01-03', 13)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '10' for key 'unique_t.u_v'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE nullable_unique (id INT, v INT, UNIQUE KEY u_v (v))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO nullable_unique VALUES (1,10)", 1);
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nullable_unique VALUES (2,10),(3,20),(4,NULL),(5,NULL)",
+        (struct expected_dml_result){.affected_rows = 3, .warning_count = 1U}
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v, amount, d, c, name FROM idx_t WHERE v = 10",
-            .values = filtered_rows,
-            .column_count = filtered_result_column_count,
-            .row_count = 1U,
-            .context = "secondary index table DML remains readable",
+            .sql = "SELECT * FROM nullable_unique ORDER BY id",
+            .values = nullable_unique_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "unique index permits duplicate NULL and INSERT IGNORE skips duplicates",
         }
     );
-    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE idx_t");
-    failures += expect_statement_ok(database, "CREATE TABLE copied AS SELECT id, v FROM idx_t");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE update_unique (id INT, v INT, UNIQUE KEY u_v (v))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO update_unique VALUES (1,10),(2,20),(3,NULL),(4,NULL)",
+        4
+    );
+    failures += expect_dml_ok(database, "UPDATE update_unique SET v = NULL WHERE id = 2", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM update_unique ORDER BY id",
+            .values = update_null_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "unique UPDATE permits duplicate NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE update_unique SET v = 10 WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '10' for key 'update_unique.u_v'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE update_internal_duplicate (id INT, v INT, UNIQUE KEY u_v (v))"
+    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO update_internal_duplicate VALUES (1,10),(2,20)", 2);
+    failures += execute_error(
+        database,
+        "UPDATE update_internal_duplicate SET v = 99",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '99' for key 'update_internal_duplicate.u_v'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM update_internal_duplicate ORDER BY id",
+            .values = internal_duplicate_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "failed multi-row unique UPDATE leaves rows unchanged",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE unique_t");
+    failures += expect_statement_ok(database, "CREATE TABLE copied AS SELECT id, v FROM unique_t");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM clone",
+            .values = clone_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = unique_table_index_row_count,
+            .context = "CREATE TABLE LIKE clones unique indexes",
+        }
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -291,50 +433,32 @@ static int test_secondary_index_metadata_dml_and_persistence(void) {
             .values = empty_show_index_rows,
             .column_count = show_index_field_count,
             .row_count = 0U,
-            .context = "CREATE TABLE SELECT omits secondary indexes",
+            .context = "CREATE TABLE SELECT omits unique indexes",
         }
     );
-    failures += expect_statement_ok(database, "RENAME TABLE idx_t TO renamed_idx");
-    failures += execute_error(
-        database,
-        "SHOW INDEX FROM idx_t",
-        (struct expected_sql_error){
-            .code = mysql_error_table_does_not_exist,
-            .sqlstate = "42S02",
-            .message_part = "Table 'app.idx_t' doesn't exist",
-        }
-    );
+    failures += expect_statement_ok(database, "RENAME TABLE unique_t TO renamed_unique");
+    failures += expect_dml_ok(database, "UPDATE renamed_unique SET v = 31 WHERE id = 1", 1);
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "preamble after secondary index lifecycle"
+        "preamble after unique index lifecycle"
     );
 
     mylite_close(database);
     database = NULL;
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen secondary index file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen unique index file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SHOW INDEX FROM renamed_idx",
-            .values = renamed_show_index_rows,
-            .column_count = show_index_field_count,
-            .row_count = indexed_table_index_row_count,
-            .context = "renamed secondary indexes persist",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SHOW INDEX FROM clone",
-            .values = clone_show_index_rows,
-            .column_count = show_index_field_count,
-            .row_count = indexed_table_index_row_count,
-            .context = "CREATE TABLE LIKE clones secondary indexes",
+            .sql = "SELECT id, v FROM renamed_unique ORDER BY id LIMIT 2",
+            .values = persisted_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "unique index updates persist after reopen",
         }
     );
 
@@ -343,7 +467,7 @@ static int test_secondary_index_metadata_dml_and_persistence(void) {
     return failures;
 }
 
-static int test_secondary_index_diagnostics(void) {
+static int test_unique_index_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -353,7 +477,7 @@ static int test_secondary_index_diagnostics(void) {
 
     failures += execute_error(
         database,
-        "CREATE TABLE unknown_key (id INT, KEY k (missing))",
+        "CREATE TABLE unknown_key (id INT, UNIQUE KEY u (missing))",
         (struct expected_sql_error){
             .code = mysql_error_key_column_missing,
             .sqlstate = "42000",
@@ -362,7 +486,7 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE duplicate_key_name (id INT, v INT, KEY k (id), INDEX k (v))",
+        "CREATE TABLE duplicate_key_name (id INT, v INT, UNIQUE KEY k (id), KEY k (v))",
         (struct expected_sql_error){
             .code = mysql_error_duplicate_key_name,
             .sqlstate = "42000",
@@ -371,7 +495,7 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE primary_key_name (id INT, KEY `PRIMARY` (id))",
+        "CREATE TABLE primary_key_name (id INT, UNIQUE KEY `PRIMARY` (id))",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_index_name,
             .sqlstate = "42000",
@@ -380,7 +504,7 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE text_key (id INT, body TEXT, KEY k_body (body))",
+        "CREATE TABLE text_unique (body TEXT, UNIQUE KEY u_body (body))",
         (struct expected_sql_error){
             .code = mysql_error_blob_key_without_length,
             .sqlstate = "42000",
@@ -390,58 +514,69 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE composite_key (id INT, v INT, KEY k (id, v))",
+        "CREATE TABLE varchar_unique (name VARCHAR(20), UNIQUE KEY u_name (name))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "Secondary indexes support exactly one key column",
+            .message_part = "Unique indexes do not yet support string columns",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE key_prefix (id INT, KEY k (id(4)))",
+        "CREATE TABLE composite_unique (id INT, v INT, UNIQUE KEY u (id, v))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Unique indexes support exactly one key column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unique_prefix (id INT, UNIQUE KEY u (id(4)))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SQL syntax",
         }
     );
-    failures +=
-        expect_statement_ok(database, "CREATE TABLE indexed_rebuild (id INT, v INT, KEY k (v))");
     failures += execute_error(
         database,
-        "ALTER TABLE indexed_rebuild ORDER BY id",
+        "CREATE UNIQUE INDEX u ON unique_prefix (id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE key_bearing (id INT, v INT, UNIQUE KEY u_v (v))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO key_bearing SELECT 1, 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT ... SELECT into unique-index tables is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO key_bearing VALUES (1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REPLACE into unique-index tables is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE key_bearing ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ALTER TABLE ORDER BY does not yet support secondary-index tables",
-        }
-    );
-    failures += execute_error(
-        database,
-        "ALTER TABLE indexed_rebuild FORCE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE FORCE does not yet support secondary-index tables",
-        }
-    );
-    failures += execute_error(
-        database,
-        "ALTER TABLE indexed_rebuild MODIFY id BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN does not yet support secondary-index tables",
-        }
-    );
-    failures += execute_error(
-        database,
-        "ALTER TABLE indexed_rebuild CHANGE id changed BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE CHANGE COLUMN does not yet support secondary-index tables",
         }
     );
 
@@ -449,7 +584,7 @@ static int test_secondary_index_diagnostics(void) {
     return failures;
 }
 
-static int test_secondary_index_independent_handles(void) {
+static int test_unique_index_independent_handles(void) {
     static const char *const first_values[] = {"10"};
     static const char *const second_values[] = {"20"};
     char first_path[test_path_capacity];
@@ -471,10 +606,19 @@ static int test_secondary_index_independent_handles(void) {
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(first, "USE app");
     failures += expect_statement_ok(second, "USE app");
-    failures += expect_statement_ok(first, "CREATE TABLE t (id INT, v INT, KEY k_v (v))");
-    failures += expect_statement_ok(second, "CREATE TABLE t (id INT, v INT, KEY k_v (v))");
+    failures += expect_statement_ok(first, "CREATE TABLE t (id INT, v INT, UNIQUE KEY u_v (v))");
+    failures += expect_statement_ok(second, "CREATE TABLE t (id INT, v INT, UNIQUE KEY u_v (v))");
     failures += expect_dml_ok(first, "INSERT INTO t VALUES (1, 10)", 1);
     failures += expect_dml_ok(second, "INSERT INTO t VALUES (1, 20)", 1);
+    failures += execute_error(
+        first,
+        "INSERT INTO t VALUES (2, 10)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '10' for key 't.u_v'",
+        }
+    );
     failures += expect_query_values(
         first,
         (struct expected_query){
@@ -482,7 +626,7 @@ static int test_secondary_index_independent_handles(void) {
             .values = first_values,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "first independent secondary-index table state",
+            .context = "first independent unique-index table state",
         }
     );
     failures += expect_query_values(
@@ -492,7 +636,7 @@ static int test_secondary_index_independent_handles(void) {
             .values = second_values,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "second independent secondary-index table state",
+            .context = "second independent unique-index table state",
         }
     );
 
@@ -503,17 +647,17 @@ static int test_secondary_index_independent_handles(void) {
     return failures;
 }
 
-static int create_secondary_index_schema(mylite_db *database) {
+static int create_unique_index_schema(mylite_db *database) {
     int failures = 0;
 
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(
         database,
-        "CREATE TABLE idx_t ("
-        "id INT NOT NULL, v INT, amount DECIMAL(5,2), d DATE, c CHAR(3), "
-        "name VARCHAR(20), body TEXT, PRIMARY KEY (id), KEY k_v (v), "
-        "INDEX k_amount (amount), KEY k_date (d), KEY k_char (c), KEY k_name (name))"
+        "CREATE TABLE unique_t ("
+        "id INT NOT NULL, v INT, amount DECIMAL(5,2), d DATE, n INT NOT NULL, "
+        "PRIMARY KEY (id), UNIQUE KEY u_v (v), UNIQUE KEY u_amount (amount), "
+        "UNIQUE KEY u_date (d), UNIQUE KEY u_n (n), KEY k_v (v))"
     );
 
     return failures;
@@ -573,14 +717,26 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
 }
 
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+    return expect_dml_result(
+        database,
+        sql,
+        (struct expected_dml_result){.affected_rows = affected_rows, .warning_count = 0U}
+    );
+}
+
+static int expect_dml_result(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_result expected
+) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
     if (failures == 0) {
         failures += expect_size(mylite_result_column_count(result), 0U, sql);
         failures += expect_size(mylite_result_row_count(result), 0U, sql);
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+        failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -685,7 +841,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite_secondary_index_%d_%s.mylite",
+        "/tmp/mylite_unique_index_%d_%s.mylite",
         current_process_id(),
         name
     );
@@ -749,13 +905,7 @@ static int expect_int(int actual, int expected, const char *context) {
 
 static int expect_int64(int64_t actual, int64_t expected, const char *context) {
     if (actual != expected) {
-        fprintf(
-            stderr,
-            "%s: expected %lld, got %lld\n",
-            context,
-            (long long)expected,
-            (long long)actual
-        );
+        fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
         return 1;
     }
     return 0;
@@ -770,12 +920,12 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
 }
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
-    if (actual == NULL || strcmp(actual, expected) != 0) {
+    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
         fprintf(
             stderr,
             "%s: expected [%s], got [%s]\n",
             context,
-            expected,
+            expected == NULL ? "(null)" : expected,
             actual == NULL ? "(null)" : actual
         );
         return 1;
@@ -784,13 +934,13 @@ static int expect_text(const char *actual, const char *expected, const char *con
 }
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || strstr(actual, needle) == NULL) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
         fprintf(
             stderr,
-            "%s: expected message containing [%s], got [%s]\n",
+            "%s: expected [%s] to contain [%s]\n",
             context,
-            needle,
-            actual == NULL ? "(null)" : actual
+            actual == NULL ? "(null)" : actual,
+            needle == NULL ? "(null)" : needle
         );
         return 1;
     }
@@ -804,7 +954,7 @@ static int expect_bytes(
     const char *context
 ) {
     if (memcmp(actual, expected, size) != 0) {
-        fprintf(stderr, "%s: bytes differ\n", context);
+        fprintf(stderr, "%s: byte range did not match\n", context);
         return 1;
     }
     return 0;

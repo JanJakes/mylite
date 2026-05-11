@@ -537,6 +537,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "secondary_index_definition";
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
         return "secondary_index_part_list";
+    case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
+        return "unique_index_definition";
+    case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
+        return "inline_unique_key";
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
         return "inline_primary_key";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:

@@ -226,7 +226,7 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "mysql accepts unique indexes deferred by MyLite" \
+    "mysql accepts unique indexes covered by the unique-index baseline" \
     "CREATE TABLE upstream_unique (v INT, UNIQUE KEY u_v (v));" \
     "$DATABASE"
 

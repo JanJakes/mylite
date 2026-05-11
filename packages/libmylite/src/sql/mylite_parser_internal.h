@@ -967,6 +967,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_definition(
     struct mylite_sql_ast_node *key_parts,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unique_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *key_part
@@ -980,6 +987,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,
     struct mylite_sql_token key_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_inline_unique_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unique_token,
+    struct mylite_sql_token end_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_attribute_list(
     struct mylite_sql_parser_state *state,

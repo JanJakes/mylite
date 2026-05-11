@@ -232,6 +232,16 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "multi-row update that creates an internal duplicate fails" \
+    1062 \
+    "23000" \
+    "Duplicate entry '99' for key 'update_internal_duplicate.u_v'" \
+    "CREATE TABLE update_internal_duplicate (id INT, v INT, UNIQUE KEY u_v (v)); "\
+"INSERT INTO update_internal_duplicate VALUES (1,10),(2,20); "\
+"UPDATE update_internal_duplicate SET v = 99;" \
+    "$DATABASE"
+
+expect_error \
     "duplicate key names share index namespace" \
     1061 \
     "42000" \

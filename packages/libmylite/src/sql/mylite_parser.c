@@ -3355,6 +3355,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_definition(
     return secondary_index;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unique_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&unique_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *unique_index =
+        make_node(state, MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION, span);
+    if (unique_index == NULL) {
+        return NULL;
+    }
+
+    if (index_name != NULL) {
+        mylite_sql_ast_node_append_child(unique_index, index_name);
+    }
+    mylite_sql_ast_node_append_child(unique_index, key_parts);
+    return unique_index;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *key_part
@@ -3396,6 +3418,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
         state,
         MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
         span_join(span_from_token(&primary_token), span_from_token(&key_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_inline_unique_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unique_token,
+    struct mylite_sql_token end_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        span_join(span_from_token(&unique_token), span_from_token(&end_token))
     );
 }
 
@@ -4104,6 +4138,7 @@ static bool map_keyword_token(
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
+        {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},

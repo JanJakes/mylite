@@ -12,7 +12,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.COLLATIONS` | ❌ | Collation catalog |
 | `INFORMATION_SCHEMA.COLUMN_PRIVILEGES` | ❌ | Privileges on columns |
 | `INFORMATION_SCHEMA.COLUMN_STATISTICS` | ❌ | Histogram statistics for column values |
-| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/exact `DECIMAL`/canonical `DATE`/`CHAR`/`VARCHAR`/baseline `TEXT` family metadata, nullability, integer, decimal, and canonical date-string defaults, visibility, primary-key and supported secondary-index `COLUMN_KEY` markers, auto-increment `EXTRA`, decimal `NUMERIC_PRECISION` / `NUMERIC_SCALE`, and `NULL` temporal precision for `DATE`; no privileges, generated columns, comments, string defaults outside canonical `DATE`, full charset/collation behavior, or complete MySQL system catalogs |
+| `INFORMATION_SCHEMA.COLUMNS` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite descriptor columns, including current integer/exact `DECIMAL`/canonical `DATE`/`CHAR`/`VARCHAR`/baseline `TEXT` family metadata, nullability, integer, decimal, and canonical date-string defaults, visibility, primary-key plus supported unique/nonunique secondary-index `COLUMN_KEY` markers, auto-increment `EXTRA`, decimal `NUMERIC_PRECISION` / `NUMERIC_SCALE`, and `NULL` temporal precision for `DATE`; no privileges, generated columns, comments, string defaults outside canonical `DATE`, full charset/collation behavior, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.COLUMNS_EXTENSIONS` | ❌ | Column attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | Failed login attempts per account |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | Roles enabled within current session |
@@ -73,7 +73,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | Columns in each table that store spatial data |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |
 | `INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE` | ❌ | Acceptable units for ST_Distance() |
-| `INFORMATION_SCHEMA.STATISTICS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary and supported secondary indexes on MyLite persistent base tables, with fixed BTREE/statistics placeholders; no unique secondary/fulltext/spatial/functional/prefix/descending index metadata, views, temporary tables, privileges, storage-engine statistics, or complete MySQL system catalogs |
+| `INFORMATION_SCHEMA.STATISTICS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary plus supported unique and nonunique secondary indexes on MyLite persistent base tables, with fixed BTREE/statistics placeholders; no fulltext/spatial/functional/prefix/descending index metadata, views, temporary tables, privileges, storage-engine statistics, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | ❌ | Table constraints |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | Privileges on tables |

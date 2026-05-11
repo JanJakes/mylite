@@ -33,6 +33,13 @@ struct mylite_sql_varchar_type_tokens {
     struct mylite_sql_token end_token;
 };
 
+struct mylite_sql_char_type_tokens {
+    struct mylite_sql_token type_token;
+    struct mylite_sql_token length_token;
+    struct mylite_sql_token end_token;
+    int has_explicit_length;
+};
+
 struct mylite_sql_text_type_tokens {
     struct mylite_sql_token type_token;
     enum mylite_sql_ast_text_type text_type;
@@ -996,6 +1003,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
 struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_varchar_type_tokens tokens
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_char_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_char_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,

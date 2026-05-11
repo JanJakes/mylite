@@ -165,6 +165,17 @@ void mylite_sql_ast_node_set_varchar_type(
     node->payload.varchar_type = payload;
 }
 
+void mylite_sql_ast_node_set_char_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_char_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.char_type = payload;
+}
+
 void mylite_sql_ast_node_set_text_type(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_text_type text_type
@@ -341,6 +352,24 @@ struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     return node->payload.varchar_type.length_span;
 }
 
+int mylite_sql_ast_node_char_type_has_explicit_length(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_CHAR_TYPE) {
+        return 0;
+    }
+
+    return node->payload.char_type.has_explicit_length;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_CHAR_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.char_type.length_span;
+}
+
 enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(
     const struct mylite_sql_ast_node *node
 ) {
@@ -427,6 +456,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "integer_type";
     case MYLITE_SQL_AST_VARCHAR_TYPE:
         return "varchar_type";
+    case MYLITE_SQL_AST_CHAR_TYPE:
+        return "char_type";
     case MYLITE_SQL_AST_TEXT_TYPE:
         return "text_type";
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:

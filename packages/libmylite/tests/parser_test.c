@@ -67,6 +67,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_varchar_type_statements(void);
+static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_like_statements(void);
@@ -153,6 +154,12 @@ static int expect_varchar_type(
     const char *expected_length,
     const char *context
 );
+static int expect_char_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+);
 static int expect_text_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_text_type expected,
@@ -224,6 +231,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_varchar_type_statements();
+    failures += test_char_type_statements();
     failures += test_text_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_like_statements();
@@ -6860,6 +6868,107 @@ static int test_varchar_type_statements(void) {
     return failures;
 }
 
+static int test_char_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE char_types (c CHAR, c0 CHAR(0), c255 CHAR(255) NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "char column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "c", "bare char column name");
+    failures += expect_char_type(column_type, NULL, 0, "bare char column type");
+    failures += expect_span_text(column_type, "CHAR", "bare char span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "c0", "char zero column name");
+    failures += expect_char_type(column_type, "0", 1, "char zero column type");
+    failures += expect_span_text(column_type, "CHAR(0)", "char zero span");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "c255", "char max column name");
+    failures += expect_char_type(column_type, "255", 1, "char max column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "char max not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN code CHAR(2) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_char_type(column_type, "2", 1, "alter add char column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter add char not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col CHAR(3) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_char_type(column_type, "3", 1, "char alter modify column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "char alter modify nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_code CHAR(4) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_char_type(column_type, "4", 1, "char alter change column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "char alter change nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_char (c CHAR());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_char (c CHAR(-1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE bad_char (c CHARACTER(2));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_text_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -12701,6 +12810,51 @@ static int expect_varchar_type(
         fprintf(
             stderr,
             "%s: expected VARCHAR length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_char_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+    int has_explicit_length = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_CHAR_TYPE, context) != 0) {
+        return 1;
+    }
+
+    has_explicit_length = mylite_sql_ast_node_char_type_has_explicit_length(node);
+    if (has_explicit_length != expected_explicit_length) {
+        fprintf(
+            stderr,
+            "%s: expected explicit CHAR length %d, got %d\n",
+            context,
+            expected_explicit_length,
+            has_explicit_length
+        );
+        return 1;
+    }
+    if (expected_length == NULL) {
+        return 0;
+    }
+
+    span = mylite_sql_ast_node_char_type_length_span(node);
+    if (span.text == NULL || span.length != strlen(expected_length) ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected CHAR length %s, got %.*s\n",
             context,
             expected_length,
             (int)span.length,

@@ -207,13 +207,14 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_ATAN2_FUNCTION = 198,
     MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR = 199,
     MYLITE_SQL_AST_VARCHAR_TYPE = 200,
-    MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION = 201,
-    MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST = 202,
-    MYLITE_SQL_AST_INLINE_PRIMARY_KEY = 203,
-    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST = 204,
-    MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT = 205,
-    MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION = 206,
-    MYLITE_SQL_AST_TEXT_TYPE = 207,
+    MYLITE_SQL_AST_CHAR_TYPE = 201,
+    MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION = 202,
+    MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST = 203,
+    MYLITE_SQL_AST_INLINE_PRIMARY_KEY = 204,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST = 205,
+    MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT = 206,
+    MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION = 207,
+    MYLITE_SQL_AST_TEXT_TYPE = 208,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -351,6 +352,11 @@ struct mylite_sql_ast_varchar_type_payload {
     struct mylite_sql_source_span length_span;
 };
 
+struct mylite_sql_ast_char_type_payload {
+    int has_explicit_length;
+    struct mylite_sql_source_span length_span;
+};
+
 struct mylite_sql_ast_text_type_payload {
     enum mylite_sql_ast_text_type kind;
 };
@@ -373,6 +379,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
     struct mylite_sql_ast_varchar_type_payload varchar_type;
+    struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
@@ -439,6 +446,10 @@ void mylite_sql_ast_node_set_varchar_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_varchar_type_payload payload
 );
+void mylite_sql_ast_node_set_char_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_char_type_payload payload
+);
 void mylite_sql_ast_node_set_text_type(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_text_type text_type
@@ -479,6 +490,10 @@ struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_spa
     const struct mylite_sql_ast_node *node
 );
 struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_char_type_has_explicit_length(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node);

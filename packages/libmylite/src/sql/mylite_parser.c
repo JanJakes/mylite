@@ -3649,6 +3649,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_char_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_char_type_tokens tokens
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
+    struct mylite_sql_ast_node *type = NULL;
+
+    if (tokens.has_explicit_length) {
+        span = span_join(span, span_from_token(&tokens.end_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_CHAR_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_char_type(
+        type,
+        (struct mylite_sql_ast_char_type_payload){
+            .has_explicit_length = tokens.has_explicit_length,
+            .length_span = span_from_token(&tokens.length_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_text_type_tokens tokens
@@ -4007,6 +4033,7 @@ static bool map_keyword_token(
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"CHAR", MYLITE_SQL_PARSE_CHAR},
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
         {"COLLATE", MYLITE_SQL_PARSE_COLLATE},

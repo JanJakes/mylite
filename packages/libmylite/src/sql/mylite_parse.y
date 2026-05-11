@@ -2603,6 +2603,9 @@ column_type(A) ::= integer_type(T). {
 column_type(A) ::= varchar_type(T). {
     A = T;
 }
+column_type(A) ::= char_type(T). {
+    A = T;
+}
 column_type(A) ::= text_type(T). {
     A = T;
 }
@@ -2614,6 +2617,27 @@ varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
             .type_token = T,
             .length_token = L,
             .end_token = R,
+        });
+}
+
+char_type(A) ::= CHAR(T). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = (struct mylite_sql_token){0},
+            .end_token = T,
+            .has_explicit_length = 0,
+        });
+}
+char_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .has_explicit_length = 1,
         });
 }
 

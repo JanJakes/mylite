@@ -2067,11 +2067,12 @@ static int test_rounding_functions(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
     const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
     const struct mylite_sql_ast_node *parenthesized = NULL;
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT CEIL(-64), Ceiling(NULL), floor(~0) FROM DUAL;",
+        "SELECT CEIL(-64), Ceiling(NULL), floor(~0), ROUND(1+2) FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -2080,6 +2081,7 @@ static int test_rounding_functions(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     second_expression = child_at(child_at(select_list, 1U), 0U);
     third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_CEIL_FUNCTION, "ceil function");
     failures += expect_span_text(first_expression, "CEIL(-64)", "ceil function span");
     failures += expect_child_count(first_expression, 1U, "ceil argument count");
@@ -2099,6 +2101,12 @@ static int test_rounding_functions(void) {
         child_at(third_expression, 0U),
         MYLITE_SQL_AST_OPERATOR_BITWISE_NOT,
         "floor bitwise argument"
+    );
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_ROUND_FUNCTION, "round function");
+    failures += expect_operator(
+        child_at(fourth_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "round arithmetic argument"
     );
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "rounding from dual");
     mylite_sql_parse_result_deinit(&result);
@@ -2130,6 +2138,23 @@ static int test_rounding_functions(void) {
         expect_node(child_at(third_expression, 0U), MYLITE_SQL_AST_IFNULL_FUNCTION, "floor ifnull");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT ROUND(123,-1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_ROUND_FUNCTION, "two-argument round function");
+    failures += expect_child_count(first_expression, 2U, "two-argument round child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "two-argument round value"
+    );
+    failures += expect_operator(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "two-argument round places"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT CEIL();", MYLITE_SQL_PARSE_OK, &result);
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(
@@ -2154,9 +2179,28 @@ static int test_rounding_functions(void) {
         "empty floor argument count error"
     );
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ROUND();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR,
+        "empty round argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ROUND(1,2,3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR,
+        "extra round argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE ceil (ceiling INT, floor INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "CREATE TABLE ceil (ceiling INT, floor INT, round INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "rounding identifiers");
     mylite_sql_parse_result_deinit(&result);

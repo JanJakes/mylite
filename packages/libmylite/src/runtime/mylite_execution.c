@@ -4744,6 +4744,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CEILING_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
+    case MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -6548,8 +6550,8 @@ static int execute_do_statement(
             "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL(), signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
-            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT() and CEIL()/CEILING()/FLOOR(), "
-            "and top-level CASE expressions"
+            "predicates, limited numeric ABS()/SIGN()/BIT_COUNT() and "
+            "CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -6650,7 +6652,7 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/CEIL()/CEILING()/FLOOR()"
+            "ABS()/SIGN()/BIT_COUNT()/CEIL()/CEILING()/FLOOR()/ROUND()"
         );
         return MYLITE_ERROR;
     }
@@ -8802,6 +8804,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CEILING_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
     case MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
+    case MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
@@ -16311,6 +16315,8 @@ static const char *argument_count_error_node_function_name(
         return "CEILING";
     case MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR:
         return "FLOOR";
+    case MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR:
+        return "ROUND";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
     default:
@@ -16425,6 +16431,7 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CEIL_FUNCTION:
     case MYLITE_SQL_AST_CEILING_FUNCTION:
     case MYLITE_SQL_AST_FLOOR_FUNCTION:
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
         return rounding_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
         return bit_count_function_value(database, expression, out_cell);
@@ -19725,9 +19732,8 @@ static void set_sign_unsupported_error(struct mylite_db *database) {
 static void set_rounding_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
-        "CEIL()/CEILING()/FLOOR() support only top-level no-source SELECT, FROM DUAL SELECT, "
-        "and DO integer-domain rounding over integer, boolean, NULL, direct decimal integer "
-        "literals, signed 64-bit scalar arithmetic, and limited numeric bitwise operands"
+        "CEIL()/CEILING()/FLOOR()/ROUND() support only top-level integer-domain scalar "
+        "use; ROUND() currently supports only one argument"
     );
 }
 
@@ -21884,8 +21890,16 @@ static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *
     }
     if (expression->kind != MYLITE_SQL_AST_CEIL_FUNCTION &&
         expression->kind != MYLITE_SQL_AST_CEILING_FUNCTION &&
-        expression->kind != MYLITE_SQL_AST_FLOOR_FUNCTION) {
+        expression->kind != MYLITE_SQL_AST_FLOOR_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_ROUND_FUNCTION) {
         return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ROUND_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) == 2U) {
+        if (child_at(expression, 0U) == NULL) {
+            return false;
+        }
+        return child_at(expression, 1U) != NULL;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
@@ -22422,7 +22436,8 @@ static bool is_scalar_value_projection_attempt_operand(
         }
         if (expression->kind == MYLITE_SQL_AST_CEIL_FUNCTION ||
             expression->kind == MYLITE_SQL_AST_CEILING_FUNCTION ||
-            expression->kind == MYLITE_SQL_AST_FLOOR_FUNCTION) {
+            expression->kind == MYLITE_SQL_AST_FLOOR_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_ROUND_FUNCTION) {
             return true;
         }
         if (expression->kind == MYLITE_SQL_AST_BIT_COUNT_FUNCTION) {

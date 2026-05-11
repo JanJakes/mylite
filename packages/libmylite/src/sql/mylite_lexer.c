@@ -792,6 +792,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"ROLLBACK", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"ROLLUP", 0U},
         {"ROTATE", 0U},
+        {"ROUND", 0U},
         {"ROUTINE", 0U},
         {"ROW", MYLITE_SQL_KEYWORD_RESERVED},
         {"ROWS", MYLITE_SQL_KEYWORD_RESERVED},

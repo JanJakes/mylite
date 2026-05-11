@@ -433,6 +433,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "floor_function";
     case MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR:
         return "floor_argument_count_error";
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
+        return "round_function";
+    case MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR:
+        return "round_argument_count_error";
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
         return "searched_case_expression";
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

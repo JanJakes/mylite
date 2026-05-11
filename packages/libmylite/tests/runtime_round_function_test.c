@@ -15,8 +15,8 @@
 
 enum {
     test_path_capacity = 1024,
-    core_column_count = 19,
-    dual_column_count = 6,
+    core_column_count = 13,
+    dual_column_count = 5,
     mysql_error_parse = 1064,
     mysql_error_native_function_arity = 1582,
     mysql_error_bigint_out_of_range = 1690,
@@ -39,10 +39,10 @@ struct expected_query {
     const char *context;
 };
 
-static int test_rounding_values_and_file_safety(void);
-static int test_rounding_warnings_and_do(void);
-static int test_rounding_errors_and_unsupported_forms(void);
-static int test_rounding_independent_handles(void);
+static int test_round_values_and_file_safety(void);
+static int test_round_warnings_and_do(void);
+static int test_round_errors_and_unsupported_forms(void);
+static int test_round_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -73,65 +73,52 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_rounding_values_and_file_safety();
-    failures += test_rounding_warnings_and_do();
-    failures += test_rounding_errors_and_unsupported_forms();
-    failures += test_rounding_independent_handles();
+    failures += test_round_values_and_file_safety();
+    failures += test_round_warnings_and_do();
+    failures += test_round_errors_and_unsupported_forms();
+    failures += test_round_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_rounding_values_and_file_safety(void) {
+static int test_round_values_and_file_safety(void) {
     static const char huge81[] =
         "999999999999999999999999999999999999999999999999999999999999999999999999999999999";
     static const char *const core_columns[] = {
-        "CEIL(NULL)",
-        "CEILING(NULL)",
-        "FLOOR(NULL)",
-        "CEIL(TRUE)",
-        "CEILING(FALSE)",
-        "FLOOR(TRUE)",
-        "CEIL(0)",
-        "CEIL(-0)",
-        "CEIL(+0)",
-        "FLOOR(-0)",
-        "FLOOR(+0)",
-        "CEIL(-1)",
-        "CEILING(-1)",
-        "FLOOR(-9223372036854775808)",
-        "CEIL(9223372036854775808)",
-        "FLOOR(-9223372036854775809)",
-        "CEIL(18446744073709551615)",
-        "FLOOR(-18446744073709551615)",
-        "CEIL(999999999999999999999999999999999999999999999999999999999999999999999999999999999)",
+        "ROUND(NULL)",
+        "ROUND(TRUE)",
+        "ROUND(FALSE)",
+        "ROUND(0)",
+        "ROUND(-0)",
+        "ROUND(+0)",
+        "ROUND(-1)",
+        "ROUND(9223372036854775807)",
+        "ROUND(-9223372036854775808)",
+        "ROUND(9223372036854775808)",
+        "ROUND(18446744073709551615)",
+        "ROUND(-18446744073709551615)",
+        "ROUND(999999999999999999999999999999999999999999999999999999999999999999999999999999999)",
     };
     static const char *const core_values[] = {
         NULL,
-        NULL,
-        NULL,
-        "1",
-        "0",
         "1",
         "0",
         "0",
         "0",
         "0",
-        "0",
         "-1",
-        "-1",
+        "9223372036854775807",
         "-9223372036854775808",
         "9223372036854775808",
-        "-9223372036854775809",
         "18446744073709551615",
         "-18446744073709551615",
         huge81,
     };
-    static const char *const dual_columns[] = {"a", "b", "c", "d", "e", "f"};
+    static const char *const dual_columns[] = {"a", "b", "c", "d", "e"};
     static const char *const dual_values[] = {
-        "1",
         "18446744073709551615",
-        "9223372036854775808",
         "0",
+        "7",
         "2",
         "-7",
     };
@@ -161,13 +148,11 @@ static int test_rounding_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CEIL(NULL),CEILING(NULL),FLOOR(NULL),CEIL(TRUE),"
-                   "CEILING(FALSE),FLOOR(TRUE),CEIL(0),CEIL(-0),CEIL(+0),"
-                   "FLOOR(-0),FLOOR(+0),CEIL(-1),CEILING(-1),"
-                   "FLOOR(-9223372036854775808),CEIL(9223372036854775808),"
-                   "FLOOR(-9223372036854775809),CEIL(18446744073709551615),"
-                   "FLOOR(-18446744073709551615),"
-                   "CEIL(999999999999999999999999999999999999999999999999999999999999"
+            .sql = "SELECT ROUND(NULL),ROUND(TRUE),ROUND(FALSE),ROUND(0),ROUND(-0),"
+                   "ROUND(+0),ROUND(-1),ROUND(9223372036854775807),"
+                   "ROUND(-9223372036854775808),ROUND(9223372036854775808),"
+                   "ROUND(18446744073709551615),ROUND(-18446744073709551615),"
+                   "ROUND(999999999999999999999999999999999999999999999999999999999999"
                    "999999999999999999999)",
             .columns = core_columns,
             .column_count = core_column_count,
@@ -175,21 +160,21 @@ static int test_rounding_values_and_file_safety(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "core rounding values",
+            .context = "core ROUND values",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CEIL(5&3) AS a,CEILING(~0) b,FLOOR(1<<63) c,"
-                   "CEIL(1<<64) d,FLOOR(5 DIV 2) e,CEILING(IFNULL(NULL,-7)) f FROM DUAL",
+            .sql = "SELECT ROUND(~0) AS a,ROUND(1<<64) b,ROUND(1+2*3) c,"
+                   "ROUND(5 DIV 2) d,ROUND(IFNULL(NULL,-7)) e FROM DUAL",
             .columns = dual_columns,
             .column_count = dual_column_count,
             .values = dual_values,
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "dual rounding operands",
+            .context = "dual ROUND operands",
         }
     );
 
@@ -197,36 +182,31 @@ static int test_rounding_values_and_file_safety(void) {
     failures += expect_int64(
         (int64_t)session->catalog_generation,
         (int64_t)catalog_generation,
-        "rounding catalog generation unchanged"
+        "ROUND catalog generation unchanged"
     );
     failures += expect_int64(
         (int64_t)session->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
-        "rounding sqlite schema generation unchanged"
+        "ROUND sqlite schema generation unchanged"
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
-    failures += expect_bytes(
-        actual_preamble,
-        expected_preamble,
-        sizeof(actual_preamble),
-        "rounding preamble"
-    );
+    failures +=
+        expect_bytes(actual_preamble, expected_preamble, sizeof(actual_preamble), "ROUND preamble");
 
     mylite_close(database);
     remove_related_files(path);
     return failures;
 }
 
-static int test_rounding_warnings_and_do(void) {
+static int test_round_warnings_and_do(void) {
     static const char *const warning_columns[] = {
-        "CEIL(5 DIV 0)",
-        "FLOOR(5 DIV 0)",
+        "ROUND(5 DIV 0)",
         "@@warning_count",
         "ROW_COUNT()",
     };
-    static const char *const warning_values[] = {NULL, NULL, "0", "0"};
+    static const char *const warning_values[] = {NULL, "0", "0"};
     static const char *const count_columns[] = {"@@warning_count", "ROW_COUNT()"};
-    static const char *const select_warning_values[] = {"2", "-1"};
+    static const char *const select_warning_values[] = {"1", "-1"};
     static const char *const no_warning_values[] = {"0", "0"};
     static const char *const do_warning_values[] = {"1", "0"};
     mylite_db *database = NULL;
@@ -238,14 +218,14 @@ static int test_rounding_warnings_and_do(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT CEIL(5 DIV 0),FLOOR(5 DIV 0),@@warning_count,ROW_COUNT()",
+            .sql = "SELECT ROUND(5 DIV 0),@@warning_count,ROW_COUNT()",
             .columns = warning_columns,
-            .column_count = 4U,
+            .column_count = 3U,
             .values = warning_values,
             .row_count = 1U,
-            .warning_count = 2U,
+            .warning_count = 1U,
             .affected_rows = 0,
-            .context = "rounding select warnings",
+            .context = "ROUND select warning",
         }
     );
     failures += expect_query(
@@ -258,20 +238,20 @@ static int test_rounding_warnings_and_do(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "rounding select warning snapshot",
+            .context = "ROUND select warning snapshot",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "DO CEIL(NULL),CEILING(-1),FLOOR(18446744073709551615)",
+            .sql = "DO ROUND(NULL),ROUND(7),ROUND(18446744073709551615)",
             .columns = NULL,
             .column_count = 0U,
             .values = NULL,
             .row_count = 0U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "rounding do no warning",
+            .context = "ROUND do no warning",
         }
     );
     failures += expect_query(
@@ -284,11 +264,11 @@ static int test_rounding_warnings_and_do(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "rounding do count snapshot",
+            .context = "ROUND do count snapshot",
         }
     );
 
-    failures += execute_ok(database, "DO FLOOR(5 DIV 0)", &result);
+    failures += execute_ok(database, "DO ROUND(5 DIV 0)", &result);
     if (result != NULL) {
         failures += expect_size(mylite_result_column_count(result), 0U, "do warning columns");
         failures += expect_size(mylite_result_row_count(result), 0U, "do warning rows");
@@ -306,7 +286,7 @@ static int test_rounding_warnings_and_do(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "rounding do warning snapshot",
+            .context = "ROUND do warning snapshot",
         }
     );
 
@@ -314,7 +294,7 @@ static int test_rounding_warnings_and_do(void) {
     return failures;
 }
 
-static int test_rounding_errors_and_unsupported_forms(void) {
+static int test_round_errors_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -332,7 +312,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
 
     failures += execute_error(
         database,
-        "SELECT CEIL()",
+        "SELECT ROUND()",
         (struct expected_sql_error){
             .code = mysql_error_native_function_arity,
             .sqlstate = "42000",
@@ -341,7 +321,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(1,2)",
+        "SELECT ROUND(1,2,3)",
         (struct expected_sql_error){
             .code = mysql_error_native_function_arity,
             .sqlstate = "42000",
@@ -350,7 +330,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "DO CEILING()",
+        "DO ROUND()",
         (struct expected_sql_error){
             .code = mysql_error_native_function_arity,
             .sqlstate = "42000",
@@ -359,25 +339,25 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT FLOOR(1,2)",
+        "SELECT ROUND(1,2)",
         (struct expected_sql_error){
-            .code = mysql_error_native_function_arity,
+            .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "Incorrect parameter count",
+            .message_part = "ROUND() currently supports only one argument",
         }
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(3037000500*3037000500)",
+        "DO ROUND(1,2)",
         (struct expected_sql_error){
-            .code = mysql_error_bigint_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "BIGINT value is out of range",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ROUND() currently supports only one argument",
         }
     );
     failures += execute_error(
         database,
-        "SELECT FLOOR(3037000500*3037000500)",
+        "SELECT ROUND(3037000500*3037000500)",
         (struct expected_sql_error){
             .code = mysql_error_bigint_out_of_range,
             .sqlstate = "22003",
@@ -387,7 +367,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SELECT "
-        "CEIL(9999999999999999999999999999999999999999999999999999999999999999999999999999999999)",
+        "ROUND(9999999999999999999999999999999999999999999999999999999999999999999999999999999999)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -396,7 +376,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL('64')",
+        "SELECT ROUND('64')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -405,7 +385,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(5.5)",
+        "SELECT ROUND(5.5)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -414,7 +394,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(X'40')",
+        "SELECT ROUND(X'40')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -423,7 +403,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT FLOOR(b'1111')",
+        "SELECT ROUND(b'1111')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -432,7 +412,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(1/1)",
+        "SELECT ROUND(1/1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -441,7 +421,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CEIL(id) FROM t ORDER BY id",
+        "SELECT ROUND(id) FROM t ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -450,7 +430,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 1+CEIL(7)",
+        "SELECT 1+ROUND(7)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -459,7 +439,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT FLOOR(7)=7",
+        "SELECT ROUND(7)=7",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -468,7 +448,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CASE WHEN TRUE THEN CEIL(7) END",
+        "SELECT CASE WHEN TRUE THEN ROUND(7) END",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -477,7 +457,7 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "DO FLOOR(@@warning_count)",
+        "DO ROUND(@@warning_count)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -490,10 +470,10 @@ static int test_rounding_errors_and_unsupported_forms(void) {
     return failures;
 }
 
-static int test_rounding_independent_handles(void) {
-    static const char *const first_columns[] = {"CEILING(~0)"};
+static int test_round_independent_handles(void) {
+    static const char *const first_columns[] = {"ROUND(~0)"};
     static const char *const first_values[] = {"18446744073709551615"};
-    static const char *const second_columns[] = {"FLOOR(-9223372036854775809)"};
+    static const char *const second_columns[] = {"ROUND(-9223372036854775809)"};
     static const char *const second_values[] = {"-9223372036854775809"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -504,27 +484,27 @@ static int test_rounding_independent_handles(void) {
     failures += expect_query(
         first,
         (struct expected_query){
-            .sql = "SELECT CEILING(~0)",
+            .sql = "SELECT ROUND(~0)",
             .columns = first_columns,
             .column_count = 1U,
             .values = first_values,
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "first handle rounding",
+            .context = "first handle ROUND",
         }
     );
     failures += expect_query(
         second,
         (struct expected_query){
-            .sql = "SELECT FLOOR(-9223372036854775809)",
+            .sql = "SELECT ROUND(-9223372036854775809)",
             .columns = second_columns,
             .column_count = 1U,
             .values = second_values,
             .row_count = 1U,
             .warning_count = 0U,
             .affected_rows = 0,
-            .context = "second handle rounding",
+            .context = "second handle ROUND",
         }
     );
 
@@ -635,7 +615,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_ceil_floor_functions_%d_%s.mylite",
+        "%s/mylite_round_function_%d_%s.mylite",
         tmpdir,
         current_process_id(),
         name
@@ -717,11 +697,14 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
 }
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
+    const char *actual_text = actual == NULL ? "(null)" : actual;
+    const char *expected_text = expected == NULL ? "(null)" : expected;
+
     if (actual == NULL || expected == NULL) {
         if (actual == expected) {
             return 0;
         }
-        fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+        fprintf(stderr, "%s: expected %s, got %s\n", context, expected_text, actual_text);
         return 1;
     }
     if (strcmp(actual, expected) != 0) {
@@ -733,7 +716,13 @@ static int expect_text(const char *actual, const char *expected, const char *con
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
     if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(stderr, "%s: expected message containing %s, got %s\n", context, needle, actual);
+        fprintf(
+            stderr,
+            "%s: expected message containing %s, got %s\n",
+            context,
+            needle == NULL ? "(null)" : needle,
+            actual == NULL ? "(null)" : actual
+        );
         return 1;
     }
     return 0;

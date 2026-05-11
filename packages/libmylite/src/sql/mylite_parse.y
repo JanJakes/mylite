@@ -1673,6 +1673,14 @@ expression(A) ::= FLOOR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_FLOOR_FUNCTION, B, R);
 }
+expression(A) ::= ROUND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ROUND_FUNCTION, B, R);
+}
+expression(A) ::= ROUND(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ROUND_FUNCTION, B, C, R);
+}
 expression(A) ::= BIT_COUNT(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
@@ -1764,6 +1772,17 @@ expression(A) ::= FLOOR(T) LPAREN expression(B) COMMA function_argument_list(C) 
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FLOOR_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= ROUND(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ROUND(T) LPAREN
+    expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ROUND_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= BIT_COUNT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -2188,6 +2207,9 @@ identifier(A) ::= CEILING(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FLOOR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ROUND(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= BIT_AND(T). {

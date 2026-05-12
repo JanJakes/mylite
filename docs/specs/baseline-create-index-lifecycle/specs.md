@@ -128,7 +128,7 @@ Deferred:
 
 - omitted index names and `IF NOT EXISTS`;
 - `CREATE FULLTEXT INDEX`, `CREATE SPATIAL INDEX`, and primary-key creation;
-- standalone `DROP INDEX` and index rename;
+- index rename;
 - temporary tables, views, generated columns, invisible columns beyond explicit
   descriptor column matching, foreign keys, cascades, triggers, privileges,
   and implicit-commit emulation;

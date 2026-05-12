@@ -18,6 +18,7 @@
 
 enum {
     test_path_capacity = 1024,
+    test_path_suffix_capacity = 16,
     show_columns_field_count = 6,
     show_index_field_count = 15,
     mysql_error_no_database_selected = 1046,
@@ -45,13 +46,13 @@ struct expected_query {
 };
 
 static int test_drop_index_success_metadata_and_persistence(void);
-static int test_drop_index_added_case_schema_and_rename(void);
+static int test_drop_index_created_altered_like_schema_and_rename(void);
 static int test_drop_index_auto_increment_and_diagnostics(void);
 static int test_drop_index_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
-static int expect_alter_drop_index_ok(mylite_db *database, const char *sql);
+static int expect_drop_index_ok(mylite_db *database, const char *sql);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_physical_index_count(
@@ -87,7 +88,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_drop_index_success_metadata_and_persistence();
-    failures += test_drop_index_added_case_schema_and_rename();
+    failures += test_drop_index_created_altered_like_schema_and_rename();
     failures += test_drop_index_auto_increment_and_diagnostics();
     failures += test_drop_index_independent_handles();
 
@@ -146,8 +147,8 @@ static int test_drop_index_success_metadata_and_persistence(void) {
     );
     failures += expect_dml_ok(database, "INSERT INTO drop_idx VALUES (1,10,100),(2,20,200)", 2);
     failures += expect_physical_index_count(database, 3, "physical indexes before DROP INDEX");
-    failures += expect_alter_drop_index_ok(database, "ALTER TABLE drop_idx DROP INDEX k_u");
-    failures += expect_alter_drop_index_ok(database, "ALTER TABLE drop_idx DROP KEY u_v");
+    failures += expect_drop_index_ok(database, "DROP INDEX k_u ON drop_idx");
+    failures += expect_drop_index_ok(database, "DROP INDEX u_v ON drop_idx");
     failures += expect_physical_index_count(database, 1, "physical indexes after DROP INDEX");
     failures += expect_query_values(
         database,
@@ -156,7 +157,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = show_create_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "SHOW CREATE after DROP INDEX",
+            .context = "SHOW CREATE after standalone DROP INDEX",
         }
     );
     failures += expect_query_values(
@@ -166,7 +167,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = show_index_rows,
             .column_count = show_index_field_count,
             .row_count = 1U,
-            .context = "SHOW INDEX after DROP INDEX",
+            .context = "SHOW INDEX after standalone DROP INDEX",
         }
     );
     failures += expect_query_values(
@@ -178,7 +179,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = column_key_rows,
             .column_count = 2U,
             .row_count = 3U,
-            .context = "I_S COLUMNS after DROP INDEX",
+            .context = "I_S COLUMNS after standalone DROP INDEX",
         }
     );
     failures += expect_query_values(
@@ -190,7 +191,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "I_S STATISTICS after DROP INDEX",
+            .context = "I_S STATISTICS after standalone DROP INDEX",
         }
     );
     failures += expect_query_values(
@@ -202,7 +203,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "unique constraints after DROP INDEX",
+            .context = "unique constraints after standalone DROP INDEX",
         }
     );
     failures += expect_query_values(
@@ -214,7 +215,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "key-column rows after DROP INDEX",
+            .context = "key-column rows after standalone DROP INDEX",
         }
     );
     failures += expect_dml_ok(database, "INSERT INTO drop_idx VALUES (3,10,300)", 1);
@@ -225,7 +226,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = row_values,
             .column_count = 3U,
             .row_count = 3U,
-            .context = "rows after unique DROP INDEX",
+            .context = "rows after standalone unique DROP INDEX",
         }
     );
     failures += expect_bytes(
@@ -233,7 +234,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
                                                                               : NULL,
         expected_preamble,
         sizeof(expected_preamble),
-        "preamble after DROP INDEX"
+        "preamble after standalone DROP INDEX"
     );
 
     mylite_close(database);
@@ -250,7 +251,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "reopened dropped index metadata",
+            .context = "reopened standalone dropped index metadata",
         }
     );
     failures += expect_query_values(
@@ -260,7 +261,7 @@ static int test_drop_index_success_metadata_and_persistence(void) {
             .values = row_values,
             .column_count = 3U,
             .row_count = 3U,
-            .context = "reopened rows after DROP INDEX",
+            .context = "reopened rows after standalone DROP INDEX",
         }
     );
 
@@ -269,25 +270,24 @@ static int test_drop_index_success_metadata_and_persistence(void) {
     return failures;
 }
 
-static int test_drop_index_added_case_schema_and_rename(void) {
+static int test_drop_index_created_altered_like_schema_and_rename(void) {
     static const char *const zero_count_rows[] = {"0"};
     static const char *const one_count_rows[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
-    if (make_test_path(path, sizeof(path), "added_case") != 0) {
+    if (make_test_path(path, sizeof(path), "created_altered") != 0) {
         return 1;
     }
     remove_related_files(path);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open added/case file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open create/alter file");
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_statement_ok(database, "CREATE TABLE added (id INT, v INT)");
     failures += expect_statement_ok(database, "ALTER TABLE added ADD INDEX k_v (v)");
-    failures += expect_alter_drop_index_ok(database, "ALTER TABLE app.added DROP KEY K_V");
-    failures += expect_physical_index_count(database, 0, "physical indexes after schema drop");
+    failures += expect_drop_index_ok(database, "DROP INDEX K_V ON app.added");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -296,23 +296,54 @@ static int test_drop_index_added_case_schema_and_rename(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "schema-qualified case-insensitive DROP KEY",
+            .context = "schema-qualified case-insensitive standalone DROP INDEX",
         }
     );
-    failures += expect_statement_ok(database, "CREATE TABLE renamed (id INT, v INT, KEY k_v (v))");
-    failures += expect_statement_ok(database, "RENAME TABLE renamed TO renamed_after");
+    failures += expect_statement_ok(database, "CREATE TABLE created (id INT, v INT)");
+    failures += expect_statement_ok(database, "CREATE INDEX k_v ON created (v)");
+    failures += expect_drop_index_ok(database, "DROP INDEX k_v ON created");
+    failures += expect_statement_ok(database, "CREATE UNIQUE INDEX u_v ON created (v)");
+    failures += expect_drop_index_ok(database, "DROP INDEX u_v ON created");
     failures += expect_query_values(
         database,
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
-                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'renamed_after'",
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'created'",
+            .values = zero_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "standalone-created indexes dropped",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE source_like (id INT, v INT, KEY k_v (v))");
+    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE source_like");
+    failures += expect_drop_index_ok(database, "DROP INDEX k_v ON clone");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'source_like'",
             .values = one_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "renamed table keeps index before drop",
+            .context = "source LIKE table keeps original index",
         }
     );
-    failures += expect_alter_drop_index_ok(database, "ALTER TABLE renamed_after DROP INDEX k_v");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone'",
+            .values = zero_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "clone dropped copied index",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE renamed (id INT, v INT, KEY k_v (v))");
+    failures += expect_statement_ok(database, "RENAME TABLE renamed TO renamed_after");
+    failures += expect_drop_index_ok(database, "DROP INDEX k_v ON renamed_after");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -321,7 +352,7 @@ static int test_drop_index_added_case_schema_and_rename(void) {
             .values = zero_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "renamed table DROP INDEX metadata",
+            .context = "renamed table standalone DROP INDEX metadata",
         }
     );
     failures += expect_statement_ok(database, "DROP TABLE renamed_after");
@@ -346,7 +377,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += execute_error(
         database,
-        "ALTER TABLE no_default DROP INDEX k_v",
+        "DROP INDEX k_v ON no_default",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -357,7 +388,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += execute_error(
         database,
-        "ALTER TABLE missing_schema.missing DROP INDEX k_v",
+        "DROP INDEX k_v ON missing_schema.missing",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
@@ -366,7 +397,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE missing_table DROP INDEX k_v",
+        "DROP INDEX k_v ON missing_table",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -376,7 +407,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     failures += expect_statement_ok(database, "CREATE TABLE diag (id INT, v INT, KEY k_v (v))");
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP INDEX missing_idx",
+        "DROP INDEX missing_idx ON diag",
         (struct expected_sql_error){
             .code = mysql_error_cant_drop_field_or_key,
             .sqlstate = "42000",
@@ -385,7 +416,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE _mylite_private.diag DROP INDEX k_v",
+        "DROP INDEX k_v ON _mylite_private.diag",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -394,7 +425,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE _mylite_private DROP INDEX k_v",
+        "DROP INDEX k_v ON _mylite_private",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -405,7 +436,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
         database,
         "CREATE TABLE ai_primary (id INT AUTO_INCREMENT PRIMARY KEY, v INT, KEY id_idx (id))"
     );
-    failures += expect_alter_drop_index_ok(database, "ALTER TABLE ai_primary DROP INDEX id_idx");
+    failures += expect_drop_index_ok(database, "DROP INDEX id_idx ON ai_primary");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -413,7 +444,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
             .values = auto_column_rows,
             .column_count = show_columns_field_count,
             .row_count = 2U,
-            .context = "auto increment key remains after DROP INDEX",
+            .context = "auto increment key remains after standalone DROP INDEX",
         }
     );
     failures += expect_statement_ok(
@@ -423,7 +454,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     failures += expect_dml_ok(database, "ALTER TABLE ai_last DROP PRIMARY KEY", 0);
     failures += execute_error(
         database,
-        "ALTER TABLE ai_last DROP INDEX id_idx",
+        "DROP INDEX id_idx ON ai_last",
         (struct expected_sql_error){
             .code = mysql_error_wrong_auto_key,
             .sqlstate = "42000",
@@ -432,19 +463,10 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
                 "defined as a key",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE ai_last DROP INDEX `PRIMARY`",
-        (struct expected_sql_error){
-            .code = mysql_error_cant_drop_field_or_key,
-            .sqlstate = "42000",
-            .message_part = "Can't DROP 'PRIMARY'; check that column/key exists",
-        }
-    );
     failures += expect_statement_ok(database, "CREATE TABLE primary_t (id INT PRIMARY KEY)");
     failures += execute_error(
         database,
-        "ALTER TABLE primary_t DROP INDEX `PRIMARY`",
+        "DROP INDEX `PRIMARY` ON primary_t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -453,7 +475,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE primary_t DROP INDEX PRIMARY",
+        "DROP INDEX PRIMARY ON primary_t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -462,7 +484,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP INDEX k_v, ADD INDEX k_id (id)",
+        "DROP KEY k_v ON diag",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -471,7 +493,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP INDEX k_v, ALGORITHM=INPLACE",
+        "DROP INDEX IF EXISTS k_v ON diag",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -480,7 +502,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP FOREIGN KEY fk",
+        "DROP INDEX k_v ON diag ALGORITHM=INPLACE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -489,7 +511,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag RENAME INDEX k_v TO k_id",
+        "DROP INDEX k_v",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -526,7 +548,7 @@ static int test_drop_index_independent_handles(void) {
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "USE app");
     failures += expect_statement_ok(second, "CREATE TABLE t (id INT, v INT, KEY k_v (v))");
-    failures += expect_alter_drop_index_ok(first, "ALTER TABLE t DROP INDEX k_v");
+    failures += expect_drop_index_ok(first, "DROP INDEX k_v ON t");
     failures += expect_query_values(
         first,
         (struct expected_query){
@@ -535,7 +557,7 @@ static int test_drop_index_independent_handles(void) {
             .values = first_index_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "first handle dropped index",
+            .context = "first handle standalone dropped index",
         }
     );
     failures += expect_query_values(
@@ -546,7 +568,7 @@ static int test_drop_index_independent_handles(void) {
             .values = second_index_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "second handle remains independent",
+            .context = "second handle standalone remains independent",
         }
     );
     failures += expect_physical_index_count(first, 0, "first physical index");
@@ -610,7 +632,7 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     return failures;
 }
 
-static int expect_alter_drop_index_ok(mylite_db *database, const char *sql) {
+static int expect_drop_index_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
@@ -737,7 +759,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite_alter_drop_index_%d_%s.mylite",
+        "/tmp/mylite_drop_index_%d_%s.mylite",
         current_process_id(),
         name
     );
@@ -758,34 +780,37 @@ static int current_process_id(void) {
 
 static void remove_related_files(const char *path) {
     remove_with_suffix(path, "");
-    remove_with_suffix(path, "-journal");
     remove_with_suffix(path, "-wal");
     remove_with_suffix(path, "-shm");
+    remove_with_suffix(path, "-journal");
 }
 
 static void remove_with_suffix(const char *path, const char *suffix) {
-    char buffer[test_path_capacity];
+    char buffer[test_path_capacity + test_path_suffix_capacity];
     int written = snprintf(buffer, sizeof(buffer), "%s%s", path, suffix);
 
-    if (written >= 0 && (size_t)written < sizeof(buffer)) {
-        (void)remove(buffer);
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return;
     }
+    (void)remove(buffer);
 }
 
 static int read_file_at(const char *path, long offset, void *buffer, size_t size) {
     FILE *file = fopen(path, "rb");
-    int status = -1;
 
     if (file == NULL) {
         return -1;
     }
-    if (fseek(file, offset, SEEK_SET) == 0 && fread(buffer, 1U, size, file) == size) {
-        status = 0;
+    if (fseek(file, offset, SEEK_SET) != 0) {
+        fclose(file);
+        return -1;
     }
-    if (fclose(file) != 0) {
-        status = -1;
+    if (fread(buffer, 1U, size, file) != size) {
+        fclose(file);
+        return -1;
     }
-    return status;
+    fclose(file);
+    return 0;
 }
 
 static int expect_int(int actual, int expected, const char *context) {
@@ -819,8 +844,10 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
 }
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
-    if ((actual == NULL && expected != NULL) || (actual != NULL && expected == NULL) ||
-        (actual != NULL && expected != NULL && strcmp(actual, expected) != 0)) {
+    if (actual == NULL && expected == NULL) {
+        return 0;
+    }
+    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
         fprintf(
             stderr,
             "%s: expected [%s], got [%s]\n",
@@ -853,8 +880,8 @@ static int expect_bytes(
     size_t size,
     const char *context
 ) {
-    if (actual == NULL || memcmp(actual, expected, size) != 0) {
-        fprintf(stderr, "%s: bytes differ\n", context);
+    if (actual == NULL || expected == NULL || memcmp(actual, expected, size) != 0) {
+        fprintf(stderr, "%s: bytes did not match\n", context);
         return 1;
     }
     return 0;

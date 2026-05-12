@@ -190,6 +190,9 @@ statement(A) ::= alter_table_add_index_statement(B). {
 statement(A) ::= alter_table_drop_index_statement(B). {
     A = B;
 }
+statement(A) ::= drop_index_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_primary_key_statement(B). {
     A = B;
 }
@@ -377,6 +380,10 @@ create_index_statement(A) ::=
     CREATE(C) UNIQUE INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
     RPAREN. {
     A = mylite_sql_parser_make_create_index_statement(state, C, true, N, T, L);
+}
+
+drop_index_statement(A) ::= DROP(D) INDEX identifier(I) ON table_name(T). {
+    A = mylite_sql_parser_make_drop_index_statement(state, D, I, T);
 }
 
 create_table_select_as_opt ::= .

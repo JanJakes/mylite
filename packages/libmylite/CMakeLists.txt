@@ -1260,6 +1260,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_alter_table_drop_index_test)
 
+  add_executable(mylite_runtime_drop_index_lifecycle_test
+    tests/runtime_drop_index_lifecycle_test.c
+  )
+  target_link_libraries(mylite_runtime_drop_index_lifecycle_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_drop_index_lifecycle_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_drop_index_lifecycle_test)
+
   add_executable(mylite_runtime_unique_index_lifecycle_test
     tests/runtime_unique_index_lifecycle_test.c
   )
@@ -2226,6 +2238,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.alter_table_drop_index
     COMMAND mylite_runtime_alter_table_drop_index_test
+  )
+  add_test(
+    NAME libmylite.runtime.drop_index_lifecycle
+    COMMAND mylite_runtime_drop_index_lifecycle_test
   )
   add_test(
     NAME libmylite.runtime.unique_index_lifecycle

@@ -17,9 +17,10 @@ current descriptor catalog, create-time secondary and unique indexes,
 metadata, row DML, and file-backed `.mylite` storage.
 
 This is intentionally not full MySQL index DDL. Standalone
-`DROP INDEX index_name ON table_name`, quoted-primary drops, multi-action
-`ALTER TABLE`, online DDL options, foreign-key dependencies, and index renames
-remain separate slices.
+`DROP INDEX index_name ON table_name` is covered by
+`docs/specs/baseline-drop-index-lifecycle/specs.md`; quoted-primary drops,
+multi-action `ALTER TABLE`, online DDL options, foreign-key dependencies, and
+index renames remain separate slices.
 
 ## Sources
 
@@ -68,10 +69,9 @@ Runtime probes for this phase establish:
   primary key or another supported index still indexes that column.
 - Dropping the last key on an `AUTO_INCREMENT` column fails with
   `1075 / 42000`.
-- MySQL accepts wider forms such as standalone `DROP INDEX ... ON ...`, quoted
-  ``DROP INDEX `PRIMARY``` / ``DROP KEY `PRIMARY``` primary-key drops,
-  multi-action `ALTER TABLE`, and `ALGORITHM` / `LOCK` clauses. They remain
-  deferred here.
+- MySQL accepts wider forms such as quoted ``DROP INDEX `PRIMARY``` /
+  ``DROP KEY `PRIMARY``` primary-key drops, multi-action `ALTER TABLE`, and
+  `ALGORITHM` / `LOCK` clauses. They remain deferred here.
 
 ## Scope
 
@@ -101,7 +101,6 @@ Supported:
 
 Deferred:
 
-- standalone `DROP INDEX index_name ON table_name`;
 - quoted-primary index drops, including ``ALTER TABLE t DROP INDEX `PRIMARY```
   and standalone ``DROP INDEX `PRIMARY` ON t``; use the existing
   `ALTER TABLE ... DROP PRIMARY KEY` subset instead;
@@ -278,9 +277,9 @@ Supported diagnostics:
 - dropping the last key for an auto-increment column: `1075 / 42000`;
 - primary-key drop through `DROP INDEX` / `DROP KEY`: deterministic unsupported
   diagnostic for this slice, while unquoted `PRIMARY` remains a syntax error;
-- standalone `DROP INDEX`, multi-action `ALTER TABLE`, algorithms, locks,
-  foreign-key and constraint forms, partition clauses, temporary tables, views,
-  and other deferred syntax: deterministic syntax or unsupported diagnostics;
+- multi-action `ALTER TABLE`, algorithms, locks, foreign-key and constraint
+  forms, partition clauses, temporary tables, views, and other deferred
+  syntax: deterministic syntax or unsupported diagnostics;
 - physical SQLite failure: deterministic internal/physical schema diagnostic;
 - allocation failure: `MYLITE_NOMEM` and handle-owned diagnostics.
 
@@ -322,10 +321,10 @@ Coverage must include:
 - row-value preservation, DML after drop, reopen persistence, table rename/drop
   interaction, independent file-backed handles, and `.mylite` preamble safety;
 - physical SQLite index count before and after drop;
-- unsupported syntax rejected deterministically: standalone `DROP INDEX`,
-  quoted-primary drops if deferred, unquoted `PRIMARY`, multi-action alter,
-  algorithms, locks, `DROP FOREIGN KEY`, `DROP CONSTRAINT`, `RENAME INDEX`,
-  temporary/view/partition forms, and index options;
+- unsupported syntax rejected deterministically: quoted-primary drops if
+  deferred, unquoted `PRIMARY`, multi-action alter, algorithms, locks,
+  `DROP FOREIGN KEY`, `DROP CONSTRAINT`, `RENAME INDEX`, temporary, view,
+  partition forms, and index options;
 - zero-initialized cleanup for any new planner/result objects;
 - existing parser, runtime, catalog, row-values, DML, primary-key,
   secondary-index, unique-index, auto-increment, metadata, storage, and VFS
@@ -344,10 +343,9 @@ Implementation must update:
 - `docs/compatibility/sql-table-ddl.md`;
 
 with limited wording for the exact `ALTER TABLE ... DROP INDEX` / `DROP KEY`
-secondary-index subset. Do not claim standalone `DROP INDEX`, quoted-primary
-drop-index forms, full constraint dependency behavior, foreign keys, renames,
-visibility, comments, algorithms, locks, optimizer guarantees, or full metadata
-parity.
+secondary-index subset. Do not claim quoted-primary drop-index forms, full
+constraint dependency behavior, foreign keys, renames, visibility, comments,
+algorithms, locks, optimizer guarantees, or full metadata parity.
 
 ## Verification
 

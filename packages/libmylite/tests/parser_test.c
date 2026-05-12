@@ -80,6 +80,7 @@ static int test_datetime_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_index_statements(void);
+static int test_drop_index_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
 static int test_alter_table_add_index_statements(void);
 static int test_alter_table_drop_index_statements(void);
@@ -262,6 +263,7 @@ int main(void) {
     failures += test_timestamp_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_index_statements();
+    failures += test_drop_index_statements();
     failures += test_alter_table_add_primary_key_statements();
     failures += test_alter_table_add_index_statements();
     failures += test_alter_table_drop_index_statements();
@@ -8176,6 +8178,56 @@ static int test_create_index_statements(void) {
     return failures;
 }
 
+static int test_drop_index_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("DROP INDEX k_v ON drop_idx;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_INDEX_STATEMENT, "drop index");
+    failures += expect_child_count(statement, 2U, "drop index child count");
+    failures += expect_span_text(child_at(statement, 0U), "k_v", "drop index name");
+    failures += expect_span_text(child_at(statement, 1U), "drop_idx", "drop index table");
+    failures += expect_span_text(statement, "DROP INDEX k_v ON drop_idx", "drop index span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX `k_v` ON app.drop_idx;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "`k_v`", "quoted drop index name");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "app.drop_idx", "qualified drop index table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX `PRIMARY` ON drop_idx;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "`PRIMARY`", "quoted drop primary name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DROP INDEX PRIMARY ON drop_idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP KEY k_v ON drop_idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DROP INDEX IF EXISTS k_v ON drop_idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DROP INDEX k_v ON drop_idx ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX k_v;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_alter_table_add_index_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -8325,9 +8377,6 @@ static int test_alter_table_drop_index_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("DROP INDEX k_v ON drop_idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

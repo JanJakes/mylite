@@ -309,10 +309,12 @@ Execution shape:
 
    ```sql
    CREATE UNIQUE INDEX "_mylite_user_index_<index_id>"
-   ON "_mylite_user_table_<table_id>"("_mylite_user_column_<column_id>" COLLATE mylite_utf8mb4_0900_ai_ci)
+   ON "_mylite_user_table_<table_id>"("descriptor_column_name" COLLATE "mylite_utf8mb4_0900_ai_ci")
    ```
 
-   The collation annotation appears only for descriptor string key parts.
+   The column identifier is the quoted descriptor column name used in the
+   generated MyLite physical table. The collation annotation appears only for
+   descriptor string key parts.
 9. Update table identity/schema generation metadata using the existing index
    lifecycle path and commit the catalog mutation.
 10. Increment only the session SQLite schema generation after a successful

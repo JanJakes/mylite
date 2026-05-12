@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef P_tmpdir
+#  define P_tmpdir "/tmp"
+#endif
+
 #ifdef _WIN32
 #  include <process.h>
 #else

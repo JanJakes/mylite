@@ -194,6 +194,15 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "duplicate explicit index name outranks unknown key column" \
+    1061 \
+    42000 \
+    "Duplicate key name 'k_v'" \
+    "CREATE TABLE duplicate_unknown_column (id INT, v INT, KEY k_v (v)); "\
+"ALTER TABLE duplicate_unknown_column ADD INDEX k_v (missing);" \
+    "$DATABASE"
+
+expect_error \
     "quoted primary index name fails" \
     1280 \
     42000 \

@@ -358,6 +358,18 @@ struct planned_alter_table_add_primary_key {
     const char *rowid_alias;
 };
 
+struct planned_alter_table_add_index {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor column;
+    char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+struct alter_table_add_index_nodes {
+    const struct mylite_sql_ast_node *index_name_node;
+    const struct mylite_sql_ast_node *part;
+};
+
 struct planned_alter_table_drop_primary_key {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -2658,6 +2670,11 @@ static int execute_alter_table_add_primary_key_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_add_index_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_primary_key_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3580,6 +3597,51 @@ static enum mylite_catalog_column_default_kind alter_table_primary_key_default_k
 static int execute_physical_alter_table_add_primary_key(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan,
+    const char *index_physical_name
+);
+static int plan_alter_table_add_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_index *out_plan
+);
+static int extract_alter_table_add_index_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_add_index_nodes *out_nodes
+);
+static int alter_table_add_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
+static int plan_alter_table_add_index_name(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const struct mylite_sql_ast_node *index_name_node,
+    const char *column_name,
+    char *destination,
+    size_t destination_size
+);
+static int generate_alter_table_add_index_name(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const char *base_name,
+    char *destination,
+    size_t destination_size
+);
+static bool loaded_index_name_is_used(
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const char *index_name
+);
+static int validate_alter_table_add_index_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int execute_physical_alter_table_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan,
     const char *index_physical_name
 );
 static int plan_alter_table_drop_primary_key(
@@ -7023,6 +7085,11 @@ static int build_alter_table_add_primary_key_index_sql(
     const char *index_physical_name,
     char **out_sql
 );
+static int build_alter_table_add_index_sql(
+    const struct planned_alter_table_add_index *plan,
+    const char *index_physical_name,
+    char **out_sql
+);
 static int build_drop_index_sql(const char *physical_name, char **out_sql);
 static int append_alter_table_primary_key_column_list_sql(
     struct dynamic_string *string,
@@ -7981,6 +8048,8 @@ static int execute_parsed_statement(
         return execute_alter_table_add_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
         return execute_alter_table_add_primary_key_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+        return execute_alter_table_add_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
         return execute_alter_table_drop_primary_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -9466,6 +9535,32 @@ static int execute_alter_table_add_primary_key_statement(
     }
 
     planned_alter_table_add_primary_key_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_add_index_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_add_index plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_add_index(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_index_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
     return finish_successful_result(database, result, out_result);
 }
 
@@ -15240,6 +15335,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
@@ -18681,6 +18777,357 @@ static int execute_physical_alter_table_add_primary_key(
 ) {
     char *sql = NULL;
     int rc = build_alter_table_add_primary_key_index_sql(plan, index_physical_name, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+
+    return rc;
+}
+
+static int plan_alter_table_add_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_index *out_plan
+) {
+    struct alter_table_add_index_nodes nodes = {0};
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_add_index){0};
+    rc = extract_alter_table_add_index_nodes(database, statement, &nodes);
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD INDEX supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    if (rc == MYLITE_OK && nodes.index_name_node != NULL) {
+        rc = plan_alter_table_add_index_name(
+            database,
+            indexes,
+            index_count,
+            nodes.index_name_node,
+            "",
+            out_plan->index_name,
+            sizeof(out_plan->index_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(nodes.part, column_name, sizeof(column_name), database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->column = columns[column_index];
+        rc = validate_alter_table_add_index_column(database, &out_plan->column);
+    }
+    if (rc == MYLITE_OK && nodes.index_name_node == NULL) {
+        rc = plan_alter_table_add_index_name(
+            database,
+            indexes,
+            index_count,
+            nodes.index_name_node,
+            out_plan->column.name,
+            out_plan->index_name,
+            sizeof(out_plan->index_name)
+        );
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int extract_alter_table_add_index_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_add_index_nodes *out_nodes
+) {
+    const struct mylite_sql_ast_node *secondary_index = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *first_child = NULL;
+    const struct mylite_sql_ast_node *part_list = NULL;
+
+    *out_nodes = (struct alter_table_add_index_nodes){0};
+
+    if (secondary_index == NULL ||
+        secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    first_child = child_at(secondary_index, 0U);
+    part_list = first_child;
+    if (first_child != NULL && first_child->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+        out_nodes->index_name_node = first_child;
+        part_list = child_at(secondary_index, 1U);
+    }
+    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
+        set_unsupported_error(database, "Secondary indexes support exactly one key column");
+        return MYLITE_ERROR;
+    }
+
+    out_nodes->part = child_at(part_list, 0U);
+    if (out_nodes->part == NULL || out_nodes->part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "Secondary indexes support only unqualified key columns");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int alter_table_add_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    char index_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t index_id = 0;
+    int rc = MYLITE_OK;
+
+    if (plan->column.column_id <= 0 || plan->index_name[0] == '\0') {
+        set_runtime_error(database, "invalid secondary-index plan");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_allocate_index_id_in_mutation(database, &mutation, &index_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_physical_index_name(index_id, index_physical_name, sizeof(index_physical_name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_index_in_mutation(
+            database,
+            &mutation,
+            index_id,
+            plan->table.table_id,
+            plan->index_name,
+            index_physical_name,
+            MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+            false,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_index_column_in_mutation(
+            database,
+            &mutation,
+            index_id,
+            plan->table.table_id,
+            plan->column.column_id,
+            1,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_add_index(database, plan, index_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to add index");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static int plan_alter_table_add_index_name(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const struct mylite_sql_ast_node *index_name_node,
+    const char *column_name,
+    char *destination,
+    size_t destination_size
+) {
+    int rc = MYLITE_OK;
+
+    destination[0] = '\0';
+    if (index_name_node == NULL) {
+        return generate_alter_table_add_index_name(
+            database,
+            indexes,
+            index_count,
+            column_name,
+            destination,
+            destination_size
+        );
+    }
+
+    rc = copy_identifier_text(index_name_node, destination, destination_size, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(destination, "PRIMARY")) {
+        set_incorrect_index_name_error(database, destination);
+        return MYLITE_ERROR;
+    }
+    if (loaded_index_name_is_used(indexes, index_count, destination)) {
+        set_duplicate_key_name_error(database, destination);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int generate_alter_table_add_index_name(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const char *base_name,
+    char *destination,
+    size_t destination_size
+) {
+    char candidate[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    unsigned int suffix = 1U;
+
+    while (suffix < UINT_MAX) {
+        int written = 0;
+
+        if (suffix == 1U) {
+            written = snprintf(candidate, sizeof(candidate), "%s", base_name);
+        } else {
+            written = snprintf(candidate, sizeof(candidate), "%s_%u", base_name, suffix);
+        }
+        if (written < 0 || (size_t)written >= sizeof(candidate)) {
+            set_identifier_too_long_error(database, "index");
+            return MYLITE_ERROR;
+        }
+        if (!text_equals_ascii_case_insensitive(candidate, "PRIMARY") &&
+            !loaded_index_name_is_used(indexes, index_count, candidate)) {
+            int copied = snprintf(destination, destination_size, "%s", candidate);
+
+            if (copied < 0 || (size_t)copied >= destination_size) {
+                set_identifier_too_long_error(database, "index");
+                return MYLITE_ERROR;
+            }
+            return MYLITE_OK;
+        }
+        ++suffix;
+    }
+
+    set_identifier_too_long_error(database, "index");
+    return MYLITE_ERROR;
+}
+
+static bool loaded_index_name_is_used(
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const char *index_name
+) {
+    for (size_t index = 0U; index < index_count; ++index) {
+        if (text_equals_ascii_case_insensitive(indexes[index].index.name, index_name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static int validate_alter_table_add_index_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+
+    if (column == NULL) {
+        set_runtime_error(database, "invalid secondary-index column");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_text_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column)) {
+        return MYLITE_OK;
+    }
+
+    return integer_range_for_column(
+        database,
+        column,
+        "Secondary indexes do not yet support this column type",
+        &range
+    );
+}
+
+static int execute_physical_alter_table_add_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan,
+    const char *index_physical_name
+) {
+    char *sql = NULL;
+    int rc = build_alter_table_add_index_sql(plan, index_physical_name, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
@@ -42822,6 +43269,47 @@ static int build_alter_table_add_primary_key_index_sql(
     }
     if (rc == MYLITE_OK) {
         rc = append_alter_table_primary_key_column_list_sql(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_alter_table_add_index_sql(
+    const struct planned_alter_table_add_index *plan,
+    const char *index_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE INDEX ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, index_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ON ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');

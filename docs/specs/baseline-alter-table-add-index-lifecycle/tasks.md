@@ -1,34 +1,34 @@
 # Baseline ALTER TABLE ADD INDEX Lifecycle Tasks
 
-- [ ] Research official MySQL 8.4 docs and MySQL 8.4.9 runtime behavior for
+- [x] Research official MySQL 8.4 docs and MySQL 8.4.9 runtime behavior for
   `ALTER TABLE ... ADD INDEX` / `ADD KEY`, metadata, diagnostics, row counts,
   warnings, and deferred wider syntax.
-- [ ] Add MySQL-runtime expectation script covering successful metadata,
+- [x] Add MySQL-runtime expectation script covering successful metadata,
   diagnostics, unsupported-but-accepted upstream forms, and auto-increment
   interaction.
-- [ ] Add parser/AST support for the admitted single-action
+- [x] Add parser/AST support for the admitted single-action
   `ALTER TABLE table_name ADD INDEX|KEY [name] (column)` subset and parser
   tests for supported and unsupported forms.
-- [ ] Add analyzer/planner support for schema/table resolution, base-table
+- [x] Add analyzer/planner support for schema/table resolution, base-table
   validation, descriptor column resolution, index-name generation, duplicate
   name checks, supported target type checks, and cleanup-safe zero
   initialization.
-- [ ] Add catalog/runtime execution to allocate a secondary index descriptor,
+- [x] Add catalog/runtime execution to allocate a secondary index descriptor,
   insert index/index-column rows atomically, create the generated SQLite
   physical index from descriptors, update descriptor generations, and preserve
   table rows and column descriptors.
-- [ ] Ensure `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
+- [x] Ensure `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
   `INFORMATION_SCHEMA.STATISTICS`, `CREATE TABLE ... LIKE`, DML,
   `ALTER TABLE ... DROP PRIMARY KEY`, reopen, and independent handles observe
   the new descriptor through existing paths.
-- [ ] Add fast C runtime coverage for success cases, metadata, persistence,
+- [x] Add fast C runtime coverage for success cases, metadata, persistence,
   file-format safety, auto-increment interaction, diagnostics, and unsupported
   syntax.
-- [ ] Update `COMPATIBILITY.md`,
+- [x] Update `COMPATIBILITY.md`,
   `docs/compatibility/sql-indexes-constraints.md`, and
   `docs/compatibility/sql-table-ddl.md` with exact limited wording.
-- [ ] Run focused build/tests, the MySQL expectation script, and
+- [x] Run focused build/tests, the MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, catalog authority, physical SQL
+- [x] Review the final diff for MySQL behavior, catalog authority, physical SQL
   quoting, cleanup on failure, performance, scope control, compatibility docs,
   and test relevance.

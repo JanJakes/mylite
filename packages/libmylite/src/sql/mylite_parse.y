@@ -181,6 +181,9 @@ statement(A) ::= alter_table_add_column_statement(B). {
 statement(A) ::= alter_table_add_primary_key_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_add_index_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_primary_key_statement(B). {
     A = B;
 }
@@ -733,6 +736,11 @@ alter_table_add_column_statement(A) ::=
 alter_table_add_primary_key_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P). {
     A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P);
+}
+
+alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD secondary_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
 }
 
 alter_table_drop_primary_key_statement(A) ::=

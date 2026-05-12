@@ -236,6 +236,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST = 227,
     MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT = 228,
     MYLITE_SQL_AST_INSERT_VALUES_REFERENCE = 229,
+    MYLITE_SQL_AST_APPROXIMATE_TYPE = 230,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -313,6 +314,14 @@ enum mylite_sql_ast_decimal_type {
     MYLITE_SQL_AST_DECIMAL_TYPE_DEC = 2,
     MYLITE_SQL_AST_DECIMAL_TYPE_NUMERIC = 3,
     MYLITE_SQL_AST_DECIMAL_TYPE_FIXED = 4,
+};
+
+enum mylite_sql_ast_approximate_type {
+    MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT = 1,
+    MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4 = 2,
+    MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8 = 3,
+    MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE = 4,
+    MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL = 5,
 };
 
 enum mylite_sql_ast_nullability {
@@ -399,6 +408,13 @@ struct mylite_sql_ast_decimal_type_payload {
     struct mylite_sql_source_span scale_span;
 };
 
+struct mylite_sql_ast_approximate_type_payload {
+    enum mylite_sql_ast_approximate_type kind;
+    int has_precision;
+    int is_unsigned;
+    struct mylite_sql_source_span precision_span;
+};
+
 struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
@@ -420,6 +436,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
     struct mylite_sql_ast_decimal_type_payload decimal_type;
+    struct mylite_sql_ast_approximate_type_payload approximate_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
@@ -497,6 +514,10 @@ void mylite_sql_ast_node_set_decimal_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_decimal_type_payload payload
 );
+void mylite_sql_ast_node_set_approximate_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_approximate_type_payload payload
+);
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -553,6 +574,14 @@ struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_precision_span(
 struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_scale_span(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_approximate_type mylite_sql_ast_node_approximate_type(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_approximate_type_has_precision(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_approximate_type_is_unsigned(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_precision_span(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );
@@ -569,6 +598,9 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
 const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_type);
 const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type decimal_type);
+const char *mylite_sql_ast_approximate_type_name(
+    enum mylite_sql_ast_approximate_type approximate_type
+);
 const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
 const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction);
 const char *mylite_sql_ast_column_visibility_name(enum mylite_sql_ast_column_visibility visibility);

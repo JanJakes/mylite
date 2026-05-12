@@ -4096,6 +4096,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_approximate_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_approximate_type_tokens tokens
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.type_token), span_from_token(&tokens.end_token));
+    struct mylite_sql_ast_node *type = make_node(state, MYLITE_SQL_AST_APPROXIMATE_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_approximate_type(
+        type,
+        (struct mylite_sql_ast_approximate_type_payload){
+            .kind = tokens.approximate_type,
+            .has_precision = tokens.has_precision,
+            .is_unsigned = tokens.is_unsigned,
+            .precision_span = span_from_token(&tokens.precision_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_date_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token date_token
@@ -4518,6 +4541,12 @@ static bool map_keyword_token(
         {"DEC", MYLITE_SQL_PARSE_DEC},
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"FIXED", MYLITE_SQL_PARSE_FIXED},
+        {"FLOAT", MYLITE_SQL_PARSE_FLOAT_TYPE},
+        {"FLOAT4", MYLITE_SQL_PARSE_FLOAT4},
+        {"FLOAT8", MYLITE_SQL_PARSE_FLOAT8},
+        {"DOUBLE", MYLITE_SQL_PARSE_DOUBLE},
+        {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
+        {"REAL", MYLITE_SQL_PARSE_REAL},
         {"DATE", MYLITE_SQL_PARSE_DATE},
         {"DATETIME", MYLITE_SQL_PARSE_DATETIME},
         {"TIME", MYLITE_SQL_PARSE_TIME},

@@ -5,22 +5,22 @@
   readback, metadata, nullability, and strict diagnostics.
 - [x] Record MySQL expectations in
   `packages/libmylite/tests/mysql_baseline_float_double_type_expectations.sh`.
-- [ ] Add parser/AST support for the limited approximate type grammar and
+- [x] Add parser/AST support for the limited approximate type grammar and
   approximate literals in admitted DML/default positions.
-- [ ] Map approximate type AST nodes to descriptor-owned logical types and
+- [x] Map approximate type AST nodes to descriptor-owned logical types and
   SQLite `REAL` physical storage.
-- [ ] Extend descriptor helpers, row-size accounting, catalog default
+- [x] Extend descriptor helpers, row-size accounting, catalog default
   validation, and unsupported-operation gates for approximate descriptors.
-- [ ] Add MyLite-owned approximate conversion for supported literals,
+- [x] Add MyLite-owned approximate conversion for supported literals,
   defaults, insert/replace/update values, `INSERT IGNORE` null/default
   adjustments, and readback formatting.
-- [ ] Extend `SHOW COLUMNS`, `SHOW CREATE TABLE`, and
+- [x] Extend `SHOW COLUMNS`, `SHOW CREATE TABLE`, and
   `INFORMATION_SCHEMA.COLUMNS` metadata.
-- [ ] Add runtime tests for supported DDL, DML, defaults, metadata,
+- [x] Add runtime tests for supported DDL, DML, defaults, metadata,
   persistence, independent handles, file-format safety, and diagnostics.
-- [ ] Update compatibility docs for the exact limited surface.
-- [ ] Run the MySQL expectation script, focused parser/runtime CTests, and the
+- [x] Update compatibility docs for the exact limited surface.
+- [x] Run the MySQL expectation script, focused parser/runtime CTests, and the
   full `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL equivalence, descriptor authority,
+- [x] Review the final diff for MySQL equivalence, descriptor authority,
   physical `REAL` storage, conversion correctness, formatting stability,
   catalog/file-format safety, scope control, and test relevance.

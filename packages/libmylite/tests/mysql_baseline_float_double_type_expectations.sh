@@ -214,6 +214,49 @@ expect_output \
 "SHOW WARNINGS; SELECT id, f, d FROM approx_values WHERE id = 5;" \
     "$DATABASE"
 
+path_copy_expected=$(cat <<\EXPECTED
+2	2.5	3.75	4.5
+1
+1
+3	6.5	1.5	NULL
+4	0	4.25	NULL
+5	0	5.5	NULL
+10	10.25	1.5
+1	1.25	1.5
+2	2.5	3.75
+1	1.25	1.5
+2	2.5	3.75
+2.5
+EXPECTED
+)
+expect_output \
+    "approximate set defaults ignore select copy and rename paths" \
+    "$path_copy_expected" \
+    "CREATE TABLE approx_paths ("\
+"id INT, f FLOAT NOT NULL, d DOUBLE DEFAULT 1.5, nullable DOUBLE); "\
+"INSERT INTO approx_paths SET id = 1, f = 1.25, d = DEFAULT, nullable = NULL; "\
+"REPLACE INTO approx_paths SET id = 2, f = 2.5, d = 3.75, nullable = 4.5; "\
+"SELECT id, f, d, nullable FROM approx_paths WHERE nullable IS NOT NULL ORDER BY id; "\
+"ALTER TABLE approx_paths ALTER COLUMN f SET DEFAULT 6.5; "\
+"INSERT INTO approx_paths (id, d) VALUES (3, DEFAULT); "\
+"ALTER TABLE approx_paths ALTER COLUMN f DROP DEFAULT; "\
+"INSERT IGNORE INTO approx_paths (id, d) VALUES (4, 4.25); SELECT @@warning_count; "\
+"INSERT IGNORE INTO approx_paths (id, f, d) VALUES (5, NULL, 5.5); SELECT @@warning_count; "\
+"SELECT id, f, d, nullable FROM approx_paths WHERE id >= 3 ORDER BY id; "\
+"CREATE TABLE approx_like LIKE approx_paths; "\
+"INSERT INTO approx_like (id, f) VALUES (10, 10.25); "\
+"SELECT id, f, d FROM approx_like ORDER BY id; "\
+"CREATE TABLE approx_ctas AS SELECT id, f, d FROM approx_paths WHERE id IN (1, 2); "\
+"SELECT id, f, d FROM approx_ctas ORDER BY id; "\
+"CREATE TABLE approx_insert_select (id INT, f FLOAT NOT NULL, d DOUBLE); "\
+"INSERT INTO approx_insert_select SELECT id, f, d FROM approx_ctas; "\
+"CREATE TABLE approx_replace_select LIKE approx_insert_select; "\
+"REPLACE INTO approx_replace_select SELECT id, f, d FROM approx_insert_select; "\
+"SELECT id, f, d FROM approx_replace_select ORDER BY id; "\
+"RENAME TABLE approx_paths TO approx_paths_renamed; "\
+"SELECT f FROM approx_paths_renamed WHERE id = 2; DROP TABLE approx_paths_renamed;" \
+    "$DATABASE"
+
 expect_error \
     "float overflow fails" \
     1264 \
@@ -254,4 +297,27 @@ expect_upstream_accepts \
 expect_upstream_accepts \
     "mysql accepts deferred zerofill float" \
     "CREATE TABLE deferred_zerofill_float (x FLOAT ZEROFILL);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "mysql accepts deferred float primary key" \
+    "CREATE TABLE deferred_float_pk (f FLOAT PRIMARY KEY);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "mysql accepts deferred float secondary index" \
+    "CREATE TABLE deferred_float_key (f FLOAT, KEY k_f (f));" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "mysql accepts deferred double unique index" \
+    "CREATE TABLE deferred_double_unique (d DOUBLE, UNIQUE KEY u_d (d));" \
+    "$DATABASE"
+
+expect_error \
+    "float auto increment fails" \
+    1063 \
+    "42000" \
+    "Incorrect column specifier for column 'f'" \
+    "CREATE TABLE deferred_float_auto_increment (f FLOAT AUTO_INCREMENT PRIMARY KEY);" \
     "$DATABASE"

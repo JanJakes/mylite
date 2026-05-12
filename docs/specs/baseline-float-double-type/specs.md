@@ -194,7 +194,7 @@ This feature must not implement:
   primary-key membership, and auto-increment attributes. SQLite schema text is
   not metadata authority.
 - Result and introspection builders render logical descriptors and descriptor
-  defaults to MySQL-shaped text.
+  defaults to MySQL-shaped text using locale-independent decimal separators.
 - SQLite owns physical `REAL` row storage and mutation for generated prepared
   statements. MyLite binds converted finite values and formats readback rather
   than exposing SQLite's default numeric text as the compatibility contract.

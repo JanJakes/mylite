@@ -12,6 +12,7 @@ enum {
     bool_alias_column_count = 3,
     integer_default_column_count = 5,
     decimal_column_count = 6,
+    approximate_column_count = 9,
     date_column_count = 3,
     datetime_column_count = 3,
     time_column_count = 3,
@@ -77,6 +78,7 @@ static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_decimal_type_statements(void);
+static int test_approximate_type_statements(void);
 static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
 static int test_time_type_statements(void);
@@ -193,6 +195,13 @@ static int expect_decimal_type(
     int expected_unsigned,
     const char *context
 );
+static int expect_approximate_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_approximate_type expected,
+    const char *expected_precision,
+    int expected_unsigned,
+    const char *context
+);
 static int expect_integer_display_width(
     const struct mylite_sql_ast_node *node,
     const char *expected_width,
@@ -264,6 +273,7 @@ int main(void) {
     failures += test_char_type_statements();
     failures += test_text_type_statements();
     failures += test_decimal_type_statements();
+    failures += test_approximate_type_statements();
     failures += test_date_type_statements();
     failures += test_datetime_type_statements();
     failures += test_time_type_statements();
@@ -7488,6 +7498,167 @@ static int test_decimal_type_statements(void) {
     return failures;
 }
 
+static int test_approximate_type_statements(void) {
+    enum {
+        approximate_double_column = 5,
+        approximate_double_precision_column = 6,
+        approximate_real_column = 7,
+        approximate_unsigned_float_column = 8,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE approximate_types (a FLOAT, b FLOAT(24), c FLOAT(25), "
+        "d FLOAT4, e FLOAT8, f DOUBLE, g DOUBLE PRECISION, h REAL, i FLOAT UNSIGNED);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, approximate_column_count, "approximate column list");
+    failures += expect_approximate_type(
+        child_at(child_at(columns, 0U), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        NULL,
+        0,
+        "bare float column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, 1U), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        "24",
+        0,
+        "precision float column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, 2U), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        "25",
+        0,
+        "double precision float column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, 3U), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4,
+        NULL,
+        0,
+        "float4 column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, 4U), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8,
+        NULL,
+        0,
+        "float8 column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, approximate_double_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+        NULL,
+        0,
+        "double column type"
+    );
+    failures += expect_span_text(
+        child_at(child_at(columns, approximate_double_precision_column), 1U),
+        "DOUBLE PRECISION",
+        "double precision span"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, approximate_real_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
+        NULL,
+        0,
+        "real column type"
+    );
+    failures += expect_approximate_type(
+        child_at(child_at(columns, approximate_unsigned_float_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        NULL,
+        1,
+        "unsigned float column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE approximate_defaults (a FLOAT DEFAULT 1.25, "
+        "b DOUBLE DEFAULT -2.5e1, c FLOAT DEFAULT +3.5E-1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_DECIMAL,
+        "approximate decimal default literal"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative approximate default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "positive approximate default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO approximate_types VALUES (1.25e1, -2.5E0, +3.5e-1, NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_FLOAT,
+        "approximate insert float literal"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative approximate insert value"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 2U), 0U), 2U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "positive approximate insert value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE approximate_types SET a = 9.75e0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_FLOAT,
+        "approximate update value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_approximate (c FLOAT SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE bad_approximate_scale (c DOUBLE(7,4));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_date_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -13998,7 +14169,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES (1e0);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (1e0);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (0x1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -14031,7 +14202,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = 1e0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = 1e0;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 0x1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -14608,6 +14779,64 @@ static int expect_decimal_type(
             expected_scale,
             (int)scale_span.length,
             scale_span.text == NULL ? "" : scale_span.text
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_approximate_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_approximate_type expected,
+    const char *expected_precision,
+    int expected_unsigned,
+    const char *context
+) {
+    struct mylite_sql_source_span precision_span = {0};
+    enum mylite_sql_ast_approximate_type actual = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT;
+    int actual_unsigned = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_APPROXIMATE_TYPE, context) != 0) {
+        return 1;
+    }
+
+    actual = mylite_sql_ast_node_approximate_type(node);
+    actual_unsigned = mylite_sql_ast_node_approximate_type_is_unsigned(node);
+    if (actual != expected || actual_unsigned != expected_unsigned) {
+        fprintf(
+            stderr,
+            "%s: expected approximate type %s unsigned=%d, got %s unsigned=%d\n",
+            context,
+            mylite_sql_ast_approximate_type_name(expected),
+            expected_unsigned,
+            mylite_sql_ast_approximate_type_name(actual),
+            actual_unsigned
+        );
+        return 1;
+    }
+
+    if (expected_precision == NULL) {
+        if (mylite_sql_ast_node_approximate_type_has_precision(node) != 0) {
+            fprintf(stderr, "%s: expected no approximate precision\n", context);
+            return 1;
+        }
+        return 0;
+    }
+    if (mylite_sql_ast_node_approximate_type_has_precision(node) == 0) {
+        fprintf(stderr, "%s: expected approximate precision %s\n", context, expected_precision);
+        return 1;
+    }
+    precision_span = mylite_sql_ast_node_approximate_type_precision_span(node);
+    if (precision_span.text == NULL || precision_span.length != strlen(expected_precision) ||
+        strncmp(precision_span.text, expected_precision, precision_span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected approximate precision %s, got %.*s\n",
+            context,
+            expected_precision,
+            (int)precision_span.length,
+            precision_span.text == NULL ? "" : precision_span.text
         );
         return 1;
     }

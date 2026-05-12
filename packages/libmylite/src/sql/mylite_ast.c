@@ -198,6 +198,17 @@ void mylite_sql_ast_node_set_decimal_type(
     node->payload.decimal_type = payload;
 }
 
+void mylite_sql_ast_node_set_approximate_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_approximate_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.approximate_type = payload;
+}
+
 void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
@@ -453,6 +464,42 @@ struct mylite_sql_source_span mylite_sql_ast_node_decimal_type_scale_span(
     return node->payload.decimal_type.scale_span;
 }
 
+enum mylite_sql_ast_approximate_type mylite_sql_ast_node_approximate_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT;
+    }
+
+    return node->payload.approximate_type.kind;
+}
+
+int mylite_sql_ast_node_approximate_type_has_precision(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return 0;
+    }
+
+    return node->payload.approximate_type.has_precision;
+}
+
+int mylite_sql_ast_node_approximate_type_is_unsigned(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return 0;
+    }
+
+    return node->payload.approximate_type.is_unsigned;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_approximate_type_precision_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.approximate_type.precision_span;
+}
+
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 ) {
@@ -535,6 +582,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "text_type";
     case MYLITE_SQL_AST_DECIMAL_TYPE:
         return "decimal_type";
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
+        return "approximate_type";
     case MYLITE_SQL_AST_DATE_TYPE:
         return "date_type";
     case MYLITE_SQL_AST_DATETIME_TYPE:
@@ -1104,6 +1153,25 @@ const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type de
         return "numeric";
     case MYLITE_SQL_AST_DECIMAL_TYPE_FIXED:
         return "fixed";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_approximate_type_name(
+    enum mylite_sql_ast_approximate_type approximate_type
+) {
+    switch (approximate_type) {
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT:
+        return "float";
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4:
+        return "float4";
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8:
+        return "float8";
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE:
+        return "double";
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL:
+        return "real";
     }
 
     return "unknown";

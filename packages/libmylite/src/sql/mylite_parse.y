@@ -42,6 +42,8 @@
 %type text_type_name { struct mylite_sql_text_type_tokens }
 %type decimal_type_name { struct mylite_sql_decimal_type_tokens }
 %type decimal_unsigned_opt { struct mylite_sql_decimal_type_tokens }
+%type approximate_precision_opt { struct mylite_sql_approximate_type_tokens }
+%type approximate_unsigned_opt { struct mylite_sql_approximate_type_tokens }
 %type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
 %type integer_signedness_opt { struct mylite_sql_integer_signedness_tokens }
 %type select_modifiers { struct mylite_sql_select_modifiers }
@@ -1131,6 +1133,9 @@ insert_value(A) ::= INTEGER(T). {
 insert_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
+insert_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
 insert_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
@@ -1141,6 +1146,11 @@ insert_value(A) ::= PLUS(P) DECIMAL(T). {
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
+insert_value(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
 insert_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
@@ -1150,6 +1160,11 @@ insert_value(A) ::= MINUS(M) DECIMAL(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+insert_value(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
 }
 insert_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -1173,6 +1188,9 @@ update_value(A) ::= INTEGER(T). {
 update_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
+update_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
 update_value(A) ::= PLUS(P) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
@@ -1183,6 +1201,11 @@ update_value(A) ::= PLUS(P) DECIMAL(T). {
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
+update_value(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
 update_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
@@ -1192,6 +1215,11 @@ update_value(A) ::= MINUS(M) DECIMAL(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+update_value(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
 }
 update_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -2823,6 +2851,9 @@ column_type(A) ::= text_type(T). {
 column_type(A) ::= decimal_type(T). {
     A = T;
 }
+column_type(A) ::= approximate_type(T). {
+    A = T;
+}
 column_type(A) ::= date_type(T). {
     A = T;
 }
@@ -3018,6 +3049,99 @@ decimal_unsigned_opt(A) ::= UNSIGNED(U). {
     };
 }
 
+approximate_type(A) ::= FLOAT_TYPE(T) approximate_precision_opt(P)
+    approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .precision_token = P.precision_token,
+            .end_token = U.attribute_token.text == NULL
+                ? (P.end_token.text == NULL ? T : P.end_token)
+                : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+            .has_precision = P.has_precision,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= FLOAT4(T) approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .end_token = U.attribute_token.text == NULL ? T : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= FLOAT8(T) approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .end_token = U.attribute_token.text == NULL ? T : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= DOUBLE(T) approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .end_token = U.attribute_token.text == NULL ? T : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= DOUBLE(D) PRECISION(P) approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = D,
+            .end_token = U.attribute_token.text == NULL ? P : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= REAL(T) approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .end_token = U.attribute_token.text == NULL ? T : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+
+approximate_precision_opt(A) ::= . {
+    A = (struct mylite_sql_approximate_type_tokens){0};
+}
+approximate_precision_opt(A) ::= LPAREN INTEGER(P) RPAREN(R). {
+    A = (struct mylite_sql_approximate_type_tokens){
+        .precision_token = P,
+        .end_token = R,
+        .has_precision = 1,
+    };
+}
+
+approximate_unsigned_opt(A) ::= . {
+    A = (struct mylite_sql_approximate_type_tokens){0};
+}
+approximate_unsigned_opt(A) ::= UNSIGNED(U). {
+    A = (struct mylite_sql_approximate_type_tokens){
+        .attribute_token = U,
+        .is_unsigned = 1,
+    };
+}
+
 date_type(A) ::= DATE(T). {
     A = mylite_sql_parser_make_date_type(state, T);
 }
@@ -3186,6 +3310,9 @@ column_default_value(A) ::= INTEGER(T). {
 column_default_value(A) ::= DECIMAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
+column_default_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
 column_default_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
@@ -3199,6 +3326,11 @@ column_default_value(A) ::= PLUS(P) DECIMAL(T). {
         state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
 }
+column_default_value(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
 column_default_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
@@ -3208,6 +3340,11 @@ column_default_value(A) ::= MINUS(M) DECIMAL(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+column_default_value(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
 }
 column_default_value(A) ::= TRUE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);

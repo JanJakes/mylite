@@ -10,9 +10,12 @@
 #include "mylite_statement_context.h"
 #include "sqlite3.h"
 
+#include <float.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <locale.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -200,6 +203,10 @@ enum {
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
     double_format_error_capacity = 80,
+    float_text_max_significant_digits = 6,
+    approximate_numeric_text_capacity = 48,
+    float_max_precision = 53,
+    float_double_precision_threshold = 24,
     char_default_length = 1,
     char_max_length = 255,
     char_logical_prefix_length = 5,
@@ -217,6 +224,8 @@ enum {
     mediumint_row_size_bytes = 3,
     int_row_size_bytes = 4,
     bigint_row_size_bytes = 8,
+    float_row_size_bytes = 4,
+    double_row_size_bytes = 8,
     date_row_size_bytes = 3,
     time_row_size_bytes = 3,
     datetime_row_size_bytes = 5,
@@ -550,7 +559,9 @@ struct planned_drop_schema {
 struct planned_value {
     bool is_null;
     bool is_text;
+    bool is_real;
     int64_t integer;
+    double real;
     char *text;
     size_t text_length;
 };
@@ -576,6 +587,16 @@ struct text_family_type_info {
 struct decimal_type_info {
     uint64_t precision;
     uint64_t scale;
+    bool is_unsigned;
+};
+
+enum approximate_type_class {
+    APPROXIMATE_TYPE_FLOAT = 1,
+    APPROXIMATE_TYPE_DOUBLE = 2,
+};
+
+struct approximate_type_info {
+    enum approximate_type_class type_class;
     bool is_unsigned;
 };
 
@@ -3009,6 +3030,15 @@ static int append_information_schema_columns_base_column_row(
     const struct loaded_index_info *indexes,
     size_t index_count
 );
+static int append_information_schema_columns_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *numeric_precision_text,
+    size_t numeric_precision_text_size,
+    char *numeric_scale_text,
+    size_t numeric_scale_text_size,
+    const char **values
+);
 static int append_information_schema_table_constraints_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -4115,6 +4145,13 @@ static int validate_insert_select_decimal_value(
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number
 );
+static int validate_insert_select_approximate_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+);
 static int validate_insert_select_date_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -5067,6 +5104,8 @@ static int format_scientific_double_text(
     char *buffer,
     size_t buffer_size
 );
+static int format_c_locale_text(char *buffer, size_t buffer_size, const char *format, ...);
+static int parse_c_locale_double(const char *text, char **out_end, double *out_value);
 static int copy_normalized_scientific_double_text(
     struct mylite_db *database,
     const char *candidate,
@@ -5722,6 +5761,28 @@ static int show_descriptor_type_text(
     const char *unsupported_message,
     const char **out_type_text
 );
+static int show_descriptor_numeric_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_type_text,
+    bool *out_matched
+);
+static int format_decimal_descriptor_type_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    const struct decimal_type_info *info,
+    const char **out_type_text
+);
+static int format_approximate_descriptor_type_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    const struct approximate_type_info *info,
+    const char **out_type_text
+);
 static int format_varchar_type_text(
     struct mylite_db *database,
     const char *logical_type,
@@ -6015,6 +6076,10 @@ static int finalize_planned_column_decimal_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_approximate_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_date_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -6039,6 +6104,11 @@ static int copy_planned_default_text(
     struct mylite_db *database,
     struct planned_column *column,
     struct planned_value *value
+);
+static int copy_planned_default_approximate_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct planned_value *value
 );
 static int convert_column_default_value(
     struct mylite_db *database,
@@ -6095,6 +6165,12 @@ static int map_decimal_type(
     const char *column_name,
     struct planned_column *out_column
 );
+static int map_approximate_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+);
 static int map_integer_display_width(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -6110,6 +6186,7 @@ static bool planned_column_is_char_or_varchar(const struct planned_column *colum
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_decimal(const struct planned_column *column);
+static bool planned_column_is_approximate(const struct planned_column *column);
 static bool planned_column_is_date(const struct planned_column *column);
 static bool planned_column_is_time(const struct planned_column *column);
 static bool planned_column_is_datetime(const struct planned_column *column);
@@ -6124,6 +6201,7 @@ static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_approximate(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_date(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_time(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_datetime(const struct mylite_catalog_column_descriptor *column);
@@ -6131,6 +6209,10 @@ static bool column_descriptor_is_timestamp(const struct mylite_catalog_column_de
 static int decimal_type_info_for_logical_type(
     const char *logical_type,
     struct decimal_type_info *out_info
+);
+static int approximate_type_info_for_logical_type(
+    const char *logical_type,
+    struct approximate_type_info *out_info
 );
 static const struct text_family_type_info *text_family_type_info_for_logical_type(
     const char *logical_type
@@ -6168,6 +6250,7 @@ static int row_size_for_column_descriptor(
 );
 static int integer_row_size_bytes(const char *logical_type, uint64_t *out_size);
 static int decimal_row_size_bytes(const struct decimal_type_info *info, uint64_t *out_size);
+static int approximate_row_size_bytes(const struct approximate_type_info *info, uint64_t *out_size);
 static uint64_t decimal_digit_group_size(uint64_t digits);
 static int add_row_size_bytes(struct mylite_db *database, uint64_t addition, uint64_t *total);
 static int validate_planned_string_key_column(
@@ -6606,6 +6689,14 @@ static int convert_decimal_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_approximate_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int convert_date_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -6697,6 +6788,38 @@ static int make_zero_date_value(struct mylite_db *database, struct planned_value
 static int make_zero_time_value(struct mylite_db *database, struct planned_value *out_value);
 static int make_zero_datetime_value(struct mylite_db *database, struct planned_value *out_value);
 static int make_zero_timestamp_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_zero_approximate_value(struct planned_value *out_value);
+static int parse_approximate_literal_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    const struct approximate_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    double *out_value
+);
+static int assign_approximate_value(double value, struct planned_value *out_value);
+static int copy_approximate_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int format_approximate_value_text(
+    struct mylite_db *database,
+    double value,
+    const struct approximate_type_info *info,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+);
+static int format_float_value_text(
+    struct mylite_db *database,
+    double value,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+);
 static int assign_text_value(
     struct mylite_db *database,
     char *text,
@@ -7942,6 +8065,7 @@ static int format_key_value(
 );
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
 static int bind_insert_select_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_insert_select *plan
 );
@@ -7966,7 +8090,45 @@ static int bind_planned_value_parameter(
     const struct planned_value *value
 );
 static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value);
-static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result);
+static int append_selected_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count
+);
+static int append_selected_sqlite_row_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+);
+static int append_selected_sqlite_integer_value(
+    sqlite3_stmt *statement,
+    size_t column_index,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+);
+static int append_selected_sqlite_float_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+);
+static int append_selected_sqlite_text_value(
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const char **out_value
+);
 static int choose_sqlite_rowid_alias(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
@@ -8584,6 +8746,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
     case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_TIME_TYPE:
@@ -11721,30 +11884,16 @@ static int append_information_schema_columns_base_column_row(
             &character_metadata
         );
     }
-    if (rc == MYLITE_OK && column_descriptor_is_decimal(column)) {
-        struct decimal_type_info info = {0};
-
-        rc = decimal_type_info_for_logical_type(column->logical_type, &info);
-        if (rc == MYLITE_OK) {
-            rc = information_schema_format_i64(
-                database,
-                (int64_t)info.precision,
-                numeric_precision_text,
-                sizeof(numeric_precision_text)
-            );
-        }
-        if (rc == MYLITE_OK) {
-            rc = information_schema_format_i64(
-                database,
-                (int64_t)info.scale,
-                numeric_scale_text,
-                sizeof(numeric_scale_text)
-            );
-        }
-        if (rc == MYLITE_OK) {
-            values[information_schema_columns_numeric_precision_column] = numeric_precision_text;
-            values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_information_schema_columns_numeric_metadata(
+            database,
+            column,
+            numeric_precision_text,
+            sizeof(numeric_precision_text),
+            numeric_scale_text,
+            sizeof(numeric_scale_text),
+            values
+        );
     }
     if (rc == MYLITE_OK &&
         (column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
@@ -11779,6 +11928,59 @@ static int append_information_schema_columns_base_column_row(
     values[information_schema_columns_extra_column] = extra;
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_columns_numeric_metadata(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *numeric_precision_text,
+    size_t numeric_precision_text_size,
+    char *numeric_scale_text,
+    size_t numeric_scale_text_size,
+    const char **values
+) {
+    if (column_descriptor_is_decimal(column)) {
+        struct decimal_type_info info = {0};
+        int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info.precision,
+                numeric_precision_text,
+                numeric_precision_text_size
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                (int64_t)info.scale,
+                numeric_scale_text,
+                numeric_scale_text_size
+            );
+        }
+        if (rc == MYLITE_OK) {
+            values[information_schema_columns_numeric_precision_column] = numeric_precision_text;
+            values[information_schema_columns_numeric_scale_column] = numeric_scale_text;
+        }
+        return rc;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        struct approximate_type_info info = {
+            .type_class = APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = false,
+        };
+        int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        values[information_schema_columns_numeric_precision_column] =
+            info.type_class == APPROXIMATE_TYPE_FLOAT ? "12" : "22";
+        values[information_schema_columns_numeric_scale_column] = NULL;
+    }
+
+    return MYLITE_OK;
 }
 
 static int append_information_schema_table_constraints_base_rows(
@@ -13489,6 +13691,18 @@ static const char *information_schema_data_type_for_descriptor(
     if (column_descriptor_is_decimal(column)) {
         return "decimal";
     }
+    if (column_descriptor_is_approximate(column)) {
+        struct approximate_type_info info = {
+            .type_class = APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = false,
+        };
+
+        if (approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK &&
+            info.type_class == APPROXIMATE_TYPE_FLOAT) {
+            return "float";
+        }
+        return "double";
+    }
     if (column_descriptor_is_date(column)) {
         return "date";
     }
@@ -13530,6 +13744,18 @@ static const char *information_schema_numeric_precision_for_descriptor(
         column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
         return NULL;
     }
+    if (column_descriptor_is_approximate(column)) {
+        struct approximate_type_info info = {
+            .type_class = APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = false,
+        };
+
+        if (approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK &&
+            info.type_class == APPROXIMATE_TYPE_FLOAT) {
+            return "12";
+        }
+        return "22";
+    }
     if (logical_type == NULL) {
         return "10";
     }
@@ -13556,8 +13782,9 @@ static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
     if (column_descriptor_is_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+        column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column)) {
         return NULL;
     }
     return "0";
@@ -15649,8 +15876,8 @@ static int show_create_table_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW CREATE TABLE supports only integer, string, decimal, DATE, TIME, DATETIME, and "
-        "TIMESTAMP column descriptors",
+        "SHOW CREATE TABLE supports only integer, string, decimal, approximate numeric, DATE, "
+        "TIME, DATETIME, and TIMESTAMP column descriptors",
         out_type_text
     );
 }
@@ -15664,7 +15891,8 @@ static int show_descriptor_type_text(
     const char **out_type_text
 ) {
     const char *integer_text = NULL;
-    struct decimal_type_info decimal_info = {0};
+    bool matched = false;
+    int rc = MYLITE_OK;
 
     if (logical_type == NULL || buffer == NULL || unsupported_message == NULL ||
         out_type_text == NULL) {
@@ -15694,22 +15922,16 @@ static int show_descriptor_type_text(
     if (format_text_family_type_text(logical_type, out_type_text) == MYLITE_OK) {
         return MYLITE_OK;
     }
-    if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
-        int written = snprintf(
-            buffer,
-            buffer_size,
-            "decimal(%" PRIu64 ",%" PRIu64 ")%s",
-            decimal_info.precision,
-            decimal_info.scale,
-            decimal_info.is_unsigned ? " unsigned" : ""
-        );
-
-        if (written < 0 || (size_t)written >= buffer_size) {
-            set_runtime_error(database, "failed to format column type");
-            return MYLITE_ERROR;
-        }
-        *out_type_text = buffer;
-        return MYLITE_OK;
+    rc = show_descriptor_numeric_type_text(
+        database,
+        logical_type,
+        buffer,
+        buffer_size,
+        out_type_text,
+        &matched
+    );
+    if (rc != MYLITE_OK || matched) {
+        return rc;
     }
     if (strcmp(logical_type, "DATE") == 0) {
         *out_type_text = "date";
@@ -15736,6 +15958,97 @@ static int show_descriptor_type_text(
 
     set_unsupported_error(database, unsupported_message);
     return MYLITE_ERROR;
+}
+
+static int show_descriptor_numeric_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_type_text,
+    bool *out_matched
+) {
+    struct decimal_type_info decimal_info = {0};
+    struct approximate_type_info approximate_info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+
+    if (out_matched == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matched = false;
+
+    if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
+        *out_matched = true;
+        return format_decimal_descriptor_type_text(
+            database,
+            buffer,
+            buffer_size,
+            &decimal_info,
+            out_type_text
+        );
+    }
+    if (approximate_type_info_for_logical_type(logical_type, &approximate_info) == MYLITE_OK) {
+        *out_matched = true;
+        return format_approximate_descriptor_type_text(
+            database,
+            buffer,
+            buffer_size,
+            &approximate_info,
+            out_type_text
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int format_decimal_descriptor_type_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    const struct decimal_type_info *info,
+    const char **out_type_text
+) {
+    int written = snprintf(
+        buffer,
+        buffer_size,
+        "decimal(%" PRIu64 ",%" PRIu64 ")%s",
+        info->precision,
+        info->scale,
+        info->is_unsigned ? " unsigned" : ""
+    );
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format column type");
+        return MYLITE_ERROR;
+    }
+    *out_type_text = buffer;
+    return MYLITE_OK;
+}
+
+static int format_approximate_descriptor_type_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    const struct approximate_type_info *info,
+    const char **out_type_text
+) {
+    const char *base_type = info->type_class == APPROXIMATE_TYPE_FLOAT ? "float" : "double";
+    int written = 0;
+
+    if (!info->is_unsigned) {
+        *out_type_text = base_type;
+        return MYLITE_OK;
+    }
+
+    written = snprintf(buffer, buffer_size, "%s unsigned", base_type);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format column type");
+        return MYLITE_ERROR;
+    }
+    *out_type_text = buffer;
+    return MYLITE_OK;
 }
 
 static int format_varchar_type_text(
@@ -15956,6 +16269,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
     case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_TIME_TYPE:
@@ -16752,6 +17066,10 @@ static int validate_secondary_index_column(
     if (planned_column_is_char_or_varchar(column)) {
         return validate_planned_string_key_column(database, column);
     }
+    if (planned_column_is_approximate(column)) {
+        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
+        return MYLITE_ERROR;
+    }
 
     return MYLITE_OK;
 }
@@ -16770,6 +17088,10 @@ static int validate_unique_index_column(
     }
     if (planned_column_is_char_or_varchar(column)) {
         return validate_planned_string_key_column(database, column);
+    }
+    if (planned_column_is_approximate(column)) {
+        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
+        return MYLITE_ERROR;
     }
 
     return MYLITE_OK;
@@ -16873,8 +17195,9 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         }
     } else if (
         planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
-        planned_column_is_date(column) || planned_column_is_time(column) ||
-        planned_column_is_datetime(column) || planned_column_is_timestamp(column)
+        planned_column_is_approximate(column) || planned_column_is_date(column) ||
+        planned_column_is_time(column) || planned_column_is_datetime(column) ||
+        planned_column_is_timestamp(column)
     ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
@@ -16945,8 +17268,9 @@ static int validate_auto_increment_column(
 
     column = &plan->columns[column_index];
     if (planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
-        planned_column_is_date(column) || planned_column_is_time(column) ||
-        planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+        planned_column_is_approximate(column) || planned_column_is_date(column) ||
+        planned_column_is_time(column) || planned_column_is_datetime(column) ||
+        planned_column_is_timestamp(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -17131,6 +17455,7 @@ static int validate_create_table_like_source_columns(
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
+            column_descriptor_is_approximate(&columns[column_index]) ||
             column_descriptor_is_date(&columns[column_index]) ||
             column_descriptor_is_time(&columns[column_index]) ||
             column_descriptor_is_datetime(&columns[column_index]) ||
@@ -17141,16 +17466,16 @@ static int validate_create_table_like_source_columns(
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE LIKE supports only integer, string, decimal, DATE, TIME, DATETIME, "
-                "and TIMESTAMP descriptor columns"
+                "CREATE TABLE LIKE supports only integer, string, decimal, approximate numeric, "
+                "DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE LIKE supports only integer, string, decimal, DATE, TIME, DATETIME, and "
-            "TIMESTAMP descriptor columns",
+            "CREATE TABLE LIKE supports only integer, string, decimal, approximate numeric, DATE, "
+            "TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range
         );
 
@@ -17417,6 +17742,7 @@ static int validate_create_table_select_source_columns(
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
+            column_descriptor_is_approximate(&columns[column_index]) ||
             column_descriptor_is_date(&columns[column_index]) ||
             column_descriptor_is_time(&columns[column_index]) ||
             column_descriptor_is_datetime(&columns[column_index]) ||
@@ -17427,16 +17753,16 @@ static int validate_create_table_select_source_columns(
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE SELECT supports only integer, string, decimal, DATE, TIME, DATETIME, "
-                "and TIMESTAMP descriptor columns"
+                "CREATE TABLE SELECT supports only integer, string, decimal, approximate numeric, "
+                "DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
             );
             return MYLITE_ERROR;
         }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE SELECT supports only integer, string, decimal, DATE, TIME, DATETIME, and "
-            "TIMESTAMP descriptor columns",
+            "CREATE TABLE SELECT supports only integer, string, decimal, approximate numeric, "
+            "DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range
         );
         if (rc != MYLITE_OK) {
@@ -22052,13 +22378,15 @@ static int complete_alter_table_modify_column_plan(
 
     if (column_descriptor_is_string_family(&out_plan->original_column) ||
         column_descriptor_is_decimal(&out_plan->original_column) ||
+        column_descriptor_is_approximate(&out_plan->original_column) ||
         column_descriptor_is_date(&out_plan->original_column) ||
         column_descriptor_is_time(&out_plan->original_column) ||
         column_descriptor_is_datetime(&out_plan->original_column) ||
         column_descriptor_is_timestamp(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
-        planned_column_is_decimal(&out_plan->column) || planned_column_is_date(&out_plan->column) ||
-        planned_column_is_time(&out_plan->column) ||
+        planned_column_is_decimal(&out_plan->column) ||
+        planned_column_is_approximate(&out_plan->column) ||
+        planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
         planned_column_is_datetime(&out_plan->column) ||
         planned_column_is_timestamp(&out_plan->column)) {
         set_unsupported_error(database, out_plan->integer_support_message);
@@ -24084,7 +24412,7 @@ static int execute_insert_select_insert(
     *out_affected_rows = 0;
     rc = prepare_sqlite_statement(database, insert_sql, &statement);
     if (rc == MYLITE_OK) {
-        rc = bind_insert_select_parameters(statement, plan);
+        rc = bind_insert_select_parameters(database, statement, plan);
     }
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -24204,6 +24532,15 @@ static int validate_insert_select_value(
             row_number
         );
     }
+    if (column_descriptor_is_approximate(target_column)) {
+        return validate_insert_select_approximate_value(
+            database,
+            statement,
+            selected_column_index,
+            target_column,
+            row_number
+        );
+    }
     if (column_descriptor_is_date(target_column)) {
         return validate_insert_select_date_value(
             database,
@@ -24263,6 +24600,10 @@ static bool insert_select_source_target_types_are_compatible(
     if (column_descriptor_is_decimal(target_column)) {
         return column_descriptor_is_decimal(source_column);
     }
+    if (column_descriptor_is_approximate(target_column)) {
+        return (column_descriptor_is_approximate(source_column) &&
+                strcmp(source_column->logical_type, target_column->logical_type) == 0) != 0;
+    }
     if (column_descriptor_is_date(target_column)) {
         return column_descriptor_is_date(source_column);
     }
@@ -24288,6 +24629,9 @@ static const char *insert_select_implicit_conversion_message(
     }
     if (column_descriptor_is_decimal(target_column)) {
         return "INSERT ... SELECT does not support implicit DECIMAL conversion";
+    }
+    if (column_descriptor_is_approximate(target_column)) {
+        return "INSERT ... SELECT does not support implicit FLOAT or DOUBLE conversion";
     }
     if (column_descriptor_is_date(target_column)) {
         return "INSERT ... SELECT does not support implicit DATE conversion";
@@ -24391,6 +24735,38 @@ static int validate_insert_select_decimal_value(
         (size_t)byte_count,
         row_number
     );
+}
+
+static int validate_insert_select_approximate_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int sqlite_type = sqlite3_column_type(statement, selected_column_index);
+    double value = 0.0;
+    int rc = approximate_type_info_for_logical_type(target_column->logical_type, &info);
+
+    if (rc != MYLITE_OK || (sqlite_type != SQLITE_FLOAT && sqlite_type != SQLITE_INTEGER)) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT does not support implicit FLOAT or DOUBLE conversion"
+        );
+        return MYLITE_ERROR;
+    }
+    value = sqlite3_column_double(statement, selected_column_index);
+    if (!isfinite(value) || (info.is_unsigned && value < 0.0) ||
+        (info.type_class == APPROXIMATE_TYPE_FLOAT && fabs(value) > FLT_MAX)) {
+        set_out_of_range_error(database, target_column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_insert_select_date_value(
@@ -26759,7 +27135,13 @@ static int execute_select_from_plan(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             break;
         }
-        rc = append_selected_sqlite_row(statement, result);
+        rc = append_selected_sqlite_row(
+            database,
+            statement,
+            result,
+            plan->columns,
+            plan->column_count
+        );
     }
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
@@ -28044,7 +28426,7 @@ static int step_column_aggregate_statement(
     } else if (column_aggregate_function_is_bitwise(plan->function)) {
         rc = append_bitwise_aggregate_sqlite_row(database, statement, result);
     } else {
-        rc = append_selected_sqlite_row(statement, result);
+        rc = append_selected_sqlite_row(database, statement, result, NULL, 0U);
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -30578,14 +30960,14 @@ static int format_double_text(
         char candidate[double_text_capacity];
         char *end = NULL;
         double parsed = 0.0;
-        int written = snprintf(candidate, sizeof(candidate), "%.*g", precision, value);
+        int written = format_c_locale_text(candidate, sizeof(candidate), "%.*g", precision, value);
 
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
             set_double_format_error(database, function_name);
             return MYLITE_ERROR;
         }
-        parsed = strtod(candidate, &end);
-        if (end != candidate && end != NULL && *end == '\0' && parsed == value) {
+        if (parse_c_locale_double(candidate, &end, &parsed) == MYLITE_OK && end != candidate &&
+            end != NULL && *end == '\0' && parsed == value) {
             return copy_normalized_double_text(
                 database,
                 candidate,
@@ -30624,14 +31006,14 @@ static int format_scientific_double_text(
         char candidate[double_text_capacity];
         char *end = NULL;
         double parsed = 0.0;
-        int written = snprintf(candidate, sizeof(candidate), "%.*e", precision, value);
+        int written = format_c_locale_text(candidate, sizeof(candidate), "%.*e", precision, value);
 
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
             set_double_format_error(database, function_name);
             return MYLITE_ERROR;
         }
-        parsed = strtod(candidate, &end);
-        if (end != candidate && end != NULL && *end == '\0' && parsed == value) {
+        if (parse_c_locale_double(candidate, &end, &parsed) == MYLITE_OK && end != candidate &&
+            end != NULL && *end == '\0' && parsed == value) {
             return copy_normalized_scientific_double_text(
                 database,
                 candidate,
@@ -30644,6 +31026,87 @@ static int format_scientific_double_text(
 
     set_double_format_error(database, function_name);
     return MYLITE_ERROR;
+}
+
+static int format_c_locale_text(char *buffer, size_t buffer_size, const char *format, ...) {
+    va_list arguments;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U || format == NULL) {
+        return -1;
+    }
+
+    va_start(arguments, format);
+#ifdef _WIN32
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+
+    if (c_locale == NULL) {
+        va_end(arguments);
+        return -1;
+    }
+    written = _vsnprintf_l(buffer, buffer_size, format, c_locale, arguments);
+    _free_locale(c_locale);
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    locale_t previous_locale = (locale_t)0;
+
+    if (c_locale == (locale_t)0) {
+        va_end(arguments);
+        return -1;
+    }
+    previous_locale = uselocale(c_locale);
+    if (previous_locale == (locale_t)0) {
+        freelocale(c_locale);
+        va_end(arguments);
+        return -1;
+    }
+    written = vsnprintf(buffer, buffer_size, format, arguments);
+    if (uselocale(previous_locale) == (locale_t)0) {
+        written = -1;
+    }
+    freelocale(c_locale);
+#endif
+    va_end(arguments);
+    return written;
+}
+
+static int parse_c_locale_double(const char *text, char **out_end, double *out_value) {
+    if (text == NULL || out_end == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+#ifdef _WIN32
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+
+    if (c_locale == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_value = _strtod_l(text, out_end, c_locale);
+    _free_locale(c_locale);
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    locale_t previous_locale = (locale_t)0;
+    int rc = MYLITE_OK;
+
+    if (c_locale == (locale_t)0) {
+        return MYLITE_ERROR;
+    }
+    previous_locale = uselocale(c_locale);
+    if (previous_locale == (locale_t)0) {
+        freelocale(c_locale);
+        return MYLITE_ERROR;
+    }
+    *out_value = strtod(text, out_end);
+    if (uselocale(previous_locale) == (locale_t)0) {
+        rc = MYLITE_ERROR;
+    }
+    freelocale(c_locale);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+#endif
+
+    return MYLITE_OK;
 }
 
 static int copy_normalized_double_text(
@@ -37676,6 +38139,9 @@ static int finalize_planned_column_default(
     if (planned_column_is_decimal(column)) {
         return finalize_planned_column_decimal_default(database, column);
     }
+    if (planned_column_is_approximate(column)) {
+        return finalize_planned_column_approximate_default(database, column);
+    }
     if (planned_column_is_date(column)) {
         return finalize_planned_column_date_default(database, column);
     }
@@ -37780,6 +38246,42 @@ static int finalize_planned_column_decimal_default(
     planned_value_deinit(&value);
     if (rc == MYLITE_OK) {
         column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL;
+    }
+
+    return rc;
+}
+
+static int finalize_planned_column_approximate_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_approximate_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        &value
+    );
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_approximate_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
     }
 
     return rc;
@@ -37970,6 +38472,37 @@ static int copy_planned_default_text(
     return MYLITE_OK;
 }
 
+static int copy_planned_default_approximate_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct planned_value *value
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc == MYLITE_OK && (value == NULL || !value->is_real)) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_approximate_value_text(
+            database,
+            value->real,
+            &info,
+            "default approximate",
+            column->default_text,
+            sizeof(column->default_text)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+
+    return rc;
+}
+
 static int convert_column_default_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -38128,6 +38661,9 @@ static int map_column_type(
     }
     if (type_node->kind == MYLITE_SQL_AST_DECIMAL_TYPE) {
         return map_decimal_type(database, type_node, column_name, out_column);
+    }
+    if (type_node->kind == MYLITE_SQL_AST_APPROXIMATE_TYPE) {
+        return map_approximate_type(database, type_node, column_name, out_column);
     }
     if (ast_node_is_temporal_column_type(type_node)) {
         return map_temporal_column_type(database, type_node, column_name, out_column);
@@ -38402,6 +38938,76 @@ static int map_decimal_type(
     return MYLITE_OK;
 }
 
+static int map_approximate_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+) {
+    enum approximate_type_class type_class = APPROXIMATE_TYPE_FLOAT;
+    uint64_t precision = 0U;
+    int rc = MYLITE_OK;
+    int written = 0;
+
+    switch (mylite_sql_ast_node_approximate_type(type_node)) {
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT:
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT4:
+        type_class = APPROXIMATE_TYPE_FLOAT;
+        break;
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8:
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE:
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL:
+        type_class = APPROXIMATE_TYPE_DOUBLE;
+        break;
+    }
+
+    if (mylite_sql_ast_node_approximate_type_has_precision(type_node) != 0) {
+        struct mylite_sql_source_span precision_span =
+            mylite_sql_ast_node_approximate_type_precision_span(type_node);
+
+        rc = parse_unsigned_integer_literal(&precision_span, &precision);
+        if (rc != MYLITE_OK || precision > float_max_precision) {
+            set_incorrect_column_specifier_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        type_class = precision <= float_double_precision_threshold ? APPROXIMATE_TYPE_FLOAT
+                                                                   : APPROXIMATE_TYPE_DOUBLE;
+    }
+    if (mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_decimal_unsigned_deprecated,
+            "HY000",
+            "UNSIGNED for decimal and floating point data types is deprecated and support for it "
+            "will be removed in a future release."
+        );
+        if (rc != MYLITE_OK) {
+            if (rc == MYLITE_NOMEM) {
+                set_nomem_error(database);
+            }
+            return rc;
+        }
+    }
+
+    const char *base_type = type_class == APPROXIMATE_TYPE_FLOAT ? "FLOAT" : "DOUBLE";
+
+    written = snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "%s%s",
+        base_type,
+        mylite_sql_ast_node_approximate_type_is_unsigned(type_node) != 0 ? " UNSIGNED" : ""
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_column->logical_type_storage)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    snprintf(out_column->physical_type_storage, sizeof(out_column->physical_type_storage), "REAL");
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
+    return MYLITE_OK;
+}
+
 static int map_integer_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -38594,6 +39200,21 @@ static bool planned_column_is_decimal(const struct planned_column *column) {
     return decimal_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
 }
 
+static bool planned_column_is_approximate(const struct planned_column *column) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    if (strcmp(column->physical_type, "REAL") != 0) {
+        return false;
+    }
+    return approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
+}
+
 static bool planned_column_is_date(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
@@ -38709,6 +39330,23 @@ static bool column_descriptor_is_decimal(const struct mylite_catalog_column_desc
     return decimal_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
 }
 
+static bool column_descriptor_is_approximate(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    if (strcmp(column->physical_type, "REAL") != 0) {
+        return false;
+    }
+    return approximate_type_info_for_logical_type(column->logical_type, &info) == MYLITE_OK;
+}
+
 static bool column_descriptor_is_date(const struct mylite_catalog_column_descriptor *column) {
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
@@ -38787,6 +39425,45 @@ static int decimal_type_info_for_logical_type(
     }
     if (strcmp(close + 1, unsigned_suffix) == 0) {
         out_info->is_unsigned = true;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int approximate_type_info_for_logical_type(
+    const char *logical_type,
+    struct approximate_type_info *out_info
+) {
+    if (logical_type == NULL || out_info == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (strcmp(logical_type, "FLOAT") == 0) {
+        *out_info = (struct approximate_type_info){
+            .type_class = APPROXIMATE_TYPE_FLOAT,
+            .is_unsigned = false,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "FLOAT UNSIGNED") == 0) {
+        *out_info = (struct approximate_type_info){
+            .type_class = APPROXIMATE_TYPE_FLOAT,
+            .is_unsigned = true,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "DOUBLE") == 0) {
+        *out_info = (struct approximate_type_info){
+            .type_class = APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = false,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "DOUBLE UNSIGNED") == 0) {
+        *out_info = (struct approximate_type_info){
+            .type_class = APPROXIMATE_TYPE_DOUBLE,
+            .is_unsigned = true,
+        };
         return MYLITE_OK;
     }
 
@@ -38922,6 +39599,10 @@ static int row_size_for_column_descriptor(
     uint64_t *out_size
 ) {
     struct decimal_type_info decimal_info = {0};
+    struct approximate_type_info approximate_info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
     size_t length = 0U;
     uint64_t size = 0U;
     int rc = MYLITE_OK;
@@ -38939,6 +39620,14 @@ static int row_size_for_column_descriptor(
         }
         *out_size = size;
         return MYLITE_OK;
+    }
+    if (strcmp(physical_type, "REAL") == 0) {
+        rc = approximate_type_info_for_logical_type(logical_type, &approximate_info);
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        return approximate_row_size_bytes(&approximate_info, out_size);
     }
     if (strcmp(physical_type, "TEXT") != 0) {
         set_unsupported_error(database, unsupported_message);
@@ -39031,6 +39720,25 @@ static int decimal_row_size_bytes(const struct decimal_type_info *info, uint64_t
     *out_size =
         decimal_digit_group_size(integer_digits) + decimal_digit_group_size(fractional_digits);
     return MYLITE_OK;
+}
+
+static int approximate_row_size_bytes(
+    const struct approximate_type_info *info,
+    uint64_t *out_size
+) {
+    if (info == NULL || out_size == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (info->type_class == APPROXIMATE_TYPE_FLOAT) {
+        *out_size = float_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (info->type_class == APPROXIMATE_TYPE_DOUBLE) {
+        *out_size = double_row_size_bytes;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_ERROR;
 }
 
 static uint64_t decimal_digit_group_size(uint64_t digits) {
@@ -40631,6 +41339,9 @@ static int make_insert_ignore_implicit_value(
         }
         return rc;
     }
+    if (column_descriptor_is_approximate(column)) {
+        return make_zero_approximate_value(out_value);
+    }
     if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
     }
@@ -40693,6 +41404,16 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_decimal(column)) {
         return convert_decimal_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (column_descriptor_is_approximate(column)) {
+        return convert_approximate_literal(
             database,
             value_node,
             column,
@@ -40813,6 +41534,9 @@ static int convert_null_insert_value(
         }
         return rc;
     }
+    if (column_descriptor_is_approximate(column)) {
+        return make_zero_approximate_value(out_value);
+    }
     if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
     }
@@ -40849,6 +41573,10 @@ static int materialize_dml_default_value(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
         return copy_decimal_text_value(database, column->default_text, out_value);
     }
+    if (column_descriptor_is_approximate(column) &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        return copy_approximate_default_value(database, column, out_value);
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }
@@ -40878,6 +41606,8 @@ static int materialize_dml_default_value(
             rc = build_decimal_zero_value(database, &info, out_value);
         }
         return rc;
+    } else if (column_descriptor_is_approximate(column)) {
+        return make_zero_approximate_value(out_value);
     } else if (column_descriptor_is_date(column)) {
         return make_zero_date_value(database, out_value);
     } else if (column_descriptor_is_time(column)) {
@@ -41194,6 +41924,266 @@ static int convert_decimal_literal(
         ignore_errors,
         out_value
     );
+}
+
+static int convert_approximate_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    static const char true_text[] = "1";
+    static const char false_text[] = "0";
+
+    const struct mylite_sql_ast_node *literal = value_node;
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    bool is_negative = false;
+    uint64_t boolean_magnitude = 0U;
+    double value = 0.0;
+    int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+
+    (void)ignore_errors;
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "FLOAT and DOUBLE values require baseline descriptors");
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL) {
+        set_unsupported_error(
+            database,
+            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (boolean_literal_magnitude(literal, &boolean_magnitude)) {
+        rc = parse_approximate_literal_value(
+            database,
+            boolean_magnitude == 0U ? false_text : true_text,
+            1U,
+            is_negative,
+            &info,
+            column->name,
+            row_number,
+            &value
+        );
+        if (rc == MYLITE_OK) {
+            rc = assign_approximate_value(value, out_value);
+        }
+        return rc;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT)) {
+        set_unsupported_error(
+            database,
+            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_approximate_literal_value(
+        database,
+        literal->span.text,
+        literal->span.length,
+        is_negative,
+        &info,
+        column->name,
+        row_number,
+        &value
+    );
+    if (rc == MYLITE_OK) {
+        rc = assign_approximate_value(value, out_value);
+    }
+    return rc;
+}
+
+static int parse_approximate_literal_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool is_negative,
+    const struct approximate_type_info *info,
+    const char *column_name,
+    size_t row_number,
+    double *out_value
+) {
+    char buffer[approximate_numeric_text_capacity];
+    char *end = NULL;
+    double parsed = 0.0;
+
+    if (text == NULL || info == NULL || column_name == NULL || out_value == NULL ||
+        text_length == 0U || text_length >= sizeof(buffer)) {
+        set_unsupported_error(
+            database,
+            "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    memcpy(buffer, text, text_length);
+    buffer[text_length] = '\0';
+
+    if (parse_c_locale_double(buffer, &end, &parsed) != MYLITE_OK || end == buffer || end == NULL ||
+        *end != '\0' || !isfinite(parsed)) {
+        set_out_of_range_error(database, column_name, row_number);
+        return MYLITE_ERROR;
+    }
+    if (is_negative) {
+        parsed = -parsed;
+    }
+    if (parsed == 0.0) {
+        parsed = 0.0;
+    }
+    if (info->is_unsigned && parsed < 0.0) {
+        set_out_of_range_error(database, column_name, row_number);
+        return MYLITE_ERROR;
+    }
+    if (info->type_class == APPROXIMATE_TYPE_FLOAT) {
+        float single = (float)parsed;
+
+        if (!isfinite(single)) {
+            set_out_of_range_error(database, column_name, row_number);
+            return MYLITE_ERROR;
+        }
+        *out_value = single == 0.0F ? 0.0 : (double)single;
+        return MYLITE_OK;
+    }
+
+    *out_value = parsed;
+    return MYLITE_OK;
+}
+
+static int assign_approximate_value(double value, struct planned_value *out_value) {
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){
+        .is_null = false,
+        .is_text = false,
+        .is_real = true,
+        .integer = 0,
+        .real = value == 0.0 ? 0.0 : value,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    return MYLITE_OK;
+}
+
+static int copy_approximate_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    double value = 0.0;
+    size_t text_length = column == NULL ? 0U : strlen(column->default_text);
+    int rc = column == NULL ? MYLITE_ERROR
+                            : approximate_type_info_for_logical_type(column->logical_type, &info);
+
+    if (rc == MYLITE_OK) {
+        rc = parse_approximate_literal_value(
+            database,
+            column->default_text,
+            text_length,
+            false,
+            &info,
+            column->name,
+            1U,
+            &value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = assign_approximate_value(value, out_value);
+    }
+
+    return rc;
+}
+
+static int make_zero_approximate_value(struct planned_value *out_value) {
+    return assign_approximate_value(0.0, out_value);
+}
+
+static int format_approximate_value_text(
+    struct mylite_db *database,
+    double value,
+    const struct approximate_type_info *info,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    if (info == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (info->type_class == APPROXIMATE_TYPE_FLOAT) {
+        return format_float_value_text(database, value, context_name, buffer, buffer_size);
+    }
+
+    return format_double_text(
+        database,
+        value == 0.0 ? 0.0 : value,
+        context_name,
+        buffer,
+        buffer_size
+    );
+}
+
+static int format_float_value_text(
+    struct mylite_db *database,
+    double value,
+    const char *context_name,
+    char *buffer,
+    size_t buffer_size
+) {
+    char candidate[approximate_numeric_text_capacity];
+    int written = 0;
+
+    if (context_name == NULL || buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    written = format_c_locale_text(
+        candidate,
+        sizeof(candidate),
+        "%.*g",
+        float_text_max_significant_digits,
+        value
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate)) {
+        set_double_format_error(database, context_name);
+        return MYLITE_ERROR;
+    }
+    if (strchr(candidate, 'e') != NULL || strchr(candidate, 'E') != NULL) {
+        return copy_normalized_scientific_double_text(
+            database,
+            candidate,
+            context_name,
+            buffer,
+            buffer_size
+        );
+    }
+    return copy_normalized_double_text(database, candidate, context_name, buffer, buffer_size);
 }
 
 static int canonicalize_decimal_text(
@@ -44329,6 +45319,9 @@ static int convert_update_value(
     if (column_descriptor_is_decimal(column)) {
         return convert_decimal_literal(database, value_node, column, 1U, false, out_value);
     }
+    if (column_descriptor_is_approximate(column)) {
+        return convert_approximate_literal(database, value_node, column, 1U, false, out_value);
+    }
     if (column_descriptor_is_date(column)) {
         return convert_date_literal(database, value_node, column, 1U, false, out_value);
     }
@@ -44835,8 +45828,8 @@ static int show_column_type_text(
         logical_type,
         buffer,
         buffer_size,
-        "SHOW COLUMNS supports only integer, string, decimal, DATE, TIME, DATETIME, and TIMESTAMP "
-        "column descriptors",
+        "SHOW COLUMNS supports only integer, string, decimal, approximate numeric, DATE, TIME, "
+        "DATETIME, and TIMESTAMP column descriptors",
         out_type_text
     );
 }
@@ -46023,6 +47016,9 @@ static int append_alter_table_add_column_default(
     if (planned_column_is_decimal(&plan->column)) {
         return append_alter_table_add_column_decimal_zero(database, string, plan);
     }
+    if (planned_column_is_approximate(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT 0");
+    }
     if (planned_column_is_date(&plan->column)) {
         return dynamic_string_append(string, " DEFAULT '0000-00-00'");
     }
@@ -46056,6 +47052,15 @@ static int append_alter_table_add_column_explicit_default(
             return MYLITE_NOMEM;
         }
         return dynamic_string_append(string, default_text);
+    }
+    if (planned_column_is_approximate(&plan->column) &&
+        plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        int rc = dynamic_string_append(string, " DEFAULT ");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, plan->column.default_text);
+        }
+        return rc;
     }
     if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
@@ -49732,6 +50737,7 @@ static int bind_select_in_predicate_parameters(
 }
 
 static int bind_insert_select_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_insert_select *plan
 ) {
@@ -49770,6 +50776,26 @@ static int bind_insert_select_parameters(
                 (int)parameter_index,
                 plan->target.columns[column_index].default_integer
             );
+        } else if (column_descriptor_is_approximate(&plan->target.columns[column_index])) {
+            struct planned_value value = {
+                .is_null = false,
+                .is_text = false,
+                .is_real = false,
+                .integer = 0,
+                .real = 0.0,
+                .text = NULL,
+                .text_length = 0U,
+            };
+
+            rc = copy_approximate_default_value(
+                database,
+                &plan->target.columns[column_index],
+                &value
+            );
+            if (rc == MYLITE_OK) {
+                rc = bind_planned_value_parameter(statement, (int)parameter_index, &value);
+            }
+            planned_value_deinit(&value);
         } else {
             struct planned_value value = {
                 .is_null = false,
@@ -49909,6 +50935,8 @@ static int bind_planned_value_parameter(
             (int)value->text_length,
             SQLITE_TRANSIENT
         );
+    } else if (value->is_real) {
+        sqlite_rc = sqlite3_bind_double(statement, parameter_index, value->real);
     } else {
         sqlite_rc = sqlite3_bind_int64(statement, parameter_index, (sqlite3_int64)value->integer);
     }
@@ -49934,10 +50962,17 @@ static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, in
     return MYLITE_OK;
 }
 
-static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result) {
+static int append_selected_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count
+) {
     size_t column_count = mylite_result_column_count(result);
     const char **values = NULL;
     char *texts = NULL;
+    size_t text_capacity = approximate_numeric_text_capacity;
     int rc = MYLITE_OK;
 
     if (column_count > (size_t)INT_MAX) {
@@ -49945,7 +50980,7 @@ static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *re
     }
 
     values = (const char **)calloc(column_count, sizeof(*values));
-    texts = calloc(column_count, integer_text_capacity);
+    texts = calloc(column_count, text_capacity);
     if (values == NULL || texts == NULL) {
         free((void *)values);
         free(texts);
@@ -49953,44 +50988,18 @@ static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *re
     }
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
-        int sqlite_type = sqlite3_column_type(statement, (int)column_index);
-        char *text = &texts[column_index * integer_text_capacity];
-        int written = 0;
+        char *text = &texts[column_index * text_capacity];
 
-        if (sqlite_type == SQLITE_NULL) {
-            values[column_index] = NULL;
-        } else if (sqlite_type == SQLITE_INTEGER) {
-            written = snprintf(
-                text,
-                integer_text_capacity,
-                "%" PRId64,
-                (int64_t)sqlite3_column_int64(statement, (int)column_index)
-            );
-            if (written < 0 || written >= integer_text_capacity) {
-                rc = MYLITE_ERROR;
-            } else {
-                values[column_index] = text;
-            }
-        } else if (sqlite_type == SQLITE_TEXT) {
-            const unsigned char *sqlite_text = sqlite3_column_text(statement, (int)column_index);
-            int byte_count = sqlite3_column_bytes(statement, (int)column_index);
-            size_t character_count = 0U;
-
-            if (sqlite_text == NULL || byte_count < 0 ||
-                memchr(sqlite_text, '\0', (size_t)byte_count) != NULL ||
-                validate_utf8_text(
-                    (const char *)sqlite_text,
-                    (size_t)byte_count,
-                    &character_count
-                ) != MYLITE_OK) {
-                rc = MYLITE_ERROR;
-            } else {
-                (void)character_count;
-                values[column_index] = (const char *)sqlite_text;
-            }
-        } else {
-            rc = MYLITE_ERROR;
-        }
+        rc = append_selected_sqlite_row_value(
+            database,
+            statement,
+            column_index,
+            columns,
+            descriptor_count,
+            text,
+            text_capacity,
+            &values[column_index]
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_text_row(result, values);
@@ -50000,6 +51009,135 @@ static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *re
     free(texts);
 
     return rc;
+}
+
+static int append_selected_sqlite_row_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+) {
+    int sqlite_type = SQLITE_NULL;
+
+    if (column_index > (size_t)INT_MAX || out_value == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_value = NULL;
+
+    sqlite_type = sqlite3_column_type(statement, (int)column_index);
+    if (sqlite_type == SQLITE_NULL) {
+        return MYLITE_OK;
+    }
+    if (sqlite_type == SQLITE_INTEGER) {
+        return append_selected_sqlite_integer_value(
+            statement,
+            column_index,
+            text,
+            text_capacity,
+            out_value
+        );
+    }
+    if (sqlite_type == SQLITE_FLOAT) {
+        return append_selected_sqlite_float_value(
+            database,
+            statement,
+            column_index,
+            columns,
+            descriptor_count,
+            text,
+            text_capacity,
+            out_value
+        );
+    }
+    if (sqlite_type == SQLITE_TEXT) {
+        return append_selected_sqlite_text_value(statement, column_index, out_value);
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_selected_sqlite_integer_value(
+    sqlite3_stmt *statement,
+    size_t column_index,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+) {
+    int written = snprintf(
+        text,
+        text_capacity,
+        "%" PRId64,
+        (int64_t)sqlite3_column_int64(statement, (int)column_index)
+    );
+
+    if (written < 0 || (size_t)written >= text_capacity) {
+        return MYLITE_ERROR;
+    }
+    *out_value = text;
+    return MYLITE_OK;
+}
+
+static int append_selected_sqlite_float_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    char *text,
+    size_t text_capacity,
+    const char **out_value
+) {
+    double value = sqlite3_column_double(statement, (int)column_index);
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    int rc = MYLITE_OK;
+
+    if (columns != NULL && column_index < descriptor_count &&
+        column_descriptor_is_approximate(&columns[column_index])) {
+        rc = approximate_type_info_for_logical_type(columns[column_index].logical_type, &info);
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_approximate_value_text(
+            database,
+            value,
+            &info,
+            "approximate result",
+            text,
+            text_capacity
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_value = text;
+    }
+
+    return rc;
+}
+
+static int append_selected_sqlite_text_value(
+    sqlite3_stmt *statement,
+    size_t column_index,
+    const char **out_value
+) {
+    const unsigned char *sqlite_text = sqlite3_column_text(statement, (int)column_index);
+    int byte_count = sqlite3_column_bytes(statement, (int)column_index);
+    size_t character_count = 0U;
+
+    if (sqlite_text == NULL || byte_count < 0 ||
+        memchr(sqlite_text, '\0', (size_t)byte_count) != NULL ||
+        validate_utf8_text((const char *)sqlite_text, (size_t)byte_count, &character_count) !=
+            MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+
+    (void)character_count;
+    *out_value = (const char *)sqlite_text;
+    return MYLITE_OK;
 }
 
 static int choose_sqlite_rowid_alias(

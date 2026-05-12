@@ -593,7 +593,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
         }
     );
     failures += execute_error(

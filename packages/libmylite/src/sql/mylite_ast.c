@@ -343,6 +343,14 @@ int mylite_sql_ast_node_integer_type_is_bool_alias(const struct mylite_sql_ast_n
     return node->payload.integer_type.is_bool_alias;
 }
 
+int mylite_sql_ast_node_integer_type_is_serial_alias(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return 0;
+    }
+
+    return node->payload.integer_type.is_serial_alias;
+}
+
 struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
     const struct mylite_sql_ast_node *node
 ) {

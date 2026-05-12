@@ -1110,15 +1110,6 @@ static int test_integer_type_alias_lifecycle(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE unsupported_serial (c SERIAL)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
 
     failures += expect_statement_ok(database, "ALTER TABLE aliases ADD added INT1");
     failures += expect_statement_ok(database, "ALTER TABLE aliases MODIFY i2 INT4");

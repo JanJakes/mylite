@@ -71,6 +71,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
@@ -195,6 +196,7 @@ static int expect_integer_display_width(
     const char *context
 );
 static int expect_integer_bool_alias(const struct mylite_sql_ast_node *node, const char *context);
+static int expect_integer_serial_alias(const struct mylite_sql_ast_node *node, const char *context);
 static int expect_nullability(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability expected,
@@ -254,6 +256,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_serial_alias_statements();
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
     failures += test_text_type_statements();
@@ -6810,6 +6813,86 @@ static int test_table_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_serial_alias_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE serial_aliases (id SERIAL, nn SERIAL NOT NULL, nullable SERIAL NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "serial alias column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        1,
+        "serial alias column type"
+    );
+    failures += expect_integer_display_width(column_type, NULL, "serial alias display width");
+    failures += expect_integer_serial_alias(column_type, "serial alias marker");
+    failures += expect_span_text(column_type, "SERIAL", "serial alias span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_serial_alias(column_type, "serial not null alias marker");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "serial alias not null"
+    );
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_serial_alias(column_type, "serial null alias marker");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "serial alias null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE serial_identifiers (SERIAL INT, serial BIGINT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "SERIAL", "serial identifier column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "serial identifier column type"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "serial", "lowercase serial identifier");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        0,
+        "lowercase serial identifier column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_serial_default_value (c SERIAL DEFAULT VALUE);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_varchar_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -7794,6 +7877,44 @@ static int test_create_table_primary_key_statements(void) {
         child_at(column, 3U),
         MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
         "table pk auto increment marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE auto_secondary_key (id INT AUTO_INCREMENT, KEY(id), v INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    column = child_at(items, 0U);
+    failures += expect_node(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        "secondary key auto increment marker"
+    );
+    failures += expect_node(
+        child_at(items, 1U),
+        MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION,
+        "secondary key auto increment index"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE auto_secondary_unique (id INT AUTO_INCREMENT UNIQUE, v INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    column = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_node(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
+        "secondary unique auto increment marker"
+    );
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        "secondary unique auto increment key"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -13168,13 +13289,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_serial (c SERIAL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
         "CREATE TABLE unsupported_bool_width (c BOOL(1));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -14292,6 +14406,18 @@ static int expect_integer_display_width(
 static int expect_integer_bool_alias(const struct mylite_sql_ast_node *node, const char *context) {
     if (mylite_sql_ast_node_integer_type_is_bool_alias(node) == 0) {
         fprintf(stderr, "%s: expected bool alias marker\n", context);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_integer_serial_alias(
+    const struct mylite_sql_ast_node *node,
+    const char *context
+) {
+    if (mylite_sql_ast_node_integer_type_is_serial_alias(node) == 0) {
+        fprintf(stderr, "%s: expected serial alias marker\n", context);
         return 1;
     }
 

@@ -2652,6 +2652,9 @@ identifier(A) ::= INVISIBLE(T). {
 identifier(A) ::= AUTO_INCREMENT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= SERIAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= DATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -2770,6 +2773,9 @@ column_attribute(A) ::= AUTO_INCREMENT(T). {
 column_type(A) ::= integer_type(T). {
     A = T;
 }
+column_type(A) ::= serial_type(T). {
+    A = T;
+}
 column_type(A) ::= varchar_type(T). {
     A = T;
 }
@@ -2790,6 +2796,19 @@ column_type(A) ::= datetime_type(T). {
 }
 column_type(A) ::= timestamp_type(T). {
     A = T;
+}
+
+serial_type(A) ::= SERIAL(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state,
+        T,
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        1,
+        0,
+        1);
 }
 
 varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
@@ -2944,6 +2963,7 @@ integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_si
         W.end_token,
         S.attribute_token,
         S.is_unsigned,
+        0,
         0);
 }
 integer_type(A) ::= BOOL(T). {
@@ -2955,7 +2975,8 @@ integer_type(A) ::= BOOL(T). {
         (struct mylite_sql_token){0},
         (struct mylite_sql_token){0},
         0,
-        1);
+        1,
+        0);
 }
 integer_type(A) ::= BOOLEAN(T). {
     A = mylite_sql_parser_make_integer_type(
@@ -2966,7 +2987,8 @@ integer_type(A) ::= BOOLEAN(T). {
         (struct mylite_sql_token){0},
         (struct mylite_sql_token){0},
         0,
-        1);
+        1,
+        0);
 }
 
 integer_type_name(A) ::= INT(T). {

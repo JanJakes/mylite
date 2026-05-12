@@ -368,6 +368,7 @@ struct mylite_sql_ast_integer_type_payload {
     int is_unsigned;
     int has_display_width;
     int is_bool_alias;
+    int is_serial_alias;
     struct mylite_sql_source_span display_width_span;
 };
 
@@ -523,6 +524,7 @@ enum mylite_sql_ast_integer_type mylite_sql_ast_node_integer_type(
 int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_integer_type_has_display_width(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_integer_type_is_bool_alias(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_integer_type_is_serial_alias(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
     const struct mylite_sql_ast_node *node
 );

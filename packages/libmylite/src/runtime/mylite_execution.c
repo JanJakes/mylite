@@ -265,6 +265,7 @@ struct planned_column {
     bool is_primary_key;
     bool is_unique_key;
     bool is_auto_increment;
+    bool is_serial_alias;
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
@@ -15880,7 +15881,7 @@ static int plan_create_table(
         out_plan
     );
     if (rc == MYLITE_OK) {
-        rc = validate_create_table_auto_increment_columns(database, out_plan, false);
+        rc = validate_create_table_auto_increment_columns(database, out_plan, true);
     }
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
@@ -36540,6 +36541,7 @@ static int plan_column(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *out_column
 ) {
+    const struct mylite_sql_ast_node *type_node = NULL;
     const struct mylite_sql_ast_node *nullability_node = NULL;
     int rc = MYLITE_OK;
 
@@ -36555,13 +36557,31 @@ static int plan_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = map_column_type(database, child_at(column_node, 1U), out_column->name, out_column);
+        type_node = child_at(column_node, 1U);
+        rc = map_column_type(database, type_node, out_column->name, out_column);
+    }
+    if (rc == MYLITE_OK) {
+        const bool has_auto_increment_attribute =
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL;
+        out_column->is_serial_alias =
+            mylite_sql_ast_node_integer_type_is_serial_alias(type_node) != 0;
+        out_column->is_auto_increment = out_column->is_serial_alias;
+        if (has_auto_increment_attribute) {
+            out_column->is_auto_increment = true;
+        }
+        if (out_column->is_serial_alias) {
+            out_column->is_unique_key = true;
+        }
     }
     if (rc == MYLITE_OK) {
         nullability_node = child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY);
         out_column->nullability = mylite_sql_ast_node_nullability(nullability_node);
         out_column->is_nullable = column_is_nullable(nullability_node);
         out_column->is_visible = true;
+    }
+    if (rc == MYLITE_OK && out_column->is_auto_increment &&
+        out_column->nullability == MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED) {
+        out_column->is_nullable = false;
     }
     if (rc == MYLITE_OK) {
         out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);
@@ -36572,8 +36592,6 @@ static int plan_column(
         rc = validate_column_default(database, out_column->default_node, out_column);
     }
     if (rc == MYLITE_OK) {
-        out_column->is_auto_increment =
-            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL;
         rc = validate_column_attributes(database, column_node, out_column);
     }
 
@@ -38506,7 +38524,8 @@ static int reject_auto_increment_column_definition(
     const struct mylite_sql_ast_node *column_definition,
     const char *message
 ) {
-    if (child_with_kind(column_definition, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL) {
+    if (child_with_kind(column_definition, MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) != NULL ||
+        mylite_sql_ast_node_integer_type_is_serial_alias(child_at(column_definition, 1U)) != 0) {
         set_unsupported_error(database, message);
         return MYLITE_ERROR;
     }

@@ -3870,7 +3870,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_token display_width_end_token,
     struct mylite_sql_token attribute_token,
     int is_unsigned,
-    int is_bool_alias
+    int is_bool_alias,
+    int is_serial_alias
 ) {
     struct mylite_sql_source_span span = span_from_token(&type_token);
     struct mylite_sql_ast_node *type = NULL;
@@ -3894,6 +3895,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
             .is_unsigned = is_unsigned,
             .has_display_width = display_width_token.text != NULL,
             .is_bool_alias = is_bool_alias,
+            .is_serial_alias = is_serial_alias,
             .display_width_span = span_from_token(&display_width_token),
         }
     );
@@ -4430,6 +4432,7 @@ static bool map_keyword_token(
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"SERIAL", MYLITE_SQL_PARSE_SERIAL},
         {"SHARE", MYLITE_SQL_PARSE_SHARE},
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
         {"SQL_BIG_RESULT", MYLITE_SQL_PARSE_SQL_BIG_RESULT},

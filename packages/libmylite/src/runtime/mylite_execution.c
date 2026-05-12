@@ -55,7 +55,9 @@ enum {
     mysql_error_row_size_too_large = 1118,
     mysql_error_incorrect_column_specifier = 1063,
     mysql_error_wrong_auto_key = 1075,
+    mysql_error_key_too_long = 1071,
     mysql_error_column_count_mismatch = 1136,
+    mysql_error_incorrect_prefix_key = 1089,
     mysql_error_invalid_use_of_null = 1138,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
@@ -78,6 +80,7 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_data_too_long = 1406,
+    mysql_error_key_part_length_cannot_be_zero = 1391,
     mysql_error_decimal_scale_too_big = 1425,
     mysql_error_decimal_precision_too_big = 1426,
     mysql_error_decimal_must_be_greater_or_equal_to_d = 1427,
@@ -219,6 +222,7 @@ enum {
     varchar_logical_prefix_length = 8,
     varchar_logical_syntax_overhead = 9,
     mysql_max_row_size = 65535,
+    innodb_max_key_length_bytes = 3072,
     utf8mb4_max_bytes_per_character = 4,
     varchar_one_byte_length_prefix_max = 255,
     text_family_row_size_contribution = 12,
@@ -311,9 +315,17 @@ struct planned_column {
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
 };
 
+struct planned_secondary_index_part {
+    size_t column_index;
+    bool has_prefix_length;
+    int64_t prefix_length;
+};
+
 struct planned_secondary_index {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index;
+    struct planned_secondary_index_part *parts;
+    size_t part_count;
+    size_t part_capacity;
     int64_t index_id;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     bool is_unique;
@@ -404,7 +416,9 @@ struct planned_alter_table_add_primary_key {
 struct planned_alter_table_add_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
-    struct mylite_catalog_column_descriptor column;
+    struct loaded_index_part *parts;
+    size_t part_count;
+    size_t part_capacity;
     char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     const char *rowid_alias;
     bool is_unique;
@@ -418,7 +432,7 @@ struct planned_drop_index {
 
 struct alter_table_add_index_nodes {
     const struct mylite_sql_ast_node *index_name_node;
-    const struct mylite_sql_ast_node *part;
+    const struct mylite_sql_ast_node *part_list;
     bool is_unique;
 };
 
@@ -3830,6 +3844,7 @@ static int plan_create_index(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_index *out_plan
 );
+static void planned_alter_table_add_index_deinit(struct planned_alter_table_add_index *plan);
 static int extract_alter_table_add_index_nodes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3853,6 +3868,14 @@ static int plan_alter_table_add_index_name(
     char *destination,
     size_t destination_size
 );
+static int plan_alter_table_add_index_name_from_parts(
+    struct mylite_db *database,
+    const struct alter_table_add_index_nodes *nodes,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    char *destination,
+    size_t destination_size
+);
 static int generate_alter_table_add_index_name(
     struct mylite_db *database,
     const struct loaded_index_info *indexes,
@@ -3869,6 +3892,35 @@ static bool loaded_index_name_is_used(
 static int validate_alter_table_add_index_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
+);
+static int append_loaded_add_index_part(
+    struct mylite_db *database,
+    struct planned_alter_table_add_index *plan,
+    const struct mylite_sql_ast_node *part,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static int reserve_planned_alter_table_add_index_parts(
+    struct mylite_db *database,
+    struct planned_alter_table_add_index *plan,
+    size_t required_capacity
+);
+static int validate_secondary_index_prefix_for_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t prefix_length,
+    uint64_t *out_key_bytes
+);
+static int column_descriptor_index_part_key_bytes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *out_key_bytes
+);
+static int validate_loaded_index_part_list(
+    struct mylite_db *database,
+    const struct loaded_index_part *parts,
+    size_t part_count,
+    bool is_unique
 );
 static int validate_create_unique_index_existing_rows(
     struct mylite_db *database,
@@ -5841,6 +5893,11 @@ static int append_show_create_table_index(
     const struct loaded_index_info *index,
     bool is_last_index
 );
+static int append_show_create_table_index_part(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    bool needs_comma
+);
 static int index_display_group(const struct loaded_index_info *index);
 static int show_create_table_type_text(
     struct mylite_db *database,
@@ -6068,6 +6125,17 @@ static int apply_create_table_secondary_index_definition(
     const struct mylite_sql_ast_node *secondary_index,
     bool is_unique
 );
+static int append_planned_secondary_index_part(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_secondary_index *index,
+    const struct mylite_sql_ast_node *part
+);
+static int reserve_planned_secondary_index_parts(
+    struct mylite_db *database,
+    struct planned_secondary_index *index,
+    size_t required_capacity
+);
 static int apply_create_table_inline_unique_indexes(
     struct mylite_db *database,
     struct planned_create_table *plan
@@ -6100,9 +6168,43 @@ static int validate_secondary_index_column(
     struct mylite_db *database,
     const struct planned_column *column
 );
+static int validate_secondary_index_prefix_for_planned_column(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t prefix_length,
+    uint64_t *out_key_bytes
+);
+static int text_family_prefix_key_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t prefix,
+    uint64_t *out_key_bytes
+);
+static int planned_index_part_key_bytes(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *out_key_bytes
+);
 static int validate_unique_index_column(
     struct mylite_db *database,
     const struct planned_column *column
+);
+static int validate_planned_secondary_index_key_length(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index *index
+);
+static int parse_secondary_index_part_prefix_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *prefix_node,
+    const char *column_name,
+    int64_t *out_prefix_length
+);
+static const struct mylite_sql_ast_node *secondary_index_part_column_node(
+    const struct mylite_sql_ast_node *part
+);
+static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
+    const struct mylite_sql_ast_node *part
 );
 static int mark_primary_key_column(
     struct mylite_db *database,
@@ -7592,7 +7694,17 @@ static int append_planned_key_part_sql(
     struct dynamic_string *string,
     const struct planned_column *column
 );
+static int append_planned_secondary_key_part_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index_part *part
+);
 static int append_loaded_key_part_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    const char *qualifier
+);
+static int append_loaded_prefix_key_part_sql(
     struct dynamic_string *string,
     const struct loaded_index_part *part,
     const char *qualifier
@@ -8402,6 +8514,12 @@ static void set_storage_engine_cant_index_column_error(
     const char *column_name
 );
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
+static void set_incorrect_prefix_key_error(struct mylite_db *database);
+static void set_key_part_length_cannot_be_zero_error(
+    struct mylite_db *database,
+    const char *column_name
+);
+static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes);
 static void set_non_ascii_string_key_error(struct mylite_db *database);
 static void set_duplicate_key_error(
     struct mylite_db *database,
@@ -8851,6 +8969,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
+    case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -9870,6 +9989,7 @@ static int execute_create_index_statement(
     if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
+    planned_alter_table_add_index_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -10481,6 +10601,7 @@ static int execute_alter_table_add_index_statement(
     if (rc == MYLITE_OK) {
         rc = add_secondary_index_from_plan(database, &plan);
     }
+    planned_alter_table_add_index_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -12484,10 +12605,24 @@ static int append_information_schema_statistics_base_index_row(
 
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         const struct loaded_index_part *part = &index->parts[part_index];
+        char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const char *prefix_value = NULL;
 
         if (part->column.is_nullable) {
             nullable = "YES";
+        }
+        if (part->index_column.has_prefix_length) {
+            rc = information_schema_format_i64(
+                database,
+                part->index_column.prefix_length,
+                prefix_text,
+                sizeof(prefix_text)
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            prefix_value = prefix_text;
         }
         const char *values[information_schema_statistics_column_count] = {
             "def",
@@ -12500,7 +12635,7 @@ static int append_information_schema_statistics_base_index_row(
             part->column.name,
             "A",
             cardinality,
-            NULL,
+            prefix_value,
             NULL,
             nullable,
             "BTREE",
@@ -16127,15 +16262,11 @@ static int append_show_create_table_index(
         return MYLITE_ERROR;
     }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
-        if (part_index != 0U) {
-            rc = dynamic_string_append_char(string, ',');
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_mysql_quoted_identifier(
-                string,
-                index->parts[part_index].column.name
-            );
-        }
+        rc = append_show_create_table_index_part(
+            string,
+            &index->parts[part_index],
+            part_index != 0U
+        );
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -16145,6 +16276,43 @@ static int append_show_create_table_index(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, '\n');
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_index_part(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    bool needs_comma
+) {
+    int rc = MYLITE_OK;
+
+    if (needs_comma) {
+        rc = dynamic_string_append_char(string, ',');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, part->column.name);
+    }
+    if (rc == MYLITE_OK && part->index_column.has_prefix_length) {
+        char prefix_text[integer_text_capacity];
+        int written = snprintf(
+            prefix_text,
+            sizeof(prefix_text),
+            "%" PRId64,
+            part->index_column.prefix_length
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(prefix_text)) {
+            return MYLITE_NOMEM;
+        }
+        rc = dynamic_string_append_char(string, '(');
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, prefix_text);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
     }
 
     return rc;
@@ -16582,6 +16750,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
+    case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -17093,8 +17262,18 @@ static int apply_create_table_inline_unique_indexes(
 
             *index = (struct planned_secondary_index){0};
             snprintf(index->name, sizeof(index->name), "%s", index_name);
-            index->column_index = column_index;
             index->is_unique = true;
+            rc = reserve_planned_secondary_index_parts(database, index, 1U);
+            if (rc == MYLITE_OK) {
+                index->parts[0] = (struct planned_secondary_index_part){
+                    .column_index = column_index,
+                    .has_prefix_length = false,
+                    .prefix_length = 0,
+                };
+                index->part_count = 1U;
+            }
+        }
+        if (rc == MYLITE_OK) {
             ++plan->secondary_index_count;
         }
     }
@@ -17137,10 +17316,13 @@ static int apply_create_table_secondary_index_definition(
     const struct mylite_sql_ast_node *first_child = child_at(secondary_index, 0U);
     const struct mylite_sql_ast_node *index_name_node = NULL;
     const struct mylite_sql_ast_node *part_list = first_child;
-    const struct mylite_sql_ast_node *part = NULL;
+    const struct mylite_sql_ast_node *first_part = NULL;
+    const struct mylite_sql_ast_node *first_column = NULL;
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index = 0U;
+    struct planned_secondary_index planned_index = {0};
+    size_t first_column_index = 0U;
+    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     if (secondary_index == NULL ||
@@ -17157,18 +17339,94 @@ static int apply_create_table_secondary_index_definition(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
-        if (is_unique) {
-            set_unsupported_error(database, "Unique indexes support exactly one key column");
-        } else {
-            set_unsupported_error(database, "Secondary indexes support exactly one key column");
-        }
+    part_count = mylite_sql_ast_node_child_count(part_list);
+    if (part_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (is_unique && part_count != 1U) {
+        set_unsupported_error(database, "Unique indexes support exactly one key column");
         return MYLITE_ERROR;
     }
 
-    part = child_at(part_list, 0U);
-    if (part == NULL || part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+    first_part = child_at(part_list, 0U);
+    first_column = secondary_index_part_column_node(first_part);
+    if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        const char *message = "Secondary indexes support only unqualified key columns";
+
         if (is_unique) {
+            message = "Unique indexes support only unqualified key columns";
+        }
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(first_column, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_planned_column_index(
+            plan->columns,
+            plan->column_count,
+            column_name,
+            &first_column_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_key_column_missing_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_secondary_index_name(
+            database,
+            plan,
+            index_name_node,
+            plan->columns[first_column_index].name,
+            index_name,
+            sizeof(index_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        planned_index.is_unique = is_unique;
+        snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < part_count; ++index) {
+        rc = append_planned_secondary_index_part(
+            database,
+            plan,
+            &planned_index,
+            child_at(part_list, index)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_planned_secondary_index_key_length(database, plan, &planned_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_secondary_indexes(database, plan, plan->secondary_index_count + 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan->secondary_indexes[plan->secondary_index_count] = planned_index;
+        planned_index = (struct planned_secondary_index){0};
+        ++plan->secondary_index_count;
+    }
+    free(planned_index.parts);
+
+    return rc;
+}
+
+static int append_planned_secondary_index_part(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_secondary_index *index,
+    const struct mylite_sql_ast_node *part
+) {
+    const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
+    const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int64_t prefix_length = 0;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        if (index != NULL && index->is_unique) {
             set_unsupported_error(database, "Unique indexes support only unqualified key columns");
         } else {
             set_unsupported_error(
@@ -17179,7 +17437,7 @@ static int apply_create_table_secondary_index_definition(
         return MYLITE_ERROR;
     }
 
-    rc = copy_identifier_text(part, column_name, sizeof(column_name), database);
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
     if (rc == MYLITE_OK) {
         rc = find_planned_column_index(
             plan->columns,
@@ -17192,37 +17450,93 @@ static int apply_create_table_secondary_index_definition(
         set_key_column_missing_error(database, column_name);
         return MYLITE_ERROR;
     }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        if (index->parts[part_index].column_index == column_index) {
+            set_duplicate_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+    }
+    if (prefix_node != NULL && index->is_unique) {
+        set_unsupported_error(database, "Unique indexes do not yet support prefix key parts");
+        return MYLITE_ERROR;
+    }
+    if (prefix_node != NULL) {
+        uint64_t key_bytes = 0U;
 
-    if (is_unique) {
+        rc = parse_secondary_index_part_prefix_length(
+            database,
+            prefix_node,
+            column_name,
+            &prefix_length
+        );
+        if (rc == MYLITE_OK) {
+            rc = validate_secondary_index_prefix_for_planned_column(
+                database,
+                &plan->columns[column_index],
+                prefix_length,
+                &key_bytes
+            );
+        }
+        (void)key_bytes;
+    } else if (index->is_unique) {
         rc = validate_unique_index_column(database, &plan->columns[column_index]);
     } else {
         rc = validate_secondary_index_column(database, &plan->columns[column_index]);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_secondary_index_name(
-            database,
-            plan,
-            index_name_node,
-            plan->columns[column_index].name,
-            index_name,
-            sizeof(index_name)
-        );
+        rc = reserve_planned_secondary_index_parts(database, index, index->part_count + 1U);
     }
     if (rc == MYLITE_OK) {
-        rc = reserve_planned_secondary_indexes(database, plan, plan->secondary_index_count + 1U);
-    }
-    if (rc == MYLITE_OK) {
-        struct planned_secondary_index *index =
-            &plan->secondary_indexes[plan->secondary_index_count];
-
-        *index = (struct planned_secondary_index){0};
-        snprintf(index->name, sizeof(index->name), "%s", index_name);
-        index->column_index = column_index;
-        index->is_unique = is_unique;
-        ++plan->secondary_index_count;
+        index->parts[index->part_count] = (struct planned_secondary_index_part){
+            .column_index = column_index,
+            .has_prefix_length = prefix_node != NULL,
+            .prefix_length = prefix_length,
+        };
+        ++index->part_count;
     }
 
     return rc;
+}
+
+static int reserve_planned_secondary_index_parts(
+    struct mylite_db *database,
+    struct planned_secondary_index *index,
+    size_t required_capacity
+) {
+    enum { initial_part_capacity = 4 };
+
+    struct planned_secondary_index_part *parts = NULL;
+    size_t capacity = 0U;
+
+    if (index == NULL) {
+        set_runtime_error(database, "invalid secondary-index plan");
+        return MYLITE_ERROR;
+    }
+    if (required_capacity <= index->part_capacity) {
+        return MYLITE_OK;
+    }
+    capacity = index->part_capacity == 0U ? initial_part_capacity : index->part_capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*parts)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    parts = realloc(index->parts, capacity * sizeof(*parts));
+    if (parts == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    index->parts = parts;
+    index->part_capacity = capacity;
+    return MYLITE_OK;
 }
 
 static int reserve_planned_secondary_indexes(
@@ -17378,6 +17692,135 @@ static int validate_secondary_index_column(
     return MYLITE_OK;
 }
 
+static int validate_secondary_index_prefix_for_planned_column(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t prefix_length,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    uint64_t prefix = prefix_length < 0 ? 0U : (uint64_t)prefix_length;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid secondary-index prefix column");
+        return MYLITE_ERROR;
+    }
+    *out_key_bytes = 0U;
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "prefix keys support only baseline CHAR descriptors",
+            &column_length
+        );
+    } else if (planned_column_is_varchar(column)) {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "prefix keys support only baseline VARCHAR descriptors",
+            &column_length
+        );
+    } else if (planned_column_is_text_family(column)) {
+        return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else {
+        set_incorrect_prefix_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (prefix > column_length) {
+        set_incorrect_prefix_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (prefix > UINT64_MAX / utf8mb4_max_bytes_per_character) {
+        set_key_too_long_error(database, innodb_max_key_length_bytes);
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = prefix * utf8mb4_max_bytes_per_character;
+    return MYLITE_OK;
+}
+
+static int text_family_prefix_key_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t prefix,
+    uint64_t *out_key_bytes
+) {
+    const struct text_family_type_info *info = text_family_type_info_for_logical_type(logical_type);
+    uint64_t key_bytes = 0U;
+
+    if (info == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid text-family prefix key part");
+        return MYLITE_ERROR;
+    }
+    if (prefix > UINT64_MAX / utf8mb4_max_bytes_per_character) {
+        set_key_too_long_error(database, innodb_max_key_length_bytes);
+        return MYLITE_ERROR;
+    }
+
+    key_bytes = prefix * utf8mb4_max_bytes_per_character;
+    if (key_bytes > info->maximum_length) {
+        set_key_too_long_error(database, info->maximum_length);
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = key_bytes;
+    return MYLITE_OK;
+}
+
+static int planned_index_part_key_bytes(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid secondary-index key part");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "secondary indexes support only baseline CHAR descriptors",
+            &column_length
+        );
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+    if (planned_column_is_varchar(column)) {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "secondary indexes support only baseline VARCHAR descriptors",
+            &column_length
+        );
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+    if (planned_column_is_text_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "Secondary indexes do not yet support this column type",
+        out_key_bytes
+    );
+}
+
 static int validate_unique_index_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -17399,6 +17842,105 @@ static int validate_unique_index_column(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_planned_secondary_index_key_length(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index *index
+) {
+    uint64_t total = 0U;
+
+    if (plan == NULL || index == NULL || index->part_count == 0U) {
+        set_runtime_error(database, "invalid secondary-index descriptor");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        const struct planned_secondary_index_part *part = &index->parts[part_index];
+        const struct planned_column *column = NULL;
+        uint64_t part_bytes = 0U;
+        int rc = MYLITE_OK;
+
+        if (part->column_index >= plan->column_count) {
+            set_runtime_error(database, "invalid secondary-index key part");
+            return MYLITE_ERROR;
+        }
+        column = &plan->columns[part->column_index];
+        if (part->has_prefix_length) {
+            rc = validate_secondary_index_prefix_for_planned_column(
+                database,
+                column,
+                part->prefix_length,
+                &part_bytes
+            );
+        } else {
+            rc = planned_index_part_key_bytes(database, column, &part_bytes);
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (total > UINT64_MAX - part_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+        total += part_bytes;
+        if (total > innodb_max_key_length_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int parse_secondary_index_part_prefix_length(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *prefix_node,
+    const char *column_name,
+    int64_t *out_prefix_length
+) {
+    uint64_t prefix = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_prefix_length == NULL || column_name == NULL || prefix_node == NULL ||
+        prefix_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(prefix_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    rc = parse_unsigned_integer_literal(&prefix_node->span, &prefix);
+    if (rc != MYLITE_OK || prefix > INT64_MAX) {
+        set_key_too_long_error(database, innodb_max_key_length_bytes);
+        return MYLITE_ERROR;
+    }
+    if (prefix == 0U) {
+        set_key_part_length_cannot_be_zero_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_prefix_length = (int64_t)prefix;
+    return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *secondary_index_part_column_node(
+    const struct mylite_sql_ast_node *part
+) {
+    if (part == NULL) {
+        return NULL;
+    }
+    if (part->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return child_at(part, 0U);
+    }
+    return part;
+}
+
+static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
+    const struct mylite_sql_ast_node *part
+) {
+    if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return NULL;
+    }
+    return child_at(part, 1U);
 }
 
 static int mark_primary_key_column(
@@ -17599,7 +18141,8 @@ static bool planned_secondary_index_starts_with_column(
     size_t column_index
 ) {
     for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
-        if (plan->secondary_indexes[index].column_index == column_index) {
+        if (plan->secondary_indexes[index].part_count > 0U &&
+            plan->secondary_indexes[index].parts[0].column_index == column_index) {
             return true;
         }
     }
@@ -17816,14 +18359,6 @@ static int clone_create_table_like_indexes(
         if (source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
             continue;
         }
-        if (source_index->part_count != 1U) {
-            set_unsupported_error(
-                database,
-                "CREATE TABLE LIKE supports only single-column secondary indexes"
-            );
-            rc = MYLITE_ERROR;
-            break;
-        }
         rc = reserve_planned_secondary_indexes(
             database,
             out_plan,
@@ -17836,8 +18371,25 @@ static int clone_create_table_like_indexes(
         target_index = &out_plan->secondary_indexes[out_plan->secondary_index_count];
         *target_index = (struct planned_secondary_index){0};
         snprintf(target_index->name, sizeof(target_index->name), "%s", source_index->index.name);
-        target_index->column_index = source_index->parts[0].column_index;
         target_index->is_unique = source_index->index.is_unique;
+        rc =
+            reserve_planned_secondary_index_parts(database, target_index, source_index->part_count);
+        for (size_t part_index = 0U; rc == MYLITE_OK && part_index < source_index->part_count;
+             ++part_index) {
+            const struct loaded_index_part *source_part = &source_index->parts[part_index];
+
+            target_index->parts[target_index->part_count] = (struct planned_secondary_index_part){
+                .column_index = source_part->column_index,
+                .has_prefix_length = source_part->index_column.has_prefix_length,
+                .prefix_length = source_part->index_column.prefix_length,
+            };
+            ++target_index->part_count;
+        }
+        if (rc != MYLITE_OK) {
+            free(target_index->parts);
+            *target_index = (struct planned_secondary_index){0};
+            break;
+        }
         ++out_plan->secondary_index_count;
     }
 
@@ -18651,6 +19203,9 @@ static void planned_create_table_deinit(struct planned_create_table *plan) {
 
     free(plan->columns);
     free(plan->primary_key_parts);
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        free(plan->secondary_indexes[index].parts);
+    }
     free(plan->secondary_indexes);
     *plan = (struct planned_create_table){0};
 }
@@ -18879,14 +19434,14 @@ static int insert_create_table_index_catalog_rows(
             table_id,
             column_ids[column_index],
             (int64_t)part_index + 1,
+            NULL,
             NULL
         );
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->secondary_index_count; ++index) {
         const struct planned_secondary_index *secondary = &plan->secondary_indexes[index];
 
-        if (secondary->column_index >= plan->column_count ||
-            column_ids[secondary->column_index] <= 0 || secondary->index_id <= 0 ||
+        if (secondary->part_count == 0U || secondary->index_id <= 0 ||
             secondary->physical_name[0] == '\0') {
             set_runtime_error(database, "invalid secondary-index descriptor");
             return MYLITE_ERROR;
@@ -18902,14 +19457,26 @@ static int insert_create_table_index_catalog_rows(
             secondary->is_unique,
             NULL
         );
-        if (rc == MYLITE_OK) {
+        for (size_t part_index = 0U; rc == MYLITE_OK && part_index < secondary->part_count;
+             ++part_index) {
+            const struct planned_secondary_index_part *part = &secondary->parts[part_index];
+            const int64_t *prefix_length = NULL;
+
+            if (part->has_prefix_length) {
+                prefix_length = &part->prefix_length;
+            }
+            if (part->column_index >= plan->column_count || column_ids[part->column_index] <= 0) {
+                set_runtime_error(database, "invalid secondary-index descriptor");
+                return MYLITE_ERROR;
+            }
             rc = mylite_catalog_insert_index_column_in_mutation(
                 database,
                 mutation,
                 secondary->index_id,
                 table_id,
-                column_ids[secondary->column_index],
-                1,
+                column_ids[part->column_index],
+                (int64_t)part_index + 1,
+                prefix_length,
                 NULL
             );
         }
@@ -19889,6 +20456,7 @@ static int alter_table_add_primary_key_from_plan(
             plan->table.table_id,
             plan->parts[part_index].column.column_id,
             (int64_t)part_index + 1,
+            NULL,
             NULL
         );
     }
@@ -20121,10 +20689,9 @@ static int plan_alter_table_add_index(
     struct alter_table_add_index_nodes nodes = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t column_count = 0U;
     size_t index_count = 0U;
-    size_t column_index = 0U;
+    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_index){0};
@@ -20175,40 +20742,42 @@ static int plan_alter_table_add_index(
             &index_count
         );
     }
-    if (rc == MYLITE_OK && nodes.index_name_node != NULL) {
-        rc = plan_alter_table_add_index_name(
+    if (rc == MYLITE_OK) {
+        part_count = mylite_sql_ast_node_child_count(nodes.part_list);
+        if (part_count == 0U) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->is_unique && part_count != 1U) {
+        set_unsupported_error(database, "Unique indexes support exactly one key column");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_index_name_from_parts(
             database,
+            &nodes,
             indexes,
             index_count,
-            nodes.index_name_node,
-            "",
             out_plan->index_name,
             sizeof(out_plan->index_name)
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = copy_identifier_text(nodes.part, column_name, sizeof(column_name), database);
-    }
-    if (rc == MYLITE_OK) {
-        rc = find_column_index(columns, column_count, column_name, &column_index);
-        if (rc != MYLITE_OK) {
-            set_key_column_missing_error(database, column_name);
-            rc = MYLITE_ERROR;
-        }
-    }
-    if (rc == MYLITE_OK) {
-        out_plan->column = columns[column_index];
-        rc = validate_alter_table_add_index_column(database, &out_plan->column);
-    }
-    if (rc == MYLITE_OK && nodes.index_name_node == NULL) {
-        rc = plan_alter_table_add_index_name(
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        rc = append_loaded_add_index_part(
             database,
-            indexes,
-            index_count,
-            nodes.index_name_node,
-            out_plan->column.name,
-            out_plan->index_name,
-            sizeof(out_plan->index_name)
+            out_plan,
+            child_at(nodes.part_list, part_index),
+            columns,
+            column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_loaded_index_part_list(
+            database,
+            out_plan->parts,
+            out_plan->part_count,
+            out_plan->is_unique
         );
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
@@ -20229,6 +20798,40 @@ static int plan_alter_table_add_index(
     return rc;
 }
 
+static int plan_alter_table_add_index_name_from_parts(
+    struct mylite_db *database,
+    const struct alter_table_add_index_nodes *nodes,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    char *destination,
+    size_t destination_size
+) {
+    const struct mylite_sql_ast_node *first_part = child_at(nodes->part_list, 0U);
+    const struct mylite_sql_ast_node *first_column = secondary_index_part_column_node(first_part);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "Secondary indexes support only unqualified key columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(first_column, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_index_name(
+            database,
+            indexes,
+            index_count,
+            nodes->index_name_node,
+            nodes->index_name_node == NULL ? column_name : "",
+            destination,
+            destination_size
+        );
+    }
+
+    return rc;
+}
+
 static int plan_create_index(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -20237,10 +20840,9 @@ static int plan_create_index(
     struct create_index_nodes nodes = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t column_count = 0U;
     size_t index_count = 0U;
-    size_t column_index = 0U;
+    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_index){0};
@@ -20289,6 +20891,17 @@ static int plan_create_index(
         );
     }
     if (rc == MYLITE_OK) {
+        part_count = mylite_sql_ast_node_child_count(nodes.part_list_node);
+        if (part_count == 0U) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->is_unique && part_count != 1U) {
+        set_unsupported_error(database, "CREATE INDEX supports exactly one key column");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_alter_table_add_index_name(
             database,
             indexes,
@@ -20299,19 +20912,22 @@ static int plan_create_index(
             sizeof(out_plan->index_name)
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = copy_identifier_text(nodes.part_list_node, column_name, sizeof(column_name), database);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        rc = append_loaded_add_index_part(
+            database,
+            out_plan,
+            child_at(nodes.part_list_node, part_index),
+            columns,
+            column_count
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = find_column_index(columns, column_count, column_name, &column_index);
-        if (rc != MYLITE_OK) {
-            set_key_column_missing_error(database, column_name);
-            rc = MYLITE_ERROR;
-        }
-    }
-    if (rc == MYLITE_OK) {
-        out_plan->column = columns[column_index];
-        rc = validate_alter_table_add_index_column(database, &out_plan->column);
+        rc = validate_loaded_index_part_list(
+            database,
+            out_plan->parts,
+            out_plan->part_count,
+            out_plan->is_unique
+        );
     }
     if (rc == MYLITE_OK && out_plan->is_unique) {
         rc = choose_sqlite_rowid_alias(
@@ -20360,16 +20976,7 @@ static int extract_alter_table_add_index_nodes(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
-        set_unsupported_error(database, "Secondary indexes support exactly one key column");
-        return MYLITE_ERROR;
-    }
-
-    out_nodes->part = child_at(part_list, 0U);
-    if (out_nodes->part == NULL || out_nodes->part->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, "Secondary indexes support only unqualified key columns");
-        return MYLITE_ERROR;
-    }
+    out_nodes->part_list = part_list;
 
     return MYLITE_OK;
 }
@@ -20393,20 +21000,272 @@ static int extract_create_index_nodes(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
-        set_unsupported_error(database, "CREATE INDEX supports exactly one key column");
+    out_nodes->index_name_node = child_at(statement, 0U);
+    out_nodes->table_name_node = child_at(statement, 1U);
+    out_nodes->part_list_node = part_list;
+    if (out_nodes->index_name_node == NULL ||
+        out_nodes->index_name_node->kind != MYLITE_SQL_AST_IDENTIFIER ||
+        out_nodes->part_list_node == NULL) {
+        set_unsupported_error(database, "CREATE INDEX supports only unqualified key columns");
         return MYLITE_ERROR;
     }
 
-    out_nodes->index_name_node = child_at(statement, 0U);
-    out_nodes->table_name_node = child_at(statement, 1U);
-    out_nodes->part_list_node = child_at(part_list, 0U);
-    if (out_nodes->index_name_node == NULL ||
-        out_nodes->index_name_node->kind != MYLITE_SQL_AST_IDENTIFIER ||
-        out_nodes->part_list_node == NULL ||
-        out_nodes->part_list_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, "CREATE INDEX supports only unqualified key columns");
+    return MYLITE_OK;
+}
+
+static void planned_alter_table_add_index_deinit(struct planned_alter_table_add_index *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->parts);
+    *plan = (struct planned_alter_table_add_index){0};
+}
+
+static int append_loaded_add_index_part(
+    struct mylite_db *database,
+    struct planned_alter_table_add_index *plan,
+    const struct mylite_sql_ast_node *part,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
+    const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int64_t prefix_length = 0;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "Secondary indexes support only unqualified key columns");
         return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        if (plan->parts[part_index].index_column.column_id == columns[column_index].column_id) {
+            set_duplicate_column_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && prefix_node != NULL && plan->is_unique) {
+        set_unsupported_error(database, "Unique indexes do not yet support prefix key parts");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && prefix_node != NULL) {
+        uint64_t key_bytes = 0U;
+
+        rc = parse_secondary_index_part_prefix_length(
+            database,
+            prefix_node,
+            column_name,
+            &prefix_length
+        );
+        if (rc == MYLITE_OK) {
+            rc = validate_secondary_index_prefix_for_column_descriptor(
+                database,
+                &columns[column_index],
+                prefix_length,
+                &key_bytes
+            );
+        }
+        (void)key_bytes;
+    } else if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_index_column(database, &columns[column_index]);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_alter_table_add_index_parts(database, plan, plan->part_count + 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan->parts[plan->part_count] = (struct loaded_index_part){
+            .index_column =
+                {
+                    .column_id = columns[column_index].column_id,
+                    .ordinal_position = (int64_t)plan->part_count + 1,
+                    .has_prefix_length = prefix_node != NULL,
+                    .prefix_length = prefix_length,
+                },
+            .column = columns[column_index],
+            .column_index = column_index,
+        };
+        ++plan->part_count;
+    }
+
+    return rc;
+}
+
+static int reserve_planned_alter_table_add_index_parts(
+    struct mylite_db *database,
+    struct planned_alter_table_add_index *plan,
+    size_t required_capacity
+) {
+    enum { initial_part_capacity = 4 };
+
+    struct loaded_index_part *parts = NULL;
+    size_t capacity = 0U;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid secondary-index plan");
+        return MYLITE_ERROR;
+    }
+    if (required_capacity <= plan->part_capacity) {
+        return MYLITE_OK;
+    }
+    capacity = plan->part_capacity == 0U ? initial_part_capacity : plan->part_capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*parts)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    parts = realloc(plan->parts, capacity * sizeof(*parts));
+    if (parts == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->parts = parts;
+    plan->part_capacity = capacity;
+    return MYLITE_OK;
+}
+
+static int validate_secondary_index_prefix_for_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t prefix_length,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    uint64_t prefix = prefix_length < 0 ? 0U : (uint64_t)prefix_length;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid secondary-index prefix column");
+        return MYLITE_ERROR;
+    }
+    *out_key_bytes = 0U;
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &column_length);
+    } else if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &column_length);
+    } else if (column_descriptor_is_text_family(column)) {
+        return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else {
+        set_incorrect_prefix_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (prefix > column_length) {
+        set_incorrect_prefix_key_error(database);
+        return MYLITE_ERROR;
+    }
+    if (prefix > UINT64_MAX / utf8mb4_max_bytes_per_character) {
+        set_key_too_long_error(database, innodb_max_key_length_bytes);
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = prefix * utf8mb4_max_bytes_per_character;
+    return MYLITE_OK;
+}
+
+static int column_descriptor_index_part_key_bytes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid secondary-index key part");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &column_length);
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+    if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &column_length);
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+    if (column_descriptor_is_text_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "Secondary indexes do not yet support this column type",
+        out_key_bytes
+    );
+}
+
+static int validate_loaded_index_part_list(
+    struct mylite_db *database,
+    const struct loaded_index_part *parts,
+    size_t part_count,
+    bool is_unique
+) {
+    uint64_t total = 0U;
+
+    if (parts == NULL || part_count == 0U) {
+        set_runtime_error(database, "invalid secondary-index key parts");
+        return MYLITE_ERROR;
+    }
+    if (is_unique && part_count != 1U) {
+        set_unsupported_error(database, "Unique indexes support exactly one key column");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
+        const struct loaded_index_part *part = &parts[part_index];
+        uint64_t part_bytes = 0U;
+        int rc = MYLITE_OK;
+
+        if (part->index_column.has_prefix_length) {
+            rc = validate_secondary_index_prefix_for_column_descriptor(
+                database,
+                &part->column,
+                part->index_column.prefix_length,
+                &part_bytes
+            );
+        } else {
+            rc = column_descriptor_index_part_key_bytes(database, &part->column, &part_bytes);
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (total > UINT64_MAX - part_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+        total += part_bytes;
+        if (total > innodb_max_key_length_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
     }
 
     return MYLITE_OK;
@@ -20421,7 +21280,7 @@ static int add_secondary_index_from_plan(
     int64_t index_id = 0;
     int rc = MYLITE_OK;
 
-    if (plan->column.column_id <= 0 || plan->index_name[0] == '\0') {
+    if (plan->part_count == 0U || plan->index_name[0] == '\0') {
         set_runtime_error(database, "invalid secondary-index plan");
         return MYLITE_ERROR;
     }
@@ -20446,14 +21305,25 @@ static int add_secondary_index_from_plan(
             NULL
         );
     }
-    if (rc == MYLITE_OK) {
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+        const int64_t *prefix_length = NULL;
+
+        if (part->index_column.has_prefix_length) {
+            prefix_length = &part->index_column.prefix_length;
+        }
+        if (part->column.column_id <= 0) {
+            set_runtime_error(database, "invalid secondary-index key part");
+            return MYLITE_ERROR;
+        }
         rc = mylite_catalog_insert_index_column_in_mutation(
             database,
             &mutation,
             index_id,
             plan->table.table_id,
-            plan->column.column_id,
-            1,
+            part->column.column_id,
+            (int64_t)part_index + 1,
+            prefix_length,
             NULL
         );
     }
@@ -20624,12 +21494,18 @@ static int validate_create_unique_index_string_values(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
 ) {
+    const struct mylite_catalog_column_descriptor *column = NULL;
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
     int rc = MYLITE_OK;
 
-    if (!column_descriptor_is_char_or_varchar(&plan->column)) {
+    if (plan == NULL || plan->part_count != 1U) {
+        set_runtime_error(database, "invalid unique-index plan");
+        return MYLITE_ERROR;
+    }
+    column = &plan->parts[0].column;
+    if (!column_descriptor_is_char_or_varchar(column)) {
         return MYLITE_OK;
     }
 
@@ -46135,10 +47011,24 @@ static int append_show_index(
 
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         const struct loaded_index_part *part = &index->parts[part_index];
+        char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const char *prefix_value = NULL;
 
         if (part->column.is_nullable) {
             nullable = "YES";
+        }
+        if (part->index_column.has_prefix_length) {
+            rc = information_schema_format_i64(
+                database,
+                part->index_column.prefix_length,
+                prefix_text,
+                sizeof(prefix_text)
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            prefix_value = prefix_text;
         }
         const char *values[show_index_result_column_count] = {
             target->table_name,
@@ -46148,7 +47038,7 @@ static int append_show_index(
             part->column.name,
             "A",
             cardinality,
-            NULL,
+            prefix_value,
             NULL,
             nullable,
             "BTREE",
@@ -46754,8 +47644,18 @@ static int append_create_table_secondary_indexes_sql(
             secondary->physical_name,
             physical_name
         );
-        if (rc == MYLITE_OK) {
-            rc = append_planned_key_part_sql(string, &plan->columns[secondary->column_index]);
+        for (size_t part_index = 0U; rc == MYLITE_OK && part_index < secondary->part_count;
+             ++part_index) {
+            if (part_index != 0U) {
+                rc = dynamic_string_append(string, ", ");
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_planned_secondary_key_part_sql(
+                    string,
+                    plan,
+                    &secondary->parts[part_index]
+                );
+            }
         }
         if (rc == MYLITE_OK) {
             rc = append_create_table_index_sql_close(string);
@@ -46812,12 +47712,54 @@ static int append_planned_key_part_sql(
     return rc;
 }
 
+static int append_planned_secondary_key_part_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index_part *part
+) {
+    const struct planned_column *column = &plan->columns[part->column_index];
+    char prefix_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (!part->has_prefix_length) {
+        return append_planned_key_part_sql(string, column);
+    }
+
+    rc = dynamic_string_append(string, "substr(");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        int written = snprintf(prefix_text, sizeof(prefix_text), "%" PRId64, part->prefix_length);
+
+        if (written < 0 || (size_t)written >= sizeof(prefix_text)) {
+            return MYLITE_NOMEM;
+        }
+        rc = dynamic_string_append(string, ", 1, ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, prefix_text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
 static int append_loaded_key_part_sql(
     struct dynamic_string *string,
     const struct loaded_index_part *part,
     const char *qualifier
 ) {
     int rc = MYLITE_OK;
+
+    if (part != NULL && part->index_column.has_prefix_length) {
+        return append_loaded_prefix_key_part_sql(string, part, qualifier);
+    }
 
     if (qualifier != NULL) {
         rc = dynamic_string_append_quoted_identifier(string, qualifier);
@@ -46829,6 +47771,45 @@ static int append_loaded_key_part_sql(
         rc = dynamic_string_append_quoted_identifier(string, part->column.name);
     }
     if (rc == MYLITE_OK && column_descriptor_is_char_or_varchar(&part->column)) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static int append_loaded_prefix_key_part_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    const char *qualifier
+) {
+    char prefix_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+    int written = 0;
+
+    if (qualifier != NULL) {
+        return MYLITE_ERROR;
+    }
+
+    written =
+        snprintf(prefix_text, sizeof(prefix_text), "%" PRId64, part->index_column.prefix_length);
+    if (written < 0 || (size_t)written >= sizeof(prefix_text)) {
+        return MYLITE_NOMEM;
+    }
+
+    rc = dynamic_string_append(string, "substr(");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ", 1, ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, prefix_text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -47143,7 +48124,6 @@ static int build_add_index_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    struct loaded_index_part part = {.column = plan->column, .column_index = 0U};
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -47168,8 +48148,13 @@ static int build_add_index_sql(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " (");
     }
-    if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_sql(&string, &part, NULL);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(&string, &plan->parts[part_index], NULL);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -47190,6 +48175,7 @@ static int build_create_unique_index_string_validation_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
+    const struct mylite_catalog_column_descriptor *column = &plan->parts[0].column;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -47197,7 +48183,7 @@ static int build_create_unique_index_string_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+        rc = dynamic_string_append_quoted_identifier(&string, column->name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -47209,7 +48195,7 @@ static int build_create_unique_index_string_validation_sql(
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+        rc = dynamic_string_append_quoted_identifier(&string, column->name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " IS NOT NULL");
@@ -47230,7 +48216,7 @@ static int build_create_unique_index_duplicate_validation_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    struct loaded_index_part part = {.column = plan->column, .column_index = 0U};
+    const struct loaded_index_part *part = &plan->parts[0];
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -47238,7 +48224,7 @@ static int build_create_unique_index_duplicate_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+        rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -47268,13 +48254,13 @@ static int build_create_unique_index_duplicate_validation_sql(
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+        rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " IS NOT NULL GROUP BY ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_sql(&string, &part, NULL);
+        rc = append_loaded_key_part_sql(&string, part, NULL);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " HAVING COUNT(*) > 1 ORDER BY MIN(");
@@ -52551,6 +53537,55 @@ static void set_blob_key_without_length_error(struct mylite_db *database, const 
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_blob_key_without_length,
+        "42000",
+        message
+    );
+}
+
+static void set_incorrect_prefix_key_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_prefix_key,
+        "HY000",
+        "Incorrect prefix key; the used key part isn't a string, the used length is longer than "
+        "the key part, or the storage engine doesn't support unique prefix keys"
+    );
+}
+
+static void set_key_part_length_cannot_be_zero_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Key part '%s' length cannot be 0", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_key_part_length_cannot_be_zero,
+        "HY000",
+        message
+    );
+}
+
+static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Specified key was too long; max key length is %" PRIu64 " bytes",
+        maximum_key_length_bytes
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_key_too_long,
         "42000",
         message
     );

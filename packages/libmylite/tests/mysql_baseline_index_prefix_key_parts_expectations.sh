@@ -225,6 +225,28 @@ expect_error \
     "CREATE TABLE bad_key_length (v VARCHAR(1000), KEY k (v(769)));" \
     "$DATABASE"
 
+tinytext_prefix_expected=$(cat <<\EXPECTED
+0	0
+k	body	63
+EXPECTED
+)
+expect_output \
+    "tinytext prefix at 255 byte type limit succeeds" \
+    "$tinytext_prefix_expected" \
+    "CREATE TABLE tinytext_prefix_ok (body TINYTEXT, KEY k (body(63))); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT INDEX_NAME, COLUMN_NAME, SUB_PART FROM INFORMATION_SCHEMA.STATISTICS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'tinytext_prefix_ok';" \
+    "$DATABASE"
+
+expect_error \
+    "tinytext prefix over 255 byte type limit fails" \
+    1071 \
+    42000 \
+    "Specified key was too long; max key length is 255 bytes" \
+    "CREATE TABLE bad_tinytext_prefix (body TINYTEXT, KEY k (body(64)));" \
+    "$DATABASE"
+
 expect_error \
     "text without prefix fails" \
     1170 \

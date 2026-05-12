@@ -445,15 +445,7 @@ static int test_alter_add_index_diagnostics(void) {
             .message_part = "The used storage engine can't index column 'v'",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE diag ADD KEY k_multi (id, v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes support exactly one key column",
-        }
-    );
+    failures += expect_alter_index_ok(database, "ALTER TABLE diag ADD KEY k_multi (id, v)");
     failures += execute_error(
         database,
         "ALTER TABLE diag ADD INDEX k_qualified (diag.v)",

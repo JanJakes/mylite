@@ -601,7 +601,7 @@ static int test_alter_add_unique_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "Secondary indexes support exactly one key column",
+            .message_part = "Unique indexes support exactly one key column",
         }
     );
     failures += execute_error(

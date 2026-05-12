@@ -8343,7 +8343,12 @@ static int test_create_table_primary_key_statements(void) {
     failures +=
         expect_node(key_parts, MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST, "secondary key parts");
     failures += expect_child_count(key_parts, 1U, "secondary key part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "v", "secondary key part");
+    failures += expect_node(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_SECONDARY_INDEX_PART,
+        "secondary key part"
+    );
+    failures += expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "secondary key part");
     failures += expect_node(
         child_at(items, 3U),
         MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION,
@@ -8351,7 +8356,8 @@ static int test_create_table_primary_key_statements(void) {
     );
     key_parts = child_at(child_at(items, 3U), 0U);
     failures += expect_child_count(key_parts, 1U, "unnamed secondary key part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "id", "unnamed secondary key part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "id", "unnamed secondary key part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8362,8 +8368,16 @@ static int test_create_table_primary_key_statements(void) {
     key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
     key_parts = child_at(key_parts, 1U);
     failures += expect_child_count(key_parts, 2U, "composite secondary parser part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "a", "composite secondary first part");
-    failures += expect_span_text(child_at(key_parts, 1U), "b", "composite secondary second part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "a",
+        "composite secondary first part"
+    );
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 1U), 0U),
+        "b",
+        "composite secondary second part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8402,7 +8416,7 @@ static int test_create_table_primary_key_statements(void) {
     failures +=
         expect_node(key_parts, MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST, "unique key parts");
     failures += expect_child_count(key_parts, 1U, "unique key part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "id", "unique key part");
+    failures += expect_span_text(child_at(child_at(key_parts, 0U), 0U), "id", "unique key part");
     failures += expect_node(
         child_at(items, 3U),
         MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
@@ -8410,13 +8424,32 @@ static int test_create_table_primary_key_statements(void) {
     );
     key_parts = child_at(child_at(items, 3U), 0U);
     failures += expect_child_count(key_parts, 1U, "unnamed unique key part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "n", "unnamed unique key part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "n", "unnamed unique key part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_secondary_prefix (id INT, KEY k (id(4)));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE secondary_prefix (id INT, name VARCHAR(20), KEY k_name (name(4)));",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
+    key_parts = child_at(key_parts, 1U);
+    failures += expect_child_count(key_parts, 1U, "secondary prefix parser part count");
+    failures += expect_node(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_SECONDARY_INDEX_PART,
+        "secondary prefix key part"
+    );
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "name",
+        "secondary prefix key part column"
+    );
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 1U),
+        "4",
+        "secondary prefix key part length"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -8555,7 +8588,7 @@ static int test_create_index_statements(void) {
     failures += expect_span_text(child_at(statement, 1U), "create_idx", "create index table");
     key_parts = child_at(statement, 2U);
     failures += expect_child_count(key_parts, 1U, "create index part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "v", "create index part");
+    failures += expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "create index part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8570,14 +8603,19 @@ static int test_create_index_statements(void) {
     failures +=
         expect_span_text(child_at(statement, 1U), "app.create_idx", "create unique index table");
     key_parts = child_at(statement, 2U);
-    failures += expect_span_text(child_at(key_parts, 0U), "`v`", "create unique index part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "`v`", "create unique index part");
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
         parse_sql("CREATE INDEX k_multi ON create_idx (v, id);", MYLITE_SQL_PARSE_OK, &result);
     key_parts = child_at(child_at(result.root, 0U), 2U);
     failures += expect_child_count(key_parts, 2U, "create composite index parser part count");
-    failures += expect_span_text(child_at(key_parts, 1U), "id", "create composite index part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 1U), 0U),
+        "id",
+        "create composite index part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -8598,8 +8636,12 @@ static int test_create_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("CREATE INDEX k_v ON create_idx (v(4));", MYLITE_SQL_PARSE_OK, &result);
+    key_parts = child_at(child_at(result.root, 0U), 2U);
     failures +=
-        parse_sql("CREATE INDEX k_v ON create_idx (v(4));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "create index prefix column");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 1U), "4", "create index prefix length");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8702,7 +8744,8 @@ static int test_alter_table_add_index_statements(void) {
     failures += expect_span_text(child_at(secondary_index, 0U), "k_v", "alter add index name");
     key_parts = child_at(secondary_index, 1U);
     failures += expect_child_count(key_parts, 1U, "alter add index part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "v", "alter add index part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "alter add index part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("ALTER TABLE app.add_idx ADD KEY (`v`);", MYLITE_SQL_PARSE_OK, &result);
@@ -8716,14 +8759,22 @@ static int test_alter_table_add_index_statements(void) {
     key_parts = child_at(secondary_index, 0U);
     failures +=
         expect_child_count(secondary_index, 1U, "unnamed alter add index definition child count");
-    failures += expect_span_text(child_at(key_parts, 0U), "`v`", "quoted alter add index part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "`v`",
+        "quoted alter add index part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
         parse_sql("ALTER TABLE add_idx ADD KEY k_multi (v, id);", MYLITE_SQL_PARSE_OK, &result);
     key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
     failures += expect_child_count(key_parts, 2U, "alter add composite index parser part count");
-    failures += expect_span_text(child_at(key_parts, 1U), "id", "alter add composite index part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 1U), 0U),
+        "id",
+        "alter add composite index part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8751,7 +8802,8 @@ static int test_alter_table_add_index_statements(void) {
     failures += expect_span_text(child_at(secondary_index, 0U), "u_v", "alter add unique name");
     key_parts = child_at(secondary_index, 1U);
     failures += expect_child_count(key_parts, 1U, "alter add unique part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "v", "alter add unique part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "alter add unique part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("ALTER TABLE add_idx ADD UNIQUE (`v`);", MYLITE_SQL_PARSE_OK, &result);
@@ -8763,7 +8815,11 @@ static int test_alter_table_add_index_statements(void) {
     );
     failures += expect_child_count(secondary_index, 1U, "unnamed alter add unique child count");
     key_parts = child_at(secondary_index, 0U);
-    failures += expect_span_text(child_at(key_parts, 0U), "`v`", "unnamed alter add unique part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "`v`",
+        "unnamed alter add unique part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -8797,10 +8853,19 @@ static int test_alter_table_add_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "ALTER TABLE add_idx ADD INDEX k_v (v(4));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("ALTER TABLE add_idx ADD INDEX k_v (v(4));", MYLITE_SQL_PARSE_OK, &result);
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    key_parts = child_at(secondary_index, 1U);
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "v",
+        "alter add index prefix column"
+    );
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 1U),
+        "4",
+        "alter add index prefix length"
     );
     mylite_sql_parse_result_deinit(&result);
 

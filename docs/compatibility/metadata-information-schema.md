@@ -73,7 +73,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | Columns in each table that store spatial data |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |
 | `INFORMATION_SCHEMA.ST_UNITS_OF_MEASURE` | ❌ | Acceptable units for ST_Distance() |
-| `INFORMATION_SCHEMA.STATISTICS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary plus supported unique and nonunique secondary indexes on MyLite persistent base tables, with fixed BTREE/statistics placeholders; no fulltext/spatial/functional/prefix/descending index metadata, views, temporary tables, privileges, storage-engine statistics, or complete MySQL system catalogs |
+| `INFORMATION_SCHEMA.STATISTICS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary plus supported unique and nonunique secondary indexes on MyLite persistent base tables, including `SUB_PART` for current nonunique string prefix key parts, with fixed BTREE/statistics placeholders; no fulltext/spatial/functional/descending index metadata, views, temporary tables, privileges, storage-engine statistics, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary-key and supported unique-index constraints on MyLite persistent base tables, including current composite primary-key descriptors and fixed `ENFORCED='YES'`; no check constraints, foreign keys, composite unique indexes, views, temporary tables, privileges, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | Privileges on tables |

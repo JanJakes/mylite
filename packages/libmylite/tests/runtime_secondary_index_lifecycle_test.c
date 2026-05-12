@@ -25,12 +25,19 @@ enum {
     indexed_table_index_row_count = 6,
     indexed_table_physical_index_count = 6,
     filtered_result_column_count = 6,
+    prefix_index_row_column_count = 5,
+    prefix_index_expanded_row_count = 8,
+    prefix_index_expanded_physical_index_count = 6,
     mysql_error_parse = 1064,
+    mysql_error_duplicate_column = 1060,
     mysql_error_duplicate_key_name = 1061,
+    mysql_error_key_too_long = 1071,
+    mysql_error_incorrect_prefix_key = 1089,
     mysql_error_key_column_missing = 1072,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_index_name = 1280,
+    mysql_error_key_part_length_cannot_be_zero = 1391,
 };
 
 struct expected_sql_error {
@@ -49,6 +56,7 @@ struct expected_query {
 
 static int test_secondary_index_metadata_dml_and_persistence(void);
 static int test_secondary_index_diagnostics(void);
+static int test_secondary_index_prefix_key_parts(void);
 static int test_secondary_index_independent_handles(void);
 static int create_secondary_index_schema(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -89,6 +97,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_secondary_index_metadata_dml_and_persistence();
+    failures += test_secondary_index_prefix_key_parts();
     failures += test_secondary_index_diagnostics();
     failures += test_secondary_index_independent_handles();
 
@@ -343,6 +352,280 @@ static int test_secondary_index_metadata_dml_and_persistence(void) {
     return failures;
 }
 
+static int test_secondary_index_prefix_key_parts(void) {
+    static const char *const show_index_rows[] = {
+        "prefix_idx",
+        "1",
+        "meta_key",
+        "1",
+        "meta_key",
+        "A",
+        "0",
+        "191",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "prefix_idx",
+        "1",
+        "compound_key",
+        "1",
+        "object_id",
+        "A",
+        "0",
+        "20",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "prefix_idx",
+        "1",
+        "compound_key",
+        "2",
+        "term_taxonomy_id",
+        "A",
+        "0",
+        "20",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "prefix_idx",
+        "1",
+        "body_key",
+        "1",
+        "body",
+        "A",
+        "0",
+        "10",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "prefix_idx",
+        "CREATE TABLE `prefix_idx` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `meta_key` varchar(255) DEFAULT NULL,\n"
+        "  `object_id` varchar(30) DEFAULT NULL,\n"
+        "  `term_taxonomy_id` varchar(30) DEFAULT NULL,\n"
+        "  `body` text,\n"
+        "  KEY `meta_key` (`meta_key`(191)),\n"
+        "  KEY `compound_key` (`object_id`(20),`term_taxonomy_id`(20)),\n"
+        "  KEY `body_key` (`body`(10))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const statistics_rows[] = {
+        "body_key",
+        "1",
+        "body",
+        "10",
+        "compound_key",
+        "1",
+        "object_id",
+        "20",
+        "compound_key",
+        "2",
+        "term_taxonomy_id",
+        "20",
+        "meta_key",
+        "1",
+        "meta_key",
+        "191",
+    };
+    static const char *const expanded_statistics_rows[] = {
+        "alter_prefix",
+        "1",
+        "meta_key",
+        "8",
+        "body_key",
+        "1",
+        "body",
+        "10",
+        "compound_key",
+        "1",
+        "object_id",
+        "20",
+        "compound_key",
+        "2",
+        "term_taxonomy_id",
+        "20",
+        "create_compound",
+        "1",
+        "meta_key",
+        "5",
+        "create_compound",
+        "2",
+        "object_id",
+        "3",
+        "create_prefix",
+        "1",
+        "body",
+        "6",
+        "meta_key",
+        "1",
+        "meta_key",
+        "191",
+    };
+    static const char *const row_values[] = {"1", "User 0000018", "120", "340", "payload"};
+    static const char *const clone_prefix_count_rows[] = {"8"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "prefix") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open prefix index file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE prefix_idx ("
+        "id INT, meta_key VARCHAR(255), object_id VARCHAR(30), "
+        "term_taxonomy_id VARCHAR(30), body TEXT, "
+        "KEY meta_key (meta_key(191)), "
+        "KEY compound_key (object_id(20), term_taxonomy_id(20)), "
+        "KEY body_key (body(10)))"
+    );
+    failures += expect_physical_index_count(
+        database,
+        3,
+        "physical indexes after CREATE TABLE prefix indexes"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM prefix_idx",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 4U,
+            .context = "SHOW INDEX prefix key parts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE prefix_idx",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "SHOW CREATE prefix key parts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'prefix_idx' ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = 4U,
+            .row_count = 4U,
+            .context = "I_S STATISTICS prefix key parts",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO prefix_idx VALUES (1, 'User 0000018', '120', '340', 'payload')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, meta_key, object_id, term_taxonomy_id, body FROM prefix_idx",
+            .values = row_values,
+            .column_count = prefix_index_row_column_count,
+            .row_count = 1U,
+            .context = "prefix index table rows remain readable",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE prefix_idx ADD KEY alter_prefix (meta_key(8))");
+    failures += expect_statement_ok(database, "CREATE INDEX create_prefix ON prefix_idx (body(6))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE INDEX create_compound ON prefix_idx (meta_key(5), object_id(3))"
+    );
+    failures += expect_physical_index_count(
+        database,
+        prefix_index_expanded_physical_index_count,
+        "physical indexes after ALTER and CREATE prefix indexes"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'prefix_idx' ORDER BY INDEX_NAME",
+            .values = expanded_statistics_rows,
+            .column_count = 4U,
+            .row_count = prefix_index_expanded_row_count,
+            .context = "I_S STATISTICS added prefix key parts",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone_prefix LIKE prefix_idx");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone_prefix' "
+                   "AND SUB_PART IS NOT NULL",
+            .values = clone_prefix_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE copies prefix metadata",
+        }
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after prefix index lifecycle"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen prefix index file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'prefix_idx' ORDER BY INDEX_NAME",
+            .values = expanded_statistics_rows,
+            .column_count = 4U,
+            .row_count = prefix_index_expanded_row_count,
+            .context = "prefix key parts persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_secondary_index_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
@@ -388,22 +671,76 @@ static int test_secondary_index_diagnostics(void) {
                 "BLOB/TEXT column 'body' used in key specification without a key length",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE composite_key (id INT, v INT, KEY k (id, v))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes support exactly one key column",
-        }
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE composite_key (id INT, v INT, KEY k (id, v))");
     failures += execute_error(
         database,
         "CREATE TABLE key_prefix (id INT, KEY k (id(4)))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE zero_prefix (name VARCHAR(10), KEY k (name(0)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_part_length_cannot_be_zero,
+            .sqlstate = "HY000",
+            .message_part = "Key part 'name' length cannot be 0",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE long_varchar_prefix (name VARCHAR(10), KEY k (name(20)))",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE too_long_prefix (name VARCHAR(1000), KEY k (name(769)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "Specified key was too long",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE tinytext_prefix_ok (body TINYTEXT, KEY k (body(63)))"
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE tinytext_prefix_too_long (body TINYTEXT, KEY k (body(64)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 255 bytes",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE tinytext_add_prefix (body TINYTEXT)");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE tinytext_add_prefix ADD KEY k (body(63))");
+    failures += execute_error(
+        database,
+        "CREATE INDEX k_bad ON tinytext_add_prefix (body(64))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 255 bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE duplicate_prefix_part (name VARCHAR(20), KEY k (name(3), name(5)))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_column,
+            .sqlstate = "42S21",
+            .message_part = "Duplicate column name 'name'",
         }
     );
     failures +=

@@ -3701,6 +3701,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_secondary_index_part(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_ast_node *prefix_length
+) {
+    struct mylite_sql_source_span span =
+        column == NULL ? (struct mylite_sql_source_span){0} : column->span;
+    struct mylite_sql_ast_node *part = NULL;
+
+    if (prefix_length != NULL) {
+        span = span_join(span, prefix_length->span);
+    }
+
+    part = make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_PART, span);
+    if (part == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(part, column);
+    if (prefix_length != NULL) {
+        mylite_sql_ast_node_append_child(part, prefix_length);
+    }
+    return part;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,

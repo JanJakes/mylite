@@ -2793,7 +2793,13 @@ secondary_index_part_list(A) ::= secondary_index_part_list(B) COMMA secondary_in
 }
 
 secondary_index_part(A) ::= identifier(B). {
-    A = B;
+    A = mylite_sql_parser_make_secondary_index_part(state, B, NULL);
+}
+secondary_index_part(A) ::= identifier(B) LPAREN INTEGER(L) RPAREN. {
+    A = mylite_sql_parser_make_secondary_index_part(
+        state,
+        B,
+        mylite_sql_parser_make_literal(state, L, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
 
 column_definition(A) ::= identifier(N) column_type(T) column_attribute_list_opt(L). {

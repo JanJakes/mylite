@@ -16,6 +16,7 @@ enum {
     catalog_schema_version_v6 = 6U,
     catalog_schema_version_v7 = 7U,
     catalog_schema_version_v8 = 8U,
+    catalog_schema_version_v9 = 9U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -83,7 +84,8 @@ enum catalog_index_column_insert_bind_index {
     catalog_index_column_insert_table_id_bind = 2,
     catalog_index_column_insert_column_id_bind = 3,
     catalog_index_column_insert_ordinal_position_bind = 4,
-    catalog_index_column_insert_generation_bind = 5,
+    catalog_index_column_insert_prefix_length_bind = 5,
+    catalog_index_column_insert_generation_bind = 6,
 };
 
 enum catalog_table_select_column_index {
@@ -134,9 +136,10 @@ enum catalog_index_column_select_column_index {
     catalog_index_column_select_table_id_column = 2,
     catalog_index_column_select_column_id_column = 3,
     catalog_index_column_select_ordinal_position_column = 4,
-    catalog_index_column_select_descriptor_version_column = 5,
-    catalog_index_column_select_created_generation_column = 6,
-    catalog_index_column_select_updated_generation_column = 7,
+    catalog_index_column_select_prefix_length_column = 5,
+    catalog_index_column_select_descriptor_version_column = 6,
+    catalog_index_column_select_created_generation_column = 7,
+    catalog_index_column_select_updated_generation_column = 8,
 };
 
 enum catalog_next_table_id_column_index {
@@ -178,6 +181,7 @@ static int migrate_catalog_schema_v5_to_v6(sqlite3 *sqlite);
 static int migrate_catalog_schema_v6_to_v7(sqlite3 *sqlite);
 static int migrate_catalog_schema_v7_to_v8(sqlite3 *sqlite);
 static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite);
+static int migrate_catalog_schema_v9_to_v10(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -309,6 +313,21 @@ static int materialize_index(
 );
 static int materialize_index_column(
     sqlite3_stmt *statement,
+    struct mylite_catalog_index_column_descriptor *out_index_column
+);
+static int insert_index_column_row(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t index_id,
+    int64_t table_id,
+    int64_t column_id,
+    int64_t ordinal_position,
+    const int64_t *prefix_length
+);
+static int read_inserted_index_column(
+    struct mylite_db *database,
+    int64_t index_id,
+    int64_t ordinal_position,
     struct mylite_catalog_index_column_descriptor *out_index_column
 );
 static int checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value);
@@ -882,9 +901,9 @@ int mylite_catalog_insert_index_column_in_mutation(
     int64_t table_id,
     int64_t column_id,
     int64_t ordinal_position,
+    const int64_t *prefix_length,
     struct mylite_catalog_index_column_descriptor *out_index_column
 ) {
-    sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
 
     if (out_index_column != NULL) {
@@ -914,13 +933,53 @@ int mylite_catalog_insert_index_column_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (prefix_length != NULL) {
+        rc = validate_positive_ordinal(*prefix_length);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    rc = insert_index_column_row(
+        database,
+        mutation,
+        index_id,
+        table_id,
+        column_id,
+        ordinal_position,
+        prefix_length
+    );
+    if (rc != MYLITE_OK || out_index_column == NULL) {
+        return rc;
+    }
+
+    return read_inserted_index_column(database, index_id, ordinal_position, out_index_column);
+}
+
+static int insert_index_column_row(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t index_id,
+    int64_t table_id,
+    int64_t column_id,
+    int64_t ordinal_position,
+    const int64_t *prefix_length
+) {
+    sqlite3_stmt *statement = NULL;
+    bool has_prefix_length = prefix_length != NULL;
+    int64_t prefix_length_value = 0;
+    int rc = MYLITE_OK;
+
+    if (has_prefix_length) {
+        prefix_length_value = *prefix_length;
+    }
 
     rc = prepare_statement(
         database->sqlite,
         "INSERT INTO _mylite_catalog_index_columns "
-        "(index_id, table_id, column_id, ordinal_position, descriptor_version, "
+        "(index_id, table_id, column_id, ordinal_position, prefix_length, descriptor_version, "
         "created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
+        "VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -940,6 +999,14 @@ int mylite_catalog_insert_index_column_in_mutation(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = bind_nullable_i64(
+            statement,
+            catalog_index_column_insert_prefix_length_bind,
+            has_prefix_length,
+            prefix_length_value
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = bind_u64(
             statement,
             catalog_index_column_insert_generation_bind,
@@ -949,15 +1016,23 @@ int mylite_catalog_insert_index_column_in_mutation(
     if (rc == MYLITE_OK) {
         rc = step_done(statement);
     }
-    rc = finalize_statement(statement, rc);
-    statement = NULL;
-    if (rc != MYLITE_OK || out_index_column == NULL) {
-        return rc;
-    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_inserted_index_column(
+    struct mylite_db *database,
+    int64_t index_id,
+    int64_t ordinal_position,
+    struct mylite_catalog_index_column_descriptor *out_index_column
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
 
     rc = prepare_statement(
         database->sqlite,
         "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
+        "prefix_length, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_index_columns "
         "WHERE index_id = ?1 AND ordinal_position = ?2",
@@ -975,8 +1050,10 @@ int mylite_catalog_insert_index_column_in_mutation(
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_index_column(statement, out_index_column);
         } else {
-            rc =
-                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            if (sqlite_rc == SQLITE_DONE) {
+                rc = MYLITE_ERROR;
+            }
         }
     }
 
@@ -1864,6 +1941,7 @@ int mylite_catalog_for_each_index_column_in_index(
     rc = prepare_statement(
         database->sqlite,
         "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
+        "prefix_length, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_index_columns "
         "WHERE index_id = ?1 ORDER BY ordinal_position",
@@ -2679,6 +2757,10 @@ static int migrate_catalog_schema(
     }
     if (rc == MYLITE_OK && schema_version == catalog_schema_version_v8) {
         rc = migrate_catalog_schema_v8_to_v9(database->sqlite);
+        schema_version = catalog_schema_version_v9;
+    }
+    if (rc == MYLITE_OK && schema_version == catalog_schema_version_v9) {
+        rc = migrate_catalog_schema_v9_to_v10(database->sqlite);
         schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
     }
     if (rc == MYLITE_OK && schema_version == MYLITE_CATALOG_SCHEMA_VERSION) {
@@ -2977,6 +3059,24 @@ static int migrate_catalog_schema_v8_to_v9(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v9_to_v10(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_index_columns "
+        "ADD COLUMN prefix_length INTEGER CHECK(prefix_length IS NULL OR prefix_length > 0);"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 10, minimum_reader_schema_version = 10;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -3015,6 +3115,7 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
+            "prefix_length, "
             "descriptor_version, created_catalog_generation, updated_catalog_generation "
             "FROM _mylite_catalog_index_columns WHERE 0"
         );
@@ -3096,6 +3197,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "table_id INTEGER NOT NULL,"
         "column_id INTEGER NOT NULL,"
         "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "prefix_length INTEGER CHECK(prefix_length IS NULL OR prefix_length > 0),"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -3105,7 +3207,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "INSERT INTO _mylite_catalog_state "
         "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
         "created_with_file_format_version) "
-        "VALUES (1, 9, 9, 1, 1);"
+        "VALUES (1, 10, 10, 1, 1);"
         "COMMIT;";
     struct mylite_catalog catalog = {.initialized = false};
     int rc = execute_sql(database->sqlite, sql);
@@ -4328,6 +4430,19 @@ static int materialize_index_column(
             statement,
             catalog_index_column_select_ordinal_position_column,
             &out_index_column->ordinal_position
+        );
+    }
+    if (rc == MYLITE_OK &&
+        sqlite3_column_type(statement, catalog_index_column_select_prefix_length_column) ==
+            SQLITE_NULL) {
+        out_index_column->has_prefix_length = false;
+        out_index_column->prefix_length = 0;
+    } else if (rc == MYLITE_OK) {
+        out_index_column->has_prefix_length = true;
+        rc = checked_column_i64(
+            statement,
+            catalog_index_column_select_prefix_length_column,
+            &out_index_column->prefix_length
         );
     }
     if (rc == MYLITE_OK) {

@@ -76,6 +76,9 @@ Runtime probes for this phase establish:
   the InnoDB 3072-byte key limit fail with `1071 / 42000`; for example,
   `VARCHAR(1000)` prefix `768` succeeds, prefix `769` fails, and composite
   string prefix parts fail when their combined prefix bytes exceed the limit.
+- `TINYTEXT` prefixes are also capped by that type family's 255-byte maximum:
+  prefix `63` succeeds under `utf8mb4`, while prefix `64` fails with
+  `1071 / 42000` and reports a 255-byte maximum key length.
 - A unique prefix index is accepted by MySQL and enforces uniqueness over the
   prefix. For example, `UNIQUE KEY u_v (v(3))` rejects later values sharing
   the same first three characters with `1062 / 23000`. MyLite defers this
@@ -222,16 +225,18 @@ Each key part resolves against MyLite column descriptors:
 - prefix length `0` fails with `1391 / HY000`;
 - prefix length greater than a bounded `CHAR(n)` / `VARCHAR(n)` descriptor
   fails with `1089 / HY000`;
-- admitted string key-part byte contributions must fit MySQL's observed
-  3072-byte InnoDB key limit for the fixed `utf8mb4` baseline; MyLite counts
-  nonbinary string prefix lengths as characters and uses four bytes per
-  character for this cap;
+- admitted string key-part byte contributions must fit both the descriptor's
+  own type-family byte limit and MySQL's observed 3072-byte InnoDB key limit
+  for the fixed `utf8mb4` baseline; MyLite counts nonbinary string prefix
+  lengths as characters and uses four bytes per character for these caps;
 - prefix length on non-string descriptors fails with `1089 / HY000`;
 - supported successful forms produce no warnings.
 
 For `CHAR` / `VARCHAR`, the prefix length is checked against the descriptor's
 logical character length. For `TEXT` family descriptors, this baseline accepts
-positive decimal prefix lengths that fit the same 3072-byte key-length cap.
+positive decimal prefix lengths that fit both the type-family maximum byte
+length (`TINYTEXT` currently contributes the smallest cap) and the 3072-byte
+InnoDB key-length cap.
 
 ## Descriptor and Catalog Semantics
 
@@ -325,7 +330,8 @@ Supported diagnostics include:
 - `TEXT` family key without prefix: `1170 / 42000`;
 - zero prefix length: `1391 / HY000`;
 - prefix on non-string or oversized bounded string column: `1089 / HY000`;
-- combined key length over the current 3072-byte cap: `1071 / 42000`;
+- key length over the current type-family byte cap or the combined 3072-byte
+  InnoDB cap: `1071 / 42000`;
 - unsupported unique or primary prefix key parts: deterministic MyLite
   unsupported diagnostic until those lifecycles are implemented;
 - unsupported key-part forms such as qualified columns, expressions, directions,
@@ -355,9 +361,9 @@ Add a MySQL-runtime expectation script covering:
 - generated index names from the first key part;
 - missing default schema, unknown schema/table, duplicate index names, quoted
   `PRIMARY`, and unknown key columns;
-- invalid integer prefix, zero prefix, oversized `VARCHAR` prefix, `TEXT`
-  without prefix, unique prefix duplicate behavior as deferred evidence, and
-  primary prefix behavior as deferred evidence.
+- invalid integer prefix, zero prefix, oversized `VARCHAR` prefix, oversized
+  `TINYTEXT` prefix, `TEXT` without prefix, unique prefix duplicate behavior
+  as deferred evidence, and primary prefix behavior as deferred evidence.
 
 Add fast C tests under `packages/libmylite/tests/` for:
 

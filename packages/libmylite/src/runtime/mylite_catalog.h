@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 9,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 9,
+    MYLITE_CATALOG_SCHEMA_VERSION = 10,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 10,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -101,6 +101,8 @@ struct mylite_catalog_index_column_descriptor {
     int64_t table_id;
     int64_t column_id;
     int64_t ordinal_position;
+    bool has_prefix_length;
+    int64_t prefix_length;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -209,6 +211,7 @@ int mylite_catalog_insert_index_column_in_mutation(
     int64_t table_id,
     int64_t column_id,
     int64_t ordinal_position,
+    const int64_t *prefix_length,
     struct mylite_catalog_index_column_descriptor *out_index_column
 );
 int mylite_catalog_delete_index_in_mutation(

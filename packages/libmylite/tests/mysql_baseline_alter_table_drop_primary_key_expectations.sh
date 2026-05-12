@@ -206,6 +206,7 @@ auto_key_expected=$(cat <<\EXPECTED
 id	int	NO	MUL	NULL	auto_increment
 v	int	YES		NULL	
 ai_key	1	id_idx	1	id	A	0	NULL	NULL		BTREE			YES	NULL
+1:30
 EXPECTED
 )
 expect_output \
@@ -215,7 +216,10 @@ expect_output \
 "ALTER TABLE ai_key DROP PRIMARY KEY; "\
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SHOW COLUMNS FROM ai_key; "\
-"SHOW INDEX FROM ai_key;" \
+"SHOW INDEX FROM ai_key; "\
+"CREATE TABLE ai_clone LIKE ai_key; "\
+"INSERT INTO ai_clone (v) VALUES (30); "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM ai_clone;" \
     "$DATABASE"
 
 expect_error \

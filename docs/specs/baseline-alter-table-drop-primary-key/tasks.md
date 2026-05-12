@@ -15,33 +15,33 @@
 
 ## Implementation
 
-- [ ] Extend parser and AST support for one
+- [x] Extend parser and AST support for one
   `ALTER TABLE table_name DROP PRIMARY KEY` action.
-- [ ] Add analyzer/planner support for schema resolution, table resolution,
+- [x] Add analyzer/planner support for schema resolution, table resolution,
   primary-key descriptor lookup, no-primary-key diagnostics, auto-increment
   index checks, affected-row counting, and cleanup-safe zero initialization.
-- [ ] Delete primary index-column descriptors and the primary index descriptor
+- [x] Delete primary index-column descriptors and the primary index descriptor
   atomically while preserving table/column descriptors, row values, secondary
   indexes, catalog authority, and descriptor caches.
-- [ ] Drop the generated SQLite physical primary-key index from the descriptor
+- [x] Drop the generated SQLite physical primary-key index from the descriptor
   physical name, quoting every identifier.
-- [ ] Ensure future DML, `TRUNCATE`, `CREATE TABLE ... LIKE`,
+- [x] Ensure future DML, `TRUNCATE`, `CREATE TABLE ... LIKE`,
   `CREATE TABLE ... SELECT`, rename/drop, reopen, `SHOW`, and
   `INFORMATION_SCHEMA` behavior observe the removed descriptor through existing
   paths.
-- [ ] Reject unsupported no-primary-key, target object, auto-increment,
+- [x] Reject unsupported no-primary-key, target object, auto-increment,
   multi-action `ALTER TABLE`, `DROP INDEX`, `DROP KEY`, `DROP CONSTRAINT`,
   algorithms, locks, temporary tables, and views deterministically.
 
 ## Tests and Docs
 
-- [ ] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add focused C runtime tests and parser tests for supported and rejected
+- [x] Add the MySQL 8.4.9 expectation script for the feature surface.
+- [x] Add focused C runtime tests and parser tests for supported and rejected
   behavior.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   implemented subset.
-- [ ] Run focused build/tests, the new MySQL expectation script, and
+- [x] Run focused build/tests, the new MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog authority,
+- [x] Review the final diff for architecture boundaries, catalog authority,
   affected-row correctness, physical SQLite index lowering, metadata accuracy,
   auto-increment interaction, performance, cleanup, and file-format safety.

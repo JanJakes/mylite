@@ -983,6 +983,70 @@ int mylite_catalog_insert_index_column_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_delete_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t index_id
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(index_id);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_index_columns WHERE table_id = ?1 AND index_id = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, index_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    statement = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_indexes WHERE table_id = ?1 AND index_id = ?2",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, index_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

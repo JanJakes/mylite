@@ -198,8 +198,10 @@ MyLite subset:
 - if the primary key contains the auto-increment column and no supported
   secondary index on that same column remains, reject with `1075 / 42000`;
 - if a supported secondary index on the auto-increment column remains, allow the
-  drop, preserve the auto-increment descriptor, and rely on existing
-  auto-increment DML behavior;
+  drop, preserve the auto-increment descriptor, and keep generated values
+  available to the current `INSERT ... VALUES`, `INSERT ... SET`, and
+  `CREATE TABLE ... LIKE` clone paths through the same descriptor-owned
+  counter model;
 - composite primary keys with auto-increment are not currently admitted by
   MyLite's create/add primary-key subset, so no composite auto-increment drop
   path is included.

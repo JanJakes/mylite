@@ -1248,7 +1248,7 @@ static int test_alter_add_primary_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE existing_pk DROP PRIMARY KEY",
+        "ALTER TABLE existing_pk DROP INDEX PRIMARY",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

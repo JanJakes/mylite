@@ -1588,6 +1588,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_alter_table_add_primary_key_test)
 
+  add_executable(mylite_runtime_alter_table_drop_primary_key_test
+    tests/runtime_alter_table_drop_primary_key_test.c
+  )
+  target_link_libraries(mylite_runtime_alter_table_drop_primary_key_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_alter_table_drop_primary_key_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_alter_table_drop_primary_key_test)
+
   add_executable(mylite_runtime_alter_table_auto_increment_option_test
     tests/runtime_alter_table_auto_increment_option_test.c
   )
@@ -2287,6 +2299,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.alter_table_add_primary_key
     COMMAND mylite_runtime_alter_table_add_primary_key_test
+  )
+  add_test(
+    NAME libmylite.runtime.alter_table_drop_primary_key
+    COMMAND mylite_runtime_alter_table_drop_primary_key_test
   )
   add_test(
     NAME libmylite.runtime.alter_table_auto_increment_option

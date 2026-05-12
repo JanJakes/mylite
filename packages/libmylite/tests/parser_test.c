@@ -80,6 +80,7 @@ static int test_datetime_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
+static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
@@ -258,6 +259,7 @@ int main(void) {
     failures += test_timestamp_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_alter_table_add_primary_key_statements();
+    failures += test_alter_table_drop_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
@@ -8083,6 +8085,58 @@ static int test_alter_table_add_primary_key_statements(void) {
     return failures;
 }
 
+static int test_alter_table_drop_primary_key_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE drop_pk DROP PRIMARY KEY;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT,
+        "alter drop primary key statement"
+    );
+    failures += expect_child_count(statement, 1U, "alter drop primary key child count");
+    failures += expect_span_text(child_at(statement, 0U), "drop_pk", "alter drop primary table");
+    failures +=
+        expect_span_text(statement, "ALTER TABLE drop_pk DROP PRIMARY KEY", "alter drop pk span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE app.drop_pk DROP PRIMARY KEY;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.drop_pk",
+        "schema-qualified alter drop primary key table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP PRIMARY KEY, ADD KEY k_v (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP INDEX PRIMARY;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_alter_table_auto_increment_option_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -12834,10 +12888,6 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
-        parse_sql("ALTER TABLE old_name DROP PRIMARY KEY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

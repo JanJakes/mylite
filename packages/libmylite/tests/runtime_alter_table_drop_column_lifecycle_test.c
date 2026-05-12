@@ -679,9 +679,9 @@ static int test_drop_column_diagnostics(void) {
         database,
         "ALTER TABLE numbers DROP PRIMARY KEY",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_cant_drop_field_or_key,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "Can't DROP 'PRIMARY'; check that column/key exists",
         }
     );
     failures += execute_error(

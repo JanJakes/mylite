@@ -211,6 +211,12 @@ int mylite_catalog_insert_index_column_in_mutation(
     int64_t ordinal_position,
     struct mylite_catalog_index_column_descriptor *out_index_column
 );
+int mylite_catalog_delete_index_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t index_id
+);
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

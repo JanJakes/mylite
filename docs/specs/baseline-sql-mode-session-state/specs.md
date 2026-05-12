@@ -80,7 +80,7 @@ session assignments. `SET ... = DEFAULT` restores the session value to the
 current global default.
 
 MySQL canonicalizes mode order independently of input order and removes
-duplicates. Empty elements from leading or trailing commas are ignored.
+duplicates. Empty comma-separated elements are ignored.
 Whitespace inside a mode token is not trimmed and makes that token invalid.
 
 Combination modes expand while retaining the combination name:
@@ -136,7 +136,7 @@ variable-name components keep the existing supported behavior. Backtick-quoted
 scope names remain rejected.
 
 `mode_list` is a comma-separated list of supported MySQL 8.4 mode names, or an
-empty string. Mode names are ASCII case-insensitive. Leading and trailing empty
+empty string. Mode names are ASCII case-insensitive. Empty comma-separated
 elements are ignored. Duplicate modes are collapsed.
 
 Supported mode names for state:
@@ -171,7 +171,9 @@ Supported effects in this slice:
   continue or escape string literals, and runtime string decoding preserves
   backslash bytes literally.
 - `NO_AUTO_VALUE_ON_ZERO`: explicit `0` inserted into an `AUTO_INCREMENT`
-  column is stored as `0` rather than generating the next sequence value.
+  column is stored as `0` rather than being replaced by a generated sequence
+  value. This slice verifies the storage effect and does not claim exact
+  InnoDB-style counter reservation gaps after every prior insert pattern.
 - `REAL_AS_FLOAT`: a `REAL` column definition maps to MyLite's `FLOAT`
   descriptor instead of `DOUBLE`.
 
@@ -247,9 +249,9 @@ PIPES_AS_CONCAT
 ANSI_QUOTES
 IGNORE_SPACE
 ONLY_FULL_GROUP_BY
-ANSI
 NO_UNSIGNED_SUBTRACTION
 NO_DIR_IN_CREATE
+ANSI
 NO_AUTO_VALUE_ON_ZERO
 NO_BACKSLASH_ESCAPES
 STRICT_TRANS_TABLES
@@ -301,7 +303,7 @@ Coverage must include:
 - session reads versus fixed global reads through scalar `SELECT` and
   `SHOW [SESSION|GLOBAL] VARIABLES LIKE 'sql_mode'`;
 - canonical ordering, duplicate mode removal, combination mode expansion, and
-  leading/trailing comma handling;
+  empty comma-element handling;
 - invalid mode diagnostics and warnings `3135` and `3090`;
 - independent handles and close/reopen reset of session-local state;
 - no catalog generation, SQLite schema generation, descriptor, or preamble
@@ -313,4 +315,3 @@ Coverage must include:
 - `REAL_AS_FLOAT` `REAL` type mapping;
 - existing lexer, parser, runtime SQL-mode scalar, fixed `SET` variables,
   auto-increment, approximate type, string type, and full workflow tests.
-

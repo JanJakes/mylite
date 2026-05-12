@@ -7,7 +7,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Default schema | ❌ | Current schema state |
-| SQL mode scalar value | 🟡 | Limited `@@sql_mode` scalar reads and fixed no-op `SET sql_mode = DEFAULT` / exact-default string forms expose MySQL 8.4.9's default mode string; no mutable mode state, parser effects, conversion effects, or statement behavior changes |
+| SQL mode scalar value | 🟡 | Limited session-local `@@sql_mode`, `@@SESSION.sql_mode`, `@@LOCAL.sql_mode`, `SET sql_mode`, and `SHOW VARIABLES` support with fixed MySQL 8.4.9 default/global readback, canonical assigned mode strings, and behavioral effects only for `ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`, `NO_AUTO_VALUE_ON_ZERO`, and `REAL_AS_FLOAT`; no mutable global state, strict/non-strict conversion effects, or broader mode behavior |
 | Connection character set state | 🟡 | Fixed `utf8mb4` / `utf8mb4_0900_ai_ci` baseline with limited scalar reads and no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve that baseline; no mutable conversion state |
 | Time zone state | ❌ | Time zone variables and conversion |
 | Autocommit state | 🟡 | Limited scalar `@@autocommit` reads and fixed no-op `SET autocommit = 1` forms report/preserve fixed enabled value `1`; no mutable `SET autocommit = 0`, transaction boundaries, commit/rollback behavior, or protocol status flags |
@@ -23,26 +23,26 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 
 | SQL mode | Status | Notes |
 | --- | --- | --- |
-| `ALLOW_INVALID_DATES` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `ANSI` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `ANSI_QUOTES` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `ERROR_FOR_DIVISION_BY_ZERO` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `HIGH_NOT_PRECEDENCE` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `IGNORE_SPACE` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `NO_AUTO_VALUE_ON_ZERO` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `NO_BACKSLASH_ESCAPES` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `NO_DIR_IN_CREATE` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `NO_ENGINE_SUBSTITUTION` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `NO_UNSIGNED_SUBTRACTION` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `NO_ZERO_DATE` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `NO_ZERO_IN_DATE` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `ONLY_FULL_GROUP_BY` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `PAD_CHAR_TO_FULL_LENGTH` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `PIPES_AS_CONCAT` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `REAL_AS_FLOAT` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `STRICT_ALL_TABLES` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `STRICT_TRANS_TABLES` | ❌ | Name appears in the limited read-only default `@@sql_mode` string; mode effects on parsing, DDL/DML, coercion, and diagnostics remain unsupported |
-| `TIME_TRUNCATE_FRACTIONAL` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
-| `TRADITIONAL` | ❌ | Mode effects on parsing, DDL/DML, coercion, diagnostics |
+| `ALLOW_INVALID_DATES` | 🟡 | Accepted and reflected in session `@@sql_mode`; invalid-date conversion effects remain unsupported |
+| `ANSI` | 🟡 | Accepted and reflected as a composite session mode; only its `ANSI_QUOTES` and `REAL_AS_FLOAT` effects are currently implemented |
+| `ANSI_QUOTES` | 🟡 | Limited lexer effect: double-quoted tokens in later statements are parsed as quoted identifiers rather than string literals |
+| `ERROR_FOR_DIVISION_BY_ZERO` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; division-by-zero and strict-mode effects remain unsupported |
+| `HIGH_NOT_PRECEDENCE` | 🟡 | Accepted and reflected in session `@@sql_mode`; operator-precedence effects remain unsupported |
+| `IGNORE_SPACE` | 🟡 | Accepted and reflected in session `@@sql_mode`; function-name parsing effects remain unsupported |
+| `NO_AUTO_VALUE_ON_ZERO` | 🟡 | Limited DML effect: explicit `0` inserted into current descriptor-owned `AUTO_INCREMENT` paths stores zero instead of being replaced by a generated value; exact InnoDB-style counter reservation gaps after all prior insert patterns remain outside the current slice |
+| `NO_BACKSLASH_ESCAPES` | 🟡 | Limited lexer and string-decoding effect for later admitted string literals; broader string and pattern semantics are still unsupported |
+| `NO_DIR_IN_CREATE` | 🟡 | Accepted and reflected in session `@@sql_mode`; directory-option effects remain unsupported |
+| `NO_ENGINE_SUBSTITUTION` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; storage-engine substitution effects remain unsupported |
+| `NO_UNSIGNED_SUBTRACTION` | 🟡 | Accepted and reflected in session `@@sql_mode`; arithmetic type effects remain unsupported |
+| `NO_ZERO_DATE` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; zero-date conversion and strict-mode effects remain unsupported |
+| `NO_ZERO_IN_DATE` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; zero-in-date conversion and strict-mode effects remain unsupported |
+| `ONLY_FULL_GROUP_BY` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; grouping validation effects remain unsupported |
+| `PAD_CHAR_TO_FULL_LENGTH` | 🟡 | Accepted and reflected in session `@@sql_mode` and emits the verified MySQL deprecation warning; `CHAR` readback padding effects remain unsupported |
+| `PIPES_AS_CONCAT` | 🟡 | Accepted and reflected in session `@@sql_mode`; `||` string-concatenation parsing remains unsupported |
+| `REAL_AS_FLOAT` | 🟡 | Limited DDL effect: later `REAL` column definitions map to MyLite's `FLOAT` descriptor subset instead of `DOUBLE` |
+| `STRICT_ALL_TABLES` | 🟡 | Accepted and reflected in session `@@sql_mode`; strict conversion and warning escalation effects remain unsupported |
+| `STRICT_TRANS_TABLES` | 🟡 | Accepted and reflected in session `@@sql_mode` and appears in the default/global value; strict conversion and warning escalation effects remain unsupported |
+| `TIME_TRUNCATE_FRACTIONAL` | 🟡 | Accepted and reflected in session `@@sql_mode`; fractional-time truncation effects remain unsupported |
+| `TRADITIONAL` | 🟡 | Accepted and reflected as a composite session mode, but its strict conversion effects remain unsupported |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

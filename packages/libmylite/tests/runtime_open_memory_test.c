@@ -45,8 +45,17 @@ static int test_open_memory_success_and_independent_handles(void) {
         failures += expect_text(session->selected_schema, "", "selected schema text");
         failures += expect_text(session->current_user_identity, "root@%", "current user");
         failures += expect_text(session->client_user_identity, "root@%", "client user");
-        failures += expect_uint64(session->sql_mode, 0U, "SQL mode placeholder value");
-        failures += expect_bool(session->sql_mode_is_placeholder, true, "SQL mode is placeholder");
+        failures += expect_uint64(
+            session->sql_mode,
+            MYLITE_SESSION_SQL_MODE_DEFAULT_BITS,
+            "SQL mode default value"
+        );
+        failures += expect_text(
+            session->sql_mode_text,
+            MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT,
+            "SQL mode default text"
+        );
+        failures += expect_bool(session->sql_mode_is_placeholder, false, "SQL mode is placeholder");
         failures +=
             expect_bool(session->time_zone_is_placeholder, true, "time zone is placeholder");
         failures += expect_bool(

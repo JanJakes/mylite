@@ -281,8 +281,13 @@ static void initialize_session_state(struct mylite_session_state *session) {
         sizeof(session->client_user_identity),
         "root@%"
     );
-    session->sql_mode = 0U;
-    session->sql_mode_is_placeholder = true;
+    session->sql_mode = MYLITE_SESSION_SQL_MODE_DEFAULT_BITS;
+    copy_session_text(
+        session->sql_mode_text,
+        sizeof(session->sql_mode_text),
+        MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT
+    );
+    session->sql_mode_is_placeholder = false;
     copy_session_text(session->time_zone, sizeof(session->time_zone), "");
     session->time_zone_is_placeholder = true;
     copy_session_text(

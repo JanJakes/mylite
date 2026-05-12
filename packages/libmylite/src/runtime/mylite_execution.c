@@ -64,6 +64,7 @@ enum {
     mysql_error_primary_key_part_null = 1171,
     mysql_error_incorrect_index_name = 1280,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_variable_cant_be_set = 1231,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
@@ -93,6 +94,8 @@ enum {
     mysql_error_incorrect_time_value = 1292,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_legacy_syntax_converted = 3005,
+    mysql_warning_sql_mode_should_be_used_with_strict = 3135,
+    mysql_warning_sql_mode_pad_char_deprecated = 3090,
     mysql_warning_integer_display_width_deprecated = 1681,
     mysql_warning_decimal_unsigned_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
@@ -672,6 +675,7 @@ struct planned_insert {
     bool has_primary_key;
     size_t primary_key_column_index;
     bool has_auto_increment;
+    bool no_auto_value_on_zero;
     size_t auto_increment_column_index;
     struct integer_column_range auto_increment_range;
     int64_t auto_increment_next;
@@ -2531,6 +2535,12 @@ struct system_variable_descriptor {
     bool show_global;
 };
 
+struct sql_mode_descriptor {
+    const char *name;
+    uint64_t bit;
+    uint64_t expansion;
+};
+
 enum set_system_variable_scope {
     SET_SYSTEM_VARIABLE_SCOPE_NONE = 0,
     SET_SYSTEM_VARIABLE_SCOPE_SESSION = 1,
@@ -2584,6 +2594,69 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT, true, false},
 };
 
+static const struct sql_mode_descriptor sql_mode_descriptors[] = {
+    {"REAL_AS_FLOAT", MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT, MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT},
+    {"PIPES_AS_CONCAT",
+     MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT,
+     MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT},
+    {"ANSI_QUOTES", MYLITE_SESSION_SQL_MODE_ANSI_QUOTES, MYLITE_SESSION_SQL_MODE_ANSI_QUOTES},
+    {"IGNORE_SPACE", MYLITE_SESSION_SQL_MODE_IGNORE_SPACE, MYLITE_SESSION_SQL_MODE_IGNORE_SPACE},
+    {"ONLY_FULL_GROUP_BY",
+     MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY,
+     MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY},
+    {"NO_UNSIGNED_SUBTRACTION",
+     MYLITE_SESSION_SQL_MODE_NO_UNSIGNED_SUBTRACTION,
+     MYLITE_SESSION_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
+    {"NO_DIR_IN_CREATE",
+     MYLITE_SESSION_SQL_MODE_NO_DIR_IN_CREATE,
+     MYLITE_SESSION_SQL_MODE_NO_DIR_IN_CREATE},
+    {"ANSI",
+     MYLITE_SESSION_SQL_MODE_ANSI,
+     MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT | MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT |
+         MYLITE_SESSION_SQL_MODE_ANSI_QUOTES | MYLITE_SESSION_SQL_MODE_IGNORE_SPACE |
+         MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY | MYLITE_SESSION_SQL_MODE_ANSI},
+    {"NO_AUTO_VALUE_ON_ZERO",
+     MYLITE_SESSION_SQL_MODE_NO_AUTO_VALUE_ON_ZERO,
+     MYLITE_SESSION_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
+    {"NO_BACKSLASH_ESCAPES",
+     MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES,
+     MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES},
+    {"STRICT_TRANS_TABLES",
+     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES,
+     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES},
+    {"STRICT_ALL_TABLES",
+     MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES,
+     MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES},
+    {"NO_ZERO_IN_DATE",
+     MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE,
+     MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE},
+    {"NO_ZERO_DATE", MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE, MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE},
+    {"ALLOW_INVALID_DATES",
+     MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES,
+     MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES},
+    {"ERROR_FOR_DIVISION_BY_ZERO",
+     MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO,
+     MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO},
+    {"TRADITIONAL",
+     MYLITE_SESSION_SQL_MODE_TRADITIONAL,
+     MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES | MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES |
+         MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE | MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE |
+         MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO | MYLITE_SESSION_SQL_MODE_TRADITIONAL |
+         MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION},
+    {"HIGH_NOT_PRECEDENCE",
+     MYLITE_SESSION_SQL_MODE_HIGH_NOT_PRECEDENCE,
+     MYLITE_SESSION_SQL_MODE_HIGH_NOT_PRECEDENCE},
+    {"NO_ENGINE_SUBSTITUTION",
+     MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION,
+     MYLITE_SESSION_SQL_MODE_NO_ENGINE_SUBSTITUTION},
+    {"PAD_CHAR_TO_FULL_LENGTH",
+     MYLITE_SESSION_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH,
+     MYLITE_SESSION_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH},
+    {"TIME_TRUNCATE_FRACTIONAL",
+     MYLITE_SESSION_SQL_MODE_TIME_TRUNCATE_FRACTIONAL,
+     MYLITE_SESSION_SQL_MODE_TIME_TRUNCATE_FRACTIONAL},
+};
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -2630,7 +2703,7 @@ static int validate_set_names_collation_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *target
 );
-static int validate_set_system_variable_statement(
+static int apply_set_system_variable_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 );
@@ -2659,9 +2732,31 @@ static int validate_set_fixed_boolean_value(
     const struct mylite_sql_ast_node *value_node,
     bool expected_value
 );
-static int validate_set_sql_mode_value(
+static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
+);
+static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes);
+static int parse_sql_mode_token(
+    struct mylite_db *database,
+    const char *text,
+    size_t length,
+    uint64_t *modes
+);
+static bool sql_mode_token_matches(const char *text, size_t length, const char *expected);
+static void set_invalid_sql_mode_error(struct mylite_db *database, const char *text, size_t length);
+static int append_set_sql_mode_warnings(struct mylite_db *database, uint64_t modes);
+static int rebuild_sql_mode_text(
+    struct mylite_db *database,
+    uint64_t modes,
+    char *buffer,
+    size_t buffer_size
+);
+static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
+static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
+static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
+static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
 );
 static void set_read_only_system_variable_error(
     struct mylite_db *database,
@@ -5410,6 +5505,7 @@ static bool system_variable_kind_warns_on_scalar_read(enum session_system_variab
 static int show_system_variable_value(
     struct mylite_db *database,
     enum session_system_variable_kind kind,
+    bool global_scope,
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
@@ -8466,7 +8562,7 @@ int mylite_execute(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = sql_size,
-            .modes = 0U,
+            .modes = lexer_modes_for_session_sql_mode(&database->session),
         },
         &parse_result
     ));
@@ -8988,7 +9084,7 @@ static int execute_set_system_variable_statement(
         return rc;
     }
 
-    rc = validate_set_system_variable_statement(database, statement);
+    rc = apply_set_system_variable_statement(database, statement);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -9113,7 +9209,7 @@ static int validate_set_names_collation_target(
     return MYLITE_OK;
 }
 
-static int validate_set_system_variable_statement(
+static int apply_set_system_variable_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 ) {
@@ -9143,7 +9239,7 @@ static int validate_set_system_variable_statement(
         return validate_set_fixed_boolean_value(database, value_node, expected_boolean_value);
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
-        return validate_set_sql_mode_value(database, value_node);
+        return apply_set_sql_mode_value(database, value_node);
     }
 
     set_read_only_system_variable_error(database, target.name);
@@ -9384,11 +9480,12 @@ static int validate_set_fixed_boolean_value(
     return MYLITE_OK;
 }
 
-static int validate_set_sql_mode_value(
+static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
 ) {
     char *decoded = NULL;
+    uint64_t modes = 0U;
     int rc = MYLITE_OK;
 
     if (value_node == NULL) {
@@ -9396,7 +9493,7 @@ static int validate_set_sql_mode_value(
         return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
-        return MYLITE_OK;
+        return set_session_sql_mode(database, MYLITE_SESSION_SQL_MODE_DEFAULT_BITS);
     }
     if (value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
@@ -9419,17 +9516,223 @@ static int validate_set_sql_mode_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (strcmp(decoded, default_sql_mode_value()) != 0) {
-        free(decoded);
-        set_unsupported_error(
-            database,
-            "SET supports only fixed no-op system variable assignments"
-        );
+    rc = parse_sql_mode_text(database, decoded, &modes);
+    if (rc == MYLITE_OK) {
+        rc = append_set_sql_mode_warnings(database, modes);
+    }
+    if (rc == MYLITE_OK) {
+        rc = set_session_sql_mode(database, modes);
+    }
+    free(decoded);
+    return rc;
+}
+
+static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes) {
+    size_t token_start = 0U;
+    size_t index = 0U;
+    uint64_t modes = 0U;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || out_modes == NULL) {
+        set_runtime_error(database, "invalid sql_mode value");
         return MYLITE_ERROR;
     }
 
-    free(decoded);
+    while (rc == MYLITE_OK) {
+        if (text[index] == ',' || text[index] == '\0') {
+            rc = parse_sql_mode_token(database, &text[token_start], index - token_start, &modes);
+            token_start = index + 1U;
+        }
+        if (text[index] == '\0') {
+            break;
+        }
+        ++index;
+    }
+    if (rc == MYLITE_OK) {
+        *out_modes = modes;
+    }
+    return rc;
+}
+
+static int parse_sql_mode_token(
+    struct mylite_db *database,
+    const char *text,
+    size_t length,
+    uint64_t *modes
+) {
+    if (length == 0U) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < sizeof(sql_mode_descriptors) / sizeof(sql_mode_descriptors[0]);
+         ++index) {
+        if (sql_mode_token_matches(text, length, sql_mode_descriptors[index].name)) {
+            *modes |= sql_mode_descriptors[index].expansion;
+            return MYLITE_OK;
+        }
+    }
+
+    set_invalid_sql_mode_error(database, text, length);
+    return MYLITE_ERROR;
+}
+
+static bool sql_mode_token_matches(const char *text, size_t length, const char *expected) {
+    if (text == NULL || expected == NULL || strlen(expected) != length) {
+        return false;
+    }
+    for (size_t index = 0U; index < length; ++index) {
+        if (ascii_lower((unsigned char)text[index]) !=
+            ascii_lower((unsigned char)expected[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void set_invalid_sql_mode_error(
+    struct mylite_db *database,
+    const char *text,
+    size_t length
+) {
+    char value[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t copied = length < sizeof(value) ? length : sizeof(value) - 1U;
+    int written = 0;
+
+    if (text != NULL && copied > 0U) {
+        memcpy(value, text, copied);
+    }
+    value[copied] = '\0';
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Variable 'sql_mode' can't be set to the value of '%s'",
+        value
+    );
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_variable_cant_be_set,
+        "42000",
+        message
+    );
+}
+
+static int append_set_sql_mode_warnings(struct mylite_db *database, uint64_t modes) {
+    const uint64_t zero_group = MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE |
+                                MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE |
+                                MYLITE_SESSION_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO;
+    bool has_strict = (modes & (MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES |
+                                MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES)) != 0U;
+    bool has_zero_mode = (modes & zero_group) != 0U;
+    bool has_zero_group = (modes & zero_group) == zero_group;
+    int rc = MYLITE_OK;
+
+    if ((has_strict || has_zero_mode) && !(has_strict && has_zero_group)) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_sql_mode_should_be_used_with_strict,
+            "HY000",
+            "'NO_ZERO_DATE', 'NO_ZERO_IN_DATE' and 'ERROR_FOR_DIVISION_BY_ZERO' sql modes "
+            "should be used with strict mode. They will be merged with strict mode in a future "
+            "release."
+        );
+        if (rc != MYLITE_OK) {
+            if (rc == MYLITE_NOMEM) {
+                set_nomem_error(database);
+            }
+            return rc;
+        }
+    }
+    if ((modes & MYLITE_SESSION_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH) != 0U) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_sql_mode_pad_char_deprecated,
+            "HY000",
+            "Changing sql mode 'PAD_CHAR_TO_FULL_LENGTH' is deprecated. It will be removed in "
+            "a future release."
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int set_session_sql_mode(struct mylite_db *database, uint64_t modes) {
+    char text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
+    int rc = rebuild_sql_mode_text(database, modes, text, sizeof(text));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.sql_mode = modes;
+    memcpy(database->session.sql_mode_text, text, strlen(text) + 1U);
+    database->session.sql_mode_is_placeholder = false;
     return MYLITE_OK;
+}
+
+static int rebuild_sql_mode_text(
+    struct mylite_db *database,
+    uint64_t modes,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t offset = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    buffer[0] = '\0';
+    for (size_t index = 0U; index < sizeof(sql_mode_descriptors) / sizeof(sql_mode_descriptors[0]);
+         ++index) {
+        const char *name = sql_mode_descriptors[index].name;
+        size_t name_length = strlen(name);
+
+        if ((modes & sql_mode_descriptors[index].bit) == 0U) {
+            continue;
+        }
+        if (offset != 0U) {
+            if (offset + 1U >= buffer_size) {
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            buffer[offset] = ',';
+            ++offset;
+        }
+        if (offset + name_length >= buffer_size) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(&buffer[offset], name, name_length);
+        offset += name_length;
+        buffer[offset] = '\0';
+    }
+    return MYLITE_OK;
+}
+
+static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode) {
+    if (session == NULL) {
+        return false;
+    }
+    if ((session->sql_mode & mode) != 0U) {
+        return true;
+    }
+    return false;
+}
+
+static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session) {
+    unsigned int modes = 0U;
+
+    if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_ANSI_QUOTES)) {
+        modes |= MYLITE_SQL_MODE_ANSI_QUOTES;
+    }
+    if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+        modes |= MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES;
+    }
+    return modes;
 }
 
 static int execute_create_table_statement(
@@ -14193,6 +14496,7 @@ static int append_show_variable(
     rc = show_system_variable_value(
         database,
         descriptor->kind,
+        global_scope,
         integer_buffer,
         sizeof(integer_buffer),
         &values[1]
@@ -18244,6 +18548,7 @@ static int decode_table_option_string_literal(
     const char *text = NULL;
     size_t length = 0U;
     char quote = '\0';
+    bool allow_backslash = false;
     int rc = MYLITE_OK;
 
     if (out_name == NULL) {
@@ -18265,6 +18570,10 @@ static int decode_table_option_string_literal(
     }
 
     quote = text[0];
+    allow_backslash = true;
+    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+        allow_backslash = false;
+    }
     dynamic_string_init(&string);
     for (size_t index = 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
         char byte = text[index];
@@ -18272,7 +18581,7 @@ static int decode_table_option_string_literal(
         if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
             rc = dynamic_string_append_char(&string, quote);
             ++index;
-        } else if (byte == '\\' && index + 2U < length) {
+        } else if (allow_backslash && byte == '\\' && index + 2U < length) {
             ++index;
             rc = append_decoded_table_option_name_escape(database, &string, text[index], policy);
         } else {
@@ -23332,6 +23641,8 @@ static int initialize_insert_auto_increment_plan(
     plan->auto_increment_next =
         plan->table.auto_increment_next > 0 ? plan->table.auto_increment_next : 1;
     plan->auto_increment_next_after_statement = plan->auto_increment_next;
+    plan->no_auto_value_on_zero =
+        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_AUTO_VALUE_ON_ZERO);
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         if (!column_descriptor_is_auto_increment(&plan->columns[column_index])) {
             continue;
@@ -23754,7 +24065,8 @@ static int generated_auto_increment_value_for_row(
     }
 
     value = &plan->rows[row_index].values[plan->auto_increment_column_index];
-    *out_generated = (value->is_null || (!value->is_text && value->integer == 0)) != 0;
+    *out_generated = (value->is_null || (!plan->no_auto_value_on_zero && !value->is_text &&
+                                         value->integer == 0)) != 0;
     return MYLITE_OK;
 }
 
@@ -35424,7 +35736,11 @@ static int system_variable_value(
         out_cell->value = "binary";
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_MODE:
-        out_cell->value = default_sql_mode_value();
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_cell->value = default_sql_mode_value();
+        } else {
+            out_cell->value = database->session.sql_mode_text;
+        }
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
@@ -35491,9 +35807,33 @@ static int system_variable_value(
     return rc;
 }
 
+static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
+    size_t offset = system_variable_body_offset;
+    size_t scope_start = offset;
+    size_t scope_length = 0U;
+
+    if (span == NULL || span->text == NULL || span->length <= offset) {
+        return false;
+    }
+    if (span->text[offset] == '`') {
+        return false;
+    }
+    while (offset < span->length && span->text[offset] != '.') {
+        ++offset;
+    }
+    if (offset == span->length) {
+        return false;
+    }
+
+    scope_length = offset - scope_start;
+    return sql_mode_token_matches(&span->text[scope_start], scope_length, "global");
+}
+
 static const char *default_sql_mode_value(void) {
-    return "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
-           "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
+    return MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT;
 }
 
 static const struct mylite_diagnostics *system_variable_count_diagnostics(
@@ -35668,6 +36008,7 @@ static bool system_variable_kind_warns_on_scalar_read(enum session_system_variab
 static int show_system_variable_value(
     struct mylite_db *database,
     enum session_system_variable_kind kind,
+    bool global_scope,
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
@@ -35712,7 +36053,11 @@ static int show_system_variable_value(
         *out_value = "binary";
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_MODE:
-        *out_value = default_sql_mode_value();
+        if (global_scope) {
+            *out_value = default_sql_mode_value();
+        } else {
+            *out_value = database->session.sql_mode_text;
+        }
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
@@ -38956,8 +39301,14 @@ static int map_approximate_type(
         break;
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT8:
     case MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE:
-    case MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL:
         type_class = APPROXIMATE_TYPE_DOUBLE;
+        break;
+    case MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL:
+        if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT)) {
+            type_class = APPROXIMATE_TYPE_FLOAT;
+        } else {
+            type_class = APPROXIMATE_TYPE_DOUBLE;
+        }
         break;
     }
 
@@ -42637,6 +42988,7 @@ static int decode_sql_string_literal(
     const char *text = NULL;
     size_t length = 0U;
     char quote = '\0';
+    bool allow_backslash = false;
     int rc = MYLITE_OK;
 
     if (unsupported_message == NULL || nul_message == NULL || out_text == NULL ||
@@ -42659,6 +43011,10 @@ static int decode_sql_string_literal(
     }
 
     quote = text[0];
+    allow_backslash = true;
+    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+        allow_backslash = false;
+    }
     dynamic_string_init(&string);
     for (size_t index = 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
         char byte = text[index];
@@ -42666,7 +43022,7 @@ static int decode_sql_string_literal(
         if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
             rc = dynamic_string_append_char(&string, quote);
             ++index;
-        } else if (byte == '\\' && index + 2U < length) {
+        } else if (allow_backslash && byte == '\\' && index + 2U < length) {
             ++index;
             rc = append_decoded_sql_string_escape(database, &string, text[index], nul_message);
         } else {

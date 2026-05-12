@@ -24,6 +24,7 @@ enum {
     sql_mode_independent_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_variable_cant_be_set = 1231,
 };
 
 static const char default_sql_mode[] =
@@ -45,6 +46,7 @@ struct expected_result {
 
 static int test_sql_mode_values_and_persistence(void);
 static int test_sql_mode_qualifiers_and_errors(void);
+static int test_sql_mode_assignment_and_effects(void);
 static int test_independent_sql_mode_handles(void);
 static int expect_result(const mylite_result *result, struct expected_result expected);
 static int expect_query_result(
@@ -83,6 +85,7 @@ int main(void) {
 
     failures += test_sql_mode_values_and_persistence();
     failures += test_sql_mode_qualifiers_and_errors();
+    failures += test_sql_mode_assignment_and_effects();
     failures += test_independent_sql_mode_handles();
 
     return failures == 0 ? 0 : 1;
@@ -195,9 +198,18 @@ static int test_sql_mode_values_and_persistence(void) {
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
-    failures += expect_int64((int64_t)session->sql_mode, 0, "initial sql mode placeholder value");
+    failures += expect_int64(
+        (int64_t)session->sql_mode,
+        (int64_t)MYLITE_SESSION_SQL_MODE_DEFAULT_BITS,
+        "initial sql mode default bits"
+    );
+    failures += expect_text_or_null(
+        session->sql_mode_text,
+        default_sql_mode,
+        "initial sql mode default text"
+    );
     failures +=
-        expect_int((int)session->sql_mode_is_placeholder, 1, "initial sql mode placeholder flag");
+        expect_int((int)session->sql_mode_is_placeholder, 0, "initial sql mode placeholder flag");
 
     failures += execute_ok(
         database,
@@ -307,12 +319,17 @@ static int test_sql_mode_values_and_persistence(void) {
     session = mylite_connection_session_state(database);
     failures += expect_int64(
         (int64_t)session->sql_mode,
-        0,
-        "sql mode placeholder value unchanged by reads"
+        (int64_t)MYLITE_SESSION_SQL_MODE_DEFAULT_BITS,
+        "sql mode default bits unchanged by reads"
+    );
+    failures += expect_text_or_null(
+        session->sql_mode_text,
+        default_sql_mode,
+        "sql mode default text unchanged by reads"
     );
     failures += expect_int(
         (int)session->sql_mode_is_placeholder,
-        1,
+        0,
         "sql mode placeholder flag unchanged by reads"
     );
     failures += expect_int64(
@@ -441,8 +458,8 @@ static int test_sql_mode_qualifiers_and_errors(void) {
         default_sql_mode,
         default_sql_mode,
     };
-    static const char *const scalar_columns[] = {"@@sql_mode"};
-    static const char *const scalar_values[] = {default_sql_mode};
+    static const char *const scalar_columns[] = {"@@sql_mode", "@@global.sql_mode"};
+    static const char *const scalar_values[] = {"ANSI_QUOTES", default_sql_mode};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -512,27 +529,541 @@ static int test_sql_mode_qualifiers_and_errors(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
-        database,
-        "SET SESSION sql_mode = 'ANSI_QUOTES'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
-        }
-    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'");
     failures += expect_query_result(
         database,
-        "SELECT @@sql_mode",
+        "SELECT @@sql_mode, @@global.sql_mode",
         (struct expected_result){
             .columns = scalar_columns,
             .values = scalar_values,
             .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
-            .context = "sql mode stays read-only after rejected SET",
+            .context = "session sql mode differs from global after SET",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = DEFAULT");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_sql_mode_assignment_and_effects(void) {
+    static const char *const listed_columns[] = {
+        "@@sql_mode",
+        "@@global.sql_mode",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const empty_values[] = {"", default_sql_mode, "0", "0"};
+    static const char *const strict_values[] = {"STRICT_TRANS_TABLES", default_sql_mode, "1", "0"};
+    static const char *const no_zero_date_values[] = {"NO_ZERO_DATE", default_sql_mode, "1", "0"};
+    static const char *const no_zero_in_date_values[] = {
+        "NO_ZERO_IN_DATE",
+        default_sql_mode,
+        "1",
+        "0",
+    };
+    static const char *const no_auto_values[] = {
+        "NO_AUTO_VALUE_ON_ZERO",
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const no_engine_values[] = {
+        "NO_ENGINE_SUBSTITUTION",
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const only_full_group_by_values[] = {
+        "ONLY_FULL_GROUP_BY",
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const local_empty_element_values[] = {
+        "ANSI_QUOTES,STRICT_TRANS_TABLES",
+        default_sql_mode,
+        "1",
+        "0",
+    };
+    static const char *const local_values[] = {
+        "ANSI_QUOTES",
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const default_values[] = {
+        default_sql_mode,
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const reopened_default_values[] = {
+        default_sql_mode,
+        default_sql_mode,
+        "0",
+        "-1",
+    };
+    static const char *const no_backslash_values[] = {
+        "NO_BACKSLASH_ESCAPES",
+        default_sql_mode,
+        "0",
+        "0",
+    };
+    static const char *const show_warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const strict_warning_values[] = {
+        "Warning",
+        "3135",
+        "'NO_ZERO_DATE', 'NO_ZERO_IN_DATE' and 'ERROR_FOR_DIVISION_BY_ZERO' sql modes "
+        "should be used with strict mode. They will be merged with strict mode in a future "
+        "release.",
+    };
+    static const char *const canonical_columns[] = {"@@sql_mode", "@@warning_count"};
+    static const char *const canonical_values[] = {
+        "REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ONLY_FULL_GROUP_BY,"
+        "NO_UNSIGNED_SUBTRACTION,NO_DIR_IN_CREATE,ANSI,NO_AUTO_VALUE_ON_ZERO,"
+        "STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+        "ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_ENGINE_SUBSTITUTION",
+        "0",
+    };
+    static const char *const show_variables_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_mode", "NO_ENGINE_SUBSTITUTION"};
+    static const char *const show_global_values[] = {"sql_mode", default_sql_mode};
+    static const char *const string_value_columns[] = {"v"};
+    static const char *const no_backslash_result[] = {"a\\"};
+    static const char *const double_string_values[] = {"literal"};
+    static const char *const ansi_identifier_columns[] = {"id"};
+    static const char *const ansi_identifier_values[] = {"7"};
+    static const char *const auto_zero_columns[] = {"id", "v"};
+    static const char *const auto_zero_values[] = {"0", "20"};
+    static const char *const auto_next_values[] = {"1", "30"};
+    static const char *const real_show_columns[] =
+        {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const real_float_values[] = {"r", "float", "YES", "", NULL, ""};
+    static const char *const real_double_values[] = {"r", "double", "YES", "", NULL, ""};
+    const struct mylite_session_state *session = NULL;
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "assignment") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open sql mode SET file");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    session = mylite_connection_session_state(database);
+    catalog_generation = session->catalog_generation;
+    sqlite_schema_generation = session->sqlite_schema_generation;
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = empty_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "empty sql_mode assignment",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = strict_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "strict sql_mode assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'");
+    failures += expect_query_result(
+        database,
+        "SHOW WARNINGS",
+        (struct expected_result){
+            .columns = show_warning_columns,
+            .values = strict_warning_values,
+            .count = sizeof(show_warning_columns) / sizeof(show_warning_columns[0]),
+            .context = "strict sql_mode warning",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_zero_date_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "NO_ZERO_DATE assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_IN_DATE'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_zero_in_date_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "NO_ZERO_IN_DATE assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_auto_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "NO_AUTO_VALUE_ON_ZERO assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@sql_mode = \"NO_ENGINE_SUBSTITUTION\"");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_engine_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "@@sql_mode double-quoted assignment",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_mode'",
+        (struct expected_result){
+            .columns = show_variables_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variables_columns) / sizeof(show_variables_columns[0]),
+            .context = "SHOW session sql_mode",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_mode'",
+        (struct expected_result){
+            .columns = show_variables_columns,
+            .values = show_global_values,
+            .count = sizeof(show_variables_columns) / sizeof(show_variables_columns[0]),
+            .context = "SHOW global sql_mode",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = \"NO_ZERO_DATE\"");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_zero_date_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "SESSION double-quoted assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@SESSION.sql_mode = \"NO_ZERO_IN_DATE\"");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_zero_in_date_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "@@SESSION assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@session.SQL_mode = \"only_full_group_by\"");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = only_full_group_by_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "case-insensitive @@session assignment",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "SET LOCAL sql_mode = ',ansi_quotes,,strict_trans_tables,'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = local_empty_element_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "LOCAL assignment with empty sql_mode elements",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@LOCAL.sql_mode = 'ANSI_QUOTES'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = local_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "@@LOCAL assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@LOCAL.sql_mode = DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = default_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "@@LOCAL DEFAULT assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_engine_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "SESSION assignment before DEFAULT",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = default_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "SESSION DEFAULT assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ENGINE_SUBSTITUTION'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_engine_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "unqualified assignment before DEFAULT",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = default_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "unqualified DEFAULT assignment",
+        }
+    );
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->catalog_generation,
+        (int64_t)catalog_generation,
+        "catalog generation unchanged by sql mode SET"
+    );
+    failures += expect_int64(
+        (int64_t)session->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "sqlite schema generation unchanged by sql mode SET"
+    );
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read sql mode SET preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after sql mode SET"
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = no_backslash_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "NO_BACKSLASH_ESCAPES assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE slash_strings (v VARCHAR(10))");
+    failures += execute_statement_ok(database, "INSERT INTO slash_strings VALUES ('a\\')");
+    failures += expect_query_result(
+        database,
+        "SELECT v FROM slash_strings",
+        (struct expected_result){
+            .columns = string_value_columns,
+            .values = no_backslash_result,
+            .count = sizeof(string_value_columns) / sizeof(string_value_columns[0]),
+            .context = "NO_BACKSLASH_ESCAPES string decoding",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "SET sql_mode = "
+        "'ANSI,TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,NO_UNSIGNED_SUBTRACTION,NO_DIR_IN_CREATE'"
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@warning_count",
+        (struct expected_result){
+            .columns = canonical_columns,
+            .values = canonical_values,
+            .count = sizeof(canonical_columns) / sizeof(canonical_columns[0]),
+            .context = "combination sql_mode canonicalization",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE \"ansi_mode_table\" (id INT)");
+    failures += execute_statement_ok(database, "INSERT INTO \"ansi_mode_table\" VALUES (7)");
+    failures += expect_query_result(
+        database,
+        "SELECT id FROM \"ansi_mode_table\"",
+        (struct expected_result){
+            .columns = ansi_identifier_columns,
+            .values = ansi_identifier_values,
+            .count = sizeof(ansi_identifier_columns) / sizeof(ansi_identifier_columns[0]),
+            .context = "ANSI_QUOTES identifier parsing",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += execute_statement_ok(database, "CREATE TABLE double_quote_strings (v VARCHAR(20))");
+    failures +=
+        execute_statement_ok(database, "INSERT INTO double_quote_strings VALUES (\"literal\")");
+    failures += expect_query_result(
+        database,
+        "SELECT v FROM double_quote_strings",
+        (struct expected_result){
+            .columns = string_value_columns,
+            .values = double_string_values,
+            .count = sizeof(string_value_columns) / sizeof(string_value_columns[0]),
+            .context = "double quotes return to string literals",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE real_double (r REAL)");
+    failures += expect_query_result(
+        database,
+        "SHOW COLUMNS FROM real_double",
+        (struct expected_result){
+            .columns = real_show_columns,
+            .values = real_double_values,
+            .count = sizeof(real_show_columns) / sizeof(real_show_columns[0]),
+            .context = "REAL maps to DOUBLE without REAL_AS_FLOAT",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'REAL_AS_FLOAT'");
+    failures += execute_statement_ok(database, "CREATE TABLE real_float (r REAL)");
+    failures += expect_query_result(
+        database,
+        "SHOW COLUMNS FROM real_float",
+        (struct expected_result){
+            .columns = real_show_columns,
+            .values = real_float_values,
+            .count = sizeof(real_show_columns) / sizeof(real_show_columns[0]),
+            .context = "REAL maps to FLOAT with REAL_AS_FLOAT",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE auto_zero (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO auto_zero (id, v) VALUES (0, 20)");
+    failures += execute_statement_ok(database, "INSERT INTO auto_zero (v) VALUES (30)");
+    failures += expect_query_result(
+        database,
+        "SELECT id, v FROM auto_zero WHERE v = 20",
+        (struct expected_result){
+            .columns = auto_zero_columns,
+            .values = auto_zero_values,
+            .count = sizeof(auto_zero_columns) / sizeof(auto_zero_columns[0]),
+            .context = "NO_AUTO_VALUE_ON_ZERO stores explicit zero",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT id, v FROM auto_zero WHERE v = 30",
+        (struct expected_result){
+            .columns = auto_zero_columns,
+            .values = auto_next_values,
+            .count = sizeof(auto_zero_columns) / sizeof(auto_zero_columns[0]),
+            .context = "NO_AUTO_VALUE_ON_ZERO permits later generated values",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "SET sql_mode = 'STRICT_TRANS_TABLES,PAD_CHAR_TO_FULL_LENGTH'"
+    );
+    failures += expect_show_count_warnings(database, "2", "strict plus PAD warning count");
+    failures += execute_error(
+        database,
+        "SET sql_mode = 'BOGUS'",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "Variable 'sql_mode' can't be set to the value of 'BOGUS'",
+        }
+    );
+    session = mylite_connection_session_state(database);
+    failures += expect_text_or_null(
+        session->sql_mode_text,
+        "STRICT_TRANS_TABLES,PAD_CHAR_TO_FULL_LENGTH",
+        "invalid sql_mode leaves previous state"
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'ANSI_QUOTES'");
+    mylite_close(database);
+    database = NULL;
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen sql mode assignment file");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_mode, @@global.sql_mode, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = listed_columns,
+            .values = reopened_default_values,
+            .count = sizeof(listed_columns) / sizeof(listed_columns[0]),
+            .context = "reopen resets session sql_mode after SET",
+        }
+    );
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_result(
+        database,
+        "SELECT id, v FROM auto_zero WHERE v = 20",
+        (struct expected_result){
+            .columns = auto_zero_columns,
+            .values = auto_zero_values,
+            .count = sizeof(auto_zero_columns) / sizeof(auto_zero_columns[0]),
+            .context = "reopen preserves rows after sql_mode SET",
         }
     );
 
     mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 
@@ -542,7 +1073,7 @@ static int test_independent_sql_mode_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {default_sql_mode, "1", "0"};
+    static const char *const first_values[] = {"ANSI_QUOTES", "0", "0"};
     static const char *const second_values[] = {default_sql_mode, "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -551,7 +1082,7 @@ static int test_independent_sql_mode_handles(void) {
 
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql mode handle");
     failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql mode handle");
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET sql_mode = 'ANSI_QUOTES'");
 
     failures += execute_ok(first, "SELECT @@sql_mode, @@warning_count, @@error_count", &result);
     failures += expect_result(

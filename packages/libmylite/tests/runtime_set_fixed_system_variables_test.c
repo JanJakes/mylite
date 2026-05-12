@@ -19,6 +19,7 @@ enum {
     diagnostics_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_variable_cant_be_set = 1231,
     mysql_error_session_variable_only = 1238,
 };
 
@@ -336,11 +337,11 @@ static int test_set_fixed_system_variables_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SET sql_mode = 'ANSI_QUOTES'",
+        "SET sql_mode = 'BOGUS'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_variable_cant_be_set,
             .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+            .message_part = "Variable 'sql_mode' can't be set to the value of 'BOGUS'",
         }
     );
     failures += execute_error(

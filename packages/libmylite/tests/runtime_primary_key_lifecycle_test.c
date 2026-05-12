@@ -20,6 +20,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_no_database_selected = 1046,
     mysql_error_invalid_default = 1067,
+    mysql_error_duplicate_column = 1060,
     mysql_error_duplicate_key = 1062,
     mysql_error_multiple_primary_key = 1068,
     mysql_error_parse = 1064,
@@ -50,6 +51,7 @@ struct expected_dml_result {
 };
 
 static int test_primary_key_metadata_dml_and_persistence(void);
+static int test_composite_primary_key_lifecycle(void);
 static int test_primary_key_type_and_mutation_coverage(void);
 static int test_primary_key_diagnostics(void);
 static int test_primary_key_independent_handles(void);
@@ -92,6 +94,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_primary_key_metadata_dml_and_persistence();
+    failures += test_composite_primary_key_lifecycle();
     failures += test_primary_key_type_and_mutation_coverage();
     failures += test_primary_key_diagnostics();
     failures += test_primary_key_independent_handles();
@@ -514,6 +517,439 @@ static int test_primary_key_metadata_dml_and_persistence(void) {
     return failures;
 }
 
+static int test_composite_primary_key_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "a",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "",
+        "b",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "",
+        "v",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const show_index_rows[] = {
+        "cpk", "0", "PRIMARY", "1", "a", "A", "0", NULL, NULL, "", "BTREE", "", "", "YES", NULL,
+        "cpk", "0", "PRIMARY", "2", "b", "A", "0", NULL, NULL, "", "BTREE", "", "", "YES", NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "cpk",
+        "CREATE TABLE `cpk` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_column_rows[] = {
+        "a",
+        "PRI",
+        "NO",
+        "b",
+        "PRI",
+        "NO",
+        "v",
+        "",
+        "YES",
+    };
+    static const char *const key_usage_rows[] = {
+        "PRIMARY",
+        "a",
+        "1",
+        "PRIMARY",
+        "b",
+        "2",
+    };
+    static const char *const statistics_rows[] = {
+        "PRIMARY",
+        "1",
+        "a",
+        "PRIMARY",
+        "2",
+        "b",
+    };
+    static const char *const rows_after_insert[] = {"1", "2", "10", "1", "3", "30"};
+    static const char *const rows_after_update[] = {"1", "2", "10", "2", "4", "30"};
+    static const char *const rows_after_ignore[] = {
+        "1",
+        "2",
+        "10",
+        "2",
+        "2",
+        "22",
+        "2",
+        "4",
+        "30",
+    };
+    static const char *const default_rows[] = {"7", "8", "10"};
+    static const char *const like_show_create_rows[] = {
+        "cpk_like",
+        "CREATE TABLE `cpk_like` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const like_show_index_rows[] = {
+        "cpk_like", "0", "PRIMARY", "1",   "a",  "A",        "0", NULL,      NULL,  "",
+        "BTREE",    "",  "",        "YES", NULL, "cpk_like", "0", "PRIMARY", "2",   "b",
+        "A",        "0", NULL,      NULL,  "",   "BTREE",    "",  "",        "YES", NULL,
+    };
+    static const char *const ctas_show_create_rows[] = {
+        "cpk_ctas",
+        "CREATE TABLE `cpk_ctas` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const renamed_index_rows[] = {
+        "cpk_renamed", "0", "PRIMARY", "1",   "a",  "A",           "0", NULL,      NULL,  "",
+        "BTREE",       "",  "",        "YES", NULL, "cpk_renamed", "0", "PRIMARY", "2",   "b",
+        "A",           "0", NULL,      NULL,  "",   "BTREE",       "",  "",        "YES", NULL,
+    };
+    static const char *const reopened_rows[] = {
+        "1",
+        "2",
+        "10",
+        "2",
+        "2",
+        "22",
+        "2",
+        "4",
+        "30",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "composite") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open composite file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE cpk (a INT, b INT, v INT, PRIMARY KEY (a,b))");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM cpk",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "composite primary key SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cpk",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "composite primary key SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE cpk",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite primary key SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_KEY, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'cpk' ORDER BY ORDINAL_POSITION",
+            .values = information_schema_column_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite primary key INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION "
+                   "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'cpk' ORDER BY ORDINAL_POSITION",
+            .values = key_usage_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite primary key KEY_COLUMN_USAGE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql =
+                "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+                "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'cpk' ORDER BY SEQ_IN_INDEX",
+            .values = statistics_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite primary key STATISTICS",
+        }
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO cpk VALUES (1, 2, 10), (1, 3, 30)", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM cpk ORDER BY v",
+            .values = rows_after_insert,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite primary key inserted rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO cpk VALUES (1, 2, 99)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'cpk.PRIMARY'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE cpk SET b = 2 WHERE b = 3",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'cpk.PRIMARY'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cpk_update_diag (a INT, b INT, v INT, PRIMARY KEY (a,b))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO cpk_update_diag VALUES (1, 2, 10), (2, 2, 20), (2, 3, 30)",
+        3
+    );
+    failures += execute_error(
+        database,
+        "UPDATE cpk_update_diag SET b = 2 WHERE b >= 2",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2-2' for key 'cpk_update_diag.PRIMARY'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cpk_update_limit_diag (a INT, b INT, v INT, PRIMARY KEY (a,b))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO cpk_update_limit_diag VALUES "
+        "(1, 2, 10), (1, 3, 30), (2, 2, 20), (2, 3, 40)",
+        4
+    );
+    failures += execute_error(
+        database,
+        "UPDATE cpk_update_limit_diag SET b = 2 WHERE b >= 2 ORDER BY v DESC LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2-2' for key 'cpk_update_limit_diag.PRIMARY'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO cpk VALUES (NULL, 5, 50)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'a' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE cpk SET b = NULL WHERE a = 1 AND b = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'b' cannot be null",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE cpk SET b = 4 WHERE a = 1 AND b = 3", 1);
+    failures += expect_dml_ok(database, "UPDATE cpk SET a = 2 WHERE a = 1 AND b = 4", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM cpk ORDER BY v",
+            .values = rows_after_update,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite primary key updated rows",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO cpk VALUES (1, 2, 11), (2, 2, 22)",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM cpk ORDER BY v",
+            .values = rows_after_ignore,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite primary key INSERT IGNORE",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cpk_defaults (a INT DEFAULT 7, b INT DEFAULT 8, v INT, PRIMARY KEY(a,b))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO cpk_defaults (v) VALUES (10)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM cpk_defaults",
+            .values = default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "composite primary key defaults",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cpk_types (i INT, j INTEGER, b BIGINT, u INT UNSIGNED, "
+        "ui INTEGER UNSIGNED, ub BIGINT UNSIGNED, PRIMARY KEY(i,j,b,u,ui,ub))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO cpk_types VALUES (-2147483648, 2147483647, 9223372036854775807, "
+        "4294967295, 4294967295, 9223372036854775807)",
+        1
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO cpk_types VALUES (-2147483648, 2147483647, 9223372036854775807, "
+        "4294967295, 4294967295, 9223372036854775807)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part =
+                "Duplicate entry '-2147483648-2147483647-9223372036854775807-4294967295-",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE cpk_like LIKE cpk");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE cpk_like",
+            .values = like_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE composite primary key SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cpk_like",
+            .values = like_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "CREATE TABLE LIKE composite primary key SHOW INDEX",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO cpk_like VALUES (1, 2, 10)", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO cpk_like VALUES (1, 2, 11)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'cpk_like.PRIMARY'",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE cpk_ctas AS SELECT * FROM cpk");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE cpk_ctas",
+            .values = ctas_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "CREATE TABLE SELECT omits composite primary key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cpk_ctas",
+            .values = NULL,
+            .column_count = show_index_field_count,
+            .row_count = 0U,
+            .context = "CREATE TABLE SELECT composite primary key SHOW INDEX",
+        }
+    );
+
+    failures += expect_statement_ok(database, "RENAME TABLE cpk TO cpk_renamed");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cpk_renamed",
+            .values = renamed_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "renamed composite primary key SHOW INDEX",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen composite file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM cpk_renamed ORDER BY v",
+            .values = reopened_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite primary key persists after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_primary_key_type_and_mutation_coverage(void) {
     static const char *const set_rows[] = {"1", "10"};
     static const char *const delete_rows[] = {"1", "15", "2", "20"};
@@ -767,6 +1203,60 @@ static int test_primary_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "CREATE TABLE cpk_explicit_null (a INT NULL, b INT, PRIMARY KEY (a,b))",
+        (struct expected_sql_error){
+            .code = mysql_error_primary_key_part_null,
+            .sqlstate = "42000",
+            .message_part = "All parts of a PRIMARY KEY must be NOT NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE cpk_default_null (a INT DEFAULT NULL, b INT, PRIMARY KEY (a,b))",
+        (struct expected_sql_error){
+            .code = mysql_error_primary_key_part_null,
+            .sqlstate = "42000",
+            .message_part = "All parts of a PRIMARY KEY must be NOT NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE cpk_duplicate_part (a INT, b INT, PRIMARY KEY (a,a))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_column,
+            .sqlstate = "42S21",
+            .message_part = "Duplicate column name 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE cpk_missing_part (a INT, b INT, PRIMARY KEY (a,missing))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_column_missing,
+            .sqlstate = "42000",
+            .message_part = "Key column 'missing' doesn't exist in table",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE cpk_qualified_part (a INT, b INT, PRIMARY KEY (app.a,b))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "PRIMARY KEY supports only unqualified key columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE cpk_string_part (a INT, b VARCHAR(10), PRIMARY KEY (a,b))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "PRIMARY KEY supports only integer columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "CREATE TABLE default_null_pk (id INT DEFAULT NULL PRIMARY KEY)",
         (struct expected_sql_error){
             .code = mysql_error_invalid_default,
@@ -790,15 +1280,6 @@ static int test_primary_key_diagnostics(void) {
             .code = mysql_error_key_column_missing,
             .sqlstate = "42000",
             .message_part = "Key column 'missing' doesn't exist in table",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE composite_pk (id INT, v INT, PRIMARY KEY (id, v))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports exactly one key column",
         }
     );
     failures += execute_error(

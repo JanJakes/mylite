@@ -159,6 +159,26 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "update duplicate composite primary key after unchanged matched rows" \
+    1062 \
+    23000 \
+    "Duplicate entry '2-2' for key 'update_diag.PRIMARY'" \
+    "CREATE TABLE update_diag (a INT, b INT, v INT, PRIMARY KEY (a,b)); "\
+"INSERT INTO update_diag VALUES (1, 2, 10), (2, 2, 20), (2, 3, 30); "\
+"UPDATE update_diag SET b = 2 WHERE b >= 2;" \
+    "$DATABASE"
+
+expect_error \
+    "update duplicate composite primary key with order limit target" \
+    1062 \
+    23000 \
+    "Duplicate entry '2-2' for key 'update_limit_diag.PRIMARY'" \
+    "CREATE TABLE update_limit_diag (a INT, b INT, v INT, PRIMARY KEY (a,b)); "\
+"INSERT INTO update_limit_diag VALUES (1, 2, 10), (1, 3, 30), (2, 2, 20), (2, 3, 40); "\
+"UPDATE update_limit_diag SET b = 2 WHERE b >= 2 ORDER BY v DESC LIMIT 1;" \
+    "$DATABASE"
+
+expect_error \
     "insert null first primary-key part" \
     1048 \
     23000 \

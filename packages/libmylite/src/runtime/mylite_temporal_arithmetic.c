@@ -406,10 +406,8 @@ static bool date_year_month_day_valid(uint32_t year, uint32_t month, uint32_t da
 }
 
 static bool datetime_time_components_valid(uint32_t hour, uint32_t minute, uint32_t second) {
-    return (hour >= temporal_datetime_minimum_hour && hour <= temporal_datetime_maximum_hour &&
-            minute >= temporal_datetime_minimum_minute_or_second &&
+    return (hour <= temporal_datetime_maximum_hour &&
             minute <= temporal_datetime_maximum_minute_or_second &&
-            second >= temporal_datetime_minimum_minute_or_second &&
             second <= temporal_datetime_maximum_minute_or_second) != 0;
 }
 

@@ -1564,10 +1564,7 @@ static bool datetime_text_is_zero_datetime(const char *text, size_t text_length)
 }
 
 static bool datetime_time_components_valid(uint32_t hour, uint32_t minute, uint32_t second) {
-    return (hour >= datetime_minimum_hour && hour <= datetime_maximum_hour &&
-            minute >= datetime_minimum_minute_or_second &&
-            minute <= datetime_maximum_minute_or_second &&
-            second >= datetime_minimum_minute_or_second &&
+    return (hour <= datetime_maximum_hour && minute <= datetime_maximum_minute_or_second &&
             second <= datetime_maximum_minute_or_second) != 0;
 }
 

@@ -24,6 +24,7 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_parse = 1064,
+    mysql_error_duplicate_column = 1060,
     mysql_error_duplicate_key = 1062,
     mysql_error_multiple_primary_key = 1068,
     mysql_error_key_column_missing = 1072,
@@ -62,6 +63,7 @@ struct primary_key_type_case {
 };
 
 static int test_alter_add_primary_key_success_metadata_and_persistence(void);
+static int test_alter_add_composite_primary_key_lifecycle(void);
 static int test_alter_add_primary_key_integer_types_and_defaults(void);
 static int test_alter_add_primary_key_diagnostics(void);
 static int test_alter_add_primary_key_independent_handles(void);
@@ -115,6 +117,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_alter_add_primary_key_success_metadata_and_persistence();
+    failures += test_alter_add_composite_primary_key_lifecycle();
     failures += test_alter_add_primary_key_integer_types_and_defaults();
     failures += test_alter_add_primary_key_diagnostics();
     failures += test_alter_add_primary_key_independent_handles();
@@ -448,6 +451,401 @@ static int test_alter_add_primary_key_success_metadata_and_persistence(void) {
     return failures;
 }
 
+static int test_alter_add_composite_primary_key_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "a",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "",
+        "b",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "",
+        "v",
+        "int",
+        "YES",
+        "MUL",
+        NULL,
+        "",
+    };
+    static const char *const show_index_rows[] = {
+        "add_comp", "0",     "PRIMARY", "1",        "a",     "A",   "0",        NULL,    NULL,
+        "",         "BTREE", "",        "",         "YES",   NULL,  "add_comp", "0",     "PRIMARY",
+        "2",        "b",     "A",       "0",        NULL,    NULL,  "",         "BTREE", "",
+        "",         "YES",   NULL,      "add_comp", "1",     "k_v", "1",        "v",     "A",
+        "0",        NULL,    NULL,      "YES",      "BTREE", "",    "",         "YES",   NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "add_comp",
+        "CREATE TABLE `add_comp` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`),\n"
+        "  KEY `k_v` (`v`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_columns_rows[] = {
+        "a",
+        "NO",
+        "PRI",
+        NULL,
+        "b",
+        "NO",
+        "PRI",
+        NULL,
+        "v",
+        "YES",
+        "MUL",
+        NULL,
+    };
+    static const char *const information_schema_key_column_usage_rows[] = {
+        "PRIMARY",
+        "a",
+        "1",
+        NULL,
+        "PRIMARY",
+        "b",
+        "2",
+        NULL,
+    };
+    static const char *const information_schema_statistics_rows[] = {
+        "k_v",
+        "1",
+        "1",
+        "v",
+        "YES",
+        "PRIMARY",
+        "0",
+        "1",
+        "a",
+        "",
+        "PRIMARY",
+        "0",
+        "2",
+        "b",
+        "",
+    };
+    static const char *const rows_after_dml[] = {
+        "1",
+        "2",
+        "10",
+        "2",
+        "1",
+        "20",
+        "2",
+        "2",
+        "22",
+        "3",
+        "3",
+        "30",
+    };
+    static const char *const default_show_create_rows[] = {
+        "default_comp",
+        "CREATE TABLE `default_comp` (\n"
+        "  `a` int NOT NULL DEFAULT '7',\n"
+        "  `b` int NOT NULL DEFAULT '8',\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const explicit_null_show_create_rows[] = {
+        "explicit_null_comp",
+        "CREATE TABLE `explicit_null_comp` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const qualified_show_create_rows[] = {
+        "qualified_comp",
+        "CREATE TABLE `qualified_comp` (\n"
+        "  `a` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  PRIMARY KEY (`a`,`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const renamed_show_index_rows[] = {
+        "renamed_comp",
+        "0",
+        "PRIMARY",
+        "1",
+        "a",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "renamed_comp",
+        "0",
+        "PRIMARY",
+        "2",
+        "b",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "composite_alter") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open composite alter file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE add_comp (a INT, b INT, v INT, KEY k_v (v))");
+    failures += expect_dml_ok(database, "INSERT INTO add_comp VALUES (2,1,20),(1,2,10)", 2);
+    failures += expect_alter_primary_key_ok(database, "ALTER TABLE add_comp ADD PRIMARY KEY (a,b)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM add_comp",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "composite ADD PRIMARY KEY SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM add_comp",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 3U,
+            .context = "composite ADD PRIMARY KEY SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE add_comp",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite ADD PRIMARY KEY SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'add_comp' ORDER BY ORDINAL_POSITION",
+            .values = information_schema_columns_rows,
+            .column_count = 4U,
+            .row_count = 3U,
+            .context = "composite I_S COLUMNS after ADD PRIMARY KEY",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION, "
+                   "REFERENCED_TABLE_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'add_comp' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_key_column_usage_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "composite I_S KEY_COLUMN_USAGE after ADD PRIMARY KEY",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, NULLABLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'add_comp' ORDER BY INDEX_NAME",
+            .values = information_schema_statistics_rows,
+            .column_count = statistics_probe_field_count,
+            .row_count = 3U,
+            .context = "composite I_S STATISTICS after ADD PRIMARY KEY",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO add_comp VALUES (2, 1, 21)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2-1' for key 'add_comp.PRIMARY'",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO add_comp VALUES (2,2,22),(3,3,30)", 2);
+    failures += execute_error(
+        database,
+        "UPDATE add_comp SET a = 2 WHERE b = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2-2' for key 'add_comp.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM add_comp ORDER BY v",
+            .values = rows_after_dml,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "rows after composite ADD PRIMARY KEY DML",
+        }
+    );
+    failures +=
+        expect_physical_index_count(database, 2, "composite primary plus secondary indexes");
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE default_comp (a INT DEFAULT 7, b INT DEFAULT 8, v INT)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO default_comp (v) VALUES (10)", 1);
+    failures +=
+        expect_alter_primary_key_ok(database, "ALTER TABLE default_comp ADD PRIMARY KEY (a,b)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE default_comp",
+            .values = default_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite non-NULL defaults preserved",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO default_comp (v) VALUES (20)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '7-8' for key 'default_comp.PRIMARY'",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE explicit_null_comp (a INT DEFAULT NULL, b INT DEFAULT NULL, v INT)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO explicit_null_comp VALUES (1,2,10)", 1);
+    failures += expect_alter_primary_key_ok(
+        database,
+        "ALTER TABLE explicit_null_comp ADD PRIMARY KEY (a,b)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE explicit_null_comp",
+            .values = explicit_null_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite DEFAULT NULL normalized away",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO explicit_null_comp (v) VALUES (20)",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'a' doesn't have a default value",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE qualified_comp (a INT, b INT)");
+    failures += expect_dml_ok(database, "INSERT INTO qualified_comp VALUES (1,2)", 1);
+    failures += expect_alter_primary_key_ok(
+        database,
+        "ALTER TABLE app.qualified_comp ADD PRIMARY KEY (a,b)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE qualified_comp",
+            .values = qualified_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "schema-qualified composite ADD PRIMARY KEY",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE rename_comp (a INT, b INT)");
+    failures += expect_dml_ok(database, "INSERT INTO rename_comp VALUES (1,2)", 1);
+    failures +=
+        expect_alter_primary_key_ok(database, "ALTER TABLE rename_comp ADD PRIMARY KEY (a,b)");
+    failures += expect_statement_ok(database, "RENAME TABLE rename_comp TO renamed_comp");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM renamed_comp",
+            .values = renamed_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "renamed composite primary key metadata",
+        }
+    );
+    failures += expect_statement_ok(database, "DROP TABLE renamed_comp");
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM renamed_comp",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.renamed_comp' doesn't exist",
+        }
+    );
+    failures += expect_bytes(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) == 0 ? actual_preamble
+                                                                              : NULL,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after composite ADD PRIMARY KEY"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen composite alter file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE add_comp",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "reopened composite added primary key",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_alter_add_primary_key_integer_types_and_defaults(void) {
     static const char *const default_show_create_rows[] = {
         "default_pk",
@@ -747,14 +1145,68 @@ static int test_alter_add_primary_key_diagnostics(void) {
             .message_part = "PRIMARY KEY supports only integer columns",
         }
     );
-    failures += expect_statement_ok(database, "CREATE TABLE composite_pk (a INT, b INT)");
+    failures += expect_statement_ok(database, "CREATE TABLE dup_comp (a INT, b INT)");
+    failures += expect_dml_ok(database, "INSERT INTO dup_comp VALUES (1,2),(1,2)", 2);
     failures += execute_error(
         database,
-        "ALTER TABLE composite_pk ADD PRIMARY KEY (a, b)",
+        "ALTER TABLE dup_comp ADD PRIMARY KEY (a, b)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'dup_comp.PRIMARY'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE dup_comp_order (a INT, b INT)");
+    failures +=
+        expect_dml_ok(database, "INSERT INTO dup_comp_order VALUES (2,2),(2,2),(1,9),(1,9)", 4);
+    failures += execute_error(
+        database,
+        "ALTER TABLE dup_comp_order ADD PRIMARY KEY (a, b)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2-2' for key 'dup_comp_order.PRIMARY'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE has_null_comp (a INT, b INT)");
+    failures += expect_dml_ok(database, "INSERT INTO has_null_comp VALUES (1,NULL)", 1);
+    failures += execute_error(
+        database,
+        "ALTER TABLE has_null_comp ADD PRIMARY KEY (a, b)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_use_of_null,
+            .sqlstate = "22004",
+            .message_part = "Invalid use of NULL value",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE dup_part (a INT, b INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE dup_part ADD PRIMARY KEY (a, a)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_column,
+            .sqlstate = "42S21",
+            .message_part = "Duplicate column name 'a'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE missing_comp_col (a INT, b INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_comp_col ADD PRIMARY KEY (a, missing)",
+        (struct expected_sql_error){
+            .code = mysql_error_key_column_missing,
+            .sqlstate = "42000",
+            .message_part = "Key column 'missing' doesn't exist in table",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE text_comp_pk (a INT, b VARCHAR(10))");
+    failures += execute_error(
+        database,
+        "ALTER TABLE text_comp_pk ADD PRIMARY KEY (a, b)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports exactly one key column",
+            .message_part = "PRIMARY KEY supports only integer columns",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE qualified_pk (id INT)");

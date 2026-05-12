@@ -212,6 +212,16 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "first existing duplicate tuple is reported" \
+    1062 \
+    23000 \
+    "Duplicate entry '2-2' for key 'dup_order.PRIMARY'" \
+    "CREATE TABLE dup_order (a INT, b INT); "\
+"INSERT INTO dup_order VALUES (2,2),(2,2),(1,9),(1,9); "\
+"ALTER TABLE dup_order ADD PRIMARY KEY (a,b);" \
+    "$DATABASE"
+
+expect_error \
     "existing null values fail" \
     1138 \
     22004 \

@@ -226,14 +226,19 @@ Validation runs before catalog mutation:
   appears more than once;
 - duplicate diagnostics format integer key values in declared key-part order
   joined with `-`, matching observed MySQL 8.4.9 behavior for the admitted
-  integer values.
+  integer values;
+- when several duplicate tuples exist, MyLite reports the tuple from the
+  earliest conflicting physical row group by using an unshadowed SQLite rowid
+  alias, matching the observed MySQL 8.4.9 first-conflict behavior for this
+  slice.
 
 Validation should stay SQLite-side:
 
 - detect `NULL` with a `SELECT 1 ... WHERE col1 IS NULL OR col2 IS NULL ...
   LIMIT 1` shape;
 - detect duplicates with a grouped query over all key parts and materialize at
-  most the first conflicting tuple needed for diagnostics;
+  most the first conflicting tuple needed for diagnostics, ordered by the
+  minimum physical rowid alias in each duplicate group;
 - quote every generated identifier;
 - bind no SQL literals from user text.
 
@@ -258,6 +263,11 @@ Rules:
 - quote every identifier;
 - use SQLite schema execution helpers and normal statement transactions;
 - do not use SQLite `WITHOUT ROWID` tables;
+- existing generated MyLite user tables must be rowid tables with at least one
+  unshadowed public SQLite rowid alias (`rowid`, `_rowid_`, or `oid`) available
+  for duplicate validation ordering; if all aliases are shadowed by descriptor
+  columns, the statement is rejected by the same internal-rowid unsupported
+  policy used by other rowid-dependent baseline operations;
 - do not modify the bundled SQLite fork.
 
 ## Result Semantics
@@ -286,6 +296,8 @@ The supported subset uses these diagnostics:
 - unknown key part: `1072 / 42000`;
 - duplicate key part: `1060 / 42S21`;
 - unsupported key-part type: existing integer-primary-key unsupported
+  diagnostic;
+- unavailable physical rowid alias: deterministic MyLite unsupported
   diagnostic;
 - existing `NULL` in a key part: `1138 / 22004`;
 - existing duplicate tuple: `1062 / 23000`;

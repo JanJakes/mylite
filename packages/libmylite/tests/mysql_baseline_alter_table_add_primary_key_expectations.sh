@@ -280,12 +280,6 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "MySQL accepts deferred composite primary key" \
-    "CREATE TABLE deferred_composite_pk (a INT, b INT); "\
-"ALTER TABLE deferred_composite_pk ADD PRIMARY KEY (a, b);" \
-    "$DATABASE"
-
-expect_upstream_accepts \
     "MySQL accepts deferred named primary key constraint" \
     "CREATE TABLE deferred_named_pk (id INT); "\
 "ALTER TABLE deferred_named_pk ADD CONSTRAINT named_pk PRIMARY KEY (id);" \

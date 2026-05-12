@@ -342,10 +342,10 @@ static int validate_catalog_column_values(
     const struct catalog_column_values *values,
     bool use_logical_object_name
 );
-static int validate_catalog_column_default_value(
-    enum mylite_catalog_column_default_kind kind,
-    const char *default_text
-);
+static int validate_catalog_column_default_value(const struct catalog_column_values *values);
+static bool catalog_logical_type_accepts_text_default(const char *logical_type);
+static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
+static bool catalog_logical_type_equals(const char *logical_type, const char *expected);
 static int validate_catalog_bool_i64(int64_t value, bool *out_bool);
 static int validate_index_kind(enum mylite_catalog_index_kind kind);
 static int validate_active_mutation(const struct mylite_catalog_mutation *mutation);
@@ -4478,24 +4478,95 @@ static int validate_catalog_column_values(
         return rc;
     }
 
-    return validate_catalog_column_default_value(values->default_kind, values->default_text);
+    return validate_catalog_column_default_value(values);
 }
 
-static int validate_catalog_column_default_value(
-    enum mylite_catalog_column_default_kind kind,
-    const char *default_text
-) {
-    int rc = validate_column_default_kind(kind);
+static int validate_catalog_column_default_value(const struct catalog_column_values *values) {
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
 
+    if (values == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_column_default_kind(values->default_kind);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+    if (values->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
+        values->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return MYLITE_OK;
     }
+    if (values->default_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (; text_length < MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY; ++text_length) {
+        if (values->default_text[text_length] == '\0') {
+            break;
+        }
+    }
+    if (text_length == MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY) {
+        return MYLITE_MISUSE;
+    }
+    if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
+        if (text_length == 0U ||
+            !text_has_ascii_case_insensitive_prefix(values->logical_type, "DECIMAL(")) {
+            return MYLITE_MISUSE;
+        }
+        return MYLITE_OK;
+    }
+    if (!catalog_logical_type_accepts_text_default(values->logical_type)) {
+        return MYLITE_MISUSE;
+    }
+    if (text_length == 0U &&
+        !catalog_logical_type_accepts_empty_text_default(values->logical_type)) {
+        return MYLITE_MISUSE;
+    }
 
-    return validate_required_name(default_text, MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY);
+    return MYLITE_OK;
+}
+
+static bool catalog_logical_type_accepts_text_default(const char *logical_type) {
+    if (catalog_logical_type_accepts_empty_text_default(logical_type)) {
+        return true;
+    }
+    if (catalog_logical_type_equals(logical_type, "DATE") ||
+        catalog_logical_type_equals(logical_type, "DATETIME") ||
+        catalog_logical_type_equals(logical_type, "TIMESTAMP")) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type) {
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "CHAR(") != 0) {
+        return true;
+    }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "VARCHAR(") != 0) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool catalog_logical_type_equals(const char *logical_type, const char *expected) {
+    size_t index = 0U;
+
+    if (logical_type == NULL || expected == NULL) {
+        return false;
+    }
+    for (; logical_type[index] != '\0' && expected[index] != '\0'; ++index) {
+        if (ascii_lower((unsigned char)logical_type[index]) !=
+            ascii_lower((unsigned char)expected[index])) {
+            return false;
+        }
+    }
+
+    if (logical_type[index] == '\0' && expected[index] == '\0') {
+        return true;
+    }
+
+    return false;
 }
 
 static int validate_catalog_bool_i64(int64_t value, bool *out_bool) {

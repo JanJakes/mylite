@@ -6809,7 +6809,7 @@ static int test_varchar_type_statements(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "CREATE TABLE string_types (v0 VARCHAR(0), label VARCHAR(255) NOT NULL);",
+        "CREATE TABLE string_types (v0 VARCHAR(0), label VARCHAR(255) NOT NULL DEFAULT 'tag');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -6829,6 +6829,11 @@ static int test_varchar_type_statements(void) {
         child_at(column, 2U),
         MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
         "varchar max not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "varchar string default"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -6902,7 +6907,7 @@ static int test_char_type_statements(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "CREATE TABLE char_types (c CHAR, c0 CHAR(0), c255 CHAR(255) NOT NULL);",
+        "CREATE TABLE char_types (c CHAR, c0 CHAR(0), c255 CHAR(255) NOT NULL DEFAULT 'z');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -6927,6 +6932,11 @@ static int test_char_type_statements(void) {
         child_at(column, 2U),
         MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
         "char max not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "char string default"
     );
     mylite_sql_parse_result_deinit(&result);
 

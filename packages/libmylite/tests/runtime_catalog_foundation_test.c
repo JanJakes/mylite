@@ -29,6 +29,7 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
 static int test_reopen_preserves_catalog_rows_and_generation(void);
 static int test_idempotent_catalog_initialization_across_repeated_opens(void);
 static int test_independent_file_backed_handles_have_independent_catalog_state(void);
+static int test_catalog_default_text_validation(void);
 static int test_rejects_incompatible_and_incomplete_catalog_metadata(void);
 static int test_zero_initialized_catalog_cleanup(void);
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -59,6 +60,7 @@ int main(void) {
     failures += test_reopen_preserves_catalog_rows_and_generation();
     failures += test_idempotent_catalog_initialization_across_repeated_opens();
     failures += test_independent_file_backed_handles_have_independent_catalog_state();
+    failures += test_catalog_default_text_validation();
     failures += test_rejects_incompatible_and_incomplete_catalog_metadata();
     failures += test_zero_initialized_catalog_cleanup();
 
@@ -370,6 +372,139 @@ static int test_independent_file_backed_handles_have_independent_catalog_state(v
     remove_related_files(second_path);
     remove_related_files(first_path);
 
+    return failures;
+}
+
+static int test_catalog_default_text_validation(void) {
+    mylite_db *database = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    struct mylite_catalog_column_descriptor column = {0};
+    int failures =
+        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open default-text catalog");
+
+    failures += expect_int(
+        mylite_catalog_create_schema(database, "app", &schema),
+        MYLITE_OK,
+        "create default-text schema"
+    );
+    failures += expect_int(
+        mylite_catalog_create_table(
+            database,
+            schema.schema_id,
+            "defaults",
+            "phys_defaults",
+            MYLITE_CATALOG_TABLE_KIND_BASE,
+            &table
+        ),
+        MYLITE_OK,
+        "create default-text table"
+    );
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            1,
+            "empty_varchar",
+            "VARCHAR(3)",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_TEXT,
+            0,
+            "",
+            &column
+        ),
+        MYLITE_OK,
+        "catalog accepts empty string defaults for VARCHAR"
+    );
+    failures += expect_text(column.default_text, "", "empty VARCHAR catalog default");
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            2,
+            "date_default",
+            "DATE",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_TEXT,
+            0,
+            "2024-01-01",
+            &column
+        ),
+        MYLITE_OK,
+        "catalog accepts nonempty temporal text defaults"
+    );
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            3,
+            "decimal_default",
+            "DECIMAL(5,2)",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL,
+            0,
+            "1.00",
+            &column
+        ),
+        MYLITE_OK,
+        "catalog accepts nonempty decimal text defaults"
+    );
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            4,
+            "empty_decimal",
+            "DECIMAL(5,2)",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL,
+            0,
+            "",
+            &column
+        ),
+        MYLITE_MISUSE,
+        "catalog rejects empty decimal text defaults"
+    );
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            4,
+            "empty_date",
+            "DATE",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_TEXT,
+            0,
+            "",
+            &column
+        ),
+        MYLITE_MISUSE,
+        "catalog rejects empty temporal text defaults"
+    );
+    failures += expect_int(
+        mylite_catalog_create_column(
+            database,
+            table.table_id,
+            4,
+            "text_default",
+            "TEXT",
+            "TEXT",
+            true,
+            MYLITE_CATALOG_COLUMN_DEFAULT_TEXT,
+            0,
+            "abc",
+            &column
+        ),
+        MYLITE_MISUSE,
+        "catalog rejects TEXT descriptor defaults"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

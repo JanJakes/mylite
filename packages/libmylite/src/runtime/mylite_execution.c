@@ -5678,6 +5678,10 @@ static int finalize_planned_column_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_string_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_decimal_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -6925,6 +6929,7 @@ static int append_alter_table_add_column_decimal_zero(
     const struct planned_alter_table_add_column *plan
 );
 static int append_quoted_sql_text(struct dynamic_string *string, const char *text);
+static int append_mysql_quoted_default_text(struct dynamic_string *string, const char *text);
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
     char **out_sql
@@ -14570,15 +14575,7 @@ static int append_show_create_table_column_default(
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-            int rc = dynamic_string_append(string, " DEFAULT '");
-
-            if (rc == MYLITE_OK) {
-                rc = dynamic_string_append(string, column->default_text);
-            }
-            if (rc == MYLITE_OK) {
-                rc = dynamic_string_append_char(string, '\'');
-            }
-            return rc;
+            return append_mysql_quoted_default_text(string, column->default_text);
         }
         return MYLITE_OK;
     }
@@ -34466,7 +34463,7 @@ static int validate_column_default(
         return MYLITE_OK;
     }
     if (default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
-        if (planned_column_is_string_family(column)) {
+        if (planned_column_is_text_family(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -34519,6 +34516,9 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
 
+    if (planned_column_is_char(column) || planned_column_is_varchar(column)) {
+        return finalize_planned_column_string_default(database, column);
+    }
     if (planned_column_is_decimal(column)) {
         return finalize_planned_column_decimal_default(database, column);
     }
@@ -34546,6 +34546,52 @@ static int finalize_planned_column_default(
     column->default_integer = default_integer;
 
     return MYLITE_OK;
+}
+
+static int finalize_planned_column_string_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    if (planned_column_is_char(column)) {
+        rc = convert_char_literal(
+            database,
+            child_at(column->default_node, 0U),
+            &descriptor,
+            1U,
+            &value
+        );
+    } else {
+        rc = convert_varchar_literal(
+            database,
+            child_at(column->default_node, 0U),
+            &descriptor,
+            1U,
+            &value
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
 }
 
 static int finalize_planned_column_decimal_default(
@@ -41932,8 +41978,41 @@ static int append_alter_table_add_column_decimal_zero(
 static int append_quoted_sql_text(struct dynamic_string *string, const char *text) {
     int rc = dynamic_string_append(string, " DEFAULT '");
 
+    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
+        if (text[index] == '\'') {
+            rc = dynamic_string_append(string, "''");
+        } else {
+            rc = dynamic_string_append_char(string, text[index]);
+        }
+    }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, text);
+        rc = dynamic_string_append_char(string, '\'');
+    }
+
+    return rc;
+}
+
+static int append_mysql_quoted_default_text(struct dynamic_string *string, const char *text) {
+    int rc = dynamic_string_append(string, " DEFAULT '");
+
+    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
+        switch (text[index]) {
+        case '\'':
+            rc = dynamic_string_append(string, "''");
+            break;
+        case '\\':
+            rc = dynamic_string_append(string, "\\\\");
+            break;
+        case '\n':
+            rc = dynamic_string_append(string, "\\n");
+            break;
+        case '\r':
+            rc = dynamic_string_append(string, "\\r");
+            break;
+        default:
+            rc = dynamic_string_append_char(string, text[index]);
+            break;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, '\'');

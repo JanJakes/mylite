@@ -164,6 +164,9 @@ This feature must not implement:
   the existing text default descriptor field and may widen the in-memory
   capacity so `CHAR(255)` and `VARCHAR(255)` defaults fit; the on-disk catalog
   column is already SQLite `TEXT`, so no catalog schema migration is required.
+  Catalog validation accepts empty text defaults only for `CHAR` and `VARCHAR`
+  logical descriptors; decimal and temporal text-backed defaults must stay
+  nonempty, and `TEXT` family descriptors do not admit defaults in this slice.
 - Result and introspection builders render defaults from MyLite descriptors.
   SQLite schema text and `sqlite_schema` are not metadata authority.
 - SQLite owns physical row storage and DDL execution for generated statements.
@@ -249,21 +252,26 @@ Generated SQLite physical tables remain descriptor-driven:
 
 ```sql
 CREATE TABLE "_mylite_user_table_<id>" (
-    "column_name" TEXT [NOT NULL] [DEFAULT '<escaped default>'],
+    "column_name" TEXT [NOT NULL],
     ...
 );
 ```
 
-`ALTER TABLE ... ADD COLUMN` uses the same descriptor-built SQL shape:
+Physical `CREATE TABLE` intentionally omits string default clauses. The MyLite
+catalog descriptor remains authoritative, and DML default materialization binds
+descriptor-owned values explicitly. `ALTER TABLE ... ADD COLUMN` emits a
+physical `DEFAULT` for this slice because SQLite uses that clause to backfill
+existing rows and enforce `NOT NULL` added columns:
 
 ```sql
 ALTER TABLE "_mylite_user_table_<id>"
 ADD COLUMN "column_name" TEXT [NOT NULL] DEFAULT '<escaped default>';
 ```
 
-Every generated identifier is quoted. Generated string literals are quoted by a
-single MyLite helper that doubles embedded single quotes; backslash characters
-are preserved as ordinary text after the source SQL literal has been decoded.
+Every generated identifier is quoted. Generated SQLite string literals use a
+MyLite helper that doubles embedded single quotes and preserves decoded
+backslash bytes as ordinary text. `SHOW CREATE TABLE` uses MySQL-style
+quoted rendering for descriptor defaults.
 DML row values continue to use prepared statements and bound text values rather
 than interpolated literals.
 
@@ -338,4 +346,3 @@ Add MySQL-runtime-verified expectation coverage for:
   functions, parameters, and `DEFAULT(col_name)`;
 - existing `CHAR`, `VARCHAR`, `TEXT`, parser, DML default, `SHOW`, catalog,
   file-backed, and compatibility lifecycle tests still pass.
-

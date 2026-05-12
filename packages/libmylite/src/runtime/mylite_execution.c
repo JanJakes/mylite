@@ -46,6 +46,7 @@ enum {
     mysql_error_key_column_does_not_exist = 1072,
     mysql_error_cant_remove_all_fields = 1090,
     mysql_error_cant_drop_field_or_key = 1091,
+    mysql_error_no_tables_used = 1096,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown_table_in_schema = 1109,
@@ -67,6 +68,7 @@ enum {
     mysql_error_incorrect_index_name = 1280,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
+    mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
@@ -4865,6 +4867,21 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int scalar_subquery_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_subquery_select_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_subquery_inner_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int session_scalar_value_without_case(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -5768,6 +5785,7 @@ static int if_validation_stack_push(
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_subquery_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_sign_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -7742,6 +7760,7 @@ static int plan_row_scalar_non_concat_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_literal_value(
@@ -8640,6 +8659,8 @@ static void set_parse_error(
     const struct mylite_sql_parse_result *parse_result
 );
 static void set_unsupported_error(struct mylite_db *database, const char *message);
+static void set_no_tables_used_error(struct mylite_db *database);
+static void set_scalar_subquery_column_count_error(struct mylite_db *database);
 static void set_native_function_parameter_count_error(
     struct mylite_db *database,
     const char *function_name
@@ -9157,6 +9178,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -16943,6 +16965,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -30902,7 +30925,8 @@ static bool do_statement_has_only_scalar_projection_expressions(
         return false;
     }
     while (expression != NULL) {
-        if (!is_scalar_projection_expression(expression)) {
+        if (is_scalar_subquery_projection_expression(expression) ||
+            !is_scalar_projection_expression(expression)) {
             return false;
         }
         expression = expression->next_sibling;
@@ -31422,11 +31446,138 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
         return case_expression_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+        return scalar_subquery_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
+}
+
+static int scalar_subquery_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *statement = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "scalar subquery supports only parenthesized SELECT");
+        return MYLITE_ERROR;
+    }
+
+    statement = child_at(expression, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "scalar subquery supports only parenthesized SELECT");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_subquery_select_value(database, statement, out_cell);
+}
+
+static int scalar_subquery_select_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_options(statement) != 0U ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0 ||
+        mylite_sql_ast_node_select_locking_clause(statement) !=
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        set_unsupported_error(database, "scalar subquery supports only plain inner SELECT");
+        return MYLITE_ERROR;
+    }
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_unsupported_error(database, "scalar subquery supports only one explicit select item");
+        return MYLITE_ERROR;
+    }
+    if (select_list_is_wildcard(select_list)) {
+        if (select_statement_has_no_source_or_dual(statement)) {
+            set_no_tables_used_error(database);
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(database, "scalar subquery does not support table-backed SELECT");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_scalar_subquery_column_count_error(database);
+        return MYLITE_ERROR;
+    }
+
+    child = child_at(statement, 1U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_FROM_DUAL) {
+            child = child->next_sibling;
+            continue;
+        }
+        if (child->kind == MYLITE_SQL_AST_FROM_TABLE) {
+            set_unsupported_error(database, "scalar subquery does not support table-backed SELECT");
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(
+            database,
+            "scalar subquery supports only no-source or DUAL inner SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        set_unsupported_error(database, "scalar subquery supports only one explicit select item");
+        return MYLITE_ERROR;
+    }
+    return scalar_subquery_inner_value(database, child_at(select_item, 0U), out_cell);
+}
+
+static int scalar_subquery_inner_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "scalar subquery supports only scalar inner values");
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        if (database->session.has_selected_schema) {
+            out_cell->value = database->session.selected_schema;
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL:
+        return literal_projection_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        if (is_scalar_projection_literal_expression(expression)) {
+            return literal_projection_value(database, expression, out_cell);
+        }
+        break;
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        return system_variable_value(database, expression, out_cell);
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "scalar subquery supports only DATABASE(), SCHEMA(), integer, boolean, NULL, "
+        "and system variable inner values"
+    );
+    return MYLITE_ERROR;
 }
 
 static int session_scalar_value_without_case(
@@ -38399,6 +38550,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (expression == NULL) {
         return false;
     }
+    if (is_scalar_subquery_projection_expression(expression)) {
+        return true;
+    }
     if (is_session_scalar_expression(expression)) {
         return true;
     }
@@ -38448,6 +38602,14 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
         return true;
     }
     return is_scalar_value_projection_expression(expression);
+}
+
+static bool is_scalar_subquery_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY;
 }
 
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -45370,6 +45532,8 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
+    bool allow_scalar_subquery = true;
+
     expression = unwrap_parenthesized_expression(expression);
     planned_row_scalar_expression_deinit(out_expression);
     if (expression == NULL) {
@@ -45389,6 +45553,9 @@ static int plan_row_scalar_expression(
         );
     }
 
+    if (has_source) {
+        allow_scalar_subquery = false;
+    }
     return plan_row_scalar_non_concat_expression(
         database,
         expression,
@@ -45396,6 +45563,7 @@ static int plan_row_scalar_expression(
         source_context,
         table_columns,
         table_column_count,
+        allow_scalar_subquery,
         out_expression
     );
 }
@@ -45407,6 +45575,7 @@ static int plan_row_scalar_non_concat_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
@@ -45420,6 +45589,16 @@ static int plan_row_scalar_non_concat_expression(
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        if (!allow_scalar_subquery) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT supports scalar subqueries only as CONCAT() arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_session_value(database, expression, out_expression);
     }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
@@ -45681,6 +45860,7 @@ static int plan_row_scalar_concat_expression(
                 source_context,
                 table_columns,
                 table_column_count,
+                true,
                 &out_expression->arguments[argument_index]
             );
         }
@@ -45756,6 +45936,9 @@ static bool row_scalar_expression_contains_concat(const struct mylite_sql_ast_no
         if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
             found = true;
             break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
         }
         child_count = mylite_sql_ast_node_child_count(current);
         for (size_t child_index = 0U; child_index < child_count; ++child_index) {
@@ -54088,6 +54271,24 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
         mysql_error_parse,
         "42000",
         message
+    );
+}
+
+static void set_no_tables_used_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_no_tables_used,
+        "HY000",
+        "No tables used"
+    );
+}
+
+static void set_scalar_subquery_column_count_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_operand_should_contain_one_column,
+        "21000",
+        "Operand should contain 1 column(s)"
     );
 }
 

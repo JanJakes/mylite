@@ -349,7 +349,7 @@ static int test_if_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "SELECT IF() supports only signed 64-bit integer",
         }
     );
     failures += execute_error(

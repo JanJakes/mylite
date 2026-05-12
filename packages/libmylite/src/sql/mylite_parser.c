@@ -3209,6 +3209,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_scalar_subquery_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *subquery = make_node(
+        state,
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren))
+    );
+    if (subquery == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(subquery, select_statement);
+    return subquery;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token case_token,

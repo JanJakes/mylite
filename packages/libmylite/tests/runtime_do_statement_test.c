@@ -333,7 +333,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'SELECT'",
+            .message_part = "DO supports only session scalar values",
         }
     );
     failures += execute_error(

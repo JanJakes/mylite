@@ -56,6 +56,8 @@ MySQL 8.4.9 establishes the behavior used by this slice:
   produce an empty inner result set.
 - A scalar subquery returning more than one column fails with
   `1241 / 21000`, message `Operand should contain 1 column(s)`.
+- `SELECT *` inside a no-source or `FROM DUAL` scalar subquery fails with
+  `1096 / HY000`, message `No tables used`.
 - A scalar subquery returning more than one row fails with `1242 / 21000`,
   message `Subquery returns more than 1 row`. This is reserved for later
   table-backed scalar subqueries.
@@ -153,7 +155,8 @@ Evaluation for an admitted scalar subquery:
 
 1. Validate that the subquery contains one inner `SELECT`.
 2. Validate that the inner `SELECT` has exactly one select item. If it has more
-   than one select item or a wildcard, return `1241 / 21000`.
+   than one select item, return `1241 / 21000`. If it is wildcard `SELECT *`
+   without a real table source, return `1096 / HY000`.
 3. Reject inner `DISTINCT`, select options, `SQL_CALC_FOUND_ROWS`, locking
    clauses, table sources, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, and
    `LIMIT` with deterministic unsupported diagnostics.
@@ -196,7 +199,9 @@ Supported diagnostics:
 
 - parser syntax errors through existing parse diagnostics;
 - `1241 / 21000`, `Operand should contain 1 column(s)`, when the scalar
-  subquery has more than one projected item or a wildcard projection;
+  subquery has more than one projected item;
+- `1096 / HY000`, `No tables used`, when the scalar subquery uses wildcard
+  projection without a real table source;
 - deterministic `1064 / 42000` unsupported diagnostics for table-backed
   subqueries, correlated references, unsupported inner clauses, unsupported
   inner expressions, unsupported outer contexts, nested scalar subqueries, and

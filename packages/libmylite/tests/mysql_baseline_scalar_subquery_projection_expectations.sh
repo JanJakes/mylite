@@ -87,9 +87,11 @@ esac
 
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
+run_mysql "CREATE TABLE t (id INT, v VARCHAR(20)); INSERT INTO t VALUES (1, 'a'), (2, NULL);" \
+    "$DATABASE" >/dev/null
 
 scalar_expected=$(cat <<EXPECTED
-${DATABASE}	test-${DATABASE}	${DATABASE}	NULL	1	2	-3	1	0	0
+${DATABASE}	test-${DATABASE}	${DATABASE}	NULL	1	2	-3	1	0	0	0
 -1	0
 EXPECTED
 )
@@ -98,7 +100,8 @@ expect_output \
     "$scalar_expected" \
     "DO 0; SELECT (SELECT DATABASE()), CONCAT('test-', (SELECT DATABASE())), "\
 "((SELECT DATABASE())), (SELECT NULL), (SELECT 1), (SELECT +2), (SELECT -3), "\
-"(SELECT TRUE), (SELECT FALSE), @@warning_count; SELECT ROW_COUNT(), @@warning_count;" \
+"(SELECT TRUE), (SELECT FALSE), (SELECT @@warning_count), @@warning_count; "\
+"SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 dual_expected=$(cat <<EXPECTED
@@ -109,6 +112,17 @@ expect_output \
     "dual scalar subquery projection values" \
     "$dual_expected" \
     "SELECT (SELECT DATABASE() FROM DUAL), (SELECT 1 FROM DUAL);" \
+    "$DATABASE"
+
+row_scalar_expected=$(cat <<EXPECTED
+1	a-${DATABASE}
+2	NULL
+EXPECTED
+)
+expect_output \
+    "row-scalar concat scalar subquery values" \
+    "$row_scalar_expected" \
+    "SELECT id, CONCAT(v, '-', (SELECT DATABASE())) FROM t ORDER BY id;" \
     "$DATABASE"
 
 labels_expected=$(cat <<EXPECTED
@@ -128,6 +142,14 @@ expect_error \
     21000 \
     "Operand should contain 1 column(s)" \
     "SELECT (SELECT DATABASE(), SCHEMA());" \
+    "$DATABASE"
+
+expect_error \
+    "scalar subquery rejects wildcard without table" \
+    1096 \
+    HY000 \
+    "No tables used" \
+    "SELECT (SELECT * FROM DUAL);" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_scalar_subquery_projection_expectations: ok"

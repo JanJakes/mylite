@@ -1790,6 +1790,9 @@ expression(A) ::= qualified_identifier(B). {
 expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
+expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }

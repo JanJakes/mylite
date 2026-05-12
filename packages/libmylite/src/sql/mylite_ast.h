@@ -240,6 +240,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SECONDARY_INDEX_PART = 231,
     MYLITE_SQL_AST_CONCAT_FUNCTION = 232,
     MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR = 233,
+    MYLITE_SQL_AST_SCALAR_SUBQUERY = 234,
 };
 
 enum mylite_sql_ast_literal_kind {

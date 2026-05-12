@@ -43,6 +43,7 @@ static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
+static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
 static int test_abs_function(void);
@@ -239,6 +240,7 @@ int main(void) {
     failures += test_ifnull_function();
     failures += test_coalesce_function();
     failures += test_concat_function();
+    failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
     failures += test_isnull_function();
     failures += test_abs_function();
@@ -1771,6 +1773,78 @@ static int test_concat_function(void) {
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
     failures += expect_span_text(first_expression, "concat", "concat identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_scalar_subquery_expression(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *inner_select = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT (SELECT DATABASE()), CONCAT('x', (SELECT 1 FROM DUAL)) AS c;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SCALAR_SUBQUERY, "scalar subquery");
+    failures += expect_span_text(first_expression, "(SELECT DATABASE())", "scalar subquery span");
+    inner_select = child_at(first_expression, 0U);
+    failures +=
+        expect_node(inner_select, MYLITE_SQL_AST_SELECT_STATEMENT, "scalar subquery select");
+    failures += expect_node(
+        child_at(child_at(child_at(inner_select, 0U), 0U), 0U),
+        MYLITE_SQL_AST_DATABASE_FUNCTION,
+        "scalar subquery inner database"
+    );
+
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        "concat with scalar subquery"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_literal(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "concat scalar subquery string"
+    );
+    failures += expect_node(
+        child_at(arguments, 1U),
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        "concat scalar subquery argument"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(arguments, 1U), 0U), 1U),
+        MYLITE_SQL_AST_FROM_DUAL,
+        "scalar subquery from dual"
+    );
+    failures +=
+        expect_node(child_at(child_at(select_list, 1U), 1U), MYLITE_SQL_AST_IDENTIFIER, "alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (SELECT DATABASE(), SCHEMA());", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        "multi-column scalar subquery marker"
+    );
+    failures += expect_child_count(
+        child_at(child_at(first_expression, 0U), 0U),
+        2U,
+        "multi-column scalar subquery select list"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

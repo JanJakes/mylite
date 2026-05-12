@@ -553,6 +553,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_drop_primary_key_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
         return "alter_table_add_index_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+        return "alter_table_drop_index_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
         return "alter_table_auto_increment_statement";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:

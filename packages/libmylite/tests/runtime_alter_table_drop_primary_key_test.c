@@ -595,9 +595,11 @@ static int test_drop_primary_key_auto_increment_and_diagnostics(void) {
         database,
         "ALTER TABLE ai_key DROP INDEX id_idx",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_wrong_auto_key,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "Incorrect table definition; there can be only one auto column and it must be "
+                "defined as a key",
         }
     );
     failures += execute_error(

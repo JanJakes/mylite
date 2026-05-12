@@ -81,6 +81,7 @@ static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
 static int test_alter_table_add_index_statements(void);
+static int test_alter_table_drop_index_statements(void);
 static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
@@ -261,6 +262,7 @@ int main(void) {
     failures += test_create_table_primary_key_statements();
     failures += test_alter_table_add_primary_key_statements();
     failures += test_alter_table_add_index_statements();
+    failures += test_alter_table_drop_index_statements();
     failures += test_alter_table_drop_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
@@ -8186,6 +8188,68 @@ static int test_alter_table_add_index_statements(void) {
     return failures;
 }
 
+static int test_alter_table_drop_index_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE drop_idx DROP INDEX k_v;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT,
+        "alter drop index statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter drop index child count");
+    failures += expect_span_text(child_at(statement, 0U), "drop_idx", "alter drop index table");
+    failures += expect_span_text(child_at(statement, 1U), "k_v", "alter drop index name");
+    failures +=
+        expect_span_text(statement, "ALTER TABLE drop_idx DROP INDEX k_v", "alter drop index span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE app.drop_idx DROP KEY `k_v`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.drop_idx",
+        "schema-qualified alter drop index table"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "`k_v`", "quoted alter drop key name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE drop_idx DROP INDEX `PRIMARY`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 1U), "`PRIMARY`", "quoted primary drop name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_idx DROP INDEX PRIMARY;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_idx DROP INDEX k_v, ADD INDEX k_id (id);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_idx DROP INDEX k_v, ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP INDEX k_v ON drop_idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_alter_table_drop_primary_key_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -12991,8 +13055,7 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("ALTER TABLE old_name DROP INDEX idx;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("ALTER TABLE old_name DROP INDEX idx;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

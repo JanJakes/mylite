@@ -33,6 +33,7 @@ enum {
     mysql_error_invalid_use_of_null = 1138,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
+    mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_field_no_default = 1364,
 };
 
@@ -1135,7 +1136,7 @@ static int test_alter_add_primary_key_diagnostics(void) {
             .message_part = "Multiple primary key defined",
         }
     );
-    failures += expect_statement_ok(database, "CREATE TABLE text_pk (id VARCHAR(10))");
+    failures += expect_statement_ok(database, "CREATE TABLE text_pk (id TEXT)");
     failures += execute_error(
         database,
         "ALTER TABLE text_pk ADD PRIMARY KEY (id)",
@@ -1206,7 +1207,7 @@ static int test_alter_add_primary_key_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only integer columns",
+            .message_part = "PRIMARY KEY supports only single-column CHAR/VARCHAR keys",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE qualified_pk (id INT)");

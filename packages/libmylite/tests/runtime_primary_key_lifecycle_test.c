@@ -1252,7 +1252,7 @@ static int test_primary_key_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only integer columns",
+            .message_part = "PRIMARY KEY supports only single-column CHAR/VARCHAR keys",
         }
     );
     failures += execute_error(
@@ -1284,7 +1284,7 @@ static int test_primary_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE varchar_pk (v VARCHAR(3) PRIMARY KEY)",
+        "CREATE TABLE text_pk (v TEXT PRIMARY KEY)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

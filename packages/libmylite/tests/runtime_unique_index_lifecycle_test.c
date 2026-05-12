@@ -29,6 +29,7 @@ enum {
     mysql_error_duplicate_key = 1062,
     mysql_error_duplicate_key_name = 1061,
     mysql_error_key_column_missing = 1072,
+    mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_index_name = 1280,
 };
@@ -514,11 +515,11 @@ static int test_unique_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE varchar_unique (name VARCHAR(20), UNIQUE KEY u_name (name))",
+        "CREATE TABLE varchar_zero_unique (name VARCHAR(0), UNIQUE KEY u_name (name))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_storage_engine_cant_index_column,
             .sqlstate = "42000",
-            .message_part = "Unique indexes do not yet support string columns",
+            .message_part = "The used storage engine can't index column 'name'",
         }
     );
     failures += execute_error(

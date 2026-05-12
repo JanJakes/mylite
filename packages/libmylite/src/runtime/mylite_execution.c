@@ -54,6 +54,7 @@ enum {
     mysql_error_invalid_use_of_null = 1138,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
+    mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_incorrect_index_name = 1280,
@@ -230,6 +231,8 @@ static const char scalar_pi_text[] = "3.141593";
 static const double angle_conversion_half_turn_degrees = 180.0;
 static const double double_scientific_integer_threshold = 1.0e15;
 static const uint64_t longtext_max_length = 4294967295ULL;
+static const unsigned char ascii_max_byte = 0x7fU;
+static const char string_key_collation_name[] = "utf8mb4_0900_ai_ci";
 
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
@@ -3605,6 +3608,10 @@ static int validate_alter_table_add_primary_key_nulls(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan
 );
+static int validate_alter_table_add_primary_key_string_values(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
 static int validate_alter_table_add_primary_key_duplicates(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan
@@ -5973,6 +5980,7 @@ static int append_integer_display_width_warning(struct mylite_db *database);
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
 static bool planned_column_is_varchar(const struct planned_column *column);
 static bool planned_column_is_char(const struct planned_column *column);
+static bool planned_column_is_char_or_varchar(const struct planned_column *column);
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_decimal(const struct planned_column *column);
@@ -5981,6 +5989,9 @@ static bool planned_column_is_datetime(const struct planned_column *column);
 static bool planned_column_is_timestamp(const struct planned_column *column);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_char_or_varchar(
+    const struct mylite_catalog_column_descriptor *column
+);
 static bool column_descriptor_is_text_family(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
@@ -5999,6 +6010,16 @@ static const struct text_family_type_info *text_family_type_info_for_logical_typ
 static bool column_descriptor_is_auto_increment(
     const struct mylite_catalog_column_descriptor *column
 );
+static int validate_planned_string_key_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
+static int validate_descriptor_string_key_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int validate_string_key_value(struct mylite_db *database, const struct planned_value *value);
+static bool text_value_is_supported_string_key(const char *text, size_t text_length);
 static bool modify_column_integer_value_domain_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -6247,6 +6268,14 @@ static int plan_insert_row(
 static int plan_insert_auto_increment_values(
     struct mylite_db *database,
     struct planned_insert *plan
+);
+static int plan_insert_string_key_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+);
+static int validate_update_string_key_value(
+    struct mylite_db *database,
+    const struct planned_update *plan
 );
 static int count_insert_auto_increment_modes(
     const struct planned_insert *plan,
@@ -7110,6 +7139,16 @@ static int append_create_table_index_sql(
     const char *index_physical_name,
     const char *table_physical_name
 );
+static int append_planned_key_part_sql(
+    struct dynamic_string *string,
+    const struct planned_column *column
+);
+static int append_loaded_key_part_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    const char *qualifier
+);
+static int append_string_key_collation_sql(struct dynamic_string *string);
 static int append_create_table_index_sql_close(struct dynamic_string *string);
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
 static int build_alter_table_add_column_sql(
@@ -7125,6 +7164,10 @@ static int build_alter_table_add_primary_key_duplicate_validation_sql(
     const struct planned_alter_table_add_primary_key *plan,
     char **out_sql
 );
+static int build_alter_table_add_primary_key_string_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+);
 static int build_alter_table_add_primary_key_index_sql(
     const struct planned_alter_table_add_primary_key *plan,
     const char *index_physical_name,
@@ -7136,7 +7179,7 @@ static int build_alter_table_add_index_sql(
     char **out_sql
 );
 static int build_drop_index_sql(const char *physical_name, char **out_sql);
-static int append_alter_table_primary_key_column_list_sql(
+static int append_alter_table_primary_key_expression_list_sql(
     struct dynamic_string *string,
     const struct planned_alter_table_add_primary_key *plan
 );
@@ -7782,7 +7825,12 @@ static void set_invalid_use_of_null_error(struct mylite_db *database);
 static void set_primary_key_part_null_error(struct mylite_db *database);
 static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name);
 static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name);
+static void set_storage_engine_cant_index_column_error(
+    struct mylite_db *database,
+    const char *column_name
+);
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
+static void set_non_ascii_string_key_error(struct mylite_db *database);
 static void set_duplicate_key_error(
     struct mylite_db *database,
     const char *table_name,
@@ -15876,6 +15924,7 @@ static int apply_create_table_primary_key_definition(
 ) {
     const struct mylite_sql_ast_node *part_list = child_at(primary_key, 0U);
     const struct mylite_sql_ast_node *part = NULL;
+    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION ||
@@ -15888,6 +15937,7 @@ static int apply_create_table_primary_key_definition(
         return MYLITE_ERROR;
     }
 
+    part_count = mylite_sql_ast_node_child_count(part_list);
     part = child_at(part_list, 0U);
     while (rc == MYLITE_OK && part != NULL) {
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -15913,6 +15963,13 @@ static int apply_create_table_primary_key_definition(
         }
         if (planned_primary_key_contains_column(plan, column_index)) {
             set_duplicate_column_error(database, plan->columns[column_index].name);
+            return MYLITE_ERROR;
+        }
+        if (part_count != 1U && planned_column_is_char_or_varchar(&plan->columns[column_index])) {
+            set_unsupported_error(
+                database,
+                "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
+            );
             return MYLITE_ERROR;
         }
         if (plan->columns[column_index].nullability == MYLITE_SQL_AST_NULLABILITY_NULL ||
@@ -16260,9 +16317,8 @@ static int validate_unique_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_string_family(column)) {
-        set_unsupported_error(database, "Unique indexes do not yet support string columns");
-        return MYLITE_ERROR;
+    if (planned_column_is_char_or_varchar(column)) {
+        return validate_planned_string_key_column(database, column);
     }
 
     return MYLITE_OK;
@@ -16358,9 +16414,17 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         set_runtime_error(database, "invalid primary-key column");
         return MYLITE_ERROR;
     }
-    if (planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
+    if (planned_column_is_char_or_varchar(column)) {
+        int rc = validate_planned_string_key_column(database, column);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    } else if (
+        planned_column_is_string_family(column) || planned_column_is_decimal(column) ||
         planned_column_is_date(column) || planned_column_is_datetime(column) ||
-        planned_column_is_timestamp(column)) {
+        planned_column_is_timestamp(column)
+    ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
         }
@@ -18542,7 +18606,6 @@ static int append_alter_table_primary_key_part(
     size_t column_count,
     const char *column_name
 ) {
-    struct integer_column_range range = {0};
     size_t column_index = 0U;
     int rc = find_column_index(columns, column_count, column_name, &column_index);
 
@@ -18555,12 +18618,34 @@ static int append_alter_table_primary_key_part(
         return MYLITE_ERROR;
     }
 
-    rc = integer_range_for_column(
-        database,
-        &columns[column_index],
-        "PRIMARY KEY supports only integer columns",
-        &range
-    );
+    if (column_descriptor_is_char_or_varchar(&columns[column_index])) {
+        if (plan->part_count != 0U) {
+            set_unsupported_error(
+                database,
+                "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = validate_descriptor_string_key_column(database, &columns[column_index]);
+    } else {
+        struct integer_column_range range = {0};
+
+        for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
+            if (column_descriptor_is_char_or_varchar(&plan->parts[part_index].column)) {
+                set_unsupported_error(
+                    database,
+                    "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
+                );
+                return MYLITE_ERROR;
+            }
+        }
+        rc = integer_range_for_column(
+            database,
+            &columns[column_index],
+            "PRIMARY KEY supports only integer columns",
+            &range
+        );
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -18672,6 +18757,8 @@ static int alter_table_add_primary_key_from_plan(
             alter_table_primary_key_default_kind(column);
         int64_t default_integer =
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ? column->default_integer : 0;
+        const char *default_text =
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ? column->default_text : NULL;
 
         rc = mylite_catalog_replace_column_in_mutation(
             database,
@@ -18686,7 +18773,7 @@ static int alter_table_add_primary_key_from_plan(
             column->is_auto_increment,
             default_kind,
             default_integer,
-            NULL
+            default_text
         );
     }
     if (rc == MYLITE_OK) {
@@ -18748,6 +18835,9 @@ static int validate_alter_table_add_primary_key_existing_rows(
     int rc = validate_alter_table_add_primary_key_nulls(database, plan);
 
     if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_primary_key_string_values(database, plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_alter_table_add_primary_key_duplicates(database, plan);
     }
     return rc;
@@ -18773,6 +18863,72 @@ static int validate_alter_table_add_primary_key_nulls(
         } else if (sqlite_rc != SQLITE_DONE) {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int validate_alter_table_add_primary_key_string_values(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    size_t string_part_count = 0U;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
+        if (column_descriptor_is_char_or_varchar(&plan->parts[part_index].column)) {
+            ++string_part_count;
+        }
+    }
+    if (string_part_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    rc = build_alter_table_add_primary_key_string_validation_sql(plan, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        for (size_t column_index = 0U; column_index < string_part_count; ++column_index) {
+            const unsigned char *text = NULL;
+            int text_length = 0;
+
+            if (column_index > (size_t)INT_MAX) {
+                set_runtime_error(database, "invalid string key validation column");
+                rc = MYLITE_ERROR;
+                break;
+            }
+            if (sqlite3_column_type(statement, (int)column_index) == SQLITE_NULL) {
+                continue;
+            }
+
+            text = sqlite3_column_text(statement, (int)column_index);
+            text_length = sqlite3_column_bytes(statement, (int)column_index);
+            if (text_length < 0 ||
+                !text_value_is_supported_string_key((const char *)text, (size_t)text_length)) {
+                set_non_ascii_string_key_error(database);
+                rc = MYLITE_ERROR;
+                break;
+            }
+        }
+    }
+    if (rc == MYLITE_OK && sqlite_rc != SQLITE_DONE) {
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
     }
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
@@ -18841,6 +18997,9 @@ static enum mylite_catalog_column_default_kind alter_table_primary_key_default_k
 ) {
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         return MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        return MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
     }
 
     return MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT;
@@ -21954,6 +22113,9 @@ static int plan_insert(
     if (rc == MYLITE_OK) {
         rc = plan_insert_auto_increment_values(database, out_plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, out_plan);
+    }
 
     free(target_indexes);
     primary_key_info_deinit(&primary_key);
@@ -22062,6 +22224,9 @@ static int plan_insert_set(
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_auto_increment_values(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, out_plan);
     }
 
     free(target_indexes);
@@ -22177,6 +22342,42 @@ static int plan_insert_auto_increment_values(
     }
 
     plan->auto_increment_next_after_statement = next_value;
+    return MYLITE_OK;
+}
+
+static int plan_insert_string_key_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+) {
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (!key->index.is_unique) {
+            continue;
+        }
+        for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
+            const struct loaded_index_part *part = &key->parts[part_index];
+
+            if (!column_descriptor_is_char_or_varchar(&part->column)) {
+                continue;
+            }
+            if (part->column_index >= plan->column_count) {
+                set_runtime_error(database, "invalid string key descriptor");
+                return MYLITE_ERROR;
+            }
+            for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+                int rc = validate_string_key_value(
+                    database,
+                    &plan->rows[row_index].values[part->column_index]
+                );
+
+                if (rc != MYLITE_OK) {
+                    return rc;
+                }
+            }
+        }
+    }
+
     return MYLITE_OK;
 }
 
@@ -23408,6 +23609,9 @@ static int execute_update_from_plan(
         );
     }
     if (rc == MYLITE_OK && matches_any_row) {
+        rc = validate_update_string_key_value(database, &executable_plan);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
         rc = build_update_sql(&executable_plan, &sql);
     }
     if (rc == MYLITE_OK && matches_any_row) {
@@ -23454,6 +23658,26 @@ static int execute_update_from_plan(
     }
 
     mylite_result_set_affected_rows(result, affected_rows);
+
+    return MYLITE_OK;
+}
+
+static int validate_update_string_key_value(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (!column_descriptor_is_char_or_varchar(&plan->assignment_column)) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (!key->index.is_unique ||
+            !loaded_index_contains_column_id(key, plan->assignment_column.column_id)) {
+            continue;
+        }
+        return validate_string_key_value(database, &plan->assignment_value);
+    }
 
     return MYLITE_OK;
 }
@@ -36905,6 +37129,10 @@ static bool planned_column_is_char(const struct planned_column *column) {
     return true;
 }
 
+static bool planned_column_is_char_or_varchar(const struct planned_column *column) {
+    return (planned_column_is_char(column) || planned_column_is_varchar(column)) != 0;
+}
+
 static bool planned_column_is_text_family(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
@@ -37000,6 +37228,12 @@ static bool column_descriptor_is_char(const struct mylite_catalog_column_descrip
         return false;
     }
     return true;
+}
+
+static bool column_descriptor_is_char_or_varchar(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return (column_descriptor_is_char(column) || column_descriptor_is_varchar(column)) != 0;
 }
 
 static bool column_descriptor_is_text_family(
@@ -37134,6 +37368,98 @@ static bool column_descriptor_is_auto_increment(
     const struct mylite_catalog_column_descriptor *column
 ) {
     return (column != NULL && column->is_auto_increment) != 0;
+}
+
+static int validate_planned_string_key_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    size_t length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || !planned_column_is_char_or_varchar(column)) {
+        set_runtime_error(database, "invalid string key column");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "string keys support only baseline CHAR descriptors",
+            &length
+        );
+    } else {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "string keys support only baseline VARCHAR descriptors",
+            &length
+        );
+    }
+    if (rc == MYLITE_OK && length == 0U) {
+        set_storage_engine_cant_index_column_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int validate_descriptor_string_key_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    size_t length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || !column_descriptor_is_char_or_varchar(column)) {
+        set_runtime_error(database, "invalid string key column descriptor");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &length);
+    } else {
+        rc = varchar_length_for_column(database, column, &length);
+    }
+    if (rc == MYLITE_OK && length == 0U) {
+        set_storage_engine_cant_index_column_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int validate_string_key_value(
+    struct mylite_db *database,
+    const struct planned_value *value
+) {
+    if (value == NULL) {
+        set_runtime_error(database, "invalid string key value");
+        return MYLITE_ERROR;
+    }
+    if (value->is_null) {
+        return MYLITE_OK;
+    }
+    if (!value->is_text || !text_value_is_supported_string_key(value->text, value->text_length)) {
+        set_non_ascii_string_key_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool text_value_is_supported_string_key(const char *text, size_t text_length) {
+    if (text == NULL && text_length != 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == '\0' || byte > ascii_max_byte) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static bool modify_column_integer_value_domain_matches(
@@ -43285,7 +43611,7 @@ static int append_create_table_primary_key_sql(
             rc = dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(string, plan->columns[column_index].name);
+            rc = append_planned_key_part_sql(string, &plan->columns[column_index]);
         }
     }
     if (rc == MYLITE_OK) {
@@ -43312,10 +43638,7 @@ static int append_create_table_secondary_indexes_sql(
             physical_name
         );
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(
-                string,
-                plan->columns[secondary->column_index].name
-            );
+            rc = append_planned_key_part_sql(string, &plan->columns[secondary->column_index]);
         }
         if (rc == MYLITE_OK) {
             rc = append_create_table_index_sql_close(string);
@@ -43357,6 +43680,52 @@ static int append_create_table_index_sql(
 
 static int append_create_table_index_sql_close(struct dynamic_string *string) {
     return dynamic_string_append_char(string, ')');
+}
+
+static int append_planned_key_part_sql(
+    struct dynamic_string *string,
+    const struct planned_column *column
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, column->name);
+
+    if (rc == MYLITE_OK && planned_column_is_char_or_varchar(column)) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static int append_loaded_key_part_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    const char *qualifier
+) {
+    int rc = MYLITE_OK;
+
+    if (qualifier != NULL) {
+        rc = dynamic_string_append_quoted_identifier(string, qualifier);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '.');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_char_or_varchar(&part->column)) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static int append_string_key_collation_sql(struct dynamic_string *string) {
+    int rc = dynamic_string_append(string, " COLLATE ");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, string_key_collation_name);
+    }
+
+    return rc;
 }
 
 static int build_drop_table_sql(const char *physical_name, char **out_sql) {
@@ -43506,7 +43875,7 @@ static int build_alter_table_add_primary_key_duplicate_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = append_alter_table_primary_key_column_list_sql(&string, plan);
+        rc = append_alter_table_primary_key_expression_list_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -43518,7 +43887,7 @@ static int build_alter_table_add_primary_key_duplicate_validation_sql(
         rc = dynamic_string_append(&string, " GROUP BY ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_alter_table_primary_key_column_list_sql(&string, plan);
+        rc = append_alter_table_primary_key_expression_list_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " HAVING COUNT(*) > 1 ORDER BY ");
@@ -43534,6 +43903,70 @@ static int build_alter_table_add_primary_key_duplicate_validation_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_alter_table_add_primary_key_string_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    bool has_condition = false;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+
+        if (!column_descriptor_is_char_or_varchar(&part->column)) {
+            continue;
+        }
+        if (has_condition) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
+        }
+        has_condition = true;
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    has_condition = false;
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+
+        if (!column_descriptor_is_char_or_varchar(&part->column)) {
+            continue;
+        }
+        if (has_condition) {
+            rc = dynamic_string_append(&string, " OR ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, " IS NOT NULL");
+        }
+        has_condition = true;
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -43571,7 +44004,7 @@ static int build_alter_table_add_primary_key_index_sql(
         rc = dynamic_string_append(&string, " (");
     }
     if (rc == MYLITE_OK) {
-        rc = append_alter_table_primary_key_column_list_sql(&string, plan);
+        rc = append_alter_table_primary_key_expression_list_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -43628,7 +44061,7 @@ static int build_alter_table_add_index_sql(
     return rc;
 }
 
-static int append_alter_table_primary_key_column_list_sql(
+static int append_alter_table_primary_key_expression_list_sql(
     struct dynamic_string *string,
     const struct planned_alter_table_add_primary_key *plan
 ) {
@@ -43639,10 +44072,7 @@ static int append_alter_table_primary_key_column_list_sql(
             rc = dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(
-                string,
-                plan->parts[part_index].column.name
-            );
+            rc = append_loaded_key_part_sql(string, &plan->parts[part_index], NULL);
         }
     }
 
@@ -46345,10 +46775,7 @@ static int build_unique_key_lookup_sql(
             rc = dynamic_string_append(&string, " AND ");
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(
-                &string,
-                index->parts[part_index].column.name
-            );
+            rc = append_loaded_key_part_sql(&string, &index->parts[part_index], NULL);
         }
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append(&string, " = ");
@@ -46608,16 +47035,7 @@ static int append_update_unique_key_conflict_exists_clause(
             rc = dynamic_string_append(string, " AND ");
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(string, conflict_alias);
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_char(string, '.');
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(
-                string,
-                index->parts[part_index].column.name
-            );
+            rc = append_loaded_key_part_sql(string, &index->parts[part_index], conflict_alias);
         }
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append(string, " = ");
@@ -46654,13 +47072,7 @@ static int append_update_unique_key_conflict_expression(
         return rc;
     }
 
-    rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_char(string, '.');
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, part->column.name);
-    }
+    rc = append_loaded_key_part_sql(string, part, plan->table.physical_name);
 
     return rc;
 }
@@ -48292,6 +48704,29 @@ static void set_incorrect_index_name_error(struct mylite_db *database, const cha
     );
 }
 
+static void set_storage_engine_cant_index_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "The used storage engine can't index column '%s'",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_storage_engine_cant_index_column,
+        "42000",
+        message
+    );
+}
+
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
@@ -48310,6 +48745,10 @@ static void set_blob_key_without_length_error(struct mylite_db *database, const 
         "42000",
         message
     );
+}
+
+static void set_non_ascii_string_key_error(struct mylite_db *database) {
+    set_unsupported_error(database, "non-ASCII string key values are not supported");
 }
 
 static void set_duplicate_key_error(

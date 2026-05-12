@@ -27,6 +27,14 @@ static int initialize_collation_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
 );
+static int compare_utf8mb4_0900_ai_ci_ascii(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+);
+static unsigned char ascii_collation_fold(unsigned char byte);
 static void initialize_hook_registration_surface(struct mylite_sqlite_bootstrap_state *state);
 static void clear_hook_registration_surface(
     sqlite3 *sqlite,
@@ -194,7 +202,20 @@ static int initialize_collation_registration_surface(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
 ) {
-    int rc = mylite_sqlite_register_collations(sqlite, NULL, 0U);
+    static const struct mylite_sqlite_collation_registration registrations[] = {
+        {
+            .name = "utf8mb4_0900_ai_ci",
+            .text_representation = SQLITE_UTF8,
+            .application_data = NULL,
+            .compare_callback = compare_utf8mb4_0900_ai_ci_ascii,
+            .destroy_callback = NULL,
+        },
+    };
+    int rc = mylite_sqlite_register_collations(
+        sqlite,
+        registrations,
+        sizeof(registrations) / sizeof(registrations[0])
+    );
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -203,6 +224,46 @@ static int initialize_collation_registration_surface(
     state->collation_registration_surface_is_initialized = true;
 
     return MYLITE_OK;
+}
+
+static int compare_utf8mb4_0900_ai_ci_ascii(
+    void *application_data,
+    int left_size,
+    const void *left,
+    int right_size,
+    const void *right
+) {
+    const unsigned char *left_text = left;
+    const unsigned char *right_text = right;
+    int shared_size = left_size < right_size ? left_size : right_size;
+
+    (void)application_data;
+    for (int index = 0; index < shared_size; ++index) {
+        unsigned char left_byte = ascii_collation_fold(left_text[index]);
+        unsigned char right_byte = ascii_collation_fold(right_text[index]);
+
+        if (left_byte < right_byte) {
+            return -1;
+        }
+        if (left_byte > right_byte) {
+            return 1;
+        }
+    }
+    if (left_size < right_size) {
+        return -1;
+    }
+    if (left_size > right_size) {
+        return 1;
+    }
+    return 0;
+}
+
+static unsigned char ascii_collation_fold(unsigned char byte) {
+    if (byte >= 'A' && byte <= 'Z') {
+        return (unsigned char)(byte + ('a' - 'A'));
+    }
+
+    return byte;
 }
 
 static void initialize_hook_registration_surface(struct mylite_sqlite_bootstrap_state *state) {

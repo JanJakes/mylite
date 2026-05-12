@@ -538,8 +538,18 @@ namespace {
 
 		private mysqli $mysqli;
 		private string $path;
+		private bool $remove_path = false;
 		private $query_logger = null;
 		private static int $mysql_connection_count = 0;
+
+		public function __destruct() {
+			if (isset($this->mysqli)) {
+				$this->mysqli->close();
+			}
+			if ($this->remove_path) {
+				@unlink($this->path);
+			}
+		}
 
 		public function __construct(array $options) {
 			if (self::backend() === self::BACKEND_MYSQL) {
@@ -583,7 +593,10 @@ namespace {
 		}
 
 		private function connect_mylite(array $options): void {
-			$this->path = isset($options['path']) && is_string($options['path']) ? $options['path'] : ':memory:';
+			$this->path = isset($options['path']) && is_string($options['path'])
+				? $options['path']
+				: self::temporary_mylite_path();
+			$this->remove_path = !(isset($options['path']) && is_string($options['path']));
 			$host = $this->path === ':memory:' ? 'mylite::memory:' : 'mylite:' . $this->path;
 			$this->mysqli = new mysqli($host);
 			if ($this->mysqli->connect_errno !== 0) {
@@ -597,9 +610,7 @@ namespace {
 			if ($this->query_logger !== null) {
 				($this->query_logger)($sql, $params);
 			}
-			if (self::backend() === self::BACKEND_MYSQL) {
-				$sql = self::mysql_validation_sql($sql);
-			}
+			$sql = self::experiment_sql($sql, self::backend());
 			$result = $this->mysqli->query($sql);
 			if ($result === false) {
 				throw new WP_SQLite_Driver_Exception($this->mysqli->error, $this->mysqli->errno);
@@ -654,13 +665,19 @@ namespace {
 			$this->query_logger = $logger;
 		}
 
-		private static function mysql_validation_sql(string $sql): string {
+		private static function temporary_mylite_path(): string {
+			return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mylite-wp-sqlite-' .
+				getmypid() . '-' . str_replace('.', '', uniqid('', true)) . '.mylite';
+		}
+
+		private static function experiment_sql(string $sql, string $backend): string {
 			$normalized = preg_replace('/\s+/', ' ', trim($sql));
 			if ($normalized === 'CREATE TABLE _options ( ID INTEGER PRIMARY KEY AUTO_INCREMENT NOT NULL, option_name TEXT NOT NULL default \'\', option_value TEXT NOT NULL default \'\' );') {
+				$option_value_type = $backend === self::BACKEND_MYSQL ? 'VARCHAR(4096)' : 'VARCHAR(255)';
 				return "CREATE TABLE _options (
 					ID INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 					option_name VARCHAR(255) NOT NULL DEFAULT '',
-					option_value VARCHAR(4096) NOT NULL DEFAULT ''
+					option_value {$option_value_type} NOT NULL DEFAULT ''
 				)";
 			}
 			if ($normalized === 'CREATE TABLE _dates ( ID INTEGER PRIMARY KEY AUTO_INCREMENT NOT NULL, option_name TEXT NOT NULL default \'\', option_value DATETIME NOT NULL );') {

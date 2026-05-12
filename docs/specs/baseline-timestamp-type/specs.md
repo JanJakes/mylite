@@ -138,7 +138,7 @@ The implementation must add:
   indexes, visibility, and no-default state;
 - descriptor-backed `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, and
   `REPLACE ... SELECT` copying when source values are already compatible
-  timestamp descriptors;
+  nonzero timestamp descriptor values;
 - `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`, `SHOW CREATE TABLE`, and
   limited `INFORMATION_SCHEMA.COLUMNS` rendering for timestamp descriptors,
   including `DATETIME_PRECISION = 0`;
@@ -346,6 +346,11 @@ timestamp values. `ALTER TABLE ... ADD COLUMN ts TIMESTAMP NOT NULL` may
 backfill `0000-00-00 00:00:00` for preexisting rows. Other direct SQL paths
 must not accept zero timestamps.
 
+Stored zero timestamps remain readable and orderable, but strict copying into a
+new timestamp descriptor through `INSERT ... SELECT`, `REPLACE ... SELECT`, or
+`CREATE TABLE ... SELECT` rejects them with the observed MySQL `1292 / 22007`
+datetime-value diagnostic.
+
 `NULL` is stored only for nullable timestamp descriptors. `NULL` into a
 `NOT NULL` descriptor fails with `1048 / 23000` unless the current statement is
 an admitted `INSERT IGNORE` adjustment. `DEFAULT` resolves through the
@@ -364,6 +369,11 @@ Predicate conversion is descriptor-driven:
 - `IN` and `NOT IN` accept nonempty lists of compatible canonical timestamp
   strings plus `NULL` list elements;
 - `IS NULL` and `IS NOT NULL` test stored values without conversion.
+
+Direct predicate literals of `0000-00-00 00:00:00` are rejected with the
+observed MySQL `1525 / HY000` incorrect timestamp-value diagnostic; applications
+can observe stored zero timestamps through ordering and ordinary readback, not
+by admitting a zero timestamp literal in this slice.
 
 Ordering is supported for one descriptor timestamp column in existing
 single-table `SELECT`, `DELETE`, and `UPDATE` paths. `ASC` is the default.

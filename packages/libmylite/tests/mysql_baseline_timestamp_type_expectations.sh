@@ -110,6 +110,16 @@ expect_output \
     "$show_columns_expected" \
     "SET time_zone = '+00:00'; SHOW COLUMNS FROM timestamps;" \
     "$DATABASE"
+expect_output \
+    "describe renders timestamp descriptors" \
+    "$show_columns_expected" \
+    "SET time_zone = '+00:00'; DESCRIBE timestamps;" \
+    "$DATABASE"
+expect_output \
+    "explain table renders timestamp descriptors" \
+    "$show_columns_expected" \
+    "SET time_zone = '+00:00'; EXPLAIN timestamps;" \
+    "$DATABASE"
 
 show_create_expected=$(cat <<\EXPECTED
 timestamps	CREATE TABLE `timestamps` (
@@ -231,6 +241,56 @@ expect_output \
 "SHOW WARNINGS; SELECT id, ts, nn FROM timestamps WHERE id BETWEEN 9 AND 13 ORDER BY id;" \
     "$DATABASE"
 
+expect_error \
+    "timestamp zero predicate literal fails" \
+    1525 \
+    HY000 \
+    "Incorrect TIMESTAMP value: '0000-00-00 00:00:00'" \
+    "SET time_zone = '+00:00'; SELECT id FROM timestamps WHERE ts = '0000-00-00 00:00:00';" \
+    "$DATABASE"
+
+expect_error \
+    "timestamp insert select rejects stored zero timestamp" \
+    1292 \
+    "22007" \
+    "Incorrect datetime value: '0000-00-00 00:00:00' for column 'ts' at row 1" \
+    "SET time_zone = '+00:00'; CREATE TABLE zero_insert_copy (id INT, ts TIMESTAMP); "\
+"INSERT INTO zero_insert_copy SELECT id, ts FROM timestamps WHERE id = 10;" \
+    "$DATABASE"
+expect_output \
+    "timestamp failed zero insert select leaves target empty" \
+    "0" \
+    "SET time_zone = '+00:00'; SELECT COUNT(*) FROM zero_insert_copy;" \
+    "$DATABASE"
+
+expect_error \
+    "timestamp replace select rejects stored zero timestamp" \
+    1292 \
+    "22007" \
+    "Incorrect datetime value: '0000-00-00 00:00:00' for column 'ts' at row 1" \
+    "SET time_zone = '+00:00'; CREATE TABLE zero_replace_copy (id INT, ts TIMESTAMP); "\
+"REPLACE INTO zero_replace_copy SELECT id, ts FROM timestamps WHERE id = 10;" \
+    "$DATABASE"
+expect_output \
+    "timestamp failed zero replace select leaves target empty" \
+    "0" \
+    "SET time_zone = '+00:00'; SELECT COUNT(*) FROM zero_replace_copy;" \
+    "$DATABASE"
+
+expect_error \
+    "timestamp create table select rejects stored zero timestamp" \
+    1292 \
+    "22007" \
+    "Incorrect datetime value: '0000-00-00 00:00:00' for column 'ts' at row 1" \
+    "SET time_zone = '+00:00'; CREATE TABLE zero_created AS "\
+"SELECT id, ts FROM timestamps WHERE id = 10;" \
+    "$DATABASE"
+expect_output \
+    "timestamp failed zero create table select does not create target" \
+    "" \
+    "SET time_zone = '+00:00'; SHOW TABLES LIKE 'zero_created';" \
+    "$DATABASE"
+
 run_mysql \
     "SET time_zone = '+00:00'; CREATE TABLE required_t (id INT, ts TIMESTAMP NOT NULL);" \
     "$DATABASE" >/dev/null
@@ -317,6 +377,9 @@ ge	2,5
 between	1,2,4,11
 inlist	1,5
 isnull	3
+isnotnull	1,2,4,5,9,10,11,12,13
+notbetween	1,5,9,10,12,13
+notin	2,4,5,9,10,11,12,13
 asc	3,9,10,12,13,1,11,4,2,5
 desc	5,2,4,11,1,3,9,10,12,13
 EXPECTED
@@ -334,6 +397,11 @@ expect_output \
 "UNION ALL SELECT 'inlist', GROUP_CONCAT(id ORDER BY id) FROM timestamps "\
 "WHERE ts IN ('1970-01-01 00:00:01', NULL, '2038-01-19 03:14:07') "\
 "UNION ALL SELECT 'isnull', GROUP_CONCAT(id ORDER BY id) FROM timestamps WHERE ts IS NULL "\
+"UNION ALL SELECT 'isnotnull', GROUP_CONCAT(id ORDER BY id) FROM timestamps WHERE ts IS NOT NULL "\
+"UNION ALL SELECT 'notbetween', GROUP_CONCAT(id ORDER BY id) FROM timestamps "\
+"WHERE ts NOT BETWEEN '2024-01-01 00:00:00' AND '2025-12-31 23:59:59' "\
+"UNION ALL SELECT 'notin', GROUP_CONCAT(id ORDER BY id) FROM timestamps "\
+"WHERE ts NOT IN ('1970-01-01 00:00:01') "\
 "UNION ALL SELECT 'asc', GROUP_CONCAT(id ORDER BY ts ASC, id ASC) FROM timestamps "\
 "UNION ALL SELECT 'desc', GROUP_CONCAT(id ORDER BY ts DESC, id ASC) FROM timestamps;" \
     "$DATABASE"

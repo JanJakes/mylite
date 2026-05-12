@@ -2606,6 +2606,9 @@ identifier(A) ::= DATE(T). {
 identifier(A) ::= DATETIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= TIMESTAMP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 create_table_item_list(A) ::= create_table_item(B). {
     A = mylite_sql_parser_make_column_definition_list(state, B);
@@ -2731,6 +2734,9 @@ column_type(A) ::= date_type(T). {
     A = T;
 }
 column_type(A) ::= datetime_type(T). {
+    A = T;
+}
+column_type(A) ::= timestamp_type(T). {
     A = T;
 }
 
@@ -2871,6 +2877,10 @@ date_type(A) ::= DATE(T). {
 
 datetime_type(A) ::= DATETIME(T). {
     A = mylite_sql_parser_make_datetime_type(state, T);
+}
+
+timestamp_type(A) ::= TIMESTAMP(T). {
+    A = mylite_sql_parser_make_timestamp_type(state, T);
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {

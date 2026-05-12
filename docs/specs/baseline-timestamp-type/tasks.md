@@ -14,38 +14,38 @@
 
 ## Implementation
 
-- [ ] Extend parser and AST support for admitted bare `TIMESTAMP` column types.
-- [ ] Map admitted timestamp descriptors to logical `TIMESTAMP` text and
+- [x] Extend parser and AST support for admitted bare `TIMESTAMP` column types.
+- [x] Map admitted timestamp descriptors to logical `TIMESTAMP` text and
   physical SQLite `TEXT`.
-- [ ] Add MyLite-owned canonical timestamp conversion, validation, strict
+- [x] Add MyLite-owned canonical timestamp conversion, validation, strict
   errors, `INSERT IGNORE` zero-timestamp adjustment, `ALTER ADD TIMESTAMP NOT
   NULL` zero backfill, null/default handling, and text binding.
-- [ ] Add TIMESTAMP support for `CREATE TABLE`, `ALTER ADD COLUMN`,
+- [x] Add TIMESTAMP support for `CREATE TABLE`, `ALTER ADD COLUMN`,
   `ALTER COLUMN SET/DROP DEFAULT`, `INSERT`, `REPLACE`, `UPDATE`, compatible
   `INSERT ... SELECT`, compatible `REPLACE ... SELECT`, compatible
   `CREATE TABLE ... SELECT`, `CREATE TABLE ... LIKE`, plain `SELECT` readback,
   comparison/range/membership/null predicates, and one-column ordering.
-- [ ] Add TIMESTAMP support for supported nonunique and unique secondary-index
+- [x] Add TIMESTAMP support for supported nonunique and unique secondary-index
   declaration, metadata, duplicate enforcement, update checks, and descriptor
   copying.
-- [ ] Reject unsupported fractional precision, relaxed/numeric/T-separator
+- [x] Reject unsupported fractional precision, relaxed/numeric/T-separator
   conversion, time-zone-offset inputs, expression values, temporal functions,
   temporal literal introducers, direct zero values outside admitted adjustment
   paths, primary keys, auto-increment, unsupported ordering expressions, and
   unsupported `ALTER MODIFY` / `CHANGE` replacement deterministically.
-- [ ] Update `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`,
+- [x] Update `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`,
   `SHOW CREATE TABLE`, and `INFORMATION_SCHEMA.COLUMNS` rendering, including
   `DATETIME_PRECISION = 0`.
 
 ## Tests and Docs
 
 - [x] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add focused C runtime tests and parser tests for supported and rejected
+- [x] Add focused C runtime tests and parser tests for supported and rejected
   behavior.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   implemented subset.
-- [ ] Run focused build/tests, the new MySQL expectation script, and
+- [x] Run focused build/tests, the new MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog authority,
+- [x] Review the final diff for architecture boundaries, catalog authority,
   canonical timestamp conversion, descriptor-driven SQLite SQL, compatibility
   claims, performance, and file-format safety.

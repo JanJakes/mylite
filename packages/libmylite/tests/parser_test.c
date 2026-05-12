@@ -14,6 +14,7 @@ enum {
     decimal_column_count = 6,
     date_column_count = 3,
     datetime_column_count = 3,
+    timestamp_column_count = 3,
     decimal_fixed_column_index = 5,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
@@ -76,6 +77,7 @@ static int test_text_type_statements(void);
 static int test_decimal_type_statements(void);
 static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
+static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
@@ -253,6 +255,7 @@ int main(void) {
     failures += test_decimal_type_statements();
     failures += test_date_type_statements();
     failures += test_datetime_type_statements();
+    failures += test_timestamp_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_alter_table_add_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
@@ -7566,6 +7569,131 @@ static int test_datetime_type_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE datetime_fractional (d DATETIME(3));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_timestamp_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE timestamp_types (ts TIMESTAMP, nn TIMESTAMP NOT NULL DEFAULT "
+        "'2024-05-06 07:08:09', timestamp INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, timestamp_column_count, "timestamp column list");
+    column = child_at(columns, 0U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIMESTAMP_TYPE, "timestamp column type");
+    failures += expect_span_text(child_at(column, 1U), "TIMESTAMP", "timestamp column span");
+    column = child_at(columns, 1U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIMESTAMP_TYPE, "not null timestamp type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "not null timestamp"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp string default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "timestamp", "timestamp keyword identifier");
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_INTEGER_TYPE, "timestamp identifier type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE timestamp_types ADD COLUMN created TIMESTAMP DEFAULT "
+        "'1970-01-01 00:00:01';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIMESTAMP_TYPE, "alter add timestamp");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter timestamp default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM timestamp_types WHERE ts BETWEEN '1970-01-01 00:00:01' "
+        "AND '2038-01-19 03:14:07';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_BETWEEN_PREDICATE, "timestamp between");
+    failures += expect_literal(
+        child_at(predicate, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp between lower"
+    );
+    failures += expect_literal(
+        child_at(predicate, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp between upper"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM timestamp_types WHERE ts IN ('2024-05-06 07:08:09', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    predicate = child_at(child_at(statement, 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "timestamp in predicate");
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp in string"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "timestamp in null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE timestamp_types SET ts = '2025-01-02 03:04:05';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE timestamp_fractional (ts TIMESTAMP(3));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

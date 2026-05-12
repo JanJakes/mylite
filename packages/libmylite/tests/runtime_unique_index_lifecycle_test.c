@@ -540,15 +540,6 @@ static int test_unique_index_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE UNIQUE INDEX u ON unique_prefix (id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
     failures += expect_statement_ok(
         database,
         "CREATE TABLE key_bearing (id INT, v INT, UNIQUE KEY u_v (v))"

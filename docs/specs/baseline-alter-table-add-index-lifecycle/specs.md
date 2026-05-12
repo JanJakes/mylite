@@ -18,9 +18,8 @@ compatible scans, and expose the new index through existing descriptor-driven
 `INFORMATION_SCHEMA.STATISTICS` paths.
 
 This is intentionally not full MySQL index DDL. It does not add `ADD UNIQUE`,
-standalone `CREATE INDEX`, index drops or renames, composite indexes, prefix
-indexes, functional key parts, index comments, visibility, fulltext/spatial
-indexes, or optimizer guarantees.
+index drops or renames, composite indexes, prefix indexes, functional key parts,
+index comments, visibility, fulltext/spatial indexes, or optimizer guarantees.
 
 ## Sources
 
@@ -65,9 +64,10 @@ Runtime probes for this phase establish:
 - `SHOW INDEX` and `SHOW CREATE TABLE` expose the new secondary index after
   the existing primary key and existing indexes. `INFORMATION_SCHEMA.STATISTICS`
   reports `NON_UNIQUE = 1`, `SEQ_IN_INDEX = 1`, and the descriptor column name.
-- Integer-family, exact decimal, canonical temporal, `CHAR`, and `VARCHAR`
-  columns can be indexed without a prefix for this subset. `TEXT` without a
-  prefix fails with `1170 / 42000`.
+- Integer-family, exact decimal, canonical temporal, `CHAR(1..255)`, and
+  `VARCHAR(1..255)` columns can be indexed without a prefix for this subset.
+  `TEXT` without a prefix fails with `1170 / 42000`, and `CHAR(0)` /
+  `VARCHAR(0)` fail with `1167 / 42000`.
 - A duplicate explicit index name fails with `1061 / 42000`.
 - A quoted index name `PRIMARY` fails with `1280 / 42000`; unquoted
   `PRIMARY` in the index-name position is a syntax error.
@@ -75,8 +75,8 @@ Runtime probes for this phase establish:
 - Missing default schema, unknown schema, and unknown table use the existing
   MySQL diagnostics for `ALTER TABLE` target resolution.
 - MySQL accepts wider forms such as multiple alter actions, composite key
-  parts, `ADD UNIQUE`, standalone `CREATE INDEX`, index options, comments,
-  visibility, prefixes, and functional key parts. They remain deferred here.
+  parts, `ADD UNIQUE`, index options, comments, visibility, prefixes, and
+  functional key parts. They remain deferred here.
 
 ## Scope
 
@@ -95,7 +95,7 @@ Supported:
   - integer-family and integer aliases, including `BOOL` / `BOOLEAN`;
   - exact `DECIMAL` / `NUMERIC` / `FIXED`;
   - canonical `DATE`, `DATETIME`, and `TIMESTAMP`;
-  - `CHAR(0..255)` and `VARCHAR(0..255)`;
+  - `CHAR(1..255)` and `VARCHAR(1..255)`;
 - nullable and `NOT NULL` key target columns;
 - empty and nonempty tables;
 - descriptor-backed `SHOW COLUMNS`, `SHOW CREATE TABLE`, `SHOW INDEX`,
@@ -111,7 +111,6 @@ Deferred:
 
 - `ADD UNIQUE`, `ADD CONSTRAINT UNIQUE`, `ADD FULLTEXT`, `ADD SPATIAL`,
   `ADD FOREIGN KEY`, and check constraints;
-- standalone `CREATE INDEX` / `CREATE UNIQUE INDEX`;
 - `DROP INDEX` / `DROP KEY`, `RENAME INDEX` / `RENAME KEY`, and index
   visibility changes;
 - multi-action `ALTER TABLE`;
@@ -326,9 +325,10 @@ Supported diagnostics:
 - unsupported key target type, including `TEXT` without prefix:
   `1170 / 42000` where MySQL has an equivalent, or an explicit MyLite
   unsupported diagnostic for future descriptor kinds;
+- `CHAR(0)` / `VARCHAR(0)` key part: `1167 / 42000`;
 - unsupported key expression, key prefix, direction, index option, multi-key
-  part, multi-action alter, `ADD UNIQUE`, `CREATE INDEX`, comments,
-  visibility, algorithms, locks, partitions, temporary tables, and views:
+  part, multi-action alter, `ADD UNIQUE`, comments, visibility, algorithms,
+  locks, partitions, temporary tables, and views:
   deterministic syntax or unsupported diagnostics;
 - physical SQLite failure: deterministic internal/physical SQL diagnostic;
 - allocation failure: `MYLITE_NOMEM` and handle-owned diagnostics.
@@ -364,12 +364,12 @@ Coverage must include:
 - cleanup-safe zero initialization for any new planner/result objects;
 - diagnostics for missing default schema, unknown schema, unknown table,
   reserved names, duplicate explicit names, quoted `PRIMARY`, unknown key
-  columns, `TEXT` without prefix, and unsupported syntax;
-- unsupported forms: `ADD UNIQUE`, `ADD FULLTEXT`, `ADD SPATIAL`, standalone
-  `CREATE INDEX`, multi-action alter, multiple key parts, key prefixes,
-  table-qualified key parts, functional key parts, expression key parts,
-  ordinal parts, `USING`, comments, visibility, algorithm/lock options, and
-  partitions;
+  columns, `TEXT` without prefix, zero-length `CHAR` / `VARCHAR` key columns,
+  and unsupported syntax;
+- unsupported forms: `ADD UNIQUE`, `ADD FULLTEXT`, `ADD SPATIAL`,
+  multi-action alter, multiple key parts, key prefixes, table-qualified key
+  parts, functional key parts, expression key parts, ordinal parts, `USING`,
+  comments, visibility, algorithm/lock options, and partitions;
 - existing parser, runtime handle, diagnostics, statement context, result
   metadata, file-backed opening, VFS, catalog, create/drop/rename, primary-key,
   secondary-index, unique-index, auto-increment, and information-schema tests
@@ -388,8 +388,8 @@ Implementation must update:
 - `docs/compatibility/sql-table-ddl.md`;
 
 with limited wording for the exact `ALTER TABLE ... ADD INDEX` / `ADD KEY`
-subset. Do not claim `ADD UNIQUE`, standalone `CREATE INDEX`, index drops,
-renames, comments, visibility, composite/prefix/functional/descending indexes,
+subset. Do not claim `ADD UNIQUE`, index drops, renames, comments, visibility,
+composite/prefix/functional/descending indexes,
 foreign keys, optimizer guarantees, or full metadata parity.
 
 ## Verification

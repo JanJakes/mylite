@@ -229,6 +229,22 @@ expect_error \
 "ALTER TABLE text_key ADD INDEX k_txt (txt);" \
     "$DATABASE"
 
+expect_error \
+    "char zero length index fails" \
+    1167 \
+    42000 \
+    "The used storage engine can't index column 'c'" \
+    "CREATE TABLE char_zero (c CHAR(0)); ALTER TABLE char_zero ADD INDEX k_c (c);" \
+    "$DATABASE"
+
+expect_error \
+    "varchar zero length index fails" \
+    1167 \
+    42000 \
+    "The used storage engine can't index column 'v'" \
+    "CREATE TABLE varchar_zero (v VARCHAR(0)); ALTER TABLE varchar_zero ADD INDEX k_v (v);" \
+    "$DATABASE"
+
 expect_upstream_accepts \
     "mysql accepts multi-action add index" \
     "CREATE TABLE deferred_multi_action (id INT, v INT); "\

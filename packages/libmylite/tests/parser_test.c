@@ -79,6 +79,7 @@ static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
+static int test_create_index_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
 static int test_alter_table_add_index_statements(void);
 static int test_alter_table_drop_index_statements(void);
@@ -260,6 +261,7 @@ int main(void) {
     failures += test_datetime_type_statements();
     failures += test_timestamp_type_statements();
     failures += test_create_table_primary_key_statements();
+    failures += test_create_index_statements();
     failures += test_alter_table_add_primary_key_statements();
     failures += test_alter_table_add_index_statements();
     failures += test_alter_table_drop_index_statements();
@@ -8089,6 +8091,91 @@ static int test_alter_table_add_primary_key_statements(void) {
     return failures;
 }
 
+static int test_create_index_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE INDEX k_v ON create_idx (v);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_INDEX_STATEMENT, "create index");
+    failures += expect_child_count(statement, 3U, "create index child count");
+    failures += expect_span_text(child_at(statement, 0U), "k_v", "create index name");
+    failures += expect_span_text(child_at(statement, 1U), "create_idx", "create index table");
+    key_parts = child_at(statement, 2U);
+    failures += expect_child_count(key_parts, 1U, "create index part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "v", "create index part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE UNIQUE INDEX `u_v` ON app.create_idx (`v`);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT, "create unique index");
+    failures += expect_span_text(child_at(statement, 0U), "`u_v`", "create unique index name");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "app.create_idx", "create unique index table");
+    key_parts = child_at(statement, 2U);
+    failures += expect_span_text(child_at(key_parts, 0U), "`v`", "create unique index part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE INDEX k_multi ON create_idx (v, id);", MYLITE_SQL_PARSE_OK, &result);
+    key_parts = child_at(child_at(result.root, 0U), 2U);
+    failures += expect_child_count(key_parts, 2U, "create composite index parser part count");
+    failures += expect_span_text(child_at(key_parts, 1U), "id", "create composite index part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE INDEX ON create_idx (v);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE INDEX IF NOT EXISTS k_v ON create_idx (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE INDEX k_v ON create_idx (create_idx.v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE INDEX k_v ON create_idx (v(4));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE INDEX k_v ON create_idx (v DESC);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE FULLTEXT INDEX k_v ON create_idx (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE INDEX k_v USING BTREE ON create_idx (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_alter_table_add_index_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -8179,10 +8266,6 @@ static int test_alter_table_add_index_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
-        parse_sql("CREATE INDEX k_v ON add_idx (v);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

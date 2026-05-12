@@ -713,6 +713,40 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_select_statement
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    bool is_unique,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *part_list
+) {
+    struct mylite_sql_source_span span = span_from_token(&create_token);
+    struct mylite_sql_ast_node *statement = NULL;
+    enum mylite_sql_ast_node_kind statement_kind = MYLITE_SQL_AST_CREATE_INDEX_STATEMENT;
+
+    if (part_list != NULL) {
+        span = span_join(span, part_list->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    } else if (index_name != NULL) {
+        span = span_join(span, index_name->span);
+    }
+
+    if (is_unique) {
+        statement_kind = MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT;
+    }
+    statement = make_node(state, statement_kind, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, index_name);
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, part_list);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_if_not_exists_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token if_token,

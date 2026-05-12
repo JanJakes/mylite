@@ -97,6 +97,9 @@ statement(A) ::= create_table_like_statement(B). {
 statement(A) ::= create_table_select_statement(B). {
     A = B;
 }
+statement(A) ::= create_index_statement(B). {
+    A = B;
+}
 statement(A) ::= create_schema_statement(B). {
     A = B;
 }
@@ -364,6 +367,16 @@ create_table_select_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) create_table_select_as_opt
     select_statement(S). {
     A = mylite_sql_parser_make_create_table_select_statement(state, C, E, T, S);
+}
+
+create_index_statement(A) ::=
+    CREATE(C) INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L) RPAREN. {
+    A = mylite_sql_parser_make_create_index_statement(state, C, false, N, T, L);
+}
+create_index_statement(A) ::=
+    CREATE(C) UNIQUE INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
+    RPAREN. {
+    A = mylite_sql_parser_make_create_index_statement(state, C, true, N, T, L);
 }
 
 create_table_select_as_opt ::= .

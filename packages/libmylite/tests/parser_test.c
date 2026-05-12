@@ -6902,13 +6902,14 @@ static int test_varchar_type_statements(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "CREATE TABLE string_types (v0 VARCHAR(0), label VARCHAR(255) NOT NULL DEFAULT 'tag');",
+        "CREATE TABLE string_types (v0 VARCHAR(0), label VARCHAR(255) NOT NULL DEFAULT 'tag', "
+        "alias CHARACTER VARYING(3), short_alias CHAR VARYING(4));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = child_at(result.root, 0U);
     columns = child_at(statement, 1U);
-    failures += expect_child_count(columns, 2U, "varchar column list");
+    failures += expect_child_count(columns, 4U, "varchar column list");
     column = child_at(columns, 0U);
     column_type = child_at(column, 1U);
     failures += expect_span_text(child_at(column, 0U), "v0", "varchar zero column name");
@@ -6928,6 +6929,14 @@ static int test_varchar_type_statements(void) {
         MYLITE_SQL_AST_LITERAL_STRING,
         "varchar string default"
     );
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_varchar_type(column_type, "3", "character varying column type");
+    failures += expect_span_text(column_type, "CHARACTER VARYING(3)", "character varying span");
+    column = child_at(columns, 3U);
+    column_type = child_at(column, 1U);
+    failures += expect_varchar_type(column_type, "4", "char varying column type");
+    failures += expect_span_text(column_type, "CHAR VARYING(4)", "char varying span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -6992,6 +7001,7 @@ static int test_varchar_type_statements(void) {
 }
 
 static int test_char_type_statements(void) {
+    enum { char_column_count = 5U };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
@@ -7000,13 +7010,14 @@ static int test_char_type_statements(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "CREATE TABLE char_types (c CHAR, c0 CHAR(0), c255 CHAR(255) NOT NULL DEFAULT 'z');",
+        "CREATE TABLE char_types (c CHAR, c0 CHAR(0), c255 CHAR(255) NOT NULL DEFAULT 'z', "
+        "alias CHARACTER, alias2 CHARACTER(2));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = child_at(result.root, 0U);
     columns = child_at(statement, 1U);
-    failures += expect_child_count(columns, 3U, "char column list");
+    failures += expect_child_count(columns, char_column_count, "char column list");
     column = child_at(columns, 0U);
     column_type = child_at(column, 1U);
     failures += expect_span_text(child_at(column, 0U), "c", "bare char column name");
@@ -7031,6 +7042,14 @@ static int test_char_type_statements(void) {
         MYLITE_SQL_AST_LITERAL_STRING,
         "char string default"
     );
+    column = child_at(columns, 3U);
+    column_type = child_at(column, 1U);
+    failures += expect_char_type(column_type, NULL, 0, "bare character alias type");
+    failures += expect_span_text(column_type, "CHARACTER", "bare character alias span");
+    column = child_at(columns, 4U);
+    column_type = child_at(column, 1U);
+    failures += expect_char_type(column_type, "2", 1, "character alias length type");
+    failures += expect_span_text(column_type, "CHARACTER(2)", "character alias length span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -7088,10 +7107,19 @@ static int test_char_type_statements(void) {
         parse_sql("CREATE TABLE bad_char (c CHAR(-1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
-        "CREATE TABLE bad_char (c CHARACTER(2));",
+        "CREATE TABLE bad_char (c CHARACTER VARYING);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE bad_char (c CHAR VARYING);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_char (c CHARACTER());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

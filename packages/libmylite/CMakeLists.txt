@@ -1570,6 +1570,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_char_type_test)
 
+  add_executable(mylite_runtime_character_alias_lifecycle_test
+    tests/runtime_character_alias_lifecycle_test.c
+  )
+  target_link_libraries(mylite_runtime_character_alias_lifecycle_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_character_alias_lifecycle_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_character_alias_lifecycle_test)
+
   add_executable(mylite_runtime_text_type_test
     tests/runtime_text_type_test.c
   )
@@ -2373,6 +2384,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.char_type
     COMMAND mylite_runtime_char_type_test
+  )
+  add_test(
+    NAME libmylite.runtime.character_alias_lifecycle
+    COMMAND mylite_runtime_character_alias_lifecycle_test
   )
   add_test(
     NAME libmylite.runtime.text_type

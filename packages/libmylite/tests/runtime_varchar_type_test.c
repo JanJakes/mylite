@@ -17,12 +17,26 @@ enum {
     test_path_capacity = 1024,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
+    mysql_error_column_length_too_big = 1074,
+    mysql_error_row_size_too_large = 1118,
+    mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_no_default = 1364,
     mysql_error_data_too_long = 1406,
     full_strings_row_count = 5,
+    wide_table_column_count = 5,
+    wide_table_row_count = 5,
+    max_varchar_value_length = 16383,
 };
+
+#define WIDE_64_A "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+#define WIDE_64_B "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+#define WIDE_64_C "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+#define WIDE_256_A WIDE_64_A WIDE_64_A WIDE_64_A WIDE_64_A
+#define WIDE_256_B WIDE_64_B WIDE_64_B WIDE_64_B WIDE_64_B
+#define WIDE_256_C WIDE_64_C WIDE_64_C WIDE_64_C WIDE_64_C
+#define WIDE_512_C WIDE_256_C WIDE_256_C
 
 struct expected_sql_error {
     int code;
@@ -44,6 +58,7 @@ struct expected_dml_result {
 };
 
 static int test_varchar_success_persistence_and_introspection(void);
+static int test_varchar_wide_length_lifecycle(void);
 static int test_varchar_diagnostics(void);
 static int test_varchar_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -85,6 +100,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_varchar_success_persistence_and_introspection();
+    failures += test_varchar_wide_length_lifecycle();
     failures += test_varchar_diagnostics();
     failures += test_varchar_independent_handles();
 
@@ -356,6 +372,197 @@ static int test_varchar_success_persistence_and_introspection(void) {
     return failures;
 }
 
+static int test_varchar_wide_length_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "id",   "int",          "NO",  "", NULL, "", "v256", "varchar(256)", "YES", "", NULL, "",
+        "v512", "varchar(512)", "YES", "", "xy", "", "a256", "varchar(256)", "YES", "", NULL, "",
+        "a512", "varchar(512)", "YES", "", NULL, "",
+    };
+    static const char *const information_schema_rows[] = {
+        "v256", "varchar", "varchar(256)", "256", "1024",
+        "v512", "varchar", "varchar(512)", "512", "2048",
+        "a256", "varchar", "varchar(256)", "256", "1024",
+        "a512", "varchar", "varchar(512)", "512", "2048",
+    };
+    static const char *const wide_row[] = {
+        "1",
+        WIDE_256_A,
+        "xy",
+        WIDE_256_B,
+        WIDE_512_C,
+    };
+    static const char *const updated_row[] = {"1", WIDE_256_B, "zz"};
+    static const char *const clone_row[] = {"1", WIDE_256_B, "zz"};
+    static const char *const copied_row[] = {"1", WIDE_256_B, "zz"};
+    static const char insert_max_prefix[] = "INSERT INTO max_one VALUES ('";
+    static const char insert_max_suffix[] = "')";
+    const char *max_row[] = {NULL};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    char *max_value = NULL;
+    char *insert_max_sql = NULL;
+    size_t insert_max_sql_size = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "wide") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    max_value = calloc((size_t)max_varchar_value_length + 1U, sizeof(*max_value));
+    insert_max_sql_size = strlen(insert_max_prefix) + (size_t)max_varchar_value_length +
+                          strlen(insert_max_suffix) + 1U;
+    insert_max_sql = calloc(insert_max_sql_size, sizeof(*insert_max_sql));
+    if (max_value == NULL || insert_max_sql == NULL) {
+        free(insert_max_sql);
+        free(max_value);
+        return 1;
+    }
+    memset(max_value, 'm', (size_t)max_varchar_value_length);
+    (void)snprintf(
+        insert_max_sql,
+        insert_max_sql_size,
+        "%s%s%s",
+        insert_max_prefix,
+        max_value,
+        insert_max_suffix
+    );
+    max_row[0] = max_value;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open wide file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wide (id INT NOT NULL, v256 VARCHAR(256), "
+        "v512 VARCHAR(512) DEFAULT 'xy', a256 CHARACTER VARYING(256), "
+        "a512 CHAR VARYING(512))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM wide",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = wide_table_row_count,
+            .context = "wide varchar SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wide' "
+                   "AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = wide_table_column_count,
+            .row_count = 4U,
+            .context = "wide varchar information schema",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wide (id, v256, a256, a512) VALUES (1, '" WIDE_256_A "', '" WIDE_256_B
+        "', '" WIDE_512_C "')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v256, v512, a256, a512 FROM wide",
+            .values = wide_row,
+            .column_count = wide_table_column_count,
+            .row_count = 1U,
+            .context = "wide varchar inserted values",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE wide SET v256 = '" WIDE_256_B "' WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE wide SET v512 = 'zz' WHERE id = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v256, v512 FROM wide",
+            .values = updated_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wide varchar update readback",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE max_one (v VARCHAR(16383))");
+    failures += expect_dml_ok(database, insert_max_sql, 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM max_one",
+            .values = max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "max varchar inserted value",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE max_pair (a VARCHAR(8191), b VARCHAR(8191))");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE int_boundary (id INT, v VARCHAR(16382))");
+    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE wide");
+    failures += expect_dml_ok(database, "INSERT INTO clone SELECT * FROM wide", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v256, v512 FROM clone",
+            .values = clone_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wide varchar create table like",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE copied AS SELECT id, v256, v512 FROM wide");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v256, v512 FROM copied",
+            .values = copied_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wide varchar create table select",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen wide file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM max_one",
+            .values = max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "max varchar persisted after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v256, v512 FROM wide",
+            .values = updated_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "wide varchar persisted after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    free(insert_max_sql);
+    free(max_value);
+
+    return failures;
+}
+
 static int test_varchar_diagnostics(void) {
     static const char *const escaped_wildcard_rows[] = {"30", "\\%", "31", "\\_"};
     static const char *const ignore_null_row[] = {"10", ""};
@@ -495,11 +702,76 @@ static int test_varchar_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_length (v VARCHAR(256))",
+        "CREATE TABLE bad_length (v VARCHAR(16384))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_column_length_too_big,
             .sqlstate = "42000",
-            .message_part = "VARCHAR supports only lengths 0 through 255",
+            .message_part = "Column length too big for column 'v' (max = 16383)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_row_size (a VARCHAR(8192), b VARCHAR(8192))",
+        (struct expected_sql_error){
+            .code = mysql_error_row_size_too_large,
+            .sqlstate = "42000",
+            .message_part = "Row size too large",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_int_row_size (id INT, v VARCHAR(16383))",
+        (struct expected_sql_error){
+            .code = mysql_error_row_size_too_large,
+            .sqlstate = "42000",
+            .message_part = "Row size too large",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE add_size (id INT, v VARCHAR(16382))");
+    failures += execute_error(
+        database,
+        "ALTER TABLE add_size ADD COLUMN s SMALLINT",
+        (struct expected_sql_error){
+            .code = mysql_error_row_size_too_large,
+            .sqlstate = "42000",
+            .message_part = "Row size too large",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_varchar_pk (v VARCHAR(256) NOT NULL PRIMARY KEY)",
+        (struct expected_sql_error){
+            .code = mysql_error_storage_engine_cant_index_column,
+            .sqlstate = "42000",
+            .message_part = "The used storage engine can't index column 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_varchar_unique (v VARCHAR(256) UNIQUE)",
+        (struct expected_sql_error){
+            .code = mysql_error_storage_engine_cant_index_column,
+            .sqlstate = "42000",
+            .message_part = "The used storage engine can't index column 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_varchar_key (v VARCHAR(256), KEY v_key (v))",
+        (struct expected_sql_error){
+            .code = mysql_error_storage_engine_cant_index_column,
+            .sqlstate = "42000",
+            .message_part = "The used storage engine can't index column 'v'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE alter_key (v VARCHAR(256))");
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_key ADD INDEX v_key (v)",
+        (struct expected_sql_error){
+            .code = mysql_error_storage_engine_cant_index_column,
+            .sqlstate = "42000",
+            .message_part = "The used storage engine can't index column 'v'",
         }
     );
     failures += execute_error(

@@ -6,17 +6,17 @@
   metadata, aliases, row-size failures, and key-boundary gaps.
 - [x] Specify the narrow widened descriptor lifecycle, row-size ownership,
   diagnostics, metadata, key boundary, and non-goals.
-- [ ] Add MySQL-runtime expectation script for supported and deferred behavior.
-- [ ] Raise non-key `VARCHAR` descriptor support to `0..16383`.
-- [ ] Add descriptor-owned row-size validation for `CREATE TABLE` and
+- [x] Add MySQL-runtime expectation script for supported and deferred behavior.
+- [x] Raise non-key `VARCHAR` descriptor support to `0..16383`.
+- [x] Add descriptor-owned row-size validation for `CREATE TABLE` and
   `ALTER TABLE ... ADD COLUMN`.
-- [ ] Keep current ASCII string-key support capped at `CHAR` /
+- [x] Keep current ASCII string-key support capped at `CHAR` /
   `VARCHAR(1..255)`.
-- [ ] Add fast C runtime tests for wide metadata, DML, persistence, row-size
+- [x] Add fast C runtime tests for wide metadata, DML, persistence, row-size
   diagnostics, key-boundary diagnostics, and file-format safety.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs.
-- [ ] Run focused parser/runtime/MySQL expectation tests.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, descriptor authority, row-size
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs.
+- [x] Run focused parser/runtime/MySQL expectation tests.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for MySQL behavior, descriptor authority, row-size
   accounting, key-scope control, physical SQL safety, metadata accuracy, and
   scope control.

@@ -39,6 +39,7 @@ enum {
     mysql_error_duplicate_key_name = 1061,
     mysql_error_duplicate_key = 1062,
     mysql_error_multiple_primary_key = 1068,
+    mysql_error_column_length_too_big = 1074,
     mysql_error_key_column_does_not_exist = 1072,
     mysql_error_cant_remove_all_fields = 1090,
     mysql_error_cant_drop_field_or_key = 1091,
@@ -48,6 +49,7 @@ enum {
     mysql_error_unknown = 1105,
     mysql_error_column_specified_twice = 1110,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_row_size_too_large = 1118,
     mysql_error_incorrect_column_specifier = 1063,
     mysql_error_wrong_auto_key = 1075,
     mysql_error_column_count_mismatch = 1136,
@@ -200,9 +202,23 @@ enum {
     char_max_length = 255,
     char_logical_prefix_length = 5,
     char_logical_syntax_overhead = 6,
-    varchar_max_length = 255,
+    varchar_max_length = 16383,
+    varchar_string_key_max_length = 255,
     varchar_logical_prefix_length = 8,
     varchar_logical_syntax_overhead = 9,
+    mysql_max_row_size = 65535,
+    utf8mb4_max_bytes_per_character = 4,
+    varchar_one_byte_length_prefix_max = 255,
+    text_family_row_size_contribution = 12,
+    tinyint_row_size_bytes = 1,
+    smallint_row_size_bytes = 2,
+    mediumint_row_size_bytes = 3,
+    int_row_size_bytes = 4,
+    bigint_row_size_bytes = 8,
+    date_row_size_bytes = 3,
+    datetime_row_size_bytes = 5,
+    timestamp_row_size_bytes = 4,
+    decimal_digits_per_storage_group = 9,
     tinytext_max_length = 255,
     text_max_length = 65535,
     mediumtext_max_length = 16777215,
@@ -6060,6 +6076,38 @@ static const struct text_family_type_info *text_family_type_info_for_logical_typ
 static bool column_descriptor_is_auto_increment(
     const struct mylite_catalog_column_descriptor *column
 );
+static int validate_planned_table_row_size(
+    struct mylite_db *database,
+    const struct planned_column *columns,
+    size_t column_count
+);
+static int validate_added_column_row_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct planned_column *added_column
+);
+static int add_planned_column_row_size(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *total
+);
+static int add_catalog_column_row_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *total
+);
+static int row_size_for_column_descriptor(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *physical_type,
+    const char *unsupported_message,
+    uint64_t *out_size
+);
+static int integer_row_size_bytes(const char *logical_type, uint64_t *out_size);
+static int decimal_row_size_bytes(const struct decimal_type_info *info, uint64_t *out_size);
+static uint64_t decimal_digit_group_size(uint64_t digits);
+static int add_row_size_bytes(struct mylite_db *database, uint64_t addition, uint64_t *total);
 static int validate_planned_string_key_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -7874,6 +7922,12 @@ static void set_table_does_not_exist_error(
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
 static void set_multiple_primary_key_error(struct mylite_db *database);
 static void set_wrong_auto_key_error(struct mylite_db *database);
+static void set_column_length_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t maximum_length
+);
+static void set_row_size_too_large_error(struct mylite_db *database);
 static void set_incorrect_column_specifier_error(
     struct mylite_db *database,
     const char *column_name
@@ -9021,6 +9075,9 @@ static int execute_create_table_statement(
     }
     if (rc == MYLITE_OK && !finished) {
         rc = check_duplicate_column_names(database, plan.columns, plan.column_count);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = validate_planned_table_row_size(database, plan.columns, plan.column_count);
     }
     if (rc == MYLITE_OK && !finished) {
         rc = create_table_from_plan(database, &plan);
@@ -16429,6 +16486,9 @@ static int validate_secondary_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_char_or_varchar(column)) {
+        return validate_planned_string_key_column(database, column);
+    }
 
     return MYLITE_OK;
 }
@@ -18505,6 +18565,9 @@ static int plan_alter_table_add_column(
             MYLITE_OK) {
         set_duplicate_column_error(database, out_plan->column.name);
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_added_column_row_size(database, columns, column_count, &out_plan->column);
     }
     if (rc == MYLITE_OK && column_count >= (size_t)INT64_MAX) {
         set_runtime_error(database, "too many columns in table descriptor");
@@ -37192,9 +37255,12 @@ static int map_varchar_type(
     int written = 0;
 
     rc = parse_unsigned_integer_literal(&length_span, &length);
-    if (rc != MYLITE_OK || length > varchar_max_length) {
-        (void)column_name;
-        set_unsupported_error(database, "VARCHAR supports only lengths 0 through 255");
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "VARCHAR supports only lengths 0 through 16383");
+        return MYLITE_ERROR;
+    }
+    if (length > varchar_max_length) {
+        set_column_length_too_big_error(database, column_name, varchar_max_length);
         return MYLITE_ERROR;
     }
 
@@ -37801,6 +37867,241 @@ static bool column_descriptor_is_auto_increment(
     return (column != NULL && column->is_auto_increment) != 0;
 }
 
+static int validate_planned_table_row_size(
+    struct mylite_db *database,
+    const struct planned_column *columns,
+    size_t column_count
+) {
+    uint64_t total = 0U;
+    int rc = MYLITE_OK;
+
+    if (columns == NULL && column_count != 0U) {
+        set_runtime_error(database, "invalid planned columns");
+        return MYLITE_ERROR;
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        rc = add_planned_column_row_size(database, &columns[column_index], &total);
+    }
+
+    return rc;
+}
+
+static int validate_added_column_row_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct planned_column *added_column
+) {
+    uint64_t total = 0U;
+    int rc = MYLITE_OK;
+
+    if ((columns == NULL && column_count != 0U) || added_column == NULL) {
+        set_runtime_error(database, "invalid add-column row-size plan");
+        return MYLITE_ERROR;
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        rc = add_catalog_column_row_size(database, &columns[column_index], &total);
+    }
+    if (rc == MYLITE_OK) {
+        rc = add_planned_column_row_size(database, added_column, &total);
+    }
+
+    return rc;
+}
+
+static int add_planned_column_row_size(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *total
+) {
+    uint64_t size = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || total == NULL) {
+        set_runtime_error(database, "invalid planned column row-size input");
+        return MYLITE_ERROR;
+    }
+    rc = row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "row-size validation supports only current baseline column descriptors",
+        &size
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return add_row_size_bytes(database, size, total);
+}
+
+static int add_catalog_column_row_size(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *total
+) {
+    uint64_t size = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || total == NULL) {
+        set_runtime_error(database, "invalid catalog column row-size input");
+        return MYLITE_ERROR;
+    }
+    rc = row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "row-size validation supports only current baseline column descriptors",
+        &size
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return add_row_size_bytes(database, size, total);
+}
+
+static int row_size_for_column_descriptor(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *physical_type,
+    const char *unsupported_message,
+    uint64_t *out_size
+) {
+    struct decimal_type_info decimal_info = {0};
+    size_t length = 0U;
+    uint64_t size = 0U;
+    int rc = MYLITE_OK;
+
+    if (logical_type == NULL || physical_type == NULL || unsupported_message == NULL ||
+        out_size == NULL) {
+        set_runtime_error(database, "invalid row-size descriptor");
+        return MYLITE_ERROR;
+    }
+    if (strcmp(physical_type, "INTEGER") == 0) {
+        rc = integer_row_size_bytes(logical_type, &size);
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        *out_size = size;
+        return MYLITE_OK;
+    }
+    if (strcmp(physical_type, "TEXT") != 0) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (strncmp(logical_type, "VARCHAR(", varchar_logical_prefix_length) == 0) {
+        rc = parse_varchar_descriptor_length(database, logical_type, unsupported_message, &length);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        size = (uint64_t)length * utf8mb4_max_bytes_per_character;
+        *out_size = size + (size <= varchar_one_byte_length_prefix_max ? 1U : 2U);
+        return MYLITE_OK;
+    }
+    if (strncmp(logical_type, "CHAR(", char_logical_prefix_length) == 0) {
+        rc = parse_char_descriptor_length(database, logical_type, unsupported_message, &length);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_size = (uint64_t)length * utf8mb4_max_bytes_per_character;
+        return MYLITE_OK;
+    }
+    if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
+        return decimal_row_size_bytes(&decimal_info, out_size);
+    }
+    if (strcmp(logical_type, "DATE") == 0) {
+        *out_size = date_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "DATETIME") == 0) {
+        *out_size = datetime_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "TIMESTAMP") == 0) {
+        *out_size = timestamp_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (text_family_type_info_for_logical_type(logical_type) != NULL) {
+        *out_size = text_family_row_size_contribution;
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
+}
+
+static int integer_row_size_bytes(const char *logical_type, uint64_t *out_size) {
+    if (logical_type == NULL || out_size == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
+        strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        *out_size = tinyint_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        *out_size = smallint_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        *out_size = mediumint_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INT UNSIGNED") == 0) {
+        *out_size = int_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "BIGINT") == 0 || strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        *out_size = bigint_row_size_bytes;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int decimal_row_size_bytes(const struct decimal_type_info *info, uint64_t *out_size) {
+    uint64_t integer_digits = 0U;
+    uint64_t fractional_digits = 0U;
+
+    if (info == NULL || out_size == NULL || info->scale > info->precision) {
+        return MYLITE_MISUSE;
+    }
+
+    integer_digits = info->precision - info->scale;
+    fractional_digits = info->scale;
+    *out_size =
+        decimal_digit_group_size(integer_digits) + decimal_digit_group_size(fractional_digits);
+    return MYLITE_OK;
+}
+
+static uint64_t decimal_digit_group_size(uint64_t digits) {
+    static const uint64_t leftover_digit_bytes[] = {0U, 1U, 1U, 2U, 2U, 3U, 3U, 4U, 4U};
+    uint64_t full_groups = digits / decimal_digits_per_storage_group;
+    uint64_t leftover_digits = digits % decimal_digits_per_storage_group;
+
+    return (full_groups * 4U) + leftover_digit_bytes[leftover_digits];
+}
+
+static int add_row_size_bytes(struct mylite_db *database, uint64_t addition, uint64_t *total) {
+    if (total == NULL) {
+        set_runtime_error(database, "invalid row-size accumulator");
+        return MYLITE_ERROR;
+    }
+    if (*total > UINT64_MAX - addition) {
+        set_row_size_too_large_error(database);
+        return MYLITE_ERROR;
+    }
+    *total += addition;
+    if (*total > mysql_max_row_size) {
+        set_row_size_too_large_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_planned_string_key_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -37831,6 +38132,11 @@ static int validate_planned_string_key_column(
         set_storage_engine_cant_index_column_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (rc == MYLITE_OK && planned_column_is_varchar(column) &&
+        length > varchar_string_key_max_length) {
+        set_storage_engine_cant_index_column_error(database, column->name);
+        return MYLITE_ERROR;
+    }
 
     return rc;
 }
@@ -37852,6 +38158,11 @@ static int validate_descriptor_string_key_column(
         rc = varchar_length_for_column(database, column, &length);
     }
     if (rc == MYLITE_OK && length == 0U) {
+        set_storage_engine_cant_index_column_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_varchar(column) &&
+        length > varchar_string_key_max_length) {
         set_storage_engine_cant_index_column_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -49164,6 +49475,42 @@ static void set_wrong_auto_key_error(struct mylite_db *database) {
         "42000",
         "Incorrect table definition; there can be only one auto column and it must be defined as a "
         "key"
+    );
+}
+
+static void set_column_length_too_big_error(
+    struct mylite_db *database,
+    const char *column_name,
+    uint64_t maximum_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column length too big for column '%s' (max = %" PRIu64 "); use BLOB or TEXT instead",
+        column_name,
+        maximum_length
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_column_length_too_big,
+        "42000",
+        message
+    );
+}
+
+static void set_row_size_too_large_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_row_size_too_large,
+        "42000",
+        "Row size too large. The maximum row size for the used table type, not counting BLOBs, is "
+        "65535. This includes storage overhead, check the manual. You have to change some columns "
+        "to TEXT or BLOBs"
     );
 }
 

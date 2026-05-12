@@ -24,6 +24,7 @@ enum {
     clone_column_row_count = 8,
     mysql_error_duplicate_key = 1062,
     mysql_error_parse = 1064,
+    mysql_error_column_length_too_big = 1074,
 };
 
 struct expected_sql_error {
@@ -419,11 +420,11 @@ static int test_character_alias_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_varchar_length (v CHARACTER VARYING(256))",
+        "CREATE TABLE bad_varchar_length (v CHARACTER VARYING(16384))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_column_length_too_big,
             .sqlstate = "42000",
-            .message_part = "VARCHAR supports only lengths 0 through 255",
+            .message_part = "Column length too big for column 'v' (max = 16383)",
         }
     );
     failures += execute_error(

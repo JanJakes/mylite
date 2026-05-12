@@ -294,10 +294,4 @@ expect_upstream_accepts \
     "CREATE TABLE deferred_prefix_unique (v VARCHAR(20), UNIQUE KEY u_v (v(3)));" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "MySQL accepts deferred alter add unique string indexes" \
-    "CREATE TABLE deferred_alter_unique (v VARCHAR(20)); "\
-"ALTER TABLE deferred_alter_unique ADD UNIQUE KEY u_v (v);" \
-    "$DATABASE"
-
 printf '%s\n' "mysql_baseline_char_varchar_key_lifecycle_expectations: ok"

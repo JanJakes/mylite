@@ -766,6 +766,11 @@ alter_table_add_index_statement(A) ::=
     A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
 }
 
+alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD unique_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+}
+
 alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP INDEX identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I);
 }

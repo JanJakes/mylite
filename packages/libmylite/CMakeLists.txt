@@ -1236,6 +1236,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_alter_table_add_index_test)
 
+  add_executable(mylite_runtime_alter_table_add_unique_test
+    tests/runtime_alter_table_add_unique_test.c
+  )
+  target_link_libraries(mylite_runtime_alter_table_add_unique_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_alter_table_add_unique_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_alter_table_add_unique_test)
+
   add_executable(mylite_runtime_create_index_lifecycle_test
     tests/runtime_create_index_lifecycle_test.c
   )
@@ -2230,6 +2242,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.alter_table_add_index
     COMMAND mylite_runtime_alter_table_add_index_test
+  )
+  add_test(
+    NAME libmylite.runtime.alter_table_add_unique
+    COMMAND mylite_runtime_alter_table_add_unique_test
   )
   add_test(
     NAME libmylite.runtime.create_index_lifecycle

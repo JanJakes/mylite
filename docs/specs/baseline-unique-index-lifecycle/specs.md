@@ -80,8 +80,11 @@ Admitted `CREATE TABLE` unique forms:
 Deferred:
 
 - standalone `CREATE UNIQUE INDEX`;
-- `ALTER TABLE ADD UNIQUE`, `DROP INDEX`, `DROP KEY`, `RENAME INDEX`, or
-  visibility changes;
+- `ALTER TABLE ... ADD UNIQUE` in this phase; see
+  `docs/specs/baseline-alter-table-add-unique-lifecycle/specs.md` for the
+  later limited supported subset;
+- `DROP INDEX`, `DROP KEY`, `RENAME INDEX`, or visibility changes in this
+  phase;
 - named `CONSTRAINT symbol UNIQUE ...`;
 - composite indexes;
 - prefix lengths;

@@ -18,8 +18,8 @@ MySQL-compatible ASCII equality for the fixed `utf8mb4_0900_ai_ci` baseline:
 case-insensitive letters, significant trailing spaces for `VARCHAR`, and the
 already canonicalized default-mode trailing-space behavior for `CHAR`. Broader
 Unicode collation weights, non-ASCII key values, prefix indexes, composite
-string keys, standalone index DDL, and `ALTER TABLE ADD UNIQUE` remain separate
-slices.
+string keys, standalone index DDL, and `ALTER TABLE ADD UNIQUE` are handled by
+separate slices.
 
 ## Sources
 
@@ -186,7 +186,8 @@ Deferred:
 - composite primary keys containing any string key part;
 - composite unique string indexes;
 - standalone `CREATE [UNIQUE] INDEX`, standalone `DROP INDEX`, and
-  `ALTER TABLE ADD UNIQUE`;
+  `ALTER TABLE ADD UNIQUE` in this phase; later feature slices cover limited
+  forms;
 - prefix key parts such as `UNIQUE KEY u (v(10))`;
 - `TEXT` family keys without prefixes, `BINARY`, `VARBINARY`, `BLOB`, `ENUM`,
   `SET`, `JSON`, `CHARACTER`, `CHARACTER VARYING`, `NCHAR`, and `NVARCHAR`;
@@ -491,9 +492,9 @@ Use MySQL-compatible diagnostics where MySQL behavior is in scope:
   `1364 / HY000`;
 - unsupported non-ASCII string key value: deterministic MyLite unsupported
   diagnostic;
-- unsupported key shape, prefix, expression, qualified key part, standalone
-  index DDL, or `ALTER TABLE ADD UNIQUE`: existing parse or unsupported
-  diagnostics;
+- unsupported key shape, prefix, expression, qualified key part, and
+  unsupported standalone or alter index DDL forms: existing parse or
+  unsupported diagnostics;
 - SQLite physical failures, allocation failures, and public API misuse:
   existing internal/`MYLITE_NOMEM`/`MYLITE_MISUSE` policies.
 

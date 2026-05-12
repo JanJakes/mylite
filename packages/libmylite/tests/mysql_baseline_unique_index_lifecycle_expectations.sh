@@ -285,14 +285,4 @@ expect_upstream_accepts \
     "CREATE TABLE deferred_constraint_unique (a INT, CONSTRAINT uq_a UNIQUE (a));" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "MySQL accepts deferred standalone unique index creation" \
-    "CREATE TABLE deferred_create_index (a INT); CREATE UNIQUE INDEX uq_a ON deferred_create_index (a);" \
-    "$DATABASE"
-
-expect_upstream_accepts \
-    "MySQL accepts deferred ALTER TABLE ADD UNIQUE" \
-    "CREATE TABLE deferred_alter_unique (a INT); ALTER TABLE deferred_alter_unique ADD UNIQUE KEY uq_a (a);" \
-    "$DATABASE"
-
 printf '%s\n' "mysql_baseline_unique_index_lifecycle_expectations: ok"

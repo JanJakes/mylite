@@ -379,6 +379,7 @@ struct planned_drop_index {
 struct alter_table_add_index_nodes {
     const struct mylite_sql_ast_node *index_name_node;
     const struct mylite_sql_ast_node *part;
+    bool is_unique;
 };
 
 struct create_index_nodes {
@@ -19162,8 +19163,10 @@ static int plan_alter_table_add_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_index){0};
-    out_plan->is_unique = false;
     rc = extract_alter_table_add_index_nodes(database, statement, &nodes);
+    if (rc == MYLITE_OK) {
+        out_plan->is_unique = nodes.is_unique;
+    }
     if (rc == MYLITE_OK) {
         rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
     }
@@ -19242,6 +19245,18 @@ static int plan_alter_table_add_index(
             out_plan->index_name,
             sizeof(out_plan->index_name)
         );
+    }
+    if (rc == MYLITE_OK && out_plan->is_unique) {
+        rc = choose_sqlite_rowid_alias(
+            database,
+            columns,
+            column_count,
+            "ALTER TABLE ADD UNIQUE requires an unshadowed SQLite rowid alias",
+            &out_plan->rowid_alias
+        );
+    }
+    if (rc == MYLITE_OK && out_plan->is_unique) {
+        rc = validate_create_unique_index_existing_rows(database, out_plan);
     }
 
     loaded_index_infos_deinit(&indexes, &index_count);
@@ -19363,10 +19378,12 @@ static int extract_alter_table_add_index_nodes(
     *out_nodes = (struct alter_table_add_index_nodes){0};
 
     if (secondary_index == NULL ||
-        secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION) {
+        (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    out_nodes->is_unique = secondary_index->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION;
 
     first_child = child_at(secondary_index, 0U);
     part_list = first_child;

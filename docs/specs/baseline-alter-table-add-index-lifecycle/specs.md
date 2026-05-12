@@ -17,9 +17,12 @@ compatible scans, and expose the new index through existing descriptor-driven
 `SHOW`, `CREATE TABLE ... LIKE`, DML, auto-increment, and
 `INFORMATION_SCHEMA.STATISTICS` paths.
 
-This is intentionally not full MySQL index DDL. It does not add `ADD UNIQUE`,
-index drops or renames, composite indexes, prefix indexes, functional key parts,
-index comments, visibility, fulltext/spatial indexes, or optimizer guarantees.
+This is intentionally not full MySQL index DDL. This phase did not add
+`ADD UNIQUE`; that later surface is specified separately in
+`docs/specs/baseline-alter-table-add-unique-lifecycle/specs.md`. It also does
+not add index drops or renames, composite indexes, prefix indexes, functional
+key parts, index comments, visibility, fulltext/spatial indexes, or optimizer
+guarantees.
 
 ## Sources
 
@@ -75,8 +78,8 @@ Runtime probes for this phase establish:
 - Missing default schema, unknown schema, and unknown table use the existing
   MySQL diagnostics for `ALTER TABLE` target resolution.
 - MySQL accepts wider forms such as multiple alter actions, composite key
-  parts, `ADD UNIQUE`, index options, comments, visibility, prefixes, and
-  functional key parts. They remain deferred here.
+  parts, unique indexes, index options, comments, visibility, prefixes, and
+  functional key parts. They remain outside this nonunique-index phase.
 
 ## Scope
 
@@ -109,8 +112,9 @@ Supported:
 
 Deferred:
 
-- `ADD UNIQUE`, `ADD CONSTRAINT UNIQUE`, `ADD FULLTEXT`, `ADD SPATIAL`,
-  `ADD FOREIGN KEY`, and check constraints;
+- `ADD UNIQUE` and `ADD CONSTRAINT UNIQUE` in this phase; see the later limited
+  `ALTER TABLE ... ADD UNIQUE` slice for the supported unique-index subset;
+- `ADD FULLTEXT`, `ADD SPATIAL`, `ADD FOREIGN KEY`, and check constraints;
 - `DROP INDEX` / `DROP KEY`, `RENAME INDEX` / `RENAME KEY`, and index
   visibility changes;
 - multi-action `ALTER TABLE`;
@@ -327,7 +331,7 @@ Supported diagnostics:
   unsupported diagnostic for future descriptor kinds;
 - `CHAR(0)` / `VARCHAR(0)` key part: `1167 / 42000`;
 - unsupported key expression, key prefix, direction, index option, multi-key
-  part, multi-action alter, `ADD UNIQUE`, comments, visibility, algorithms,
+  part, multi-action alter, unique-index actions, comments, visibility, algorithms,
   locks, partitions, temporary tables, and views:
   deterministic syntax or unsupported diagnostics;
 - physical SQLite failure: deterministic internal/physical SQL diagnostic;
@@ -366,8 +370,8 @@ Coverage must include:
   reserved names, duplicate explicit names, quoted `PRIMARY`, unknown key
   columns, `TEXT` without prefix, zero-length `CHAR` / `VARCHAR` key columns,
   and unsupported syntax;
-- unsupported forms: `ADD UNIQUE`, `ADD FULLTEXT`, `ADD SPATIAL`,
-  multi-action alter, multiple key parts, key prefixes, table-qualified key
+- unsupported forms for this nonunique-index phase: `ADD FULLTEXT`,
+  `ADD SPATIAL`, multi-action alter, multiple key parts, key prefixes, table-qualified key
   parts, functional key parts, expression key parts, ordinal parts, `USING`,
   comments, visibility, algorithm/lock options, and partitions;
 - existing parser, runtime handle, diagnostics, statement context, result
@@ -388,7 +392,7 @@ Implementation must update:
 - `docs/compatibility/sql-table-ddl.md`;
 
 with limited wording for the exact `ALTER TABLE ... ADD INDEX` / `ADD KEY`
-subset. Do not claim `ADD UNIQUE`, index drops, renames, comments, visibility,
+subset. Do not claim full index drops, renames, comments, visibility,
 composite/prefix/functional/descending indexes,
 foreign keys, optimizer guarantees, or full metadata parity.
 

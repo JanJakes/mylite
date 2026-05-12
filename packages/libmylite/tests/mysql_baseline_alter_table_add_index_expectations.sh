@@ -258,12 +258,6 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "mysql accepts add unique" \
-    "CREATE TABLE deferred_unique (id INT, v INT); "\
-"ALTER TABLE deferred_unique ADD UNIQUE u_v (v);" \
-    "$DATABASE"
-
-expect_upstream_accepts \
     "mysql accepts standalone create index" \
     "CREATE TABLE deferred_create_index (id INT, v INT); "\
 "CREATE INDEX k_v ON deferred_create_index (v);" \

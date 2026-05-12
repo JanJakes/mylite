@@ -177,8 +177,8 @@ Runtime parses the raw token as a `@@` system variable:
 - it preserves the original source text as the scalar result column label.
 
 For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no unique-index descriptors or mutable system-variable
-state exist yet.
+MyLite limitation: descriptor-owned unique indexes remain always enforced and
+no mutable system-variable state exists.
 
 ## Runtime Semantics
 

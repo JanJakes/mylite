@@ -8285,8 +8285,51 @@ static int test_alter_table_add_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("ALTER TABLE add_idx ADD UNIQUE KEY u_v (v);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT,
+        "alter add unique statement"
+    );
+    secondary_index = child_at(statement, 1U);
+    failures += expect_node(
+        secondary_index,
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "alter add unique definition"
+    );
+    failures += expect_span_text(secondary_index, "UNIQUE KEY u_v (v)", "alter add unique span");
+    failures += expect_span_text(child_at(secondary_index, 0U), "u_v", "alter add unique name");
+    key_parts = child_at(secondary_index, 1U);
+    failures += expect_child_count(key_parts, 1U, "alter add unique part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "v", "alter add unique part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE add_idx ADD UNIQUE (`v`);", MYLITE_SQL_PARSE_OK, &result);
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(
+        secondary_index,
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "unnamed alter add unique definition"
+    );
+    failures += expect_child_count(secondary_index, 1U, "unnamed alter add unique child count");
+    key_parts = child_at(secondary_index, 0U);
+    failures += expect_span_text(child_at(key_parts, 0U), "`v`", "unnamed alter add unique part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE add_idx ADD UNIQUE INDEX u_v (v);", MYLITE_SQL_PARSE_OK, &result);
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        secondary_index,
+        "UNIQUE INDEX u_v (v)",
+        "alter add unique index keyword span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "ALTER TABLE add_idx ADD UNIQUE KEY u_v (v);",
+        "ALTER TABLE add_idx ADD CONSTRAINT uq_v UNIQUE (v);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

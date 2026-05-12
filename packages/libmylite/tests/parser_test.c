@@ -77,6 +77,7 @@ static int test_decimal_type_statements(void);
 static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
 static int test_create_table_primary_key_statements(void);
+static int test_alter_table_add_primary_key_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
@@ -252,6 +253,7 @@ int main(void) {
     failures += test_date_type_statements();
     failures += test_datetime_type_statements();
     failures += test_create_table_primary_key_statements();
+    failures += test_alter_table_add_primary_key_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
@@ -7850,6 +7852,89 @@ static int test_create_table_primary_key_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_pk_using (id INT, PRIMARY KEY USING BTREE (id));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_add_primary_key_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *primary_key = NULL;
+    const struct mylite_sql_ast_node *key_parts = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE add_pk ADD PRIMARY KEY (id);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT,
+        "alter add primary key statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter add primary key child count");
+    failures += expect_span_text(child_at(statement, 0U), "add_pk", "alter add primary key table");
+    primary_key = child_at(statement, 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_node(
+        primary_key,
+        MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION,
+        "alter add primary key definition"
+    );
+    failures += expect_span_text(primary_key, "PRIMARY KEY (id)", "alter add primary key span");
+    failures += expect_child_count(key_parts, 1U, "alter add primary key part count");
+    failures += expect_span_text(child_at(key_parts, 0U), "id", "alter add primary key part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE app.add_pk ADD PRIMARY KEY (`id`);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.add_pk",
+        "schema-qualified alter add primary key table"
+    );
+    primary_key = child_at(statement, 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures +=
+        expect_span_text(child_at(key_parts, 0U), "`id`", "quoted alter add primary key part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE add_pk ADD PRIMARY KEY (id, other);", MYLITE_SQL_PARSE_OK, &result);
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_child_count(key_parts, 2U, "alter add composite pk parser part count");
+    failures += expect_span_text(child_at(key_parts, 1U), "other", "alter add composite pk part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE add_pk ADD PRIMARY KEY (add_pk.id);", MYLITE_SQL_PARSE_OK, &result);
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_node(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "alter add qualified pk parser part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD CONSTRAINT pk PRIMARY KEY (id);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY USING BTREE (id);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (id), ADD KEY k_v (v);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

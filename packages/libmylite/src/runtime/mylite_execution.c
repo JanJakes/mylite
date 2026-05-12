@@ -51,6 +51,7 @@ enum {
     mysql_error_incorrect_column_specifier = 1063,
     mysql_error_wrong_auto_key = 1075,
     mysql_error_column_count_mismatch = 1136,
+    mysql_error_invalid_use_of_null = 1138,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
     mysql_error_blob_key_without_length = 1170,
@@ -334,6 +335,12 @@ struct planned_alter_table_add_column {
     struct mylite_catalog_table_descriptor table;
     struct planned_column column;
     int64_t ordinal_position;
+};
+
+struct planned_alter_table_add_primary_key {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor column;
 };
 
 struct planned_alter_table_drop_column {
@@ -2601,6 +2608,11 @@ static int execute_alter_table_add_column_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_add_primary_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_column_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3456,6 +3468,35 @@ static int reject_nonempty_temporal_add_column_without_default(
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
+);
+static int plan_alter_table_add_primary_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_primary_key *out_plan
+);
+static int alter_table_add_primary_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
+static int validate_alter_table_add_primary_key_existing_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
+static int validate_alter_table_add_primary_key_nulls(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
+static int validate_alter_table_add_primary_key_duplicates(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
+static enum mylite_catalog_column_default_kind alter_table_primary_key_default_kind(
+    const struct mylite_catalog_column_descriptor *column
+);
+static int execute_physical_alter_table_add_primary_key(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan,
+    const char *index_physical_name
 );
 static int plan_alter_table_drop_column(
     struct mylite_db *database,
@@ -6766,6 +6807,19 @@ static int build_alter_table_add_column_sql(
     const struct planned_alter_table_add_column *plan,
     char **out_sql
 );
+static int build_alter_table_add_primary_key_null_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+);
+static int build_alter_table_add_primary_key_duplicate_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+);
+static int build_alter_table_add_primary_key_index_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    const char *index_physical_name,
+    char **out_sql
+);
 static int append_alter_table_add_column_default(
     struct mylite_db *database,
     struct dynamic_string *string,
@@ -7304,6 +7358,7 @@ static void set_incorrect_column_specifier_error(
     const char *column_name
 );
 static void set_key_column_missing_error(struct mylite_db *database, const char *column_name);
+static void set_invalid_use_of_null_error(struct mylite_db *database);
 static void set_primary_key_part_null_error(struct mylite_db *database);
 static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name);
 static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name);
@@ -7615,6 +7670,8 @@ static int execute_parsed_statement(
         return execute_alter_table_rename_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
         return execute_alter_table_add_column_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+        return execute_alter_table_add_primary_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
         return execute_alter_table_drop_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
@@ -9061,6 +9118,32 @@ static int execute_alter_table_add_column_statement(
     rc = plan_alter_table_add_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = alter_table_add_column_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_add_primary_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_add_primary_key plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_add_primary_key(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_primary_key_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -14751,6 +14834,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
@@ -17519,6 +17603,333 @@ static int execute_physical_alter_table_add_column(
 ) {
     char *sql = NULL;
     int rc = build_alter_table_add_column_sql(database, plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+
+    return rc;
+}
+
+static int plan_alter_table_add_primary_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_primary_key *out_plan
+) {
+    const struct mylite_sql_ast_node *primary_key = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *part_list = child_at(primary_key, 0U);
+    const struct mylite_sql_ast_node *part = child_at(part_list, 0U);
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct primary_key_info existing_primary_key = primary_key_info_init();
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    struct integer_column_range range = {0};
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_add_primary_key){0};
+    if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION ||
+        part_list == NULL || part_list->kind != MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
+        set_unsupported_error(database, "PRIMARY KEY supports exactly one key column");
+        return MYLITE_ERROR;
+    }
+    if (part == NULL || part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "PRIMARY KEY supports only unqualified key columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(part, column_name, sizeof(column_name), database);
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(column_name)) {
+        set_reserved_name_error(database, "column", column_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD PRIMARY KEY supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &existing_primary_key
+        );
+    }
+    if (rc == MYLITE_OK && existing_primary_key.has_primary_key) {
+        set_multiple_primary_key_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->column = columns[column_index];
+        rc = integer_range_for_column(
+            database,
+            &out_plan->column,
+            "PRIMARY KEY supports only integer columns",
+            &range
+        );
+    }
+
+    free(columns);
+    return rc;
+}
+
+static int alter_table_add_primary_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    char primary_key_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    enum mylite_catalog_column_default_kind default_kind =
+        alter_table_primary_key_default_kind(&plan->column);
+    int64_t default_integer =
+        default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ? plan->column.default_integer : 0;
+    int64_t primary_key_index_id = 0;
+    int rc = validate_alter_table_add_primary_key_existing_rows(database, plan);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_allocate_index_id_in_mutation(
+            database,
+            &mutation,
+            &primary_key_index_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_physical_index_name(
+            primary_key_index_id,
+            primary_key_physical_name,
+            sizeof(primary_key_physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_replace_column_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->column.column_id,
+            plan->column.name,
+            plan->column.logical_type,
+            plan->column.physical_type,
+            false,
+            plan->column.is_visible,
+            plan->column.is_auto_increment,
+            default_kind,
+            default_integer,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_index_in_mutation(
+            database,
+            &mutation,
+            primary_key_index_id,
+            plan->table.table_id,
+            "PRIMARY",
+            primary_key_physical_name,
+            MYLITE_CATALOG_INDEX_KIND_PRIMARY,
+            true,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_index_column_in_mutation(
+            database,
+            &mutation,
+            primary_key_index_id,
+            plan->table.table_id,
+            plan->column.column_id,
+            1,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            execute_physical_alter_table_add_primary_key(database, plan, primary_key_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to add primary key");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_add_primary_key_existing_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    int rc = validate_alter_table_add_primary_key_nulls(database, plan);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_primary_key_duplicates(database, plan);
+    }
+    return rc;
+}
+
+static int validate_alter_table_add_primary_key_nulls(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_alter_table_add_primary_key_null_validation_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            set_invalid_use_of_null_error(database);
+            rc = MYLITE_ERROR;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int validate_alter_table_add_primary_key_duplicates(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_value value = {.is_null = false, .is_text = false, .integer = 0};
+    char duplicate_value[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_alter_table_add_primary_key_duplicate_validation_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            if (sqlite3_column_type(statement, 0) != SQLITE_INTEGER) {
+                set_physical_sqlite_row_error(database);
+                rc = MYLITE_ERROR;
+            } else {
+                value.integer = (int64_t)sqlite3_column_int64(statement, 0);
+                rc = format_key_value(&value, duplicate_value, sizeof(duplicate_value));
+                if (rc == MYLITE_OK) {
+                    set_duplicate_key_error(database, plan->table.name, "PRIMARY", duplicate_value);
+                    rc = MYLITE_ERROR;
+                }
+            }
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static enum mylite_catalog_column_default_kind alter_table_primary_key_default_kind(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        return MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER;
+    }
+
+    return MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT;
+}
+
+static int execute_physical_alter_table_add_primary_key(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan,
+    const char *index_physical_name
+) {
+    char *sql = NULL;
+    int rc = build_alter_table_add_primary_key_index_sql(plan, index_physical_name, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
@@ -40549,6 +40960,133 @@ static int build_alter_table_add_column_sql(
     return rc;
 }
 
+static int build_alter_table_add_primary_key_null_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " IS NULL LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_alter_table_add_primary_key_duplicate_validation_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " IS NOT NULL GROUP BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " HAVING COUNT(*) > 1 ORDER BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_alter_table_add_primary_key_index_sql(
+    const struct planned_alter_table_add_primary_key *plan,
+    const char *index_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE UNIQUE INDEX ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, index_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ON ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
 static int append_alter_table_add_column_default(
     struct mylite_db *database,
     struct dynamic_string *string,
@@ -44495,6 +45033,15 @@ static void set_key_column_missing_error(struct mylite_db *database, const char 
         mysql_error_key_column_does_not_exist,
         "42000",
         message
+    );
+}
+
+static void set_invalid_use_of_null_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_use_of_null,
+        "22004",
+        "Invalid use of NULL value"
     );
 }
 

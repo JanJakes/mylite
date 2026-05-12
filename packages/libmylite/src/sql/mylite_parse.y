@@ -178,6 +178,9 @@ statement(A) ::= alter_table_rename_statement(B). {
 statement(A) ::= alter_table_add_column_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_add_primary_key_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_column_statement(B). {
     A = B;
 }
@@ -719,6 +722,11 @@ alter_table_rename_statement(A) ::=
 alter_table_add_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD column_keyword_opt column_definition(C). {
     A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C);
+}
+
+alter_table_add_primary_key_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P);
 }
 
 alter_table_drop_column_statement(A) ::=

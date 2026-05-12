@@ -4594,6 +4594,7 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
         return true;
     }
     if (catalog_logical_type_equals(logical_type, "DATE") ||
+        catalog_logical_type_equals(logical_type, "TIME") ||
         catalog_logical_type_equals(logical_type, "DATETIME") ||
         catalog_logical_type_equals(logical_type, "TIMESTAMP")) {
         return true;

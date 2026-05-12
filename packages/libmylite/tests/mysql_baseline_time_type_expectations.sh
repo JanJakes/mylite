@@ -313,7 +313,7 @@ expect_upstream_accepts \
 expect_upstream_accepts \
     "mysql accepts relaxed time strings deferred by MyLite" \
     "CREATE TABLE upstream_relaxed (t TIME); "\
-"INSERT INTO upstream_relaxed VALUES ('1:2:3'), ('-0:0:1'); "\
+"INSERT INTO upstream_relaxed VALUES ('1:2:3'), ('-0:0:1'), ('012:00:00'); "\
 "DROP TABLE upstream_relaxed;" \
     "$DATABASE"
 

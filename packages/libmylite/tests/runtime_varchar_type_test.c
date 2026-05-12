@@ -679,7 +679,8 @@ static int test_varchar_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "ORDER BY supports only integer, DATE, DATETIME, or TIMESTAMP descriptor columns",
+                "ORDER BY supports only integer, DATE, TIME, DATETIME, or TIMESTAMP descriptor "
+                "columns",
         }
     );
     failures += execute_error(

@@ -231,6 +231,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CREATE_INDEX_STATEMENT = 222,
     MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT = 223,
     MYLITE_SQL_AST_DROP_INDEX_STATEMENT = 224,
+    MYLITE_SQL_AST_TIME_TYPE = 225,
 };
 
 enum mylite_sql_ast_literal_kind {

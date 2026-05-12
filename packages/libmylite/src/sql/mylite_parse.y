@@ -2661,6 +2661,9 @@ identifier(A) ::= DATE(T). {
 identifier(A) ::= DATETIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= TIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= TIMESTAMP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -2792,6 +2795,9 @@ column_type(A) ::= date_type(T). {
     A = T;
 }
 column_type(A) ::= datetime_type(T). {
+    A = T;
+}
+column_type(A) ::= time_type(T). {
     A = T;
 }
 column_type(A) ::= timestamp_type(T). {
@@ -2986,6 +2992,10 @@ date_type(A) ::= DATE(T). {
 
 datetime_type(A) ::= DATETIME(T). {
     A = mylite_sql_parser_make_datetime_type(state, T);
+}
+
+time_type(A) ::= TIME(T). {
+    A = mylite_sql_parser_make_time_type(state, T);
 }
 
 timestamp_type(A) ::= TIMESTAMP(T). {

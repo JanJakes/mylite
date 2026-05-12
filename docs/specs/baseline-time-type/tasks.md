@@ -8,17 +8,17 @@
 - [x] Specify the narrow descriptor lifecycle, canonical conversion, signed
   time ordering, diagnostics, metadata, index behavior, and non-goals.
 - [x] Add MySQL-runtime expectation script for supported and deferred behavior.
-- [ ] Add parser/AST support for bare `TIME` column types.
-- [ ] Add descriptor mapping, catalog validation, row-size accounting, and
+- [x] Add parser/AST support for bare `TIME` column types.
+- [x] Add descriptor mapping, catalog validation, row-size accounting, and
   metadata rendering for `TIME`.
-- [ ] Add row DML/default conversion for canonical `TIME` strings, `NULL`, and
+- [x] Add row DML/default conversion for canonical `TIME` strings, `NULL`, and
   `DEFAULT`, including supported `INSERT IGNORE` adjustment.
-- [ ] Add descriptor-backed `TIME` predicate and ordering support using signed
+- [x] Add descriptor-backed `TIME` predicate and ordering support using signed
   total-second semantics rather than plain text order.
-- [ ] Add fast C runtime tests for DDL, DML, predicates, ordering, indexes,
+- [x] Add fast C runtime tests for DDL, DML, predicates, ordering, indexes,
   persistence, file-format safety, and diagnostics.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs.
-- [ ] Run focused parser/runtime/MySQL expectation tests.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, descriptor authority, signed
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs.
+- [x] Run focused parser/runtime/MySQL expectation tests.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for MySQL behavior, descriptor authority, signed
   time ordering, physical SQL safety, metadata accuracy, and scope control.

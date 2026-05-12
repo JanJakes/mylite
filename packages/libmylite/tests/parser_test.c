@@ -14,6 +14,7 @@ enum {
     decimal_column_count = 6,
     date_column_count = 3,
     datetime_column_count = 3,
+    time_column_count = 3,
     timestamp_column_count = 3,
     decimal_fixed_column_index = 5,
     alias_int1_unsigned_column_index = 5,
@@ -78,6 +79,7 @@ static int test_text_type_statements(void);
 static int test_decimal_type_statements(void);
 static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
+static int test_time_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_index_statements(void);
@@ -263,6 +265,7 @@ int main(void) {
     failures += test_decimal_type_statements();
     failures += test_date_type_statements();
     failures += test_datetime_type_statements();
+    failures += test_time_type_statements();
     failures += test_timestamp_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_index_statements();
@@ -7700,6 +7703,121 @@ static int test_datetime_type_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE datetime_fractional (d DATETIME(3));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_time_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE time_types (t TIME, nn TIME NOT NULL DEFAULT '01:02:03', time INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, time_column_count, "time column list");
+    column = child_at(columns, 0U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIME_TYPE, "time column type");
+    failures += expect_span_text(child_at(column, 1U), "TIME", "time column span");
+    column = child_at(columns, 1U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIME_TYPE, "not null time type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "not null time"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time string default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "time", "time keyword identifier");
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_INTEGER_TYPE, "time identifier type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE time_types ADD COLUMN elapsed TIME DEFAULT '-00:00:01';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_TIME_TYPE, "alter add time");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter time default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM time_types WHERE t BETWEEN '-00:00:01' AND '24:00:00';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_BETWEEN_PREDICATE, "time between");
+    failures += expect_literal(
+        child_at(predicate, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time between lower"
+    );
+    failures += expect_literal(
+        child_at(predicate, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time between upper"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM time_types WHERE t IN ('838:59:59', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    predicate = child_at(child_at(statement, 2U), 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "time in predicate");
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time in string"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "time in null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE time_types SET t = '02:03:04';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "time update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE time_fractional (t TIME(3));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

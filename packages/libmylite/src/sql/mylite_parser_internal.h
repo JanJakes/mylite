@@ -1113,6 +1113,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_timestamp_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token timestamp_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_time_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token time_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_nullability nullability,

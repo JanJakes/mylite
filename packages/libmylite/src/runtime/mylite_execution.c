@@ -343,6 +343,15 @@ struct planned_alter_table_add_primary_key {
     struct mylite_catalog_column_descriptor column;
 };
 
+struct planned_alter_table_auto_increment {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor column;
+    int64_t requested_next;
+    int64_t effective_next;
+    bool has_auto_increment_column;
+};
+
 struct planned_alter_table_drop_column {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -2613,6 +2622,11 @@ static int execute_alter_table_add_primary_key_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_auto_increment_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_column_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3497,6 +3511,37 @@ static int execute_physical_alter_table_add_primary_key(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan,
     const char *index_physical_name
+);
+static int plan_alter_table_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_auto_increment *out_plan
+);
+static int parse_alter_table_auto_increment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    int64_t *out_next
+);
+static int find_alter_table_auto_increment_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_found
+);
+static int alter_table_auto_increment_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan
+);
+static int compute_alter_table_auto_increment_effective_next(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    int64_t *out_effective_next
+);
+static int read_alter_table_auto_increment_row_next(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    const struct integer_column_range *range,
+    int64_t *out_row_next
 );
 static int plan_alter_table_drop_column(
     struct mylite_db *database,
@@ -6820,6 +6865,10 @@ static int build_alter_table_add_primary_key_index_sql(
     const char *index_physical_name,
     char **out_sql
 );
+static int build_alter_table_auto_increment_max_sql(
+    const struct planned_alter_table_auto_increment *plan,
+    char **out_sql
+);
 static int append_alter_table_add_column_default(
     struct mylite_db *database,
     struct dynamic_string *string,
@@ -7672,6 +7721,8 @@ static int execute_parsed_statement(
         return execute_alter_table_add_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
         return execute_alter_table_add_primary_key_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
+        return execute_alter_table_auto_increment_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
         return execute_alter_table_drop_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
@@ -9144,6 +9195,32 @@ static int execute_alter_table_add_primary_key_statement(
     rc = plan_alter_table_add_primary_key(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = alter_table_add_primary_key_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_auto_increment_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_auto_increment plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_auto_increment(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_auto_increment_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -14835,6 +14912,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
@@ -17935,6 +18013,233 @@ static int execute_physical_alter_table_add_primary_key(
         rc = execute_sqlite_schema_sql(database, sql);
     }
     free(sql);
+
+    return rc;
+}
+
+static int plan_alter_table_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_auto_increment *out_plan
+) {
+    const struct mylite_sql_ast_node *option = child_at(statement, 1U);
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_auto_increment){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = parse_alter_table_auto_increment_option(database, option, &out_plan->requested_next);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE AUTO_INCREMENT supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_alter_table_auto_increment_column(
+            database,
+            out_plan,
+            &out_plan->column,
+            &out_plan->has_auto_increment_column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = compute_alter_table_auto_increment_effective_next(
+            database,
+            out_plan,
+            &out_plan->effective_next
+        );
+    }
+
+    return rc;
+}
+
+static int parse_alter_table_auto_increment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    int64_t *out_next
+) {
+    const uint64_t sqlite_int64_positive_max = 9223372036854775807ULL;
+    const struct mylite_sql_ast_node *literal = child_at(option, 0U);
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (option == NULL || option->kind != MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION ||
+        literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK || magnitude > sqlite_int64_positive_max) {
+        set_unsupported_error(
+            database,
+            "AUTO_INCREMENT table option supports only signed 64-bit nonnegative values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_next = magnitude == 0U ? 1 : (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
+static int find_alter_table_auto_increment_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_found
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t auto_increment_count = 0U;
+    int rc = load_table_columns(database, plan->table.table_id, &columns, &column_count);
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    *out_found = false;
+    if (rc == MYLITE_OK) {
+        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+            if (!column_descriptor_is_auto_increment(&columns[column_index])) {
+                continue;
+            }
+            if (auto_increment_count == 0U) {
+                *out_column = columns[column_index];
+                *out_found = true;
+            }
+            ++auto_increment_count;
+        }
+    }
+    free(columns);
+
+    if (rc == MYLITE_OK && auto_increment_count > 1U) {
+        set_runtime_error(database, "invalid auto-increment table descriptor");
+        rc = MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int alter_table_auto_increment_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (!plan->has_auto_increment_column ||
+        plan->effective_next == plan->table.auto_increment_next) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_update_table_auto_increment_next(
+        database,
+        plan->table.table_id,
+        plan->effective_next
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update auto-increment counter");
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int compute_alter_table_auto_increment_effective_next(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    int64_t *out_effective_next
+) {
+    struct integer_column_range range = {0};
+    int64_t row_next = 1;
+    int rc = MYLITE_OK;
+
+    *out_effective_next = plan->requested_next;
+    if (!plan->has_auto_increment_column) {
+        return MYLITE_OK;
+    }
+
+    rc = integer_range_for_column(
+        database,
+        &plan->column,
+        "AUTO_INCREMENT supports only integer columns",
+        &range
+    );
+    if (rc == MYLITE_OK) {
+        rc = read_alter_table_auto_increment_row_next(database, plan, &range, &row_next);
+    }
+    if (rc == MYLITE_OK && row_next > *out_effective_next) {
+        *out_effective_next = row_next;
+    }
+
+    return rc;
+}
+
+static int read_alter_table_auto_increment_row_next(
+    struct mylite_db *database,
+    const struct planned_alter_table_auto_increment *plan,
+    const struct integer_column_range *range,
+    int64_t *out_row_next
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_alter_table_auto_increment_max_sql(plan, &sql);
+
+    *out_row_next = 1;
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            const int column_type = sqlite3_column_type(statement, 0);
+            if (column_type == SQLITE_NULL) {
+                *out_row_next = 1;
+            } else if (column_type == SQLITE_INTEGER) {
+                const int64_t max_value = (int64_t)sqlite3_column_int64(statement, 0);
+                if (max_value > 0) {
+                    rc = next_auto_increment_after_value(1, max_value, range, out_row_next);
+                }
+            } else {
+                set_physical_sqlite_row_error(database);
+                rc = MYLITE_ERROR;
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
 
     return rc;
 }
@@ -41075,6 +41380,46 @@ static int build_alter_table_add_primary_key_index_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_alter_table_auto_increment_max_sql(
+    const struct planned_alter_table_auto_increment *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT MAX(");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " IS NOT NULL");
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);

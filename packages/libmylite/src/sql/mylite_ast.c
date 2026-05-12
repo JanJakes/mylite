@@ -547,6 +547,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "inline_primary_key";
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
         return "alter_table_add_primary_key_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
+        return "alter_table_auto_increment_statement";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
         return "column_attribute_list";
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:

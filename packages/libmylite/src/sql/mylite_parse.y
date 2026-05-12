@@ -181,6 +181,9 @@ statement(A) ::= alter_table_add_column_statement(B). {
 statement(A) ::= alter_table_add_primary_key_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_auto_increment_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_column_statement(B). {
     A = B;
 }
@@ -727,6 +730,18 @@ alter_table_add_column_statement(A) ::=
 alter_table_add_primary_key_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P). {
     A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P);
+}
+
+alter_table_auto_increment_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) AUTO_INCREMENT(O) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_alter_table_auto_increment_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_table_auto_increment_option(
+            state,
+            O,
+            mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER)));
 }
 
 alter_table_drop_column_statement(A) ::=

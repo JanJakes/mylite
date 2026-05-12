@@ -19,22 +19,22 @@
 
 ## Implementation
 
-- [ ] Extend parser and AST support for one
+- [x] Extend parser and AST support for one
   `ALTER TABLE table_name AUTO_INCREMENT [=] integer_literal` action.
-- [ ] Add analyzer/planner support for schema resolution, table resolution,
+- [x] Add analyzer/planner support for schema resolution, table resolution,
   reserved target names, persistent base-table checks, literal conversion, and
   cleanup-safe zero initialization.
-- [ ] Resolve the current auto-increment descriptor column, if present, from
+- [x] Resolve the current auto-increment descriptor column, if present, from
   MyLite descriptors rather than SQLite metadata.
-- [ ] Compute the effective next value using the requested literal and a
+- [x] Compute the effective next value using the requested literal and a
   descriptor-built physical `MAX()` query over the auto-increment column.
-- [ ] Update `auto_increment_next` through the catalog API without mutating
+- [x] Update `auto_increment_next` through the catalog API without mutating
   table descriptors, column descriptors, descriptor versions, row data,
   `LAST_INSERT_ID()`, or `sqlite_schema_generation`.
-- [ ] Preserve existing `INSERT`, `UPDATE`, `TRUNCATE`, `CREATE TABLE ... LIKE`,
+- [x] Preserve existing `INSERT`, `UPDATE`, `TRUNCATE`, `CREATE TABLE ... LIKE`,
   reopen, `SHOW`, and limited `INFORMATION_SCHEMA` behavior through the updated
   descriptor counter.
-- [ ] Reject unsupported literal forms, multi-action `ALTER TABLE`, attribute
+- [x] Reject unsupported literal forms, multi-action `ALTER TABLE`, attribute
   changes, temporary tables, views, algorithms, locks, and unrelated table
   options deterministically.
 
@@ -42,10 +42,10 @@
 
 - [x] Update `COMPATIBILITY.md` and detailed compatibility docs only for the
   designed subset.
-- [ ] Add focused parser and C runtime tests for supported and rejected
+- [x] Add focused parser and C runtime tests for supported and rejected
   behavior.
-- [ ] Run focused build/tests, the MySQL expectation script, and
+- [x] Run focused build/tests, the MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog authority,
+- [x] Review the final diff for architecture boundaries, catalog authority,
   descriptor-driven SQLite SQL, effective counter correctness, metadata
   accuracy, performance, file-format safety, and scope control.

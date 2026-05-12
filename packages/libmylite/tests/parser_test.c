@@ -78,6 +78,7 @@ static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_alter_table_add_primary_key_statements(void);
+static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
@@ -254,6 +255,7 @@ int main(void) {
     failures += test_datetime_type_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_alter_table_add_primary_key_statements();
+    failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
     failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
@@ -7935,6 +7937,88 @@ static int test_alter_table_add_primary_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE add_pk ADD PRIMARY KEY (id), ADD KEY k_v (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_auto_increment_option_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *option = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("ALTER TABLE auto_counter AUTO_INCREMENT=10;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    option = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT,
+        "alter table auto increment statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter table auto increment child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "auto_counter", "alter auto increment table");
+    failures +=
+        expect_node(option, MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION, "alter auto option");
+    failures +=
+        expect_literal(child_at(option, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "alter auto value");
+    failures += expect_span_text(child_at(option, 0U), "10", "alter auto value span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE app.auto_counter AUTO_INCREMENT 0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    option = child_at(statement, 1U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.auto_counter",
+        "schema-qualified alter auto increment table"
+    );
+    failures += expect_span_text(child_at(option, 0U), "0", "alter auto increment zero value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT=-1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT=+1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT='10';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT=NULL;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT=1.5;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE auto_counter AUTO_INCREMENT=10, ADD COLUMN other INT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

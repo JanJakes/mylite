@@ -97,6 +97,12 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "aggregate string predicate source filter" \
+    "2" \
+    "SELECT COUNT(*) FROM strings WHERE v = 'abc';" \
+    "$DATABASE"
+
+expect_output \
     "update string predicate affected rows" \
     "2	0	1:hit,2:hit,3:abc  ,4:NULL,5:ab" \
     "UPDATE strings SET v = 'hit' WHERE v = 'abc'; "\

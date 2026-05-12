@@ -415,6 +415,7 @@ static int test_text_success_persistence_and_introspection(void) {
 static int test_text_diagnostics(void) {
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
+    static const char *const text_predicate_row[] = {"1"};
     char path[test_path_capacity];
     char too_long_sql
         [sizeof("INSERT INTO diag VALUES (1, '', 'x')") + tinytext_overlength_byte_count];
@@ -544,13 +545,14 @@ static int test_text_diagnostics(void) {
             .message_part = "Incorrect column specifier for column 'v'",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM diag WHERE tt = 'ok'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only integer or boolean predicate literals",
+        (struct expected_query){
+            .sql = "SELECT id FROM diag WHERE tt = 'ok'",
+            .values = text_predicate_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "TEXT equality predicate",
         }
     );
     failures += execute_error(

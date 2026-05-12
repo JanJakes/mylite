@@ -7489,6 +7489,7 @@ static int plan_comparison_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static bool comparison_operator_is_string_equality(enum mylite_sql_ast_operator operator_kind);
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -7626,6 +7627,11 @@ static int convert_predicate_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
     struct planned_value *out_value
 );
 static int convert_predicate_date_literal(
@@ -46798,6 +46804,14 @@ static int plan_comparison_predicate(
     );
 
     if (rc == MYLITE_OK) {
+        if (column_descriptor_is_string_family(&node.column) &&
+            !comparison_operator_is_string_equality(node.operator_kind)) {
+            set_unsupported_error(
+                database,
+                "WHERE string predicates support only =, <=>, <>, and !="
+            );
+            return MYLITE_ERROR;
+        }
         rc = convert_predicate_value(
             database,
             child_at(predicate_node, 1U),
@@ -46810,6 +46824,17 @@ static int plan_comparison_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static bool comparison_operator_is_string_equality(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int plan_is_null_predicate(
@@ -46911,6 +46936,10 @@ static int plan_between_predicate(
     );
 
     if (rc == MYLITE_OK) {
+        if (column_descriptor_is_string_family(&node.column)) {
+            set_unsupported_error(database, "WHERE string predicates do not yet support BETWEEN");
+            return MYLITE_ERROR;
+        }
         rc = convert_predicate_value(
             database,
             child_at(predicate_node, 1U),
@@ -46957,6 +46986,10 @@ static int plan_in_predicate(
     );
 
     if (rc == MYLITE_OK) {
+        if (column_descriptor_is_string_family(&node.column)) {
+            set_unsupported_error(database, "WHERE string predicates do not yet support IN");
+            return MYLITE_ERROR;
+        }
         rc = convert_predicate_in_value_list(
             database,
             child_at(predicate_node, 1U),
@@ -47330,6 +47363,9 @@ static int convert_predicate_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 ) {
+    if (column_descriptor_is_string_family(column)) {
+        return convert_predicate_string_literal(database, value_node, out_value);
+    }
     if (column_descriptor_is_date(column)) {
         return convert_predicate_date_literal(database, value_node, column, out_value);
     }
@@ -47343,6 +47379,41 @@ static int convert_predicate_value(
         return convert_predicate_timestamp_literal(database, value_node, column, out_value);
     }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "WHERE string predicates support only string literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE string predicates support only string literals",
+        "WHERE string predicate literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE string predicate literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
 }
 
 static int convert_predicate_date_literal(
@@ -51629,6 +51700,14 @@ static int append_descriptor_value_sql(
 ) {
     if (column_descriptor_is_time(column)) {
         return append_time_seconds_value_sql(string, column);
+    }
+    if (column_descriptor_is_string_family(column)) {
+        int rc = dynamic_string_append_quoted_identifier(string, column->name);
+
+        if (rc == MYLITE_OK) {
+            rc = append_string_key_collation_sql(string);
+        }
+        return rc;
     }
 
     return dynamic_string_append_quoted_identifier(string, column->name);

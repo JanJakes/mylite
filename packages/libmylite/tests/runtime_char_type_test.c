@@ -551,7 +551,7 @@ static int test_char_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only baseline integer columns",
+            .message_part = "WHERE string predicates support only string literals",
         }
     );
     failures += execute_error(

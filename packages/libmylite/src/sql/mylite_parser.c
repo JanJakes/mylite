@@ -2026,12 +2026,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *rows,
     struct mylite_sql_ast_node *modifier,
-    struct mylite_sql_ast_node *ignore
+    struct mylite_sql_ast_node *ignore,
+    struct mylite_sql_ast_node *duplicate_update
 ) {
     struct mylite_sql_source_span span = span_from_token(&insert_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (rows != NULL) {
+    if (duplicate_update != NULL) {
+        span = span_join(span, duplicate_update->span);
+    } else if (rows != NULL) {
         span = span_join(span, rows->span);
     } else if (columns != NULL) {
         span = span_join(span, columns->span);
@@ -2049,6 +2052,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     mylite_sql_ast_node_append_child(statement, rows);
     mylite_sql_ast_node_append_child(statement, modifier);
     mylite_sql_ast_node_append_child(statement, ignore);
+    mylite_sql_ast_node_append_child(statement, duplicate_update);
     return statement;
 }
 
@@ -2193,12 +2197,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *assignments,
     struct mylite_sql_ast_node *modifier,
-    struct mylite_sql_ast_node *ignore
+    struct mylite_sql_ast_node *ignore,
+    struct mylite_sql_ast_node *duplicate_update
 ) {
     struct mylite_sql_source_span span = span_from_token(&insert_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (assignments != NULL) {
+    if (duplicate_update != NULL) {
+        span = span_join(span, duplicate_update->span);
+    } else if (assignments != NULL) {
         span = span_join(span, assignments->span);
     } else if (table_name != NULL) {
         span = span_join(span, table_name->span);
@@ -2213,6 +2220,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     mylite_sql_ast_node_append_child(statement, assignments);
     mylite_sql_ast_node_append_child(statement, modifier);
     mylite_sql_ast_node_append_child(statement, ignore);
+    mylite_sql_ast_node_append_child(statement, duplicate_update);
     return statement;
 }
 
@@ -2297,6 +2305,107 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_assignment(
     mylite_sql_ast_node_append_child(assignment, target);
     mylite_sql_ast_node_append_child(assignment, value);
     return assignment;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_duplicate_update_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_ast_node *assignments
+) {
+    struct mylite_sql_source_span span = span_from_token(&on_token);
+    struct mylite_sql_ast_node *clause = NULL;
+
+    if (assignments != NULL) {
+        span = span_join(span, assignments->span);
+    }
+
+    clause = make_node(state, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE, span);
+    if (clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(clause, assignments);
+    return clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_duplicate_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+) {
+    struct mylite_sql_source_span span =
+        assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, assignment);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_duplicate_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, assignment);
+    if (assignment != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, assignment->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_duplicate_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token equals_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span =
+        target == NULL ? span_from_token(&equals_token) : target->span;
+    struct mylite_sql_ast_node *assignment = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    assignment = make_node(state, MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT, span);
+    if (assignment == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(assignment, target);
+    mylite_sql_ast_node_append_child(assignment, value);
+    return assignment;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_reference(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token values_token,
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_token close_token
+) {
+    struct mylite_sql_source_span span = span_from_token(&values_token);
+    struct mylite_sql_ast_node *reference = NULL;
+
+    if (column != NULL) {
+        span = span_join(span, column->span);
+    }
+    span = span_join(span, span_from_token(&close_token));
+
+    reference = make_node(state, MYLITE_SQL_AST_INSERT_VALUES_REFERENCE, span);
+    if (reference == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(reference, column);
+    return reference;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
@@ -4387,6 +4496,7 @@ static bool map_keyword_token(
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"MODE", MYLITE_SQL_PARSE_MODE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
+        {"DUPLICATE", MYLITE_SQL_PARSE_DUPLICATE},
         {"TO", MYLITE_SQL_PARSE_TO},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"DO", MYLITE_SQL_PARSE_DO},

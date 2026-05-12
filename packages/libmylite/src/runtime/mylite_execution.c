@@ -84,6 +84,7 @@ enum {
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
+    mysql_warning_values_function_deprecated = 1287,
     mysql_warning_truncated_incorrect_decimal = 1292,
     mysql_error_incorrect_date_value = 1292,
     mysql_error_incorrect_time_value = 1292,
@@ -607,6 +608,7 @@ struct mapped_integer_type {
 
 struct planned_insert_row {
     struct planned_value *values;
+    bool generated_auto_increment;
 };
 
 struct insert_auto_increment_mode_counts {
@@ -617,6 +619,23 @@ struct insert_auto_increment_mode_counts {
 struct insert_execution_counters {
     int64_t affected_rows;
     int64_t auto_increment_next_after_rows;
+    int64_t first_inserted_generated_auto_increment;
+    bool inserted_generated_auto_increment;
+};
+
+enum planned_insert_duplicate_update_value_kind {
+    PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL = 0,
+    PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE = 1,
+};
+
+struct planned_insert_duplicate_update {
+    bool has_clause;
+    size_t assignment_column_index;
+    const struct mylite_sql_ast_node *assignment_value_node;
+    enum planned_insert_duplicate_update_value_kind value_kind;
+    size_t values_column_index;
+    size_t key_index;
+    bool has_key;
 };
 
 struct planned_insert {
@@ -638,6 +657,7 @@ struct planned_insert {
     int64_t auto_increment_next_after_statement;
     int64_t first_generated_auto_increment;
     bool generated_auto_increment;
+    struct planned_insert_duplicate_update duplicate_update;
 };
 
 enum planned_select_predicate_kind {
@@ -4022,6 +4042,10 @@ static int execute_insert_from_plan(
     const struct planned_insert *plan,
     mylite_result *result
 );
+static int append_insert_duplicate_update_warnings_if_needed(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+);
 static int plan_insert_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -6409,6 +6433,26 @@ static int plan_insert_string_key_values(
     struct mylite_db *database,
     const struct planned_insert *plan
 );
+static int plan_insert_duplicate_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *plan
+);
+static int plan_insert_duplicate_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    struct planned_insert *plan
+);
+static int plan_insert_duplicate_values_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_insert *plan
+);
+static int plan_insert_duplicate_update_key(
+    struct mylite_db *database,
+    struct planned_insert *plan
+);
+static bool insert_duplicate_assignment_targets_key(const struct planned_insert *plan);
 static int validate_update_string_key_value(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -6457,6 +6501,16 @@ static int advance_auto_increment_after_insert_row(
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
+);
+static int advance_auto_increment_after_duplicate_attempt(
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
+);
+static void record_inserted_generated_auto_increment(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
 );
 static int append_insert_omitted_column_warnings(
     struct mylite_db *database,
@@ -7704,8 +7758,70 @@ static int handle_insert_unique_key_conflict(
     const struct planned_insert *plan,
     size_t row_index
 );
+static int handle_insert_duplicate_key_update(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *insert_statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+);
 static int step_insert_row(sqlite3_stmt *statement, int *out_sqlite_rc);
 static bool sqlite_status_is_constraint(int sqlite_rc);
+static int reset_insert_statement_after_constraint(sqlite3_stmt *statement);
+static int find_insert_unique_key_conflict(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info **out_conflicting_index,
+    char *value_text,
+    size_t value_text_size
+);
+static int insert_unique_key_row_has_null_part(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *index,
+    bool *out_has_null_part
+);
+static int apply_insert_duplicate_key_update(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    struct insert_execution_counters *counters
+);
+static int convert_insert_duplicate_update_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct planned_value *out_value
+);
+static int copy_planned_value(
+    struct mylite_db *database,
+    const struct planned_value *source,
+    struct planned_value *out_value
+);
+static int build_insert_duplicate_update_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_value,
+    char **out_sql
+);
+static int append_insert_duplicate_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_value *assignment_value,
+    size_t *next_parameter
+);
+static int bind_insert_duplicate_update_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_value
+);
 static int handle_update_unique_key_conflict(
     struct mylite_db *database,
     const struct planned_update *executable_plan,
@@ -8490,6 +8606,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_INSERT_VALUES_REFERENCE:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
@@ -10381,6 +10501,9 @@ static int execute_planned_insert_statement(
 
     rc = plan_insert(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
     }
     planned_insert_deinit(&plan);
@@ -10490,6 +10613,9 @@ static int execute_planned_insert_set_statement(
 
     rc = plan_insert_set(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
     }
     planned_insert_deinit(&plan);
@@ -10499,6 +10625,32 @@ static int execute_planned_insert_set_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int append_insert_duplicate_update_warnings_if_needed(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || !plan->duplicate_update.has_clause ||
+        plan->duplicate_update.value_kind !=
+            PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_values_function_deprecated,
+        "HY000",
+        "'VALUES function' is deprecated and will be removed in a future release. "
+        "Please use an alias (INSERT INTO ... VALUES (...) AS alias) and replace "
+        "VALUES(col) in the ON DUPLICATE KEY UPDATE clause with alias.col instead"
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int execute_delete_statement(
@@ -15826,6 +15978,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_INSERT_VALUES_REFERENCE:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
@@ -22706,6 +22862,9 @@ static int plan_insert(
     if (rc == MYLITE_OK) {
         rc = plan_insert_string_key_values(database, out_plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_duplicate_update(database, statement, out_plan);
+    }
 
     free(target_indexes);
     primary_key_info_deinit(&primary_key);
@@ -22817,6 +22976,9 @@ static int plan_insert_set(
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_string_key_values(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_duplicate_update(database, statement, out_plan);
     }
 
     free(target_indexes);
@@ -22971,6 +23133,220 @@ static int plan_insert_string_key_values(
     return MYLITE_OK;
 }
 
+static int plan_insert_duplicate_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *plan
+) {
+    const struct mylite_sql_ast_node *clause =
+        child_with_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
+    const struct mylite_sql_ast_node *assignment_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int rc = MYLITE_OK;
+
+    if (clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (plan->ignore_errors) {
+        set_unsupported_error(
+            database,
+            "INSERT IGNORE ... ON DUPLICATE KEY UPDATE is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    assignment_list = child_at(clause, 0U);
+    if (assignment_list == NULL ||
+        assignment_list->kind != MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE supports exactly one assignment"
+        );
+        return MYLITE_ERROR;
+    }
+
+    plan->duplicate_update = (struct planned_insert_duplicate_update){
+        .has_clause = true,
+        .value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL,
+    };
+
+    assignment = child_at(assignment_list, 0U);
+    rc = plan_insert_duplicate_assignment(database, assignment, plan);
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_duplicate_update_key(database, plan);
+    }
+
+    return rc;
+}
+
+static int plan_insert_duplicate_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    struct planned_insert *plan
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    if (target == NULL || target->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE supports only unqualified assignment columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(target, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(
+            plan->columns,
+            plan->column_count,
+            column_name,
+            &plan->duplicate_update.assignment_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    value = child_at(assignment, 1U);
+    if (rc == MYLITE_OK && value == NULL) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && value->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE) {
+        rc = plan_insert_duplicate_values_reference(database, value, plan);
+    } else if (rc == MYLITE_OK) {
+        plan->duplicate_update.assignment_value_node = value;
+        plan->duplicate_update.value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
+    }
+
+    return rc;
+}
+
+static int plan_insert_duplicate_values_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_insert *plan
+) {
+    const struct mylite_sql_ast_node *column = child_at(value_node, 0U);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (column == NULL || column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(column, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(
+            plan->columns,
+            plan->column_count,
+            column_name,
+            &plan->duplicate_update.values_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && plan->duplicate_update.values_column_index !=
+                               plan->duplicate_update.assignment_column_index) {
+        set_unsupported_error(
+            database,
+            "VALUES() in ON DUPLICATE KEY UPDATE supports only the assignment column"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !insert_select_source_target_types_are_compatible(
+                               &plan->columns[plan->duplicate_update.values_column_index],
+                               &plan->columns[plan->duplicate_update.assignment_column_index]
+                           )) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE does not support implicit VALUES() conversion"
+        );
+        return MYLITE_ERROR;
+    }
+
+    plan->duplicate_update.assignment_value_node = value_node;
+    plan->duplicate_update.value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE;
+    return rc;
+}
+
+static int plan_insert_duplicate_update_key(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    size_t unique_key_count = 0U;
+
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *candidate = &plan->indexes[index];
+
+        if (!candidate->index.is_unique) {
+            continue;
+        }
+        ++unique_key_count;
+        if (candidate->part_count != 1U) {
+            set_unsupported_error(
+                database,
+                "INSERT ... ON DUPLICATE KEY UPDATE supports only single-column keys"
+            );
+            return MYLITE_ERROR;
+        }
+        plan->duplicate_update.has_key = true;
+        plan->duplicate_update.key_index = index;
+    }
+    if (unique_key_count > 1U) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE supports only one enforced key"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->duplicate_update.has_key && insert_duplicate_assignment_targets_key(plan)) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE does not support key-column assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool insert_duplicate_assignment_targets_key(const struct planned_insert *plan) {
+    const struct loaded_index_info *key = NULL;
+
+    if (plan == NULL || !plan->duplicate_update.has_key ||
+        plan->duplicate_update.key_index >= plan->index_count) {
+        return false;
+    }
+
+    key = &plan->indexes[plan->duplicate_update.key_index];
+    for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
+        if (key->parts[part_index].column_index == plan->duplicate_update.assignment_column_index) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static int count_insert_auto_increment_modes(
     const struct planned_insert *plan,
     struct insert_auto_increment_mode_counts *out_counts
@@ -23015,6 +23391,9 @@ static int plan_insert_auto_increment_row_value(
             return MYLITE_ERROR;
         }
         rc = assign_generated_auto_increment_value(database, plan, row_index, *next_value);
+        if (rc == MYLITE_OK) {
+            plan->rows[row_index].generated_auto_increment = true;
+        }
         if (rc == MYLITE_OK && !plan->generated_auto_increment) {
             plan->first_generated_auto_increment = *next_value;
             plan->generated_auto_increment = true;
@@ -23194,8 +23573,9 @@ static int execute_insert_from_plan(
     }
 
     mylite_result_set_affected_rows(result, counters.affected_rows);
-    if (plan->has_auto_increment && plan->generated_auto_increment && counters.affected_rows > 0) {
-        database->session.last_insert_id = (uint64_t)plan->first_generated_auto_increment;
+    if (counters.inserted_generated_auto_increment) {
+        database->session.last_insert_id =
+            (uint64_t)counters.first_inserted_generated_auto_increment;
     }
 
     return MYLITE_OK;
@@ -23215,6 +23595,7 @@ static int execute_insert_plan_rows(
         rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
         if (rc == MYLITE_OK) {
             ++counters->affected_rows;
+            record_inserted_generated_auto_increment(plan, row_index, counters);
             if (plan->has_auto_increment) {
                 rc = advance_auto_increment_after_insert_row(
                     plan,
@@ -23223,13 +23604,31 @@ static int execute_insert_plan_rows(
                 );
             }
         } else if (sqlite_status_is_constraint(sqlite_step_rc)) {
-            rc = handle_insert_unique_key_conflict(
-                database,
-                sqlite_step_rc,
-                statement,
-                plan,
-                row_index
-            );
+            if (plan->duplicate_update.has_clause) {
+                rc = handle_insert_duplicate_key_update(
+                    database,
+                    sqlite_step_rc,
+                    statement,
+                    plan,
+                    row_index,
+                    counters
+                );
+                if (rc == MYLITE_OK && plan->has_auto_increment) {
+                    rc = advance_auto_increment_after_duplicate_attempt(
+                        plan,
+                        row_index,
+                        &counters->auto_increment_next_after_rows
+                    );
+                }
+            } else {
+                rc = handle_insert_unique_key_conflict(
+                    database,
+                    sqlite_step_rc,
+                    statement,
+                    plan,
+                    row_index
+                );
+            }
         }
     }
 
@@ -23271,6 +23670,36 @@ static int advance_auto_increment_after_insert_row(
     );
 }
 
+static int advance_auto_increment_after_duplicate_attempt(
+    const struct planned_insert *plan,
+    size_t row_index,
+    int64_t *auto_increment_next_after_rows
+) {
+    if (row_index >= plan->row_count || !plan->rows[row_index].generated_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    return advance_auto_increment_after_insert_row(plan, row_index, auto_increment_next_after_rows);
+}
+
+static void record_inserted_generated_auto_increment(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    const struct planned_value *auto_value = NULL;
+
+    if (!plan->has_auto_increment || row_index >= plan->row_count ||
+        !plan->rows[row_index].generated_auto_increment ||
+        counters->inserted_generated_auto_increment) {
+        return;
+    }
+
+    auto_value = &plan->rows[row_index].values[plan->auto_increment_column_index];
+    counters->first_inserted_generated_auto_increment = auto_value->integer;
+    counters->inserted_generated_auto_increment = true;
+}
+
 static int handle_insert_unique_key_conflict(
     struct mylite_db *database,
     int sqlite_step_rc,
@@ -23280,49 +23709,15 @@ static int handle_insert_unique_key_conflict(
 ) {
     char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY] = "";
     const struct loaded_index_info *conflicting_index = NULL;
-    int rc = MYLITE_OK;
-
-    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
-        const struct loaded_index_info *candidate = &plan->indexes[index];
-        bool exists = false;
-        bool has_null_part = false;
-
-        if (!candidate->index.is_unique || candidate->part_count == 0U) {
-            continue;
-        }
-        for (size_t part_index = 0U; part_index < candidate->part_count; ++part_index) {
-            if (candidate->parts[part_index].column_index >= plan->column_count) {
-                set_runtime_error(database, "invalid unique-index descriptor");
-                return MYLITE_ERROR;
-            }
-            if (plan->rows[row_index].values[candidate->parts[part_index].column_index].is_null) {
-                has_null_part = true;
-                break;
-            }
-        }
-        if (has_null_part) {
-            continue;
-        }
-        rc = unique_key_tuple_exists(
-            database,
-            plan->table.physical_name,
-            candidate,
-            plan->rows[row_index].values,
-            plan->column_count,
-            &exists
-        );
-        if (rc == MYLITE_OK && exists) {
-            conflicting_index = candidate;
-            rc = format_key_tuple(
-                candidate,
-                plan->rows[row_index].values,
-                plan->column_count,
-                value_text,
-                sizeof(value_text)
-            );
-            break;
-        }
-    }
+    int rc = find_insert_unique_key_conflict(
+        database,
+        sqlite_step_rc,
+        plan,
+        row_index,
+        &conflicting_index,
+        value_text,
+        sizeof(value_text)
+    );
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -23352,6 +23747,47 @@ static int handle_insert_unique_key_conflict(
         if (reset_rc != SQLITE_OK && !sqlite_status_is_constraint(reset_rc)) {
             rc = mylite_sqlite_status_to_mylite(reset_rc);
         }
+    }
+
+    return rc;
+}
+
+static int handle_insert_duplicate_key_update(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *insert_statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY] = "";
+    const struct loaded_index_info *conflicting_index = NULL;
+    int rc = find_insert_unique_key_conflict(
+        database,
+        sqlite_step_rc,
+        plan,
+        row_index,
+        &conflicting_index,
+        value_text,
+        sizeof(value_text)
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (conflicting_index == NULL) {
+        return mylite_sqlite_status_to_mylite(sqlite_step_rc);
+    }
+
+    rc = reset_insert_statement_after_constraint(insert_statement);
+    if (rc == MYLITE_OK) {
+        rc = apply_insert_duplicate_key_update(
+            database,
+            plan,
+            row_index,
+            conflicting_index,
+            counters
+        );
     }
 
     return rc;
@@ -48167,6 +48603,315 @@ static bool sqlite_status_is_constraint(int sqlite_rc) {
 
     return (sqlite_rc == SQLITE_CONSTRAINT ||
             (sqlite_rc & sqlite_primary_result_code_mask) == SQLITE_CONSTRAINT) != 0;
+}
+
+static int reset_insert_statement_after_constraint(sqlite3_stmt *statement) {
+    int reset_rc = sqlite3_reset(statement);
+
+    if (reset_rc != SQLITE_OK && !sqlite_status_is_constraint(reset_rc)) {
+        return mylite_sqlite_status_to_mylite(reset_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int find_insert_unique_key_conflict(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info **out_conflicting_index,
+    char *value_text,
+    size_t value_text_size
+) {
+    int rc = MYLITE_OK;
+
+    *out_conflicting_index = NULL;
+    if (value_text != NULL && value_text_size != 0U) {
+        value_text[0] = '\0';
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
+        const struct loaded_index_info *candidate = &plan->indexes[index];
+        bool exists = false;
+        bool has_null_part = false;
+
+        if (!candidate->index.is_unique || candidate->part_count == 0U) {
+            continue;
+        }
+        rc = insert_unique_key_row_has_null_part(
+            database,
+            plan,
+            row_index,
+            candidate,
+            &has_null_part
+        );
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        if (has_null_part) {
+            continue;
+        }
+        rc = unique_key_tuple_exists(
+            database,
+            plan->table.physical_name,
+            candidate,
+            plan->rows[row_index].values,
+            plan->column_count,
+            &exists
+        );
+        if (rc == MYLITE_OK && exists) {
+            *out_conflicting_index = candidate;
+            if (value_text != NULL && value_text_size != 0U) {
+                rc = format_key_tuple(
+                    candidate,
+                    plan->rows[row_index].values,
+                    plan->column_count,
+                    value_text,
+                    value_text_size
+                );
+            }
+            break;
+        }
+    }
+
+    if (rc == MYLITE_OK && *out_conflicting_index == NULL) {
+        return mylite_sqlite_status_to_mylite(sqlite_step_rc);
+    }
+
+    return rc;
+}
+
+static int insert_unique_key_row_has_null_part(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *index,
+    bool *out_has_null_part
+) {
+    *out_has_null_part = false;
+
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        size_t column_index = index->parts[part_index].column_index;
+
+        if (column_index >= plan->column_count) {
+            set_runtime_error(database, "invalid unique-index descriptor");
+            return MYLITE_ERROR;
+        }
+        if (plan->rows[row_index].values[column_index].is_null) {
+            *out_has_null_part = true;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int apply_insert_duplicate_key_update(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    struct insert_execution_counters *counters
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_value assignment_value = {.is_null = false};
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = convert_insert_duplicate_update_value(database, plan, row_index, &assignment_value);
+
+    if (rc == MYLITE_OK) {
+        rc = build_insert_duplicate_update_sql(plan, conflicting_index, &assignment_value, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_insert_duplicate_update_parameters(
+            statement,
+            plan,
+            row_index,
+            conflicting_index,
+            &assignment_value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            if (sqlite3_changes64(database->sqlite) > 0) {
+                counters->affected_rows += 2;
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    planned_value_deinit(&assignment_value);
+    free(sql);
+
+    return rc;
+}
+
+static int convert_insert_duplicate_update_value(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct planned_value *out_value
+) {
+    const struct planned_insert_duplicate_update *duplicate_update = &plan->duplicate_update;
+
+    if (duplicate_update->value_kind == PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE) {
+        return copy_planned_value(
+            database,
+            &plan->rows[row_index].values[duplicate_update->values_column_index],
+            out_value
+        );
+    }
+
+    return convert_insert_value(
+        database,
+        duplicate_update->assignment_value_node,
+        &plan->columns[duplicate_update->assignment_column_index],
+        row_index + 1U,
+        false,
+        out_value
+    );
+}
+
+static int copy_planned_value(
+    struct mylite_db *database,
+    const struct planned_value *source,
+    struct planned_value *out_value
+) {
+    planned_value_deinit(out_value);
+    if (source->is_text) {
+        return copy_text_value(database, source->text, out_value);
+    }
+
+    *out_value = *source;
+    out_value->text = NULL;
+    out_value->text_length = 0U;
+    return MYLITE_OK;
+}
+
+static int build_insert_duplicate_update_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_value,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 3U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "UPDATE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " SET ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(
+            &string,
+            plan->columns[plan->duplicate_update.assignment_column_index].name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " = ?1 WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_loaded_key_part_sql(&string, &conflicting_index->parts[0], NULL);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " = ?2 AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_changed_condition_sql(
+            &string,
+            &plan->columns[plan->duplicate_update.assignment_column_index],
+            assignment_value,
+            &next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_insert_duplicate_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_value *assignment_value,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (assignment_value->is_null) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+        return rc;
+    }
+
+    rc = dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <> ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int bind_insert_duplicate_update_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_value
+) {
+    size_t key_column_index = conflicting_index->parts[0].column_index;
+    int rc = bind_planned_value_parameter(statement, 1, assignment_value);
+
+    if (rc == MYLITE_OK) {
+        rc = bind_planned_value_parameter(
+            statement,
+            2,
+            &plan->rows[row_index].values[key_column_index]
+        );
+    }
+    if (rc == MYLITE_OK && !assignment_value->is_null) {
+        rc = bind_planned_value_parameter(statement, 3, assignment_value);
+    }
+
+    return rc;
 }
 
 static int handle_update_unique_key_conflict(

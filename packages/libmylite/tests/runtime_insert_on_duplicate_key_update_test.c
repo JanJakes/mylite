@@ -1,0 +1,846 @@
+#include <mylite/mylite.h>
+
+#include "storage/mylite_file_format.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+#  include <process.h>
+#else
+#  include <unistd.h>
+#endif
+
+enum {
+    test_path_capacity = 1024,
+    typed_column_count = 6,
+    mysql_error_parse = 1064,
+    mysql_error_unknown_column = 1054,
+    mysql_error_bad_null = 1048,
+    mysql_error_field_no_default = 1364,
+    mysql_error_data_out_of_range = 1264,
+};
+
+struct expected_sql_error {
+    int code;
+    const char *sqlstate;
+    const char *message_part;
+};
+
+struct expected_query {
+    const char *sql;
+    const char *const *values;
+    size_t column_count;
+    size_t row_count;
+    const char *context;
+};
+
+struct expected_dml {
+    int64_t affected_rows;
+    size_t warning_count;
+};
+
+static int test_duplicate_update_success_warnings_and_persistence(void);
+static int test_duplicate_update_diagnostics(void);
+static int test_duplicate_update_independent_handles(void);
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
+static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_dml_ok(mylite_db *database, const char *sql, struct expected_dml expected);
+static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+);
+static int make_test_path(char *path, size_t path_size, const char *name);
+static int current_process_id(void);
+static void remove_related_files(const char *path);
+static void remove_with_suffix(const char *path, const char *suffix);
+static int read_file_at(const char *path, long offset, void *buffer, size_t size);
+static int expect_int(int actual, int expected, const char *context);
+static int expect_int64(int64_t actual, int64_t expected, const char *context);
+static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+);
+
+int main(void) {
+    int failures = 0;
+
+    failures += test_duplicate_update_success_warnings_and_persistence();
+    failures += test_duplicate_update_diagnostics();
+    failures += test_duplicate_update_independent_handles();
+
+    return failures == 0 ? 0 : 1;
+}
+
+static int test_duplicate_update_success_warnings_and_persistence(void) {
+    static const char *const primary_rows[] = {"1", "30", NULL, "2", "40", "5"};
+    static const char *const warning_row[] = {
+        "Warning",
+        "1287",
+        "'VALUES function' is deprecated and will be removed in a future release. Please use "
+        "an alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
+        "DUPLICATE KEY UPDATE clause with alias.col instead",
+    };
+    static const char *const no_key_rows[] = {"1", "10", "1", "20"};
+    static const char *const unique_rows[] = {"1", "10", "200"};
+    static const char *const default_rows[] = {"1", "7", NULL};
+    static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
+    static const char *const last_insert_id_one[] = {"1"};
+    static const char *const last_insert_id_three[] = {"3"};
+    static const char *const priority_rows[] = {"1", "30"};
+    static const char *const typed_rows[] = {
+        "9.99",
+        "new",
+        "2024-02-29",
+        "-12:34:56",
+        "2024-05-06 07:08:09",
+        "2024-05-06 07:08:09",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "success") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open success file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE pk_t(id INT PRIMARY KEY, v INT NOT NULL, n INT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO pk_t VALUES (1, 10, NULL)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO pk_t VALUES (1, 20, 4) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = warning_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "values function warning",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO pk_t VALUES (1, 20, 4) ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO pk_t VALUES (1, 30, NULL), (2, 40, 5) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 3, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM pk_t ORDER BY id",
+            .values = primary_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "primary duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE nk(id INT, v INT)");
+    failures += expect_statement_ok(database, "INSERT INTO nk VALUES (1, 10)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO nk VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM nk ORDER BY v",
+            .values = no_key_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "no-key duplicate tail inserts",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE unique_t(id INT, email INT UNIQUE, v INT)");
+    failures += expect_statement_ok(database, "INSERT INTO unique_t VALUES (1, 10, 100)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO unique_t VALUES (2, 10, 200) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, email, v FROM unique_t ORDER BY id",
+            .values = unique_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "unique duplicate row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE set_t(id INT PRIMARY KEY, v INT NOT NULL DEFAULT 7, n INT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO set_t SET id = 1, v = 10, n = NULL");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO set_t SET id = 1, v = 99, n = 3 ON DUPLICATE KEY UPDATE v = DEFAULT",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO set_t SET id = 1, v = 99, n = 3 ON DUPLICATE KEY UPDATE n = NULL",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM set_t",
+            .values = default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "set duplicate default and null",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE auto_t(id INT AUTO_INCREMENT, email INT UNIQUE, v INT, KEY(id))"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO auto_t(email, v) VALUES (10, 100)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_t(email, v) VALUES (10, 200) ON DUPLICATE KEY UPDATE v = 200",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "duplicate generated auto increment leaves last insert id",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_t(email, v) VALUES (20, 300)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_three,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "post-duplicate generated auto increment id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, email, v FROM auto_t ORDER BY id",
+            .values = auto_increment_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "duplicate generated auto increment rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE priority_t(id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT LOW_PRIORITY INTO priority_t VALUES (1, 10) "
+        "ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT HIGH_PRIORITY INTO priority_t VALUES (1, 10) "
+        "ON DUPLICATE KEY UPDATE v = 30",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM priority_t",
+            .values = priority_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "priority modifiers with duplicate update",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE typed_t(id INT PRIMARY KEY, amount DECIMAL(5,2), name VARCHAR(10), "
+        "d DATE, tm TIME, dt DATETIME, ts TIMESTAMP NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 1.25, 'old', '2024-01-01', '01:02:03', "
+        "'2024-01-01 01:02:03', '2024-01-01 01:02:03')"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE amount = 9.99",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE name = 'new'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE d = '2024-02-29'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE tm = '-12:34:56'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE dt = '2024-05-06 07:08:09'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO typed_t VALUES (1, 9.99, 'proposed', '2024-03-04', '04:05:06', "
+        "'2024-03-04 04:05:06', '2024-03-04 04:05:06') "
+        "ON DUPLICATE KEY UPDATE ts = '2024-05-06 07:08:09'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT amount, name, d, tm, dt, ts FROM typed_t",
+            .values = typed_rows,
+            .column_count = typed_column_count,
+            .row_count = 1U,
+            .context = "typed duplicate assignments",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "INSERT DELAYED INTO pk_t VALUES (3, 50, NULL) ON DUPLICATE KEY UPDATE v = 50",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "delayed insert affected rows");
+    failures +=
+        expect_size(mylite_result_warning_count(result), 1U, "delayed insert warning count");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "duplicate update preserves preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM pk_t WHERE id <= 2 ORDER BY id",
+            .values = primary_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "persisted duplicate update rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_duplicate_update_diagnostics(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "diagnostics") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE t(id INT PRIMARY KEY, v INT NOT NULL)");
+    failures += expect_statement_ok(database, "INSERT INTO t VALUES (1, 10)");
+
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE missing = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(missing)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only the assignment column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'v' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'v' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT IGNORE ... ON DUPLICATE KEY UPDATE is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = 20, v = 30",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports exactly one assignment",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE t.v = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only unqualified assignment columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(t.v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE id = VALUES(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "does not support key-column assignments",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE two_keys(id INT PRIMARY KEY, u INT UNIQUE, v INT)"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO two_keys VALUES (1, 1, 1) ON DUPLICATE KEY UPDATE v = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only one enforced key",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE rollback_t(id INT PRIMARY KEY, ti TINYINT, v INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO rollback_t VALUES (1, 1, 10)");
+    failures += execute_error(
+        database,
+        "INSERT INTO rollback_t VALUES (2, 2, 20), (1, 3, 30) "
+        "ON DUPLICATE KEY UPDATE ti = 128",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'ti' at row 2",
+        }
+    );
+    {
+        static const char *const rollback_rows[] = {"1", "1", "10"};
+
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT id, ti, v FROM rollback_t ORDER BY id",
+                .values = rollback_rows,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "duplicate branch failure rolls back statement",
+            }
+        );
+    }
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_duplicate_update_independent_handles(void) {
+    static const char *const first_rows[] = {"1", "20"};
+    static const char *const second_rows[] = {"1", "30"};
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "second") != 0) {
+        return 1;
+    }
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
+    failures += expect_statement_ok(first, "CREATE DATABASE app");
+    failures += expect_statement_ok(first, "USE app");
+    failures += expect_statement_ok(second, "CREATE DATABASE app");
+    failures += expect_statement_ok(second, "USE app");
+    failures += expect_statement_ok(first, "CREATE TABLE t(id INT PRIMARY KEY, v INT)");
+    failures += expect_statement_ok(second, "CREATE TABLE t(id INT PRIMARY KEY, v INT)");
+    failures += expect_statement_ok(first, "INSERT INTO t VALUES (1, 10)");
+    failures += expect_statement_ok(second, "INSERT INTO t VALUES (1, 10)");
+    failures += expect_dml_ok(
+        first,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        second,
+        "INSERT INTO t VALUES (1, 30) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t",
+            .values = first_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "first handle row",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t",
+            .values = second_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "second handle row",
+        }
+    );
+
+    mylite_close(first);
+    mylite_close(second);
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+    return failures;
+}
+
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int failures = 0;
+
+    failures += expect_int(rc, MYLITE_OK, sql);
+    if (rc == MYLITE_OK) {
+        *out_result = result;
+    } else {
+        mylite_result_free(result);
+        *out_result = NULL;
+    }
+    return failures;
+}
+
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int failures = 0;
+
+    failures += expect_int(rc, MYLITE_ERROR, sql);
+    failures += expect_int(mylite_errcode(database), expected.code, sql);
+    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_statement_ok(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_dml_ok(mylite_db *database, const char *sql, struct expected_dml expected) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+    failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_query_values(mylite_db *database, struct expected_query query) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+    size_t value_index = 0U;
+
+    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
+    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    for (size_t row = 0U; row < query.row_count; ++row) {
+        for (size_t column = 0U; column < query.column_count; ++column) {
+            failures +=
+                expect_result_value(result, row, column, query.values[value_index], query.context);
+            ++value_index;
+        }
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+) {
+    const char *actual = mylite_result_value_text(result, row, column);
+
+    if (expected == NULL) {
+        if (actual != NULL) {
+            fprintf(
+                stderr,
+                "%s: expected NULL at %zu,%zu, got [%s]\n",
+                context,
+                row,
+                column,
+                actual
+            );
+            return 1;
+        }
+        return 0;
+    }
+
+    return expect_text(actual, expected, context);
+}
+
+static int make_test_path(char *path, size_t path_size, const char *name) {
+    int written = snprintf(
+        path,
+        path_size,
+        "%s/mylite_insert_on_duplicate_key_update_%d_%s.mylite",
+        P_tmpdir,
+        current_process_id(),
+        name
+    );
+
+    if (written < 0 || (size_t)written >= path_size) {
+        return 1;
+    }
+    return 0;
+}
+
+static int current_process_id(void) {
+#ifdef _WIN32
+    return _getpid();
+#else
+    return getpid();
+#endif
+}
+
+static void remove_related_files(const char *path) {
+    remove_with_suffix(path, "");
+    remove_with_suffix(path, "-journal");
+    remove_with_suffix(path, "-wal");
+    remove_with_suffix(path, "-shm");
+}
+
+static void remove_with_suffix(const char *path, const char *suffix) {
+    char buffer[test_path_capacity];
+    int written = snprintf(buffer, sizeof(buffer), "%s%s", path, suffix);
+
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return;
+    }
+    (void)remove(buffer);
+}
+
+static int read_file_at(const char *path, long offset, void *buffer, size_t size) {
+    FILE *file = fopen(path, "rb");
+
+    if (file == NULL) {
+        fprintf(stderr, "failed to open %s\n", path);
+        return 1;
+    }
+    if (fseek(file, offset, SEEK_SET) != 0 || fread(buffer, 1U, size, file) != size) {
+        fprintf(stderr, "failed to read %s\n", path);
+        fclose(file);
+        return 1;
+    }
+    fclose(file);
+    return 0;
+}
+
+static int expect_int(int actual, int expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_int64(int64_t actual, int64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %lld, got %lld\n",
+            context,
+            (long long)expected,
+            (long long)actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_size(size_t actual, size_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_text(const char *actual, const char *expected, const char *context) {
+    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected [%s], got [%s]\n",
+            context,
+            expected == NULL ? "NULL" : expected,
+            actual == NULL ? "NULL" : actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_contains(const char *actual, const char *needle, const char *context) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+        fprintf(
+            stderr,
+            "%s: expected [%s] to contain [%s]\n",
+            context,
+            actual == NULL ? "NULL" : actual,
+            needle == NULL ? "NULL" : needle
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+) {
+    if (memcmp(actual, expected, size) != 0) {
+        fprintf(stderr, "%s: bytes differ\n", context);
+        return 1;
+    }
+    return 0;
+}

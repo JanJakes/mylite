@@ -72,15 +72,15 @@ run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 expect_output \
     "literal duplicate update affected rows" \
     "2	0	0
-1	20	30
+1	20	N
 0	0	0
-1	20	30" \
+1	20	N" \
     "CREATE TABLE t(id INT PRIMARY KEY, v INT NOT NULL, n INT NULL); "\
 "INSERT INTO t VALUES (1,10,NULL); "\
-"INSERT INTO t VALUES (1,20,30) ON DUPLICATE KEY UPDATE v=20, n=30; "\
+"INSERT INTO t VALUES (1,20,30) ON DUPLICATE KEY UPDATE v=20; "\
 "SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
 "SELECT id,v,IFNULL(n,'N') FROM t ORDER BY id; "\
-"INSERT INTO t VALUES (1,20,30) ON DUPLICATE KEY UPDATE v=20, n=30; "\
+"INSERT INTO t VALUES (1,20,30) ON DUPLICATE KEY UPDATE v=20; "\
 "SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
 "SELECT id,v,IFNULL(n,'N') FROM t ORDER BY id;" \
     "$DATABASE"
@@ -179,6 +179,88 @@ expect_output \
 "SELECT id,v FROM t ORDER BY id;" \
     "$DATABASE"
 run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
+
+expect_output \
+    "priority modifiers duplicate update" \
+    "1	0	0	10
+2	0	0	30" \
+    "CREATE TABLE priority_t(id INT PRIMARY KEY, v INT); "\
+"INSERT LOW_PRIORITY INTO priority_t VALUES (1,10) ON DUPLICATE KEY UPDATE v=20; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, v FROM priority_t; "\
+"INSERT HIGH_PRIORITY INTO priority_t VALUES (1,10) ON DUPLICATE KEY UPDATE v=30; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, v FROM priority_t;" \
+    "$DATABASE"
+run_mysql "DROP TABLE priority_t;" "$DATABASE" >/dev/null
+
+expect_output \
+    "typed duplicate assignments" \
+    "2	0	0
+2	0	0
+2	0	0
+2	0	0
+2	0	0
+2	0	0
+9.99	new	2024-02-29	-12:34:56	2024-05-06 07:08:09	2024-05-06 07:08:09" \
+    "CREATE TABLE typed_t(id INT PRIMARY KEY, amount DECIMAL(5,2), name VARCHAR(10), "\
+"d DATE, tm TIME, dt DATETIME, ts TIMESTAMP NULL); "\
+"INSERT INTO typed_t VALUES (1,1.25,'old','2024-01-01','01:02:03',"\
+"'2024-01-01 01:02:03','2024-01-01 01:02:03'); "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE amount=9.99; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE name='new'; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE d='2024-02-29'; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE tm='-12:34:56'; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE dt='2024-05-06 07:08:09'; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO typed_t VALUES (1,9.99,'proposed','2024-03-04','04:05:06',"\
+"'2024-03-04 04:05:06','2024-03-04 04:05:06') ON DUPLICATE KEY UPDATE ts='2024-05-06 07:08:09'; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT amount,name,d,tm,dt,ts FROM typed_t;" \
+    "$DATABASE"
+run_mysql "DROP TABLE typed_t;" "$DATABASE" >/dev/null
+
+expect_output \
+    "generated auto increment duplicate update" \
+    "2	0	0	1
+1	0	0	3
+1	10	200
+3	20	300" \
+    "CREATE TABLE auto_t(id INT AUTO_INCREMENT, email INT UNIQUE, v INT, KEY(id)); "\
+"INSERT INTO auto_t(email,v) VALUES (10,100); "\
+"INSERT INTO auto_t(email,v) VALUES (10,200) ON DUPLICATE KEY UPDATE v=200; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, LAST_INSERT_ID(); "\
+"INSERT INTO auto_t(email,v) VALUES (20,300); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count, LAST_INSERT_ID(); "\
+"SELECT id,email,v FROM auto_t ORDER BY id;" \
+    "$DATABASE"
+run_mysql "DROP TABLE auto_t;" "$DATABASE" >/dev/null
+
+run_mysql \
+    "CREATE TABLE rollback_t(id INT PRIMARY KEY, ti TINYINT, v INT); "\
+"INSERT INTO rollback_t VALUES (1,1,10);" \
+    "$DATABASE" >/dev/null
+expect_error \
+    "duplicate branch range failure" \
+    1264 \
+    22003 \
+    "Out of range value for column 'ti' at row 2" \
+    "INSERT INTO rollback_t VALUES (2,2,20),(1,3,30) "\
+"ON DUPLICATE KEY UPDATE ti=128;" \
+    "$DATABASE"
+expect_output \
+    "duplicate branch failure rolls back statement" \
+    "1	1	10" \
+    "SELECT id,ti,v FROM rollback_t ORDER BY id;" \
+    "$DATABASE"
+run_mysql "DROP TABLE rollback_t;" "$DATABASE" >/dev/null
 
 expect_error \
     "unknown duplicate assignment column" \

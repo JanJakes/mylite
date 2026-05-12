@@ -1421,6 +1421,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_insert_ignore_lifecycle_test)
 
+  add_executable(mylite_runtime_insert_on_duplicate_key_update_test
+    tests/runtime_insert_on_duplicate_key_update_test.c
+  )
+  target_link_libraries(mylite_runtime_insert_on_duplicate_key_update_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_insert_on_duplicate_key_update_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_insert_on_duplicate_key_update_test)
+
   add_executable(mylite_runtime_select_where_lifecycle_test
     tests/runtime_select_where_lifecycle_test.c
   )
@@ -2343,6 +2355,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.insert_ignore_lifecycle
     COMMAND mylite_runtime_insert_ignore_lifecycle_test
+  )
+  add_test(
+    NAME libmylite.runtime.insert_on_duplicate_key_update
+    COMMAND mylite_runtime_insert_on_duplicate_key_update_test
   )
   add_test(
     NAME libmylite.runtime.select_where_lifecycle

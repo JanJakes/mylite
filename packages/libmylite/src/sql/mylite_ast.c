@@ -719,6 +719,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_delayed_modifier";
     case MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER:
         return "insert_ignore_modifier";
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE:
+        return "insert_duplicate_update_clause";
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST:
+        return "insert_duplicate_assignment_list";
+    case MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT:
+        return "insert_duplicate_assignment";
+    case MYLITE_SQL_AST_INSERT_VALUES_REFERENCE:
+        return "insert_values_reference";
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
         return "replace_values_statement";
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:

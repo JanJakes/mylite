@@ -116,6 +116,7 @@ static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
 static int test_insert_select_statement(void);
 static int test_insert_modifier_statements(void);
+static int test_insert_on_duplicate_key_update_statement(void);
 static int test_replace_select_statement(void);
 static int test_replace_modifier_statements(void);
 static int test_delete_statement(void);
@@ -302,6 +303,7 @@ int main(void) {
     failures += test_select_item_alias_clause();
     failures += test_insert_select_statement();
     failures += test_insert_modifier_statements();
+    failures += test_insert_on_duplicate_key_update_statement();
     failures += test_replace_select_statement();
     failures += test_replace_modifier_statements();
     failures += test_delete_statement();
@@ -4847,6 +4849,14 @@ static int test_qualified_identifier_keyword_part(void) {
     );
     failures +=
         expect_span_text(child_at(child_at(statement, 1U), 0U), "coalesce", "coalesce table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE duplicate (duplicate INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "duplicate", "duplicate table");
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "duplicate", "duplicate column");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -12377,6 +12387,103 @@ static int test_insert_modifier_statements(void) {
         child_at(statement, 3U),
         MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
         "delayed insert select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_insert_on_duplicate_key_update_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *clause = NULL;
+    const struct mylite_sql_ast_node *assignments = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) VALUES (1, 2) "
+        "ON DUPLICATE KEY UPDATE amount = VALUES(amount);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    assignment = child_at(assignments, 0U);
+    value = child_at(assignment, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "duplicate insert");
+    failures += expect_child_count(statement, 4U, "duplicate insert child count");
+    failures += expect_node(
+        clause,
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "duplicate insert clause"
+    );
+    failures += expect_node(
+        assignments,
+        MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT_LIST,
+        "duplicate assignment list"
+    );
+    failures += expect_child_count(assignments, 1U, "duplicate assignment count");
+    failures +=
+        expect_node(assignment, MYLITE_SQL_AST_INSERT_DUPLICATE_ASSIGNMENT, "duplicate assignment");
+    failures += expect_span_text(child_at(assignment, 0U), "amount", "duplicate assignment target");
+    failures += expect_node(value, MYLITE_SQL_AST_INSERT_VALUES_REFERENCE, "values reference");
+    failures += expect_span_text(child_at(value, 0U), "amount", "values reference column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT DELAYED simple_lifecycle SET id = 1, amount = 2 "
+        "ON DUPLICATE KEY UPDATE amount = DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    assignment = child_at(assignments, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "duplicate insert set");
+    failures += expect_child_count(statement, 4U, "duplicate insert set child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
+        "duplicate insert set modifier"
+    );
+    failures += expect_node(
+        clause,
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "duplicate insert set clause"
+    );
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "duplicate default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO simple_lifecycle VALUES (1) "
+        "ON DUPLICATE KEY UPDATE simple_lifecycle.id = VALUES(simple_lifecycle.id), id = 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    clause = child_at(statement, 3U);
+    assignments = child_at(clause, 0U);
+    failures += expect_child_count(assignments, 2U, "duplicate wider assignment count");
+    assignment = child_at(assignments, 0U);
+    value = child_at(assignment, 1U);
+    failures += expect_node(
+        child_at(assignment, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "duplicate qualified target"
+    );
+    failures += expect_node(value, MYLITE_SQL_AST_INSERT_VALUES_REFERENCE, "qualified values ref");
+    failures += expect_node(
+        child_at(value, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "duplicate qualified values column"
     );
     mylite_sql_parse_result_deinit(&result);
 

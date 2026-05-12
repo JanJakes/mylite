@@ -62,6 +62,9 @@ The expectation script for this feature records these probes against a MySQL
 - `VALUES(column_name)` in the duplicate assignment copies the value planned
   for that inserted row and records warning `1287` in MySQL 8.4.9 because that
   form is deprecated.
+- A generated `AUTO_INCREMENT` value consumed by a duplicate update does not
+  replace the session `LAST_INSERT_ID()`, but it does advance the table's next
+  generated value.
 - Tables without a primary or unique key do not take the duplicate path; rows
   are inserted normally, but the duplicate assignment is still parsed and name
   checked.
@@ -86,7 +89,8 @@ The implementation must add:
 - one duplicate assignment only;
 - unqualified target columns in the duplicate assignment;
 - assignment values limited to supported row-value literals, `DEFAULT`, and
-  `VALUES(column_name)`;
+  `VALUES(column_name)` when the referenced column is the same column as the
+  duplicate assignment target;
 - duplicate resolution for the current descriptor-backed single-column primary
   key or single-column unique-index subset when the table has at most one
   enforced key descriptor;
@@ -111,7 +115,8 @@ This feature must not implement:
 - multiple duplicate assignments;
 - table-qualified assignment targets or table-qualified `VALUES()` arguments;
 - duplicate assignment expressions other than one supported literal, `DEFAULT`,
-  `NULL`, or `VALUES(column_name)`;
+  `NULL`, or same-target `VALUES(column_name)`;
+- cross-column `VALUES(column_name)` references;
 - column-to-column assignments, arithmetic assignments, functions other than
   the duplicate-clause `VALUES(column_name)` form, variables, parameters,
   casts, collations, or generated expressions;
@@ -204,8 +209,12 @@ assignment targets fail with MySQL-compatible unknown-column diagnostics.
 `VALUES(column_name)` resolves against the target table descriptor and refers
 to the fully planned value for that inserted row after column-list mapping,
 omitted-column default filling, generated auto-increment values, and value
-conversion. The referenced column may be visible or invisible when explicitly
-named. Unknown `VALUES()` columns fail with unknown-column diagnostics.
+conversion. For this phase, the referenced column must be the same descriptor
+column as the duplicate assignment target, so `v = VALUES(v)` is supported and
+`v = VALUES(other)` is rejected even when `other` exists. This avoids admitting
+cross-column conversion before that conversion matrix is specified. The
+referenced column may be visible or invisible when explicitly named. Unknown
+`VALUES()` columns fail with unknown-column diagnostics.
 
 The duplicate assignment target must not be part of the enforced key descriptor
 used by this feature. Key-column assignment is rejected before mutation until
@@ -261,11 +270,10 @@ for the assignment target descriptor:
   `NOT NULL` diagnostic for non-nullable targets.
 
 `VALUES(column_name)` does not perform string interpolation or expression
-evaluation. It copies the planned bound value object for the referenced insert
-column and then validates it against the duplicate assignment target. Same-type
-descriptor copies should be fast paths; incompatible descriptor-family copies
-are rejected unless an existing insert/update conversion rule explicitly admits
-that conversion.
+evaluation. It copies the planned bound value object for the same assignment
+column, so the value has already passed the descriptor conversion for the
+target column. Cross-column `VALUES()` references are rejected until a separate
+slice specifies and tests their conversion behavior.
 
 ## Generated SQLite Handling
 
@@ -304,6 +312,7 @@ The implementation must produce deterministic diagnostics for:
 - table-qualified `VALUES()` arguments;
 - unknown duplicate assignment columns;
 - unknown `VALUES()` columns;
+- cross-column `VALUES()` references;
 - duplicate assignment to an enforced key column;
 - unsupported duplicate assignment expressions;
 - unsupported literal or conversion for the assignment target;
@@ -343,6 +352,7 @@ Coverage must include:
 
 - duplicate literal assignment changed row and no-op row;
 - duplicate `VALUES(column_name)` assignment and warning count;
+- unsupported cross-column `VALUES(column_name)` references;
 - multi-row insert with one new row and one duplicate row;
 - duplicate against a primary key and against a single unique index when
   supported;
@@ -358,6 +368,8 @@ Coverage must include:
   functions, arithmetic, column-to-column assignments, and key-column
   assignments;
 - affected rows, warning count, absence of result rows, and remaining rows;
+- generated auto-increment duplicate attempts preserving `LAST_INSERT_ID()`
+  while advancing the table's next generated value;
 - rollback on duplicate-branch failure;
 - reopen persistence and independent file-backed handles;
 - file-format preamble preservation;

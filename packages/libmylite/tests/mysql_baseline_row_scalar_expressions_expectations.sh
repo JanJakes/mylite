@@ -89,7 +89,7 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 
 no_source_expected=$(cat <<EXPECTED
-${DATABASE}	${DATABASE}	test-${DATABASE}	ab	NULL	123	10	0
+${DATABASE}	${DATABASE}	test-${DATABASE}	ab	solo	NULL	NULL	123	10	0
 -1	0
 EXPECTED
 )
@@ -97,24 +97,28 @@ expect_output \
     "no-source concat values" \
     "$no_source_expected" \
     "DO 0; SELECT DATABASE(), SCHEMA(), CONCAT('test-', DATABASE()), CONCAT('a', 'b'), "\
-"CONCAT('a', NULL), CONCAT(1, 2, 3), CONCAT(TRUE, FALSE), @@warning_count; "\
+"CONCAT('solo'), CONCAT(NULL), CONCAT('a', NULL), CONCAT(1, 2, 3), "\
+"CONCAT(TRUE, FALSE), @@warning_count; "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 expect_output \
     "from dual concat values" \
-    "dual	xy" \
-    "SELECT CONCAT('du', 'al'), CONCAT('x', 'y') FROM DUAL;" \
+    "dual	xy	z" \
+    "SELECT CONCAT('du', 'al'), CONCAT('x', 'y'), CONCAT('z') FROM DUAL;" \
     "$DATABASE"
 
 run_mysql \
     "CREATE TABLE t ("\
-"id INT, v VARCHAR(20), n VARCHAR(20), i INT, d DECIMAL(6,2), dt DATE, txt TEXT"\
+"id INT, v VARCHAR(20), n VARCHAR(20), i INT, d DECIMAL(6,2), "\
+"dt DATE, tm TIME, dttm DATETIME, ts TIMESTAMP NULL, txt TEXT"\
 "); "\
 "INSERT INTO t VALUES "\
-"(1, 'a', 'x', 7, 12.30, '2024-01-02', 'alpha'), "\
-"(2, 'b', NULL, -3, -4.50, NULL, 'beta'), "\
-"(3, '', '', 0, 0.00, '2024-12-31', NULL);" \
+"(1, 'a', 'x', 7, 12.30, '2024-01-02', '01:02:03', "\
+"'2024-01-02 03:04:05', '2024-01-02 03:04:05', 'alpha'), "\
+"(2, 'b', NULL, -3, -4.50, NULL, NULL, NULL, NULL, 'beta'), "\
+"(3, '', '', 0, 0.00, '2024-12-31', '00:00:00', "\
+"'2024-12-31 23:59:58', '2024-12-31 23:59:58', NULL);" \
     "$DATABASE" >/dev/null
 
 mixed_projection_expected=$(cat <<\EXPECTED
@@ -142,7 +146,7 @@ expect_output \
     "$DATABASE"
 
 typed_projection_expected=$(cat <<\EXPECTED
-1	12.30:2024-01-02:alpha
+1	12.30:2024-01-02:01:02:03:2024-01-02 03:04:05:2024-01-02 03:04:05:alpha
 2	NULL
 3	NULL
 EXPECTED
@@ -150,7 +154,18 @@ EXPECTED
 expect_output \
     "table concat typed values" \
     "$typed_projection_expected" \
-    "SELECT id, CONCAT(d, ':', dt, ':', txt) AS mixed FROM t ORDER BY id;" \
+    "SELECT id, CONCAT(d, ':', dt, ':', tm, ':', dttm, ':', ts, ':', txt) AS mixed "\
+"FROM t ORDER BY id;" \
+    "$DATABASE"
+
+one_argument_expected=$(cat <<\EXPECTED
+1	a	x
+EXPECTED
+)
+expect_output \
+    "table concat one argument values" \
+    "$one_argument_expected" \
+    "SELECT id, CONCAT(v), CONCAT('x') FROM t WHERE id = 1;" \
     "$DATABASE"
 
 expect_output \

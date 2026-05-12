@@ -8,7 +8,8 @@ application SQL and in the project MySQL expectation probes, while also forcing
 the runtime to plan expressions over the current row instead of only handling
 bare descriptor columns or no-source scalar functions.
 
-Supported user-visible shapes:
+Supported user-visible shapes, when the select list contains at least one
+top-level or parenthesized `CONCAT()` expression:
 
 ```sql
 SELECT scalar_item[, scalar_item ...]
@@ -20,14 +21,18 @@ FROM table_name [AS alias]
 [LIMIT row_count]
 ```
 
-The admitted scalar expression subset is intentionally small:
+For select lists routed through this row-scalar path, the admitted scalar
+expression subset is intentionally small:
 
-- descriptor column references in table-backed statements;
+- descriptor column references in table-backed statements, either as
+  non-`CONCAT()` companion select items or as `CONCAT()` arguments;
 - string, decimal-integer, boolean, and `NULL` literals;
-- existing session scalar functions that already return stable text or `NULL`,
-  such as `DATABASE()`;
+- existing session scalar functions and system variables that already return a
+  MyLite-owned scalar text value or SQL `NULL`, such as `DATABASE()` and
+  `@@warning_count`;
 - parenthesized admitted expressions; and
-- `CONCAT(expr[, expr ...])` over the same admitted expression domain.
+- `CONCAT(expr[, expr ...])` over the same admitted non-`CONCAT()` expression
+  domain.
 
 This is not a general expression engine. It does not add scalar subqueries,
 table-backed arithmetic, general table-backed flow-control functions, casts,
@@ -121,7 +126,8 @@ SELECT row_scalar_item[, row_scalar_item ...]
 SELECT row_scalar_item[, row_scalar_item ...] FROM DUAL
 ```
 
-Descriptor-backed table forms:
+Descriptor-backed table forms, with at least one `row_scalar_item` containing
+`CONCAT()`:
 
 ```sql
 SELECT row_scalar_item[, row_scalar_item ...]
@@ -144,6 +150,11 @@ The admitted expression subset is:
 
 ```sql
 row_scalar_expr:
+    row_scalar_non_concat_expr
+  | ( row_scalar_expr )
+  | CONCAT ( row_scalar_non_concat_expr_list )
+
+row_scalar_non_concat_expr:
     descriptor_column_reference
   | string_literal
   | decimal_integer_literal
@@ -153,12 +164,11 @@ row_scalar_expr:
   | FALSE
   | NULL
   | session_scalar_function
-  | ( row_scalar_expr )
-  | CONCAT ( row_scalar_expr_list )
+  | ( row_scalar_non_concat_expr )
 
-row_scalar_expr_list:
-    row_scalar_expr
-  | row_scalar_expr_list , row_scalar_expr
+row_scalar_non_concat_expr_list:
+    row_scalar_non_concat_expr
+  | row_scalar_non_concat_expr_list , row_scalar_non_concat_expr
 ```
 
 `descriptor_column_reference` may be unqualified, table-qualified,
@@ -166,11 +176,13 @@ schema-qualified, or source-alias-qualified according to the existing
 single-source table alias policy for `SELECT`. No-source and `DUAL` forms must
 not contain descriptor column references.
 
-`session_scalar_function` is limited to existing warning-free session scalar
-functions that already return a stable text value or SQL `NULL`, initially
-`DATABASE()` and `SCHEMA()`. Broader session variables and warning-producing
-numeric functions stay on the existing no-source scalar path until expression
-metadata and warning propagation are generalized.
+`session_scalar_value` is limited to existing session scalar functions and
+system variables that already return a MyLite-owned scalar text value or SQL
+`NULL`, initially including `DATABASE()`, `SCHEMA()`, and the currently
+supported `@@...` system-variable reads. Existing scalar-read warnings are
+preserved at statement level. Warning-producing numeric functions stay on the
+existing no-source scalar path until expression metadata and warning propagation
+are generalized.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -184,30 +196,42 @@ expression(A) ::= CONCAT(T) LPAREN RPAREN(R).
 The analyzer/runtime acceptance grammar for this phase is:
 
 ```lemon
-row_scalar_expr(A) ::= qualified_identifier(B).
-row_scalar_expr(A) ::= STRING(T).
-row_scalar_expr(A) ::= INTEGER(T).
-row_scalar_expr(A) ::= PLUS(P) INTEGER(T).
-row_scalar_expr(A) ::= MINUS(M) INTEGER(T).
-row_scalar_expr(A) ::= TRUE(T).
-row_scalar_expr(A) ::= FALSE(T).
-row_scalar_expr(A) ::= NULL(T).
-row_scalar_expr(A) ::= DATABASE(T) LPAREN RPAREN(R).
-row_scalar_expr(A) ::= SCHEMA(T) LPAREN RPAREN(R).
-row_scalar_expr(A) ::= LPAREN row_scalar_expr(B) RPAREN(R).
-row_scalar_expr(A) ::= CONCAT(T) LPAREN row_scalar_expr_list(B) RPAREN(R).
-row_scalar_expr_list(A) ::= row_scalar_expr(B).
-row_scalar_expr_list(A) ::= row_scalar_expr_list(B) COMMA row_scalar_expr(C).
+row_scalar_expr(A) ::= row_scalar_non_concat_expr(B).
+row_scalar_expr(A) ::= CONCAT(T) LPAREN row_scalar_non_concat_expr_list(B) RPAREN(R).
+row_scalar_non_concat_expr(A) ::= qualified_identifier(B).
+row_scalar_non_concat_expr(A) ::= STRING(T).
+row_scalar_non_concat_expr(A) ::= INTEGER(T).
+row_scalar_non_concat_expr(A) ::= PLUS(P) INTEGER(T).
+row_scalar_non_concat_expr(A) ::= MINUS(M) INTEGER(T).
+row_scalar_non_concat_expr(A) ::= TRUE(T).
+row_scalar_non_concat_expr(A) ::= FALSE(T).
+row_scalar_non_concat_expr(A) ::= NULL(T).
+row_scalar_non_concat_expr(A) ::= DATABASE(T) LPAREN RPAREN(R).
+row_scalar_non_concat_expr(A) ::= SCHEMA(T) LPAREN RPAREN(R).
+row_scalar_non_concat_expr(A) ::= system_variable_reference(T).
+row_scalar_non_concat_expr(A) ::= LPAREN row_scalar_non_concat_expr(B) RPAREN(R).
+row_scalar_non_concat_expr_list(A) ::= row_scalar_non_concat_expr(B).
+row_scalar_non_concat_expr_list(A) ::= row_scalar_non_concat_expr_list(B)
+                                      COMMA row_scalar_non_concat_expr(C).
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
+The parser can build nested `CONCAT()` ASTs, but this phase's runtime rejects
+nested `CONCAT()` deterministically until general expression planning replaces
+the deliberately flat argument planner.
+
+Non-`CONCAT()` expressions in this grammar are admitted by this phase only as
+arguments to `CONCAT()` or as companion select-list items in a `SELECT` that
+also contains `CONCAT()`. Existing non-row-scalar planners continue to own
+standalone literal, session-scalar, wildcard, descriptor-column, aggregate, and
+distinct projection forms that do not contain `CONCAT()`.
 
 ## Semantics
 
 Planning proceeds as follows:
 
 1. Detect row-scalar projection attempts when a supported `SELECT` list contains
-   `CONCAT()`, string literals, or other row-scalar-only items.
+   `CONCAT()`.
 2. Resolve a table source through the existing selected/default schema policy
    when a `FROM table` source exists.
 3. Load MyLite column descriptors and resolve descriptor column references
@@ -286,7 +310,8 @@ Add MySQL-runtime expectation coverage for:
 - table-backed mixed projection such as `SELECT id, CONCAT(v, '-', i)`;
 - `NULL` propagation from literals and nullable columns;
 - one-argument `CONCAT()`;
-- exact decimal, date, and `TEXT` column visible text contribution;
+- exact decimal, `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, and `TEXT` column
+  visible text contribution;
 - `WHERE`, `ORDER BY`, and `LIMIT` interaction through the existing table row
   envelope;
 - default labels and explicit aliases;

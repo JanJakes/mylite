@@ -1843,6 +1843,10 @@ expression(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
 }
+expression(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
 expression(A) ::= NULLIF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
@@ -2019,6 +2023,10 @@ expression(A) ::=
     (void)D;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR, E, R);
+}
+expression(A) ::= CONCAT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= ABS(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -2500,6 +2508,9 @@ identifier(A) ::= IFNULL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COALESCE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CONCAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {

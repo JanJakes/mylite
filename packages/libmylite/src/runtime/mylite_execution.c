@@ -809,6 +809,44 @@ struct planned_select {
     struct planned_select_limit limit;
 };
 
+enum planned_row_scalar_expression_kind {
+    PLANNED_ROW_SCALAR_EXPRESSION_NONE = 0,
+    PLANNED_ROW_SCALAR_EXPRESSION_VALUE = 1,
+    PLANNED_ROW_SCALAR_EXPRESSION_COLUMN = 2,
+    PLANNED_ROW_SCALAR_EXPRESSION_CONCAT = 3,
+};
+
+struct planned_row_scalar_expression {
+    enum planned_row_scalar_expression_kind kind;
+    struct planned_value value;
+    struct mylite_catalog_column_descriptor column;
+    struct planned_row_scalar_expression *arguments;
+    size_t argument_count;
+};
+
+struct planned_row_scalar_select_item {
+    struct planned_row_scalar_expression expression;
+    const struct mylite_sql_ast_node *source_expression;
+    const struct mylite_sql_ast_node *alias;
+};
+
+struct planned_row_scalar_select {
+    bool has_source;
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor table;
+    struct planned_row_scalar_select_item *items;
+    size_t item_count;
+    struct planned_select_predicate predicate;
+    struct planned_select_order order;
+    struct planned_select_limit limit;
+};
+
+struct row_scalar_select_clauses {
+    const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_clause;
+    const struct mylite_sql_ast_node *limit_clause;
+};
+
 struct planned_insert_select {
     struct planned_insert target;
     struct planned_select source;
@@ -4362,6 +4400,66 @@ static int read_select_found_row_count(
     const struct planned_select *plan,
     int64_t *out_count
 );
+static bool select_statement_is_row_scalar_projection_attempt(
+    const struct mylite_sql_ast_node *statement
+);
+static int execute_row_scalar_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int plan_row_scalar_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_row_scalar_select *out_plan
+);
+static int collect_row_scalar_select_clauses(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *optional_clause,
+    struct row_scalar_select_clauses *out_clauses
+);
+static int plan_row_scalar_select_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context,
+    struct mylite_catalog_column_descriptor **out_table_columns,
+    size_t *out_table_column_count
+);
+static int plan_row_scalar_select_row_envelope(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_select *out_plan
+);
+static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan);
+static int execute_row_scalar_select_from_plan(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    mylite_result **out_result
+);
+static int append_row_scalar_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_row_scalar_select *plan
+);
+static int append_row_scalar_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_row_scalar_select_item *item
+);
+static int copy_row_scalar_result_column_name(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    char **out_name
+);
+static int set_row_scalar_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    mylite_result *result
+);
 static bool select_statement_has_group_by_clause(const struct mylite_sql_ast_node *statement);
 static int plan_grouped_aggregate(
     struct mylite_db *database,
@@ -7253,6 +7351,7 @@ static int convert_integer_for_column_with_policy(
     bool ignore_errors,
     int64_t *out_value
 );
+
 static int plan_select_columns(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -7611,6 +7710,78 @@ static int integer_range_for_column(
     const char *unsupported_message,
     struct integer_column_range *out_range
 );
+static int plan_row_scalar_select_items(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_select *out_plan
+);
+static int append_row_scalar_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct mylite_sql_ast_node *select_item,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int plan_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_non_concat_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_session_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_concat_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expression *expression);
+static bool row_scalar_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool row_scalar_expression_contains_concat(const struct mylite_sql_ast_node *expression);
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static int append_select_column(
     struct mylite_db *database,
@@ -7914,6 +8085,25 @@ static int append_create_table_select_source_projection(
     const struct planned_create_table_select *plan
 );
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
+static int build_row_scalar_select_sql(
+    const struct planned_row_scalar_select *plan,
+    char **out_sql
+);
+static int append_row_scalar_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_non_concat_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_concat_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
@@ -8272,6 +8462,20 @@ static int format_key_value(
     size_t destination_size
 );
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
+static int bind_row_scalar_select_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan
+);
+static int bind_row_scalar_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_non_concat_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
 static int bind_insert_select_parameters(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -9032,6 +9236,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_IFNULL_FUNCTION:
     case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_NULLIF_FUNCTION:
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
@@ -11402,6 +11608,9 @@ static int execute_select_statement(
     }
     if (is_information_schema_query) {
         return execute_information_schema_select_statement(database, statement, out_result);
+    }
+    if (select_statement_is_row_scalar_projection_attempt(statement)) {
+        return execute_row_scalar_select_statement(database, statement, out_result);
     }
     if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
@@ -16813,6 +17022,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_IFNULL_FUNCTION:
     case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_NULLIF_FUNCTION:
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
@@ -26642,6 +26853,202 @@ static void planned_select_deinit(struct planned_select *plan) {
     *plan = (struct planned_select){0};
 }
 
+static int plan_row_scalar_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct select_source_context *item_source_context = NULL;
+    struct row_scalar_select_clauses clauses = {0};
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_source_context source_context = {0};
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_row_scalar_select){false};
+    if (mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT) {
+        set_unsupported_error(database, "row-scalar SELECT projection does not support DISTINCT");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(
+            database,
+            "SQL_CALC_FOUND_ROWS does not support row-scalar SELECT projection"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        out_plan->has_source = true;
+        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_select_source(
+                database,
+                from_clause,
+                out_plan,
+                &source_context,
+                &table_columns,
+                &table_column_count
+            );
+        }
+        if (rc == MYLITE_OK) {
+            item_source_context = &source_context;
+        }
+    } else if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT supports only no-source, DUAL, or one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_select_items(
+            database,
+            select_list,
+            item_source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK && out_plan->has_source) {
+        rc = plan_row_scalar_select_row_envelope(
+            database,
+            &clauses,
+            &source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
+
+    free(table_columns);
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_select_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int collect_row_scalar_select_clauses(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *optional_clause,
+    struct row_scalar_select_clauses *out_clauses
+) {
+    *out_clauses = (struct row_scalar_select_clauses){0};
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            out_clauses->where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            out_clauses->order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            out_clauses->limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT supports only WHERE, ORDER BY, and LIMIT"
+            );
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_select_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_row_scalar_select *out_plan,
+    struct select_source_context *out_source_context,
+    struct mylite_catalog_column_descriptor **out_table_columns,
+    size_t *out_table_column_count
+) {
+    int rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_select_source_context(
+            database,
+            from_clause,
+            &out_plan->source,
+            out_source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            out_table_columns,
+            out_table_column_count
+        );
+    }
+
+    return rc;
+}
+
+static int plan_row_scalar_select_row_envelope(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_select *out_plan
+) {
+    struct planned_select order_alias_plan = {
+        .columns = NULL,
+        .column_aliases = NULL,
+        .column_count = 0U,
+    };
+    int rc = plan_select_predicate(
+        database,
+        clauses->where_clause,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_plan->predicate
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_select_order(
+            database,
+            clauses->order_clause,
+            source_context,
+            &order_alias_plan,
+            table_columns,
+            table_column_count,
+            &out_plan->order
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+    }
+
+    return rc;
+}
+
+static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t item_index = 0U; item_index < plan->item_count; ++item_index) {
+        planned_row_scalar_expression_deinit(&plan->items[item_index].expression);
+    }
+    free(plan->items);
+    planned_select_predicate_deinit(&plan->predicate);
+    *plan = (struct planned_row_scalar_select){false};
+}
+
 static bool select_statement_has_group_by_clause(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
 
@@ -28359,6 +28766,200 @@ static int execute_select_from_plan(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static bool select_statement_is_row_scalar_projection_attempt(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        select_list_is_wildcard(select_list)) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
+            row_scalar_expression_contains_concat(child_at(select_item, 0U))) {
+            return true;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return false;
+}
+
+static int execute_row_scalar_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_row_scalar_select plan = {false};
+    int rc = plan_row_scalar_select(database, statement, &plan);
+
+    if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_session_scalar_select_warnings(database, child_at(statement, 0U));
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_row_scalar_select_from_plan(database, &plan, out_result);
+    }
+    planned_row_scalar_select_deinit(&plan);
+
+    return rc;
+}
+
+static int execute_row_scalar_select_from_plan(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    mylite_result **out_result
+) {
+    sqlite3_stmt *statement = NULL;
+    mylite_result *result = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_row_scalar_result_columns(database, result, plan);
+    if (rc == MYLITE_OK) {
+        rc = build_row_scalar_select_sql(plan, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_select_parameters(statement, plan);
+    }
+    while (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+        rc = append_selected_sqlite_row(database, statement, result, NULL, 0U);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = set_row_scalar_select_found_row_count(database, plan, result);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_row_scalar_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_row_scalar_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
+        rc = append_row_scalar_result_column(database, result, &plan->items[item_index]);
+    }
+
+    return rc;
+}
+
+static int append_row_scalar_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_row_scalar_select_item *item
+) {
+    char *column_name = NULL;
+    int rc = copy_row_scalar_result_column_name(database, item, &column_name);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column(result, column_name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    free(column_name);
+
+    return rc;
+}
+
+static int copy_row_scalar_result_column_name(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select_item *item,
+    char **out_name
+) {
+    if (out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_name = NULL;
+    if (item == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (item->alias != NULL) {
+        return copy_select_item_alias_text(database, item->alias, out_name);
+    }
+    if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return duplicate_text(database, item->expression.column.name, out_name);
+    }
+
+    return copy_scalar_projection_column_name(database, item->source_expression, out_name);
+}
+
+static int set_row_scalar_select_found_row_count(
+    struct mylite_db *database,
+    const struct planned_row_scalar_select *plan,
+    mylite_result *result
+) {
+    struct planned_select count_plan = {0};
+    uint64_t found_row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!plan->has_source) {
+        if (mylite_result_row_count(result) > UINT64_MAX) {
+            set_runtime_error(database, "SELECT found-row count is out of range");
+            return MYLITE_ERROR;
+        }
+        mylite_result_set_found_row_count(result, (uint64_t)mylite_result_row_count(result));
+        return MYLITE_OK;
+    }
+
+    count_plan.table = plan->table;
+    count_plan.predicate = plan->predicate;
+    count_plan.limit = plan->limit;
+    rc = found_row_count_for_select_limit_envelope(
+        database,
+        &count_plan,
+        mylite_result_row_count(result),
+        &found_row_count
+    );
+    if (rc == MYLITE_OK) {
+        mylite_result_set_found_row_count(result, found_row_count);
+    }
+    return rc;
 }
 
 static int set_select_found_row_count(
@@ -30669,6 +31270,8 @@ static const char *argument_count_error_node_function_name(
         return "OCT";
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
         return "CONV";
+    case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
+        return "CONCAT";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
     default:
@@ -44668,6 +45271,505 @@ static int convert_integer_for_column_with_policy(
     return MYLITE_OK;
 }
 
+static int plan_row_scalar_select_items(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        select_list_is_wildcard(select_list)) {
+        set_unsupported_error(database, "row-scalar SELECT supports only explicit select items");
+        return MYLITE_ERROR;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        int rc = append_row_scalar_select_item(
+            database,
+            out_plan,
+            item,
+            source_context,
+            table_columns,
+            table_column_count
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_row_scalar_select_item(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    const struct mylite_sql_ast_node *select_item,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct planned_row_scalar_select_item *items = NULL;
+    struct planned_row_scalar_select_item item = {0};
+    size_t required_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (select_item == NULL || select_item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    item.source_expression = child_at(select_item, 0U);
+    item.alias = child_at(select_item, 1U);
+    rc = plan_row_scalar_expression(
+        database,
+        item.source_expression,
+        plan->has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &item.expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(&item.expression);
+        return rc;
+    }
+
+    required_count = plan->item_count + 1U;
+    if (required_count > SIZE_MAX / sizeof(*items)) {
+        planned_row_scalar_expression_deinit(&item.expression);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    items = realloc(plan->items, required_count * sizeof(*items));
+    if (items == NULL) {
+        planned_row_scalar_expression_deinit(&item.expression);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->items = items;
+    plan->items[plan->item_count] = item;
+    plan->item_count = required_count;
+
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    planned_row_scalar_expression_deinit(out_expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        return plan_row_scalar_concat_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    return plan_row_scalar_non_concat_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_non_concat_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+        return plan_row_scalar_session_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "row-scalar SELECT supports only CONCAT(), descriptor columns, literals, DATABASE(), "
+        "and system variables"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, "row-scalar SELECT supports only scalar literals");
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "row-scalar SELECT supports only string literals",
+            "row-scalar SELECT string literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc == MYLITE_OK) {
+            rc = assign_text_value(database, text, text_length, &out_expression->value);
+        }
+        return rc;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return plan_row_scalar_integer_value(database, literal, out_expression);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 0};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "row-scalar SELECT supports only string, integer, boolean, and NULL literals"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT supports only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "row-scalar SELECT supports only signed integer literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK || (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        value = INT64_MIN;
+    } else if (is_negative) {
+        value = -(int64_t)magnitude;
+    } else {
+        value = (int64_t)magnitude;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = false, .integer = value};
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_session_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = session_scalar_value(database, expression, &cell);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    if (cell.value == NULL) {
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    }
+
+    return copy_text_value(database, cell.value, &out_expression->value);
+}
+
+static int plan_row_scalar_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!row_scalar_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_concat_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_child_count(expression) != 1U || arguments == NULL ||
+        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_unsupported_error(database, "CONCAT() requires one or more arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count == 0U || argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_CONCAT;
+    out_expression->argument_count = argument_count;
+
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        const struct mylite_sql_ast_node *unwrapped_argument =
+            unwrap_parenthesized_expression(argument);
+
+        if (unwrapped_argument != NULL &&
+            unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT CONCAT() does not support nested CONCAT()"
+            );
+            rc = MYLITE_ERROR;
+        } else {
+            rc = plan_row_scalar_non_concat_expression(
+                database,
+                argument,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                &out_expression->arguments[argument_index]
+            );
+        }
+        argument = argument->next_sibling;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument != NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expression *expression) {
+    if (expression == NULL) {
+        return;
+    }
+
+    for (size_t argument_index = 0U; argument_index < expression->argument_count;
+         ++argument_index) {
+        planned_value_deinit(&expression->arguments[argument_index].value);
+    }
+    free(expression->arguments);
+    planned_value_deinit(&expression->value);
+    *expression = (struct planned_row_scalar_expression){0};
+}
+
+static bool row_scalar_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+        return true;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT CONCAT() does not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "row-scalar SELECT supports only integer, DECIMAL, string, TEXT, and temporal columns"
+    );
+    return false;
+}
+
+static bool row_scalar_expression_contains_concat(const struct mylite_sql_ast_node *expression) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+            found = true;
+            break;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
 static int plan_select_columns(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -49637,6 +50739,141 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     return rc;
 }
 
+static int build_row_scalar_select_sql(
+    const struct planned_row_scalar_select *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
+        if (item_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(
+                &string,
+                &plan->items[item_index].expression,
+                &next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = append_select_order_sql(&string, &plan->order);
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_row_scalar_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return dynamic_string_append_quoted_identifier(string, expression->column.name);
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+        return append_row_scalar_concat_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_row_scalar_non_concat_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return dynamic_string_append_quoted_identifier(string, expression->column.name);
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_row_scalar_concat_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression->argument_count == 0U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK && expression->argument_count == 1U) {
+        rc = dynamic_string_append(string, "'' || ");
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, " || ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
     struct dynamic_string string;
     size_t next_parameter = 1U;
@@ -51985,6 +53222,98 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
     }
 
     return rc;
+}
+
+static int bind_row_scalar_select_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan
+) {
+    int parameter_index = 1;
+    int rc = MYLITE_OK;
+
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &plan->items[item_index].expression,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+    if (rc == MYLITE_OK && plan->has_source && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->has_source && plan->limit.has_offset) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+    }
+
+    return rc;
+}
+
+static int bind_row_scalar_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || parameter_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = bind_planned_value_parameter(statement, *parameter_index, &expression->value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+        for (size_t argument_index = 0U;
+             rc == MYLITE_OK && argument_index < expression->argument_count;
+             ++argument_index) {
+            rc = bind_row_scalar_non_concat_expression_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int bind_row_scalar_non_concat_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = bind_planned_value_parameter(statement, *parameter_index, &expression->value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+        break;
+    }
+
+    return MYLITE_ERROR;
 }
 
 static int bind_select_predicate_parameters(

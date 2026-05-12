@@ -42,6 +42,7 @@ static int test_current_role_function(void);
 static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
+static int test_concat_function(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
 static int test_abs_function(void);
@@ -237,6 +238,7 @@ int main(void) {
     failures += test_if_function();
     failures += test_ifnull_function();
     failures += test_coalesce_function();
+    failures += test_concat_function();
     failures += test_nullif_function();
     failures += test_isnull_function();
     failures += test_abs_function();
@@ -1712,6 +1714,63 @@ static int test_coalesce_function(void) {
         parse_sql("SELECT COALESCE(NULL, COALESCE());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COALESCE(1,,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_concat_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CONCAT('a', 'b'), concat(v, '-', id) AS label FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_CONCAT_FUNCTION, "concat function");
+    failures += expect_span_text(first_expression, "CONCAT('a', 'b')", "concat function span");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "concat args");
+    failures += expect_child_count(arguments, 2U, "concat two arguments");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_STRING, "concat first");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "concat second");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_CONCAT_FUNCTION, "lower concat");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 3U, "concat row arguments");
+    failures += expect_node(child_at(arguments, 0U), MYLITE_SQL_AST_IDENTIFIER, "concat column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "concat alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "concat from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR,
+        "concat zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT concat FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
+    failures += expect_span_text(first_expression, "concat", "concat identifier span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

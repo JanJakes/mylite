@@ -350,6 +350,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"COMPONENT", 0U},
         {"COMPRESSED", 0U},
         {"COMPRESSION", 0U},
+        {"CONCAT", 0U},
         {"CONCURRENT", 0U},
         {"CONDITION", MYLITE_SQL_KEYWORD_RESERVED},
         {"CONNECTION", 0U},

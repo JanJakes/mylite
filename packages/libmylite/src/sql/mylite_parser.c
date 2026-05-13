@@ -3190,6 +3190,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&cast_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CAST_BINARY_EXPRESSION, span);
+
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,
@@ -4443,6 +4462,7 @@ static bool map_keyword_token(
         {"ALL", MYLITE_SQL_PARSE_ALL},
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AS", MYLITE_SQL_PARSE_AS},
+        {"CAST", MYLITE_SQL_PARSE_CAST},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},
@@ -4453,6 +4473,7 @@ static bool map_keyword_token(
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
+        {"BINARY", MYLITE_SQL_PARSE_BINARY},
         {"BIN", MYLITE_SQL_PARSE_BIN},
         {"OCT", MYLITE_SQL_PARSE_OCT},
         {"ABS", MYLITE_SQL_PARSE_ABS},

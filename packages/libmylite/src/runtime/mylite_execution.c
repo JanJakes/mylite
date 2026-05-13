@@ -2356,6 +2356,7 @@ struct collect_drop_schema_tables_context {
 
 struct session_scalar_cell {
     const char *value;
+    char *owned_text;
     char integer_text[integer_text_capacity];
     char literal_text[literal_projection_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
@@ -5055,6 +5056,16 @@ static int bit_count_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int cast_binary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int cast_binary_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_bit_count_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -5641,6 +5652,8 @@ static void copy_session_scalar_cell(
     struct session_scalar_cell *destination,
     const struct session_scalar_cell *source
 );
+static void session_scalar_cell_deinit(struct session_scalar_cell *cell);
+static void session_scalar_cell_array_deinit(struct session_scalar_cell *cells, size_t cell_count);
 static bool if_scalar_condition_is_true(const struct session_scalar_cell *cell);
 static int normalize_decimal_integer_literal(
     struct mylite_db *database,
@@ -5799,6 +5812,7 @@ static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_no
 static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_arithmetic_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -9256,6 +9270,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -11628,7 +11643,8 @@ static int execute_do_statement(
             "predicates, limited numeric "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
             "ACOS()/ASIN()/ATAN()/ATAN2() "
-            "and CEIL()/CEILING()/FLOOR()/ROUND(), and top-level CASE expressions"
+            "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), and top-level "
+            "CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -11665,7 +11681,7 @@ static int execute_do_statement(
             rc = warning_rc;
         }
     }
-    free(cells);
+    session_scalar_cell_array_deinit(cells, expression_index);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -11759,7 +11775,8 @@ static int execute_select_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND()"
+            "ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
+            "CAST(value AS BINARY)"
         );
         return MYLITE_ERROR;
     }
@@ -17043,6 +17060,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -30851,7 +30869,7 @@ static int execute_scalar_projection_select_statement(
     }
     values = (const char **)calloc(column_count, sizeof(*values));
     if (values == NULL) {
-        free(cells);
+        session_scalar_cell_array_deinit(cells, 0U);
         mylite_result_free(result);
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -30886,7 +30904,7 @@ static int execute_scalar_projection_select_statement(
         }
     }
     free((void *)values);
-    free(cells);
+    session_scalar_cell_array_deinit(cells, evaluated_column_count);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -31506,6 +31524,8 @@ static int session_scalar_value(
         return conv_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
         return bit_count_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+        return cast_binary_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
         return if_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IFNULL_FUNCTION:
@@ -33989,6 +34009,123 @@ static int bit_count_function_value(
         out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     }
     return rc;
+}
+
+static int cast_binary_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CAST AS BINARY supports only bare BINARY casts");
+        return MYLITE_ERROR;
+    }
+
+    return cast_binary_input_value(database, child_at(expression, 0U), out_cell);
+}
+
+static int cast_binary_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "CAST AS BINARY supports only string, integer, boolean, and NULL values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        has_sign = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "CAST AS BINARY supports only signed integer values");
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "CAST AS BINARY supports only string, integer, boolean, and NULL values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (has_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "CAST AS BINARY supports only signed integer values");
+        return MYLITE_ERROR;
+    }
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING: {
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal(
+            database,
+            literal,
+            "CAST AS BINARY supports only string literals",
+            "CAST AS BINARY does not support embedded NUL bytes",
+            &out_cell->owned_text,
+            &text_length
+        );
+        (void)text_length;
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->owned_text;
+        }
+        return rc;
+    }
+    case MYLITE_SQL_AST_LITERAL_INTEGER: {
+        int rc = normalize_decimal_integer_literal(
+            database,
+            &literal->span,
+            is_negative,
+            out_cell->literal_text,
+            sizeof(out_cell->literal_text)
+        );
+
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->literal_text;
+        }
+        return rc;
+    }
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_cell->value = "1";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_cell->value = "0";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "CAST AS BINARY supports only string, integer, boolean, and NULL values"
+    );
+    return MYLITE_ERROR;
 }
 
 static int evaluate_bit_count_operand(
@@ -37224,6 +37361,26 @@ static void copy_session_scalar_cell(
     destination->value = source->value;
 }
 
+static void session_scalar_cell_deinit(struct session_scalar_cell *cell) {
+    if (cell == NULL) {
+        return;
+    }
+
+    free(cell->owned_text);
+    *cell = (struct session_scalar_cell){0};
+}
+
+static void session_scalar_cell_array_deinit(struct session_scalar_cell *cells, size_t cell_count) {
+    if (cells == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < cell_count; ++index) {
+        session_scalar_cell_deinit(&cells[index]);
+    }
+    free(cells);
+}
+
 static bool if_scalar_condition_is_true(const struct session_scalar_cell *cell) {
     if (cell == NULL || cell->value == NULL) {
         return false;
@@ -38656,6 +38813,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_bit_count_projection_expression(expression)) {
         return true;
     }
+    if (is_cast_binary_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_logical_projection_expression(expression)) {
         return true;
     }
@@ -38841,6 +39001,15 @@ static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node 
         return false;
     }
     return child_at(expression, 0U) != NULL;
+}
+
+static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_BINARY_EXPRESSION) {
+        return false;
+    }
+    return mylite_sql_ast_node_child_count(expression) == 1U;
 }
 
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -39270,6 +39439,7 @@ static bool is_scalar_value_projection_attempt_expression(
     }
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

@@ -43,6 +43,7 @@ static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
+static int test_cast_binary_expression(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
@@ -240,6 +241,7 @@ int main(void) {
     failures += test_ifnull_function();
     failures += test_coalesce_function();
     failures += test_concat_function();
+    failures += test_cast_binary_expression();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
     failures += test_isnull_function();
@@ -1773,6 +1775,68 @@ static int test_concat_function(void) {
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
     failures += expect_span_text(first_expression, "concat", "concat identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_cast_binary_expression(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_item = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CAST('ABC' AS BINARY) AS binary, CAST(+12 AS BINARY) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_item = child_at(select_list, 0U);
+    first_expression = child_at(first_item, 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CAST_BINARY_EXPRESSION,
+        "cast binary expression"
+    );
+    failures += expect_span_text(first_expression, "CAST('ABC' AS BINARY)", "cast binary span");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "cast binary string input"
+    );
+    failures += expect_node(child_at(first_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "binary alias");
+    failures += expect_span_text(child_at(first_item, 1U), "binary", "binary alias span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CAST_BINARY_EXPRESSION,
+        "cast binary signed expression"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "cast binary signed input"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "cast from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CAST('ABC' AS BINARY(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('ABC' AS CHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CONVERT('ABC' USING BINARY);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE t (cast INT); SELECT cast FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE t (binary INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

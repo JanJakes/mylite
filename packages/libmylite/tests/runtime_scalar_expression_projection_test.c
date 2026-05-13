@@ -20,6 +20,8 @@ enum {
     label_column_count = 4,
     parenthesized_column_count = 10,
     operand_column_count = 5,
+    cast_binary_column_count = 7,
+    cast_binary_label_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
 };
@@ -140,8 +142,25 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "ISNULL((NULL))",
     };
     static const char *const operand_values[] = {"2", "4", "5", NULL, "1"};
+    static const char *const cast_binary_columns[] = {
+        "binary",
+        "CAST('' AS BINARY)",
+        "CAST(NULL AS BINARY)",
+        "CAST(123 AS BINARY)",
+        "CAST(-7 AS BINARY)",
+        "CAST(TRUE AS BINARY)",
+        "CAST(FALSE AS BINARY)",
+    };
+    static const char *const cast_binary_values[] = {"ABC", "", NULL, "123", "-7", "1", "0"};
+    static const char *const cast_binary_label_columns[] = {
+        "CAST('ABC' AS BINARY)",
+        "binary",
+        "(CAST('x' AS BINARY))",
+    };
+    static const char *const cast_binary_label_values[] = {"ABC", "ABC", "x"};
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"-1"};
+    static const char *const do_row_count_values[] = {"0"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -210,6 +229,52 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .values = operand_values,
             .row_count = 1U,
             .context = "parenthesized scalar operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS BINARY) AS binary, CAST('' AS BINARY), "
+                   "CAST(NULL AS BINARY), CAST(123 AS BINARY), CAST(-7 AS BINARY), "
+                   "CAST(TRUE AS BINARY), CAST(FALSE AS BINARY)",
+            .columns = cast_binary_columns,
+            .column_count = cast_binary_column_count,
+            .values = cast_binary_values,
+            .row_count = 1U,
+            .context = "cast binary scalar values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS BINARY), CAST('ABC' AS BINARY) AS binary, "
+                   "(CAST('x' AS BINARY)) FROM DUAL",
+            .columns = cast_binary_label_columns,
+            .column_count = cast_binary_label_column_count,
+            .values = cast_binary_label_values,
+            .row_count = 1U,
+            .context = "cast binary labels",
+        }
+    );
+
+    failures += execute_ok(database, "DO CAST('ABC' AS BINARY), CAST(NULL AS BINARY)", &result);
+    if (result != NULL) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "cast binary do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "cast binary do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "cast binary do affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "cast binary do warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT()",
+            .columns = row_count_columns,
+            .column_count = 1U,
+            .values = do_row_count_values,
+            .row_count = 1U,
+            .context = "row count after cast binary do",
         }
     );
 
@@ -304,6 +369,100 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT CAST(1 + 2 AS BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST(X'41' AS BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST((SELECT 1) AS BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST('ABC' AS BINARY(5))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST('ABC' AS CHAR)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT BINARY 'ABC'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST(id AS BINARY) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO CAST(1 + 2 AS BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE t SET id = CAST(1 AS BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT IF(1,(2+3),4)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -372,10 +531,12 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
 }
 
 static int test_scalar_expression_projection_independent_handles(void) {
-    static const char *const first_columns[] = {"first_result", "ISNULL(NULL)"};
-    static const char *const first_values[] = {"2", "1"};
-    static const char *const second_columns[] = {"second_result", "NULLIF(1,1)"};
-    static const char *const second_values[] = {"4", NULL};
+    static const char *const first_columns[] =
+        {"first_result", "ISNULL(NULL)", "CAST('A' AS BINARY)"};
+    static const char *const first_values[] = {"2", "1", "A"};
+    static const char *const second_columns[] =
+        {"second_result", "NULLIF(1,1)", "CAST('B' AS BINARY)"};
+    static const char *const second_values[] = {"4", NULL, "B"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -385,9 +546,9 @@ static int test_scalar_expression_projection_independent_handles(void) {
     failures += expect_query(
         first,
         (struct expected_query){
-            .sql = "SELECT IF(1,2,3) AS first_result, ISNULL(NULL)",
+            .sql = "SELECT IF(1,2,3) AS first_result, ISNULL(NULL), CAST('A' AS BINARY)",
             .columns = first_columns,
-            .column_count = 2U,
+            .column_count = 3U,
             .values = first_values,
             .row_count = 1U,
             .context = "first handle mixed scalar",
@@ -396,9 +557,9 @@ static int test_scalar_expression_projection_independent_handles(void) {
     failures += expect_query(
         second,
         (struct expected_query){
-            .sql = "SELECT IFNULL(NULL,4) AS second_result, NULLIF(1,1)",
+            .sql = "SELECT IFNULL(NULL,4) AS second_result, NULLIF(1,1), CAST('B' AS BINARY)",
             .columns = second_columns,
-            .column_count = 2U,
+            .column_count = 3U,
             .values = second_values,
             .row_count = 1U,
             .context = "second handle mixed scalar",

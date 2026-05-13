@@ -556,6 +556,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "unary_expression";
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return "binary_expression";
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+        return "cast_binary_expression";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:

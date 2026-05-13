@@ -1777,6 +1777,9 @@ select_item(A) ::= expression(B) select_alias(C). {
 select_alias(A) ::= identifier(B). {
     A = B;
 }
+select_alias(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 select_alias(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
@@ -1795,6 +1798,9 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 }
 expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
+}
+expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY RPAREN(R). {
+    A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
@@ -2517,6 +2523,9 @@ identifier(A) ::= COALESCE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONCAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CAST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {

@@ -241,6 +241,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CONCAT_FUNCTION = 232,
     MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR = 233,
     MYLITE_SQL_AST_SCALAR_SUBQUERY = 234,
+    MYLITE_SQL_AST_CAST_BINARY_EXPRESSION = 235,
 };
 
 enum mylite_sql_ast_literal_kind {

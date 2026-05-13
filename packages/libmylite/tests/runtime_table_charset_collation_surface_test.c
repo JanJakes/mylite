@@ -21,6 +21,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
 };
 
@@ -363,6 +364,28 @@ static int test_charset_collation_diagnostics(void) {
             .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
             .message_part = "Unknown character set: 'latin1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE mismatched_charset (id INT) DEFAULT CHARSET=latin1 "
+        "COLLATE=utf8mb4_unicode_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part =
+                "COLLATION 'utf8mb4_unicode_ci' is not valid for CHARACTER SET 'latin1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE mismatched_collation (id INT) DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=latin1_swedish_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part =
+                "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(

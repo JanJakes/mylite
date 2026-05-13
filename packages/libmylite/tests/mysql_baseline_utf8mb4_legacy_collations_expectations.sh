@@ -182,6 +182,15 @@ expect_show_create \
   \`id\` int DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
 
+alter_charset_reset=$(run_mysql "USE ${DATABASE}; ALTER TABLE cuni DEFAULT CHARSET=utf8mb4; SELECT ROW_COUNT(), @@warning_count;")
+expect_value "alter charset reset status" "0	0" "$alter_charset_reset"
+expect_show_create \
+    "alter charset resets collation" \
+    "cuni" \
+    "CREATE TABLE \`cuni\` (
+  \`id\` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+
 table_collations=$(run_mysql "SELECT TABLE_NAME, TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME IN ('c0900','cgen','cbin','c520','cuni','clone') ORDER BY TABLE_NAME;")
 expect_value \
     "information schema table collations" \
@@ -190,7 +199,7 @@ c520	utf8mb4_unicode_520_ci
 cbin	utf8mb4_bin
 cgen	utf8mb4_general_ci
 clone	utf8mb4_unicode_ci
-cuni	utf8mb4_general_ci" \
+cuni	utf8mb4_0900_ai_ci" \
     "$table_collations"
 
 collation_headers="Collation	Charset	Id	Default	Compiled	Sortlen	Pad_attribute"
@@ -251,6 +260,20 @@ expect_error \
     42000 \
     "COLLATION 'utf8mb4_unicode_ci' is not valid for CHARACTER SET 'latin1'" \
     "CREATE DATABASE IF NOT EXISTS ${DATABASE}; USE ${DATABASE}; CREATE TABLE mismatched(id INT) DEFAULT CHARSET=latin1 COLLATE=utf8mb4_unicode_ci;"
+
+expect_error \
+    "mismatched non utf8mb4 collation" \
+    1253 \
+    42000 \
+    "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'" \
+    "CREATE DATABASE IF NOT EXISTS ${DATABASE}; USE ${DATABASE}; CREATE TABLE mismatched_other(id INT) DEFAULT CHARSET=utf8mb4 COLLATE=latin1_swedish_ci;"
+
+expect_error \
+    "alter mismatched collation" \
+    1253 \
+    42000 \
+    "COLLATION 'utf8mb4_unicode_ci' is not valid for CHARACTER SET 'latin1'" \
+    "CREATE DATABASE IF NOT EXISTS ${DATABASE}; USE ${DATABASE}; ALTER TABLE cgen DEFAULT CHARSET=latin1 COLLATE=utf8mb4_unicode_ci;"
 
 expect_error \
     "set names unknown collation" \

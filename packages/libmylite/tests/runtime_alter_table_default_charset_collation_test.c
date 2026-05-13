@@ -26,6 +26,7 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown_character_set = 1115,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
 };
 
@@ -285,6 +286,56 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             "collation alter preserves SQLite schema generation"
         );
     }
+    before_table = after_table;
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        catalog_generation_before = catalog->generation;
+    }
+    failures += expect_alter_ok(
+        database,
+        (struct alter_form){
+            .sql = "ALTER TABLE target DEFAULT CHARSET=utf8mb4",
+            .context = "charset-only alter resets default collation",
+        }
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &after_table),
+        MYLITE_OK,
+        "read target table after charset-only reset"
+    );
+    failures +=
+        expect_text(after_table.default_charset, "utf8mb4", "charset-only alter keeps utf8mb4");
+    failures += expect_text(
+        after_table.default_collation,
+        "utf8mb4_0900_ai_ci",
+        "charset-only alter resets table collation"
+    );
+    failures += expect_uint64(
+        after_table.descriptor_version,
+        before_table.descriptor_version + 1U,
+        "charset-only alter reset bumps descriptor version"
+    );
+    failures += expect_uint64(
+        after_table.updated_catalog_generation,
+        catalog_generation_before + 1U,
+        "charset-only alter reset updates table generation"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before + 1U,
+            "charset-only alter reset updates catalog generation"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before,
+            "charset-only alter reset preserves SQLite schema generation"
+        );
+    }
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -329,7 +380,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
         (struct show_create_expectation){
             .show_sql = "SHOW CREATE TABLE target",
             .table_name = "target",
-            .expected_collation = "utf8mb4_unicode_ci",
+            .expected_collation = "utf8mb4_0900_ai_ci",
             .context = "show create",
         }
     );
@@ -362,7 +413,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
         (struct show_create_expectation){
             .show_sql = "SHOW CREATE TABLE target",
             .table_name = "target",
-            .expected_collation = "utf8mb4_unicode_ci",
+            .expected_collation = "utf8mb4_0900_ai_ci",
             .context = "reopened show create",
         }
     );
@@ -464,6 +515,26 @@ static int test_alter_table_default_charset_diagnostics(void) {
             .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
             .message_part = "Unknown character set: 'latin1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE target DEFAULT CHARSET=latin1 COLLATE=utf8mb4_unicode_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part =
+                "COLLATION 'utf8mb4_unicode_ci' is not valid for CHARACTER SET 'latin1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE target DEFAULT CHARSET=utf8mb4 COLLATE=latin1_swedish_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part =
+                "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(

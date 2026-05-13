@@ -3642,6 +3642,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_timestamp_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE,
+        span_from_token(&current_timestamp_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column
@@ -3888,6 +3899,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment(
         MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT,
         span_from_token(&auto_increment_token)
     );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_on_update_current_timestamp(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_ast_node *current_timestamp_value
+) {
+    struct mylite_sql_source_span span = span_from_token(&on_token);
+    struct mylite_sql_ast_node *on_update = NULL;
+
+    if (current_timestamp_value != NULL) {
+        span = span_join(span, current_timestamp_value->span);
+    }
+    on_update = make_node(state, MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP, span);
+    if (on_update == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(on_update, current_timestamp_value);
+    return on_update;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
@@ -4561,6 +4592,7 @@ static bool map_keyword_token(
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
         {"CURRENT_ROLE", MYLITE_SQL_PARSE_CURRENT_ROLE},
+        {"CURRENT_TIMESTAMP", MYLITE_SQL_PARSE_CURRENT_TIMESTAMP},
         {"CURRENT_USER", MYLITE_SQL_PARSE_CURRENT_USER},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
@@ -4657,6 +4689,8 @@ static bool map_keyword_token(
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"LOCAL", MYLITE_SQL_PARSE_LOCAL},
+        {"LOCALTIME", MYLITE_SQL_PARSE_LOCALTIME},
+        {"LOCALTIMESTAMP", MYLITE_SQL_PARSE_LOCALTIMESTAMP},
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"ON", MYLITE_SQL_PARSE_ON},
         {"OFF", MYLITE_SQL_PARSE_OFF},
@@ -4701,6 +4735,7 @@ static bool map_keyword_token(
         {"SIGNED", MYLITE_SQL_PARSE_SIGNED},
         {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
         {"NOT", MYLITE_SQL_PARSE_NOT},
+        {"NOW", MYLITE_SQL_PARSE_NOW},
         {"IS", MYLITE_SQL_PARSE_IS},
         {"IN", MYLITE_SQL_PARSE_IN},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},

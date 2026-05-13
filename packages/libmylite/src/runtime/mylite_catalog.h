@@ -7,9 +7,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
+#define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 12
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 12
+#define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
+    MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
+    MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE)
+
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 11,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 11,
+    MYLITE_CATALOG_SCHEMA_VERSION = MYLITE_CATALOG_SCHEMA_VERSION_VALUE,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION =
+        MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -29,6 +39,7 @@ enum mylite_catalog_column_default_kind {
     MYLITE_CATALOG_COLUMN_DEFAULT_TEXT = 4,
     MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION = 5,
     MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION = 6,
+    MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP = 7,
 };
 
 enum mylite_catalog_index_kind {
@@ -80,6 +91,7 @@ struct mylite_catalog_column_descriptor {
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
+    bool on_update_current_timestamp;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -193,6 +205,7 @@ int mylite_catalog_insert_column_in_mutation(
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     const char *default_text,
+    bool on_update_current_timestamp,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_insert_index_in_mutation(
@@ -254,7 +267,8 @@ int mylite_catalog_replace_column_in_mutation(
     bool is_auto_increment,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
-    const char *default_text
+    const char *default_text,
+    bool on_update_current_timestamp
 );
 int mylite_catalog_set_column_visibility_in_mutation(
     struct mylite_db *database,
@@ -374,6 +388,7 @@ int mylite_catalog_create_column(
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     const char *default_text,
+    bool on_update_current_timestamp,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

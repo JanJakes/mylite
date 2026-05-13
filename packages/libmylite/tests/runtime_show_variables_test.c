@@ -19,7 +19,7 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 34,
+    session_variable_row_count = 35,
     global_variable_row_count = 31,
     mysql_error_parse = 1064,
 };
@@ -125,6 +125,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"sql_select_limit", "18446744073709551615"},
         {"sql_slave_skip_counter", "0"},
         {"sql_warnings", "OFF"},
+        {"timestamp", "1700000000.000000"},
         {"unique_checks", "ON"},
         {"updatable_views_with_limit", "YES"},
         {"version", mylite_version()},
@@ -172,6 +173,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
     int failures = 0;
 
     failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open variables memory");
+    failures += execute_statement_ok(database, "SET timestamp = 1700000000");
     failures += expect_query_rows(
         database,
         "SHOW VARIABLES",

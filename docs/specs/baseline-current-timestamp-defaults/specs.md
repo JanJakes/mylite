@@ -224,6 +224,7 @@ expression:
 set_system_variable_value:
     existing_set_value
   | PLUS INTEGER
+  | MINUS INTEGER
 ```
 
 Parser admission must reject unsupported arities such as `NOW(1)` with the

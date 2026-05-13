@@ -763,14 +763,9 @@ static int test_datetime_diagnostics(void) {
             .message_part = "near '('",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE bad_current_default (d DATETIME DEFAULT CURRENT_TIMESTAMP)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'CURRENT_TIMESTAMP'",
-        }
+        "CREATE TABLE current_default (d DATETIME DEFAULT CURRENT_TIMESTAMP)"
     );
     failures += execute_error(
         database,

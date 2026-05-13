@@ -564,6 +564,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "date_format_argument_count_error";
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+        return "current_timestamp_value";
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        return "current_timestamp_argument_count_error";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
@@ -636,6 +640,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_attribute_list";
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
         return "column_auto_increment";
+    case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
+        return "column_on_update_current_timestamp";
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
         return "table_auto_increment_option";
     case MYLITE_SQL_AST_NULLABILITY:

@@ -318,6 +318,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->last_insert_id = 0U;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
+    session->has_timestamp_override = false;
+    session->timestamp_override = 0;
+    session->active_statement_time = 0;
 }
 
 static uint64_t allocate_session_connection_id(void) {

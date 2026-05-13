@@ -10,7 +10,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `CURDATE()` | ❌ | Return current date |
 | `CURRENT_DATE(), CURRENT_DATE` | ❌ | Synonyms for CURDATE() |
 | `CURRENT_TIME(), CURRENT_TIME` | ❌ | Synonyms for CURTIME() |
-| `CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP` | ❌ | Synonyms for NOW() |
+| `CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP` | 🟡 | Limited zero-fractional statement timestamp synonym for `NOW()` in no-source, `FROM DUAL`, `DO`, row-scalar projection, supported temporal DML assignment, and `DATETIME` / `TIMESTAMP` defaults and `ON UPDATE`; fixed UTC formatting, no fractional precision, mutable time zones, or general temporal expression evaluation |
 | `CURTIME()` | ❌ | Return current time |
 | `DATE()` | ❌ | Extract the date part of a date or datetime expression |
 | `DATE_ADD()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_ADD(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over canonical date/datetime strings in the current storage baseline range, returning datetime text/`NULL`, with MySQL-compatible whitespace handling for the function name under `IGNORE_SPACE`; no other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
@@ -28,15 +28,15 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `GET_FORMAT()` | ❌ | Return a date format string |
 | `HOUR()` | ❌ | Extract the hour |
 | `LAST_DAY` | ❌ | Return last day of the month for the argument |
-| `LOCALTIME(), LOCALTIME` | ❌ | Synonym for NOW() |
-| `LOCALTIMESTAMP, LOCALTIMESTAMP()` | ❌ | Synonym for NOW() |
+| `LOCALTIME(), LOCALTIME` | 🟡 | Limited zero-fractional statement timestamp synonym for `NOW()` in the same supported positions as `CURRENT_TIMESTAMP`; no fractional precision, mutable time zones, or general temporal expression evaluation |
+| `LOCALTIMESTAMP, LOCALTIMESTAMP()` | 🟡 | Limited zero-fractional statement timestamp synonym for `NOW()` in the same supported positions as `CURRENT_TIMESTAMP`; no fractional precision, mutable time zones, or general temporal expression evaluation |
 | `MAKEDATE()` | ❌ | Create a date from the year and day of year |
 | `MAKETIME()` | ❌ | Create time from hour, minute, second |
 | `MICROSECOND()` | ❌ | Return microseconds from argument |
 | `MINUTE()` | ❌ | Return minute from the argument |
 | `MONTH()` | ❌ | Return month from the date passed |
 | `MONTHNAME()` | ❌ | Return name of the month |
-| `NOW()` | ❌ | Return current date and time |
+| `NOW()` | 🟡 | Limited zero-fractional statement timestamp in no-source, `FROM DUAL`, `DO`, row-scalar projection, supported temporal DML assignment, and `DATETIME` / `TIMESTAMP` defaults; respects the limited session `timestamp` override, uses fixed UTC formatting, and has no fractional precision, mutable time zones, or general temporal expression evaluation |
 | `PERIOD_ADD()` | ❌ | Add a period to a year-month |
 | `PERIOD_DIFF()` | ❌ | Return number of months between periods |
 | `QUARTER()` | ❌ | Return quarter from a date argument |

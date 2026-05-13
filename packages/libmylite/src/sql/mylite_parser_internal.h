@@ -1045,6 +1045,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_user_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_timestamp_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column
@@ -1119,6 +1123,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_attribute(
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token auto_increment_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_on_update_current_timestamp(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_ast_node *current_timestamp_value
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,

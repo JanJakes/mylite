@@ -660,6 +660,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"NODEGROUP", 0U},
         {"NONE", MYLITE_SQL_KEYWORD_RESTRICTED_ROLE},
         {"NOT", MYLITE_SQL_KEYWORD_RESERVED},
+        {"NOW", 0U},
         {"NOWAIT", 0U},
         {"NO_WAIT", 0U},
         {"NO_WRITE_TO_BINLOG", MYLITE_SQL_KEYWORD_RESERVED},

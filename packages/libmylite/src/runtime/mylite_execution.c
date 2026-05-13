@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum {
     mysql_error_parse = 1064,
@@ -342,6 +343,7 @@ struct planned_column {
     bool is_unique_key;
     bool is_auto_increment;
     bool is_serial_alias;
+    bool on_update_current_timestamp;
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
@@ -1025,9 +1027,12 @@ struct planned_update {
     bool assignment_value_is_scalar_subquery;
     struct planned_select assignment_subquery;
     struct planned_value assignment_value;
+    struct planned_value auto_update_value;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
     const char *rowid_alias;
     bool has_primary_key;
     size_t primary_key_column_index;
@@ -2647,6 +2652,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY = 32,
     SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
     SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER = 34,
+    SESSION_SYSTEM_VARIABLE_TIMESTAMP = 35,
 };
 
 struct system_variable_component {
@@ -2713,6 +2719,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT, true, true},
     {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER, true, true},
     {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS, true, true},
+    {"timestamp", SESSION_SYSTEM_VARIABLE_TIMESTAMP, true, false},
     {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS, true, true},
     {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
     {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
@@ -2862,6 +2869,10 @@ static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_timestamp_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+);
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes);
 static int parse_sql_mode_token(
     struct mylite_db *database,
@@ -2871,6 +2882,11 @@ static int parse_sql_mode_token(
 );
 static bool sql_mode_token_matches(const char *text, size_t length, const char *expected);
 static void set_invalid_sql_mode_error(struct mylite_db *database, const char *text, size_t length);
+static void set_system_variable_cant_be_set_value_error(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
+);
 static int append_set_sql_mode_warnings(struct mylite_db *database, uint64_t modes);
 static int rebuild_sql_mode_text(
     struct mylite_db *database,
@@ -3250,6 +3266,17 @@ static int append_information_schema_columns_base_column_row(
     const struct primary_key_info *primary_key,
     const struct loaded_index_info *indexes,
     size_t index_count
+);
+static int column_default_display_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+);
+static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column);
+static bool column_default_is_generated_extra(
+    const struct mylite_catalog_column_descriptor *column
 );
 static int append_information_schema_columns_numeric_metadata(
     struct mylite_db *database,
@@ -4945,6 +4972,10 @@ static int rand_function_value(
     struct session_scalar_cell *out_cell
 );
 static double random_unit_double(void);
+static int current_timestamp_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+);
 static int scalar_subquery_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -5908,6 +5939,11 @@ static int show_system_variable_value(
     size_t integer_buffer_size,
     const char **out_value
 );
+static int format_timestamp_system_variable_value(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+);
 static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope);
 static int append_show_variable(
     struct mylite_db *database,
@@ -6342,6 +6378,19 @@ static int execute_update_from_plan(
     const struct planned_update *plan,
     mylite_result *result
 );
+static int prepare_executable_update_plan(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool matches_any_row,
+    struct planned_update *executable_plan
+);
+static int execute_matching_update_statement(
+    struct mylite_db *database,
+    const struct planned_update *executable_plan,
+    int64_t *out_affected_rows,
+    const struct planned_update *plan
+);
+static int report_update_execution_error(struct mylite_db *database, int rc);
 static int step_update_statement(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -7473,6 +7522,16 @@ static int make_zero_date_value(struct mylite_db *database, struct planned_value
 static int make_zero_time_value(struct mylite_db *database, struct planned_value *out_value);
 static int make_zero_datetime_value(struct mylite_db *database, struct planned_value *out_value);
 static int make_zero_timestamp_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_current_timestamp_value(
+    struct mylite_db *database,
+    struct planned_value *out_value
+);
+static int64_t current_timestamp_epoch(const struct mylite_db *database);
+static int format_current_timestamp_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+);
 static int make_zero_approximate_value(struct planned_value *out_value);
 static int parse_approximate_literal_value(
     struct mylite_db *database,
@@ -8492,6 +8551,7 @@ static int append_alter_table_add_column_default(
     const struct planned_alter_table_add_column *plan
 );
 static int append_alter_table_add_column_explicit_default(
+    struct mylite_db *database,
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
 );
@@ -8836,6 +8896,16 @@ static int append_delete_rowid_limited_sql(
     size_t *next_parameter
 );
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
+static int append_update_auto_update_columns_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static bool planned_update_column_has_auto_update(
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *column
+);
+static size_t planned_update_auto_update_column_count(const struct planned_update *plan);
 static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
 static int append_update_rowid_limited_sql(
     struct dynamic_string *string,
@@ -9618,6 +9688,7 @@ static int execute_parsed_statement(
         set_unsupported_error(database, "empty statement is not supported");
         return MYLITE_ERROR;
     }
+    database->session.active_statement_time = (int64_t)mylite_statement_context_time(context);
 
     switch (statement->kind) {
     case MYLITE_SQL_AST_USE_STATEMENT:
@@ -9766,6 +9837,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -9788,6 +9861,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+    case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -10180,6 +10254,9 @@ static int apply_set_system_variable_statement(
     if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
         return apply_set_sql_mode_value(database, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_TIMESTAMP) {
+        return apply_set_timestamp_value(database, value_node);
+    }
 
     set_read_only_system_variable_error(database, target.name);
     return MYLITE_ERROR;
@@ -10466,6 +10543,69 @@ static int apply_set_sql_mode_value(
     return rc;
 }
 
+static int apply_set_timestamp_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        database->session.has_timestamp_override = false;
+        database->session.timestamp_override = 0;
+        return MYLITE_OK;
+    }
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            database->session.has_timestamp_override = false;
+            database->session.timestamp_override = 0;
+            return MYLITE_OK;
+        }
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "SET timestamp supports only integer values");
+            return MYLITE_ERROR;
+        }
+        literal_node = unwrap_parenthesized_expression(child_at(literal_node, 0U));
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "SET timestamp supports only integer values");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal_node->span, &magnitude);
+    if (rc != MYLITE_OK || magnitude > INT32_MAX) {
+        char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+        size_t copied = value_node->span.length < sizeof(value_text) ? value_node->span.length
+                                                                     : sizeof(value_text) - 1U;
+
+        if (value_node->span.text == NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        memcpy(value_text, value_node->span.text, copied);
+        value_text[copied] = '\0';
+        set_system_variable_cant_be_set_value_error(database, "timestamp", value_text);
+        return MYLITE_ERROR;
+    }
+    if (magnitude == 0U) {
+        database->session.has_timestamp_override = false;
+        database->session.timestamp_override = 0;
+        return MYLITE_OK;
+    }
+
+    database->session.has_timestamp_override = true;
+    database->session.timestamp_override = (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes) {
     size_t token_start = 0U;
     size_t index = 0U;
@@ -10550,6 +10690,32 @@ static void set_invalid_sql_mode_error(
     if (written < 0) {
         message[0] = '\0';
     }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_variable_cant_be_set,
+        "42000",
+        message
+    );
+}
+
+static void set_system_variable_cant_be_set_value_error(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Variable '%s' can't be set to the value of '%s'",
+        variable_name == NULL ? "unknown" : variable_name,
+        value_text == NULL ? "" : value_text
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_variable_cant_be_set,
@@ -13062,7 +13228,7 @@ static int append_information_schema_columns_base_column_row(
     struct information_schema_character_metadata character_metadata = {0};
     const char *column_type = NULL;
     const char *column_default = NULL;
-    const char *extra = "";
+    const char *extra = NULL;
     const char *is_nullable = "NO";
     const char *values[information_schema_columns_column_count] = {
         "def",
@@ -13099,27 +13265,14 @@ static int append_information_schema_columns_base_column_row(
         is_nullable = "YES";
         values[information_schema_columns_is_nullable_column] = is_nullable;
     }
-    if (rc == MYLITE_OK && !column->is_auto_increment &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        rc = information_schema_format_i64(
+    if (rc == MYLITE_OK) {
+        rc = column_default_display_text(
             database,
-            column->default_integer,
+            column,
             default_text,
-            sizeof(default_text)
+            sizeof(default_text),
+            &column_default
         );
-        column_default = default_text;
-    }
-    if (rc == MYLITE_OK && !column->is_auto_increment &&
-        column_default_kind_is_expression(column->default_kind)) {
-        column_default = column->default_text;
-    }
-    if (rc == MYLITE_OK && !column->is_auto_increment &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
-        column_default = column->default_text;
-    }
-    if (rc == MYLITE_OK && !column->is_auto_increment &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-        column_default = column->default_text;
     }
     if (rc == MYLITE_OK) {
         rc = show_column_type_text(
@@ -13160,17 +13313,7 @@ static int append_information_schema_columns_base_column_row(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (column->is_auto_increment && !column->is_visible) {
-        extra = "auto_increment INVISIBLE";
-    } else if (column->is_auto_increment) {
-        extra = "auto_increment";
-    } else if (column_default_kind_is_expression(column->default_kind) && !column->is_visible) {
-        extra = "DEFAULT_GENERATED INVISIBLE";
-    } else if (column_default_kind_is_expression(column->default_kind)) {
-        extra = "DEFAULT_GENERATED";
-    } else if (!column->is_visible) {
-        extra = "INVISIBLE";
-    }
+    extra = column_extra_text(column);
 
     values[information_schema_columns_default_column] = column_default;
     values[information_schema_columns_character_maximum_length_column] =
@@ -13189,6 +13332,84 @@ static int append_information_schema_columns_base_column_row(
     values[information_schema_columns_extra_column] = extra;
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int column_default_display_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+) {
+    *out_default_text = NULL;
+    if (column->is_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    switch (column->default_kind) {
+    case MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER:
+        *out_default_text = default_text;
+        return information_schema_format_i64(
+            database,
+            column->default_integer,
+            default_text,
+            default_text_size
+        );
+    case MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL:
+    case MYLITE_CATALOG_COLUMN_DEFAULT_TEXT:
+    case MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION:
+    case MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION:
+        *out_default_text = column->default_text;
+        return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP:
+        *out_default_text = "CURRENT_TIMESTAMP";
+        return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_NONE:
+    case MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT:
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
+}
+
+static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column) {
+    bool generated = column_default_is_generated_extra(column);
+
+    if (column->is_auto_increment && !column->is_visible) {
+        return "auto_increment INVISIBLE";
+    }
+    if (column->is_auto_increment) {
+        return "auto_increment";
+    }
+    if (generated && column->on_update_current_timestamp && !column->is_visible) {
+        return "DEFAULT_GENERATED on update CURRENT_TIMESTAMP INVISIBLE";
+    }
+    if (generated && column->on_update_current_timestamp) {
+        return "DEFAULT_GENERATED on update CURRENT_TIMESTAMP";
+    }
+    if (generated && !column->is_visible) {
+        return "DEFAULT_GENERATED INVISIBLE";
+    }
+    if (generated) {
+        return "DEFAULT_GENERATED";
+    }
+    if (column->on_update_current_timestamp && !column->is_visible) {
+        return "on update CURRENT_TIMESTAMP INVISIBLE";
+    }
+    if (column->on_update_current_timestamp) {
+        return "on update CURRENT_TIMESTAMP";
+    }
+    if (!column->is_visible) {
+        return "INVISIBLE";
+    }
+    return "";
+}
+
+static bool column_default_is_generated_extra(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    return (column_default_kind_is_expression(column->default_kind) ||
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) != 0;
 }
 
 static int append_information_schema_columns_numeric_metadata(
@@ -16995,6 +17216,9 @@ static int append_show_create_table_column_default(
         !column_descriptor_is_text_family(column)) {
         return dynamic_string_append(string, " DEFAULT NULL");
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        return dynamic_string_append(string, " DEFAULT CURRENT_TIMESTAMP");
+    }
     if (column_default_kind_is_expression(column->default_kind)) {
         int rc = dynamic_string_append(string, " DEFAULT (");
 
@@ -17037,6 +17261,9 @@ static int append_show_create_table_column_suffix(
 
     if (column->is_auto_increment) {
         rc = dynamic_string_append(string, " AUTO_INCREMENT");
+    }
+    if (rc == MYLITE_OK && column->on_update_current_timestamp) {
+        rc = dynamic_string_append(string, " ON UPDATE CURRENT_TIMESTAMP");
     }
     if (rc == MYLITE_OK && !column->is_visible) {
         rc = dynamic_string_append(string, " /*!80023 INVISIBLE */");
@@ -17587,6 +17814,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -17609,6 +17838,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
+    case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -20237,6 +20467,7 @@ static int insert_create_table_catalog_rows(
             column->default_kind,
             column->default_integer,
             column->default_text,
+            column->on_update_current_timestamp,
             &inserted_column
         );
         if (rc == MYLITE_OK) {
@@ -20959,6 +21190,7 @@ static int alter_table_add_column_from_plan(
             plan->column.default_kind,
             plan->column.default_integer,
             plan->column.default_text,
+            plan->column.on_update_current_timestamp,
             NULL
         );
     }
@@ -21297,7 +21529,8 @@ static int alter_table_add_primary_key_from_plan(
             column->is_auto_increment,
             default_kind,
             default_integer,
-            default_text
+            default_text,
+            column->on_update_current_timestamp
         );
     }
     if (rc == MYLITE_OK) {
@@ -23733,7 +23966,8 @@ static int alter_table_set_default_from_plan(
             plan->original_column.is_auto_increment,
             plan->column.default_kind,
             plan->column.default_integer,
-            plan->column.default_text
+            plan->column.default_text,
+            plan->original_column.on_update_current_timestamp
         );
     }
     if (rc == MYLITE_OK) {
@@ -23850,7 +24084,8 @@ static int alter_table_drop_default_from_plan(
             plan->column.is_auto_increment,
             MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT,
             0,
-            NULL
+            NULL,
+            plan->column.on_update_current_timestamp
         );
     }
     if (rc == MYLITE_OK) {
@@ -24334,6 +24569,7 @@ static void planned_column_from_catalog_descriptor(
     out_column->is_nullable = descriptor->is_nullable;
     out_column->is_visible = descriptor->is_visible;
     out_column->is_auto_increment = descriptor->is_auto_increment;
+    out_column->on_update_current_timestamp = descriptor->on_update_current_timestamp;
     out_column->default_node = default_node;
     out_column->default_kind = descriptor->default_kind;
     out_column->default_integer = descriptor->default_integer;
@@ -24497,6 +24733,10 @@ static bool modify_column_definition_matches(
     if (original_column->is_nullable != replacement_column->is_nullable) {
         return false;
     }
+    if (original_column->on_update_current_timestamp !=
+        replacement_column->on_update_current_timestamp) {
+        return false;
+    }
     if (original_column->default_kind != replacement_column->default_kind) {
         return false;
     }
@@ -24604,7 +24844,8 @@ static int alter_table_modify_column_from_plan(
             plan->column.is_auto_increment,
             plan->column.default_kind,
             plan->column.default_integer,
-            plan->column.default_text
+            plan->column.default_text,
+            plan->column.on_update_current_timestamp
         );
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
@@ -24796,6 +25037,7 @@ static void make_modify_target_descriptor(
         plan->column.physical_type
     );
     out_column->is_nullable = plan->column.is_nullable;
+    out_column->on_update_current_timestamp = plan->column.on_update_current_timestamp;
     out_column->default_kind = plan->column.default_kind;
     out_column->default_integer = plan->column.default_integer;
     snprintf(
@@ -27129,6 +27371,12 @@ static int plan_update(
             &out_plan->rowid_alias
         );
     }
+    if (rc == MYLITE_OK) {
+        out_plan->columns = table_columns;
+        out_plan->column_count = table_column_count;
+        table_columns = NULL;
+        table_column_count = 0U;
+    }
 
     free(table_columns);
     primary_key_info_deinit(&primary_key);
@@ -27147,6 +27395,8 @@ static void planned_update_deinit(struct planned_update *plan) {
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_deinit(&plan->assignment_subquery);
     planned_value_deinit(&plan->assignment_value);
+    planned_value_deinit(&plan->auto_update_value);
+    free(plan->columns);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};
 }
@@ -27156,9 +27406,7 @@ static int execute_update_from_plan(
     const struct planned_update *plan,
     mylite_result *result
 ) {
-    sqlite3_stmt *statement = NULL;
     struct planned_update executable_plan = *plan;
-    char *sql = NULL;
     bool transaction_started = false;
     bool matches_any_row = false;
     int64_t affected_rows = 0;
@@ -27168,26 +27416,12 @@ static int execute_update_from_plan(
         transaction_started = true;
         rc = update_matches_any_row(database, plan, &matches_any_row);
     }
-    if (rc == MYLITE_OK && matches_any_row) {
-        rc = convert_update_value(database, plan, &executable_plan.assignment_value);
+    if (rc == MYLITE_OK) {
+        rc = prepare_executable_update_plan(database, plan, matches_any_row, &executable_plan);
     }
     if (rc == MYLITE_OK && matches_any_row) {
-        rc = validate_update_string_key_value(database, &executable_plan);
+        rc = execute_matching_update_statement(database, &executable_plan, &affected_rows, plan);
     }
-    if (rc == MYLITE_OK && matches_any_row) {
-        rc = build_update_sql(&executable_plan, &sql);
-    }
-    if (rc == MYLITE_OK && matches_any_row) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
-    }
-    if (rc == MYLITE_OK && matches_any_row) {
-        rc = bind_update_parameters(statement, &executable_plan);
-    }
-    if (rc == MYLITE_OK && matches_any_row) {
-        rc = step_update_statement(database, statement, &executable_plan, &affected_rows, plan);
-    }
-    rc = finalize_sqlite_statement(statement, rc);
-    statement = NULL;
     if (rc == MYLITE_OK) {
         rc = advance_auto_increment_after_update(
             database,
@@ -27206,23 +27440,73 @@ static int execute_update_from_plan(
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
     }
     planned_value_deinit(&executable_plan.assignment_value);
-    free(sql);
+    planned_value_deinit(&executable_plan.auto_update_value);
 
     if (rc != MYLITE_OK) {
-        if (rc == MYLITE_NOMEM) {
-            set_nomem_error(database);
-            return rc;
-        }
-        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
-            return rc;
-        }
-        set_physical_sqlite_row_error(database);
-        return MYLITE_ERROR;
+        return report_update_execution_error(database, rc);
     }
 
     mylite_result_set_affected_rows(result, affected_rows);
 
     return MYLITE_OK;
+}
+
+static int prepare_executable_update_plan(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool matches_any_row,
+    struct planned_update *executable_plan
+) {
+    int rc = MYLITE_OK;
+
+    if (!matches_any_row) {
+        return MYLITE_OK;
+    }
+
+    rc = convert_update_value(database, plan, &executable_plan->assignment_value);
+    if (rc == MYLITE_OK && planned_update_auto_update_column_count(plan) > 0U) {
+        rc = make_current_timestamp_value(database, &executable_plan->auto_update_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_update_string_key_value(database, executable_plan);
+    }
+    return rc;
+}
+
+static int execute_matching_update_statement(
+    struct mylite_db *database,
+    const struct planned_update *executable_plan,
+    int64_t *out_affected_rows,
+    const struct planned_update *plan
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_update_sql(executable_plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_parameters(statement, executable_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_update_statement(database, statement, executable_plan, out_affected_rows, plan);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    return rc;
+}
+
+static int report_update_execution_error(struct mylite_db *database, int rc) {
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+        return rc;
+    }
+    set_physical_sqlite_row_error(database);
+    return MYLITE_ERROR;
 }
 
 static int validate_update_string_key_value(
@@ -32194,6 +32478,8 @@ static const char *argument_count_error_node_function_name(
         return "FIELD";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "DATE_FORMAT";
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        return "CURRENT_TIMESTAMP";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
     default:
@@ -32258,6 +32544,11 @@ static int session_scalar_value(
         return rand_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
         set_unsupported_error(database, "RAND(seed) is not supported");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+        return current_timestamp_scalar_value(database, out_cell);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
@@ -32408,6 +32699,27 @@ static double random_unit_double(void) {
     sqlite3_randomness((int)sizeof(random_bits), &random_bits);
     random_bits >>= rand_double_discard_bits;
     return ldexp((double)random_bits, -rand_double_value_bits);
+}
+
+static int current_timestamp_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = format_current_timestamp_text(
+        database,
+        out_cell->datetime_text,
+        sizeof(out_cell->datetime_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->datetime_text;
+    }
+    return rc;
 }
 
 static int scalar_subquery_value(
@@ -39736,6 +40048,16 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
+    case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
+        rc = format_timestamp_system_variable_value(
+            database,
+            out_cell->literal_text,
+            sizeof(out_cell->literal_text)
+        );
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->literal_text;
+        }
+        return rc;
     case SESSION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -40047,6 +40369,14 @@ static int show_system_variable_value(
         }
         return rc;
     }
+    case SESSION_SYSTEM_VARIABLE_TIMESTAMP: {
+        int rc =
+            format_timestamp_system_variable_value(database, integer_buffer, integer_buffer_size);
+        if (rc == MYLITE_OK) {
+            *out_value = integer_buffer;
+        }
+        return rc;
+    }
     case SESSION_SYSTEM_VARIABLE_VERSION:
         *out_value = mylite_version();
         return MYLITE_OK;
@@ -40059,6 +40389,26 @@ static int show_system_variable_value(
 
     set_runtime_error(database, "unsupported SHOW VARIABLES value");
     return MYLITE_ERROR;
+}
+
+static int format_timestamp_system_variable_value(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_runtime_error(database, "invalid timestamp system variable buffer");
+        return MYLITE_ERROR;
+    }
+    written =
+        snprintf(buffer, buffer_size, "%" PRId64 ".000000", current_timestamp_epoch(database));
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format timestamp system variable");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int append_system_variable_read_warning(
@@ -40218,6 +40568,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
@@ -42404,6 +42760,8 @@ static int plan_column(
             out_column->default_node =
                 child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE);
         }
+        out_column->on_update_current_timestamp =
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP) != NULL;
         rc = validate_column_default(database, out_column->default_node, out_column);
     }
     if (rc == MYLITE_OK) {
@@ -42423,6 +42781,7 @@ static int validate_column_attributes(
     size_t default_count = 0U;
     size_t primary_key_count = 0U;
     size_t auto_increment_count = 0U;
+    size_t on_update_count = 0U;
 
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
@@ -42438,6 +42797,8 @@ static int validate_column_attributes(
             /* Inline UNIQUE is lowered into a table-level unique index after column validation. */
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
             ++auto_increment_count;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP) {
+            ++on_update_count;
         } else {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
@@ -42446,11 +42807,16 @@ static int validate_column_attributes(
     }
 
     if (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
-        auto_increment_count > 1U) {
+        auto_increment_count > 1U || on_update_count > 1U) {
         set_unsupported_error(database, "duplicate column attributes are not supported");
         return MYLITE_ERROR;
     }
     if (column != NULL && column->is_auto_increment && column->default_node != NULL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column != NULL && column->on_update_current_timestamp &&
+        !planned_column_is_datetime(column) && !planned_column_is_timestamp(column)) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -42466,6 +42832,15 @@ static int validate_column_default(
         return MYLITE_OK;
     }
     if (default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+        const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+            if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+                return MYLITE_OK;
+            }
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
         if (planned_column_is_text_family(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
@@ -42520,6 +42895,19 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
     value_node = child_at(column->default_node, 0U);
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+        if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+            column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP;
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (value_node != NULL &&
+        value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
         return finalize_planned_column_integer_expression_default(database, column, value_node);
     }
@@ -44143,7 +44531,8 @@ static bool column_default_kind_materializes_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
-            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) != 0;
 }
 
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
@@ -46230,6 +46619,9 @@ static int allocate_insert_column_value(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        return make_current_timestamp_value(database, out_value);
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         if (!plan->ignore_errors || column->is_nullable) {
             out_value->is_null = true;
@@ -46311,6 +46703,20 @@ static int convert_insert_value(
     }
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, ignore_errors, out_value);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+        if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+            return make_current_timestamp_value(database, out_value);
+        }
+        set_unsupported_error(
+            database,
+            "CURRENT_TIMESTAMP values are supported only for DATETIME and TIMESTAMP columns"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
+        return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -46502,6 +46908,9 @@ static int materialize_dml_default_value(
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        return make_current_timestamp_value(database, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         return convert_null_insert_value(database, column, ignore_errors, out_value);
@@ -47399,6 +47808,77 @@ static int make_zero_datetime_value(struct mylite_db *database, struct planned_v
 
 static int make_zero_timestamp_value(struct mylite_db *database, struct planned_value *out_value) {
     return make_zero_datetime_value(database, out_value);
+}
+
+static int make_current_timestamp_value(
+    struct mylite_db *database,
+    struct planned_value *out_value
+) {
+    char timestamp_text[datetime_text_length + 1U];
+    int rc = format_current_timestamp_text(database, timestamp_text, sizeof(timestamp_text));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return copy_text_value(database, timestamp_text, out_value);
+}
+
+static int64_t current_timestamp_epoch(const struct mylite_db *database) {
+    time_t fallback = 0;
+
+    if (database != NULL && database->session.has_timestamp_override) {
+        return database->session.timestamp_override;
+    }
+    if (database != NULL && database->session.active_statement_time > 0) {
+        return database->session.active_statement_time;
+    }
+    fallback = time(NULL);
+    if (fallback < (time_t)0) {
+        return 0;
+    }
+    return (int64_t)fallback;
+}
+
+static int format_current_timestamp_text(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size
+) {
+    time_t epoch = (time_t)current_timestamp_epoch(database);
+    struct tm time_parts;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_runtime_error(database, "invalid current timestamp buffer");
+        return MYLITE_ERROR;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&time_parts, &epoch) != 0) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
+#else
+    if (gmtime_r(&epoch, &time_parts) == NULL) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
+#endif
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%04d-%02d-%02d %02d:%02d:%02d",
+        time_parts.tm_year + 1900,
+        time_parts.tm_mon + 1,
+        time_parts.tm_mday,
+        time_parts.tm_hour,
+        time_parts.tm_min,
+        time_parts.tm_sec
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int assign_text_value(
@@ -48573,6 +49053,8 @@ static int plan_row_scalar_non_concat_expression(
     }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR ||
         expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return plan_row_scalar_session_value(database, expression, out_expression);
     }
@@ -51706,6 +52188,20 @@ static int convert_update_value(
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, false, out_value);
     }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+        if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+            return make_current_timestamp_value(database, out_value);
+        }
+        set_unsupported_error(
+            database,
+            "CURRENT_TIMESTAMP values are supported only for DATETIME and TIMESTAMP columns"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
@@ -52456,38 +52952,17 @@ static int append_show_column(
         context->primary_key,
         column
     );
-    if (!column->is_auto_increment &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        int written =
-            snprintf(default_text, sizeof(default_text), "%" PRId64, column->default_integer);
-
-        if (written < 0 || (size_t)written >= sizeof(default_text)) {
-            set_runtime_error(context->database, "failed to format column default");
-            return MYLITE_ERROR;
-        }
-        values[4] = default_text;
+    rc = column_default_display_text(
+        context->database,
+        column,
+        default_text,
+        sizeof(default_text),
+        &values[4]
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if (!column->is_auto_increment && column_default_kind_is_expression(column->default_kind)) {
-        values[4] = column->default_text;
-    }
-    if (!column->is_auto_increment &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
-        values[4] = column->default_text;
-    }
-    if (!column->is_auto_increment && column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-        values[4] = column->default_text;
-    }
-    if (column->is_auto_increment && !column->is_visible) {
-        values[show_columns_extra_column] = "auto_increment INVISIBLE";
-    } else if (column->is_auto_increment) {
-        values[show_columns_extra_column] = "auto_increment";
-    } else if (column_default_kind_is_expression(column->default_kind) && !column->is_visible) {
-        values[show_columns_extra_column] = "DEFAULT_GENERATED INVISIBLE";
-    } else if (column_default_kind_is_expression(column->default_kind)) {
-        values[show_columns_extra_column] = "DEFAULT_GENERATED";
-    } else if (!column->is_visible) {
-        values[show_columns_extra_column] = "INVISIBLE";
-    }
+    values[show_columns_extra_column] = column_extra_text(column);
 
     return mylite_result_append_text_row(context->result, values);
 }
@@ -53850,7 +54325,7 @@ static int append_alter_table_add_column_default(
 ) {
     if (plan->column.default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_NONE &&
         plan->column.default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT) {
-        return append_alter_table_add_column_explicit_default(string, plan);
+        return append_alter_table_add_column_explicit_default(database, string, plan);
     }
     if (plan->column.is_nullable) {
         return MYLITE_OK;
@@ -53881,6 +54356,7 @@ static int append_alter_table_add_column_default(
 }
 
 static int append_alter_table_add_column_explicit_default(
+    struct mylite_db *database,
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
 ) {
@@ -53900,6 +54376,15 @@ static int append_alter_table_add_column_explicit_default(
     }
     if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         return dynamic_string_append(string, " DEFAULT NULL");
+    }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        char timestamp_text[datetime_text_length + 1U];
+        int rc = format_current_timestamp_text(database, timestamp_text, sizeof(timestamp_text));
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return append_quoted_sql_text(string, timestamp_text);
     }
     if (planned_column_is_approximate(&plan->column) &&
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
@@ -56475,6 +56960,9 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " = ?1");
     }
+    if (rc == MYLITE_OK) {
+        rc = append_update_auto_update_columns_sql(&string, plan, &next_parameter);
+    }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
     } else if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
@@ -56499,6 +56987,62 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_update_auto_update_columns_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+
+        if (!planned_update_column_has_auto_update(plan, column)) {
+            continue;
+        }
+        rc = dynamic_string_append(string, ", ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, column->name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+
+    return rc;
+}
+
+static bool planned_update_column_has_auto_update(
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (plan == NULL || column == NULL || !column->on_update_current_timestamp) {
+        return false;
+    }
+    return column->column_id != plan->assignment_column.column_id;
+}
+
+static size_t planned_update_auto_update_column_count(const struct planned_update *plan) {
+    size_t count = 0U;
+
+    if (plan == NULL) {
+        return 0U;
+    }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (planned_update_column_has_auto_update(plan, &plan->columns[column_index])) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 static int build_update_matched_sql(const struct planned_update *plan, char **out_sql) {
@@ -58225,6 +58769,16 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
 
     if (rc == MYLITE_OK) {
         ++parameter_index;
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (!planned_update_column_has_auto_update(plan, &plan->columns[column_index])) {
+            continue;
+        }
+        rc = bind_planned_value_parameter(statement, parameter_index, &plan->auto_update_value);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);

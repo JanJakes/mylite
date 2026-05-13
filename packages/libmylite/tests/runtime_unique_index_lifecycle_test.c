@@ -29,6 +29,7 @@ enum {
     mysql_error_duplicate_key = 1062,
     mysql_error_duplicate_key_name = 1061,
     mysql_error_key_column_missing = 1072,
+    mysql_error_incorrect_prefix_key = 1089,
     mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_index_name = 1280,
@@ -535,9 +536,9 @@ static int test_unique_index_diagnostics(void) {
         database,
         "CREATE TABLE unique_prefix (id INT, UNIQUE KEY u (id(4)))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Unique indexes do not yet support prefix key parts",
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
         }
     );
     failures += expect_statement_ok(

@@ -119,6 +119,7 @@ enum {
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    duplicate_key_value_display_length = 64,
     literal_projection_max_significant_digits = 81,
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
@@ -7289,6 +7290,7 @@ static int validate_descriptor_string_key_column(
     const struct mylite_catalog_column_descriptor *column
 );
 static int validate_string_key_value(struct mylite_db *database, const struct planned_value *value);
+static bool loaded_index_part_requires_string_key_validation(const struct loaded_index_part *part);
 static bool text_value_is_supported_string_key(const char *text, size_t text_length);
 static bool modify_column_integer_value_domain_matches(
     const struct mylite_catalog_column_descriptor *original_column,
@@ -9066,6 +9068,11 @@ static int append_loaded_prefix_key_part_sql(
     const struct loaded_index_part *part,
     const char *qualifier
 );
+static int append_loaded_key_part_parameter_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    size_t parameter_index
+);
 static int append_string_key_collation_sql(struct dynamic_string *string);
 static int append_create_table_index_sql_close(struct dynamic_string *string);
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
@@ -9689,6 +9696,12 @@ static int format_key_tuple(
     const struct loaded_index_info *index,
     const struct planned_value *values,
     size_t value_count,
+    char *destination,
+    size_t destination_size
+);
+static int format_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
     char *destination,
     size_t destination_size
 );
@@ -19489,10 +19502,6 @@ static int append_planned_secondary_index_part(
             return MYLITE_ERROR;
         }
     }
-    if (prefix_node != NULL && index->is_unique) {
-        set_unsupported_error(database, "Unique indexes do not yet support prefix key parts");
-        return MYLITE_ERROR;
-    }
     if (prefix_node != NULL) {
         uint64_t key_bytes = 0U;
 
@@ -23433,10 +23442,6 @@ static int append_loaded_add_index_part(
             rc = MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK && prefix_node != NULL && plan->is_unique) {
-        set_unsupported_error(database, "Unique indexes do not yet support prefix key parts");
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK && prefix_node != NULL) {
         uint64_t key_bytes = 0U;
 
@@ -23965,7 +23970,6 @@ static int validate_create_unique_index_string_values(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
 ) {
-    const struct mylite_catalog_column_descriptor *column = NULL;
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
@@ -23975,8 +23979,7 @@ static int validate_create_unique_index_string_values(
         set_runtime_error(database, "invalid unique-index plan");
         return MYLITE_ERROR;
     }
-    column = &plan->parts[0].column;
-    if (!column_descriptor_is_char_or_varchar(column)) {
+    if (!loaded_index_part_requires_string_key_validation(&plan->parts[0])) {
         return MYLITE_OK;
     }
 
@@ -27194,7 +27197,7 @@ static int plan_insert_string_key_values(
         for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
             const struct loaded_index_part *part = &key->parts[part_index];
 
-            if (!column_descriptor_is_char_or_varchar(&part->column)) {
+            if (!loaded_index_part_requires_string_key_validation(part)) {
                 continue;
             }
             if (part->column_index >= plan->column_count) {
@@ -29418,9 +29421,6 @@ static int validate_update_string_key_value(
     struct mylite_db *database,
     const struct planned_update *plan
 ) {
-    if (!column_descriptor_is_char_or_varchar(&plan->assignment_column)) {
-        return MYLITE_OK;
-    }
     for (size_t index = 0U; index < plan->index_count; ++index) {
         const struct loaded_index_info *key = &plan->indexes[index];
 
@@ -29428,7 +29428,14 @@ static int validate_update_string_key_value(
             !loaded_index_contains_column_id(key, plan->assignment_column.column_id)) {
             continue;
         }
-        return validate_string_key_value(database, &plan->assignment_value);
+        for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
+            const struct loaded_index_part *part = &key->parts[part_index];
+
+            if (part->index_column.column_id == plan->assignment_column.column_id &&
+                loaded_index_part_requires_string_key_validation(part)) {
+                return validate_string_key_value(database, &plan->assignment_value);
+            }
+        }
     }
 
     return MYLITE_OK;
@@ -48132,6 +48139,21 @@ static int validate_string_key_value(
     return MYLITE_OK;
 }
 
+static bool loaded_index_part_requires_string_key_validation(const struct loaded_index_part *part) {
+    if (part == NULL) {
+        return false;
+    }
+    if (column_descriptor_is_char_or_varchar(&part->column)) {
+        return true;
+    }
+
+    if (!part->index_column.has_prefix_length) {
+        return false;
+    }
+
+    return column_descriptor_is_text_family(&part->column);
+}
+
 static bool text_value_is_supported_string_key(const char *text, size_t text_length) {
     if (text == NULL && text_length != 0U) {
         return false;
@@ -48655,6 +48677,7 @@ static bool column_is_first_not_null_unique_secondary_index(
     for (size_t index = 0U; index < indexes.count; ++index) {
         if (indexes.indexes[index].index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
             !indexes.indexes[index].index.is_unique || indexes.indexes[index].part_count == 0U ||
+            indexes.indexes[index].parts[0].index_column.has_prefix_length ||
             indexes.indexes[index].parts[0].column.is_nullable) {
             continue;
         }
@@ -57799,8 +57822,49 @@ static int append_loaded_prefix_key_part_sql(
     int rc = MYLITE_OK;
     int written = 0;
 
-    if (qualifier != NULL) {
-        return MYLITE_ERROR;
+    written =
+        snprintf(prefix_text, sizeof(prefix_text), "%" PRId64, part->index_column.prefix_length);
+    if (written < 0 || (size_t)written >= sizeof(prefix_text)) {
+        return MYLITE_NOMEM;
+    }
+
+    rc = dynamic_string_append(string, "substr(");
+    if (rc == MYLITE_OK && qualifier != NULL) {
+        rc = dynamic_string_append_quoted_identifier(string, qualifier);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '.');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ", 1, ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, prefix_text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static int append_loaded_key_part_parameter_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *part,
+    size_t parameter_index
+) {
+    char prefix_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+    int written = 0;
+
+    if (part == NULL || !part->index_column.has_prefix_length) {
+        return append_numbered_parameter(string, parameter_index);
     }
 
     written =
@@ -57811,7 +57875,7 @@ static int append_loaded_prefix_key_part_sql(
 
     rc = dynamic_string_append(string, "substr(");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+        rc = append_numbered_parameter(string, parameter_index);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, ", 1, ");
@@ -58237,7 +58301,7 @@ static int build_create_unique_index_duplicate_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
+        rc = append_loaded_key_part_sql(&string, part, NULL);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -61637,7 +61701,13 @@ static int build_insert_duplicate_update_sql(
         rc = append_loaded_key_part_sql(&string, &conflicting_index->parts[0], NULL);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " = ?2 AND ");
+        rc = dynamic_string_append(&string, " = ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_loaded_key_part_parameter_sql(&string, &conflicting_index->parts[0], 2U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AND ");
     }
     if (rc == MYLITE_OK) {
         rc = append_insert_duplicate_changed_condition_sql(
@@ -61750,7 +61820,7 @@ static int handle_update_unique_key_conflict(
         if (conflicting_index == NULL) {
             conflicting_index = candidate;
         }
-        if (candidate->part_count == 1U) {
+        if (candidate->part_count == 1U && !candidate->parts[0].index_column.has_prefix_length) {
             rc = unique_key_single_value_exists(
                 database,
                 plan->table.physical_name,
@@ -61870,7 +61940,11 @@ static int build_unique_key_lookup_sql(
             rc = dynamic_string_append(&string, " = ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(&string, part_index + 1U);
+            rc = append_loaded_key_part_parameter_sql(
+                &string,
+                &index->parts[part_index],
+                part_index + 1U
+            );
         }
     }
     if (rc == MYLITE_OK) {
@@ -62154,7 +62228,7 @@ static int append_update_unique_key_conflict_expression(
     int rc = MYLITE_OK;
 
     if (part->index_column.column_id == plan->assignment_column.column_id) {
-        rc = append_numbered_parameter(string, *next_parameter);
+        rc = append_loaded_key_part_parameter_sql(string, part, *next_parameter);
         if (rc == MYLITE_OK) {
             ++(*next_parameter);
         }
@@ -62316,24 +62390,38 @@ static int append_formatted_key_part(
     size_t part_index,
     const char *value_text
 ) {
-    size_t value_length = strlen(value_text);
+    size_t display_capacity = duplicate_key_value_display_length;
+    size_t value_length = 0U;
+    size_t copy_length = 0U;
 
-    if (*used >= destination_size) {
+    if (destination == NULL || destination_size == 0U || used == NULL || value_text == NULL) {
         return MYLITE_ERROR;
     }
+    value_length = strlen(value_text);
+    if (display_capacity > destination_size - 1U) {
+        display_capacity = destination_size - 1U;
+    }
+    if (*used > display_capacity) {
+        return MYLITE_ERROR;
+    }
+    if (*used == display_capacity) {
+        return MYLITE_OK;
+    }
+
     if (part_index != 0U) {
-        if (*used + 1U >= destination_size) {
-            return MYLITE_ERROR;
-        }
         destination[*used] = '-';
         ++(*used);
         destination[*used] = '\0';
+        if (*used == display_capacity) {
+            return MYLITE_OK;
+        }
     }
-    if (value_length > destination_size - *used - 1U) {
-        return MYLITE_ERROR;
+    copy_length = value_length;
+    if (copy_length > display_capacity - *used) {
+        copy_length = display_capacity - *used;
     }
-    memcpy(&destination[*used], value_text, value_length);
-    *used += value_length;
+    memcpy(&destination[*used], value_text, copy_length);
+    *used += copy_length;
     destination[*used] = '\0';
 
     return MYLITE_OK;
@@ -62373,32 +62461,60 @@ static int format_key_tuple(
     }
     destination[0] = '\0';
     for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
-        char part_text[integer_text_capacity];
-        size_t part_length = 0U;
+        char part_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
         size_t column_index = index->parts[part_index].column_index;
 
         if (column_index >= value_count) {
             return MYLITE_ERROR;
         }
-        if (format_key_value(&values[column_index], part_text, sizeof(part_text)) != MYLITE_OK) {
+        if (format_key_part_value(
+                &index->parts[part_index],
+                &values[column_index],
+                part_text,
+                sizeof(part_text)
+            ) != MYLITE_OK) {
             return MYLITE_ERROR;
         }
-        part_length = strlen(part_text);
-        if (part_index != 0U) {
-            if (used + 1U >= destination_size) {
-                return MYLITE_ERROR;
-            }
-            destination[used] = '-';
-            ++used;
-            destination[used] = '\0';
-        }
-        if (part_length > destination_size - used - 1U) {
+        if (append_formatted_key_part(
+                destination,
+                destination_size,
+                &used,
+                part_index,
+                part_text
+            ) != MYLITE_OK) {
             return MYLITE_ERROR;
         }
-        memcpy(&destination[used], part_text, part_length);
-        used += part_length;
-        destination[used] = '\0';
     }
+
+    return MYLITE_OK;
+}
+
+static int format_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
+    char *destination,
+    size_t destination_size
+) {
+    size_t prefix_length = 0U;
+    size_t copy_length = 0U;
+
+    if (part == NULL || value == NULL || destination == NULL || destination_size == 0U) {
+        return MYLITE_ERROR;
+    }
+    if (!part->index_column.has_prefix_length || value->is_null || !value->is_text) {
+        return format_key_value(value, destination, destination_size);
+    }
+    if (part->index_column.prefix_length < 0 ||
+        (uint64_t)part->index_column.prefix_length > SIZE_MAX) {
+        return MYLITE_ERROR;
+    }
+    prefix_length = (size_t)part->index_column.prefix_length;
+    copy_length = value->text_length < prefix_length ? value->text_length : prefix_length;
+    if (value->text == NULL || copy_length >= destination_size) {
+        return MYLITE_ERROR;
+    }
+    memcpy(destination, value->text, copy_length);
+    destination[copy_length] = '\0';
 
     return MYLITE_OK;
 }

@@ -1702,6 +1702,9 @@ predicate_in_value(A) ::= predicate_integer_value(V). {
 predicate_in_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
+predicate_in_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
 predicate_in_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
@@ -1712,12 +1715,18 @@ predicate_range_value(A) ::= predicate_integer_value(V). {
 predicate_range_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
+predicate_range_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
     A = V;
 }
 predicate_comparison_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_comparison_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -2776,6 +2785,9 @@ identifier(A) ::= ROUND(T). {
 identifier(A) ::= BIT_AND(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
+identifier(A) ::= BIT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= BIT_OR(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
@@ -3032,6 +3044,9 @@ column_type(A) ::= text_type(T). {
 column_type(A) ::= binary_string_type(T). {
     A = T;
 }
+column_type(A) ::= bit_type(T). {
+    A = T;
+}
 column_type(A) ::= decimal_type(T). {
     A = T;
 }
@@ -3217,6 +3232,26 @@ binary_string_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN BYTE(B). {
 }
 binary_string_type(A) ::= binary_string_type_name(T). {
     A = mylite_sql_parser_make_binary_string_type(state, T);
+}
+
+bit_type(A) ::= BIT(T). {
+    A = mylite_sql_parser_make_bit_type(
+        state,
+        (struct mylite_sql_bit_type_tokens){
+            .type_token = T,
+            .end_token = T,
+            .has_length = 0,
+        });
+}
+bit_type(A) ::= BIT(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_bit_type(
+        state,
+        (struct mylite_sql_bit_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .has_length = 1,
+        });
 }
 
 binary_string_type_name(A) ::= TINYBLOB(T). {
@@ -3598,6 +3633,9 @@ column_default_value(A) ::= FLOAT(T). {
 }
 column_default_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+column_default_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 column_default_value(A) ::= current_timestamp_value(T). {
     A = T;

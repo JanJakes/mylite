@@ -678,9 +678,9 @@ static int test_varchar_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "ORDER BY supports only integer, DATE, TIME, DATETIME, or TIMESTAMP descriptor "
-                "columns",
+            .message_part = "ORDER BY supports only integer, BIT, DATE, TIME, DATETIME, or "
+                            "TIMESTAMP descriptor "
+                            "columns",
         }
     );
     failures += execute_error(

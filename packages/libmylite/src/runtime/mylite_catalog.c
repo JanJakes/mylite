@@ -394,6 +394,7 @@ static bool catalog_default_kind_stores_text(enum mylite_catalog_column_default_
 static bool catalog_logical_type_accepts_integer_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type);
 static bool catalog_logical_type_accepts_text_default(const char *logical_type);
+static bool catalog_logical_type_is_bit(const char *logical_type);
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
 static bool catalog_logical_type_equals(const char *logical_type, const char *expected);
 static int validate_catalog_bool_i64(int64_t value, bool *out_bool);
@@ -5146,6 +5147,9 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
     if (catalog_logical_type_accepts_empty_text_default(logical_type)) {
         return true;
     }
+    if (catalog_logical_type_is_bit(logical_type)) {
+        return true;
+    }
     if (catalog_logical_type_equals(logical_type, "DATE") ||
         catalog_logical_type_equals(logical_type, "TIME") ||
         catalog_logical_type_equals(logical_type, "DATETIME") ||
@@ -5158,6 +5162,29 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
     }
 
     return false;
+}
+
+static bool catalog_logical_type_is_bit(const char *logical_type) {
+    size_t index = 0U;
+
+    if (logical_type == NULL || text_has_ascii_case_insensitive_prefix(logical_type, "BIT(") == 0) {
+        return false;
+    }
+    index = sizeof("BIT(") - 1U;
+    if (logical_type[index] < '1' || logical_type[index] > '9') {
+        return false;
+    }
+    while (logical_type[index] >= '0' && logical_type[index] <= '9') {
+        ++index;
+    }
+
+    if (logical_type[index] != ')') {
+        return false;
+    }
+    if (logical_type[index + 1U] != '\0') {
+        return false;
+    }
+    return true;
 }
 
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type) {

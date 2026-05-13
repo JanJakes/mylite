@@ -4252,6 +4252,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_bit_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_bit_type_tokens tokens
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
+    struct mylite_sql_ast_node *type = NULL;
+
+    if (tokens.end_token.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.end_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_BIT_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_bit_type(
+        type,
+        (struct mylite_sql_ast_bit_type_payload){
+            .has_length = tokens.has_length,
+            .length_span = span_from_token(&tokens.length_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_decimal_type_tokens tokens
@@ -4592,6 +4618,7 @@ static bool map_keyword_token(
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
+        {"BIT", MYLITE_SQL_PARSE_BIT},
         {"BIN", MYLITE_SQL_PARSE_BIN},
         {"OCT", MYLITE_SQL_PARSE_OCT},
         {"ABS", MYLITE_SQL_PARSE_ABS},

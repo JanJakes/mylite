@@ -254,6 +254,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR = 245,
     MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP = 246,
     MYLITE_SQL_AST_BINARY_STRING_TYPE = 247,
+    MYLITE_SQL_AST_BIT_TYPE = 248,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -433,6 +434,11 @@ struct mylite_sql_ast_binary_string_type_payload {
     struct mylite_sql_source_span length_span;
 };
 
+struct mylite_sql_ast_bit_type_payload {
+    int has_length;
+    struct mylite_sql_source_span length_span;
+};
+
 struct mylite_sql_ast_decimal_type_payload {
     enum mylite_sql_ast_decimal_type kind;
     int has_precision;
@@ -470,6 +476,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
     struct mylite_sql_ast_binary_string_type_payload binary_string_type;
+    struct mylite_sql_ast_bit_type_payload bit_type;
     struct mylite_sql_ast_decimal_type_payload decimal_type;
     struct mylite_sql_ast_approximate_type_payload approximate_type;
     struct mylite_sql_ast_nullability_payload nullability;
@@ -549,6 +556,10 @@ void mylite_sql_ast_node_set_binary_string_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_binary_string_type_payload payload
 );
+void mylite_sql_ast_node_set_bit_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_bit_type_payload payload
+);
 void mylite_sql_ast_node_set_decimal_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_decimal_type_payload payload
@@ -606,6 +617,10 @@ enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
 );
 int mylite_sql_ast_node_binary_string_type_has_length(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_binary_string_type_length_span(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_bit_type_has_length(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_bit_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(

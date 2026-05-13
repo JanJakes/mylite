@@ -84,6 +84,7 @@ static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
+static int test_bit_type_statements(void);
 static int test_decimal_type_statements(void);
 static int test_approximate_type_statements(void);
 static int test_date_type_statements(void);
@@ -199,6 +200,12 @@ static int expect_text_type(
     enum mylite_sql_ast_text_type expected,
     const char *context
 );
+static int expect_bit_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+);
 static int expect_decimal_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_decimal_type expected,
@@ -291,6 +298,7 @@ int main(void) {
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
     failures += test_text_type_statements();
+    failures += test_bit_type_statements();
     failures += test_decimal_type_statements();
     failures += test_approximate_type_statements();
     failures += test_date_type_statements();
@@ -7907,6 +7915,109 @@ static int test_text_type_statements(void) {
     return failures;
 }
 
+static int test_bit_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE bit (bit INT, b BIT, b6 BIT(6) NOT NULL DEFAULT b'101');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "bit", "nonreserved bit table name");
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "bit column list");
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "bit", "nonreserved bit column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "nonreserved bit column integer type"
+    );
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_bit_type(column_type, NULL, 0, "bare bit column type");
+    failures += expect_span_text(column_type, "BIT", "bare bit span");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_bit_type(column_type, "6", 1, "bit width column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "bit width not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_BIT,
+        "bit literal default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD COLUMN flags BIT(9) DEFAULT b'101';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_bit_type(column_type, "9", 1, "alter add bit column type");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_BIT,
+        "alter add bit literal default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col BIT(8) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_bit_type(child_at(column, 1U), "8", 1, "bit alter modify column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "bit alter modify nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_bits BIT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    failures += expect_bit_type(child_at(column, 1U), NULL, 0, "bit alter change column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "bit alter change nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_bit (b BIT());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_bit (b BIT(-1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_bit (b BIT(1.0));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_decimal_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -15046,8 +15157,7 @@ static int test_syntax_errors(void) {
         parse_sql("SELECT id FROM t WHERE ABS(id) = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT id FROM t WHERE id = b'1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT id FROM t WHERE id = b'1';", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -15514,6 +15624,51 @@ static int expect_text_type(
             context,
             mylite_sql_ast_text_type_name(expected),
             mylite_sql_ast_text_type_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_bit_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+    int has_explicit_length = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_BIT_TYPE, context) != 0) {
+        return 1;
+    }
+
+    has_explicit_length = mylite_sql_ast_node_bit_type_has_length(node);
+    if (has_explicit_length != expected_explicit_length) {
+        fprintf(
+            stderr,
+            "%s: expected explicit BIT length %d, got %d\n",
+            context,
+            expected_explicit_length,
+            has_explicit_length
+        );
+        return 1;
+    }
+    if (expected_length == NULL) {
+        return 0;
+    }
+
+    span = mylite_sql_ast_node_bit_type_length_span(node);
+    if (span.text == NULL || span.length != strlen(expected_length) ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected BIT length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
         );
         return 1;
     }

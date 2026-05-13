@@ -6596,6 +6596,11 @@ static int finalize_planned_column_timestamp_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_integer_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
 static void planned_column_descriptor_for_default(
     const struct planned_column *column,
     struct mylite_catalog_column_descriptor *out_descriptor
@@ -6610,11 +6615,85 @@ static int copy_planned_default_approximate_text(
     struct planned_column *column,
     const struct planned_value *value
 );
+static int copy_planned_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_source_span *span
+);
+static int convert_integer_expression_default_result(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t value,
+    int64_t *out_value
+);
 static int convert_column_default_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct planned_column *column,
     int64_t *out_value
+);
+static int evaluate_integer_default_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
+static int evaluate_integer_default_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct scalar_arithmetic_eval_frame *frame
+);
+static int evaluate_integer_default_apply_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int evaluate_integer_default_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int evaluate_integer_default_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_integer_default_literal_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_integer_default_unary_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_integer_default_mod_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_integer_default_binary_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static bool integer_default_binary_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int parse_integer_default_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+);
+static int finish_integer_default_result(
+    struct scalar_arithmetic_value_stack *value_stack,
+    struct scalar_arithmetic_value *out_value
+);
+static bool column_default_value_is_parenthesized_expression(
+    const struct mylite_sql_ast_node *default_node
 );
 static int check_duplicate_column_names(
     struct mylite_db *database,
@@ -6691,6 +6770,16 @@ static bool planned_column_is_date(const struct planned_column *column);
 static bool planned_column_is_time(const struct planned_column *column);
 static bool planned_column_is_datetime(const struct planned_column *column);
 static bool planned_column_is_timestamp(const struct planned_column *column);
+static bool column_default_kind_has_integer_value(
+    enum mylite_catalog_column_default_kind default_kind
+);
+static bool column_default_kind_has_text_value(
+    enum mylite_catalog_column_default_kind default_kind
+);
+static bool column_default_kind_is_expression(enum mylite_catalog_column_default_kind default_kind);
+static bool column_default_kind_materializes_value(
+    enum mylite_catalog_column_default_kind default_kind
+);
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_char_or_varchar(
@@ -12834,6 +12923,10 @@ static int append_information_schema_columns_base_column_row(
         column_default = default_text;
     }
     if (rc == MYLITE_OK && !column->is_auto_increment &&
+        column_default_kind_is_expression(column->default_kind)) {
+        column_default = column->default_text;
+    }
+    if (rc == MYLITE_OK && !column->is_auto_increment &&
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
         column_default = column->default_text;
     }
@@ -12884,6 +12977,10 @@ static int append_information_schema_columns_base_column_row(
         extra = "auto_increment INVISIBLE";
     } else if (column->is_auto_increment) {
         extra = "auto_increment";
+    } else if (column_default_kind_is_expression(column->default_kind) && !column->is_visible) {
+        extra = "DEFAULT_GENERATED INVISIBLE";
+    } else if (column_default_kind_is_expression(column->default_kind)) {
+        extra = "DEFAULT_GENERATED";
     } else if (!column->is_visible) {
         extra = "INVISIBLE";
     }
@@ -16710,6 +16807,17 @@ static int append_show_create_table_column_default(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable &&
         !column_descriptor_is_text_family(column)) {
         return dynamic_string_append(string, " DEFAULT NULL");
+    }
+    if (column_default_kind_is_expression(column->default_kind)) {
+        int rc = dynamic_string_append(string, " DEFAULT (");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, column->default_text);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
     }
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
@@ -20977,10 +21085,15 @@ static int alter_table_add_primary_key_from_plan(
         const struct mylite_catalog_column_descriptor *column = &plan->parts[part_index].column;
         enum mylite_catalog_column_default_kind default_kind =
             alter_table_primary_key_default_kind(column);
-        int64_t default_integer =
-            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ? column->default_integer : 0;
-        const char *default_text =
-            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ? column->default_text : NULL;
+        int64_t default_integer = 0;
+        const char *default_text = NULL;
+
+        if (column_default_kind_has_integer_value(default_kind)) {
+            default_integer = column->default_integer;
+        }
+        if (column_default_kind_has_text_value(default_kind)) {
+            default_text = column->default_text;
+        }
 
         rc = mylite_catalog_replace_column_in_mutation(
             database,
@@ -21220,6 +21333,9 @@ static enum mylite_catalog_column_default_kind alter_table_primary_key_default_k
 ) {
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         return MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
+        return MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION;
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
@@ -24199,8 +24315,13 @@ static bool modify_column_definition_matches(
         original_column->default_integer != replacement_column->default_integer) {
         return false;
     }
+    if (original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION &&
+        original_column->default_integer != replacement_column->default_integer) {
+        return false;
+    }
     if ((original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
-         original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) &&
+         original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+         column_default_kind_is_expression(original_column->default_kind)) &&
         strcmp(original_column->default_text, replacement_column->default_text) != 0) {
         return false;
     }
@@ -41562,6 +41683,7 @@ static int finalize_planned_column_default(
     struct planned_column *column
 ) {
     int64_t default_integer = 0;
+    const struct mylite_sql_ast_node *value_node = NULL;
     int rc = MYLITE_OK;
 
     column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NONE;
@@ -41574,6 +41696,10 @@ static int finalize_planned_column_default(
     if (column->default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+    value_node = child_at(column->default_node, 0U);
+    if (column_default_value_is_parenthesized_expression(column->default_node)) {
+        return finalize_planned_column_integer_expression_default(database, column, value_node);
     }
 
     if (planned_column_is_char(column) || planned_column_is_varchar(column)) {
@@ -41609,6 +41735,48 @@ static int finalize_planned_column_default(
     }
 
     column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER;
+    column->default_integer = default_integer;
+
+    return MYLITE_OK;
+}
+
+static int finalize_planned_column_integer_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    struct scalar_arithmetic_value expression_value = {.is_null = false, .integer = 0};
+    int64_t default_integer = 0;
+    int rc = evaluate_integer_default_expression(database, value_node, &expression_value);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            return rc;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (expression_value.is_null) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION;
+        snprintf(column->default_text, sizeof(column->default_text), "NULL");
+        return MYLITE_OK;
+    }
+
+    rc = convert_integer_expression_default_result(
+        database,
+        column,
+        expression_value.integer,
+        &default_integer
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = copy_planned_expression_default_text(database, column, &value_node->span);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION;
     column->default_integer = default_integer;
 
     return MYLITE_OK;
@@ -41946,6 +42114,62 @@ static int copy_planned_default_approximate_text(
     return rc;
 }
 
+static int copy_planned_expression_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_source_span *span
+) {
+    if (span == NULL || span->text == NULL || span->length == 0U ||
+        span->length >= sizeof(column->default_text)) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(column->default_text, span->text, span->length);
+    column->default_text[span->length] = '\0';
+    return MYLITE_OK;
+}
+
+static int convert_integer_expression_default_result(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t value,
+    int64_t *out_value
+) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct integer_column_range range = {0};
+    uint64_t magnitude = 0U;
+    bool is_negative = value < 0;
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = integer_range_for_column(
+        database,
+        &descriptor,
+        "DEFAULT expression supports only baseline integer columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (is_negative) {
+        magnitude = value == INT64_MIN ? bigint_signed_negative_abs_max : (uint64_t)(-value);
+        if (range.negative_abs_max == 0U || magnitude > range.negative_abs_max) {
+            return MYLITE_ERROR;
+        }
+    } else {
+        magnitude = (uint64_t)value;
+        if (magnitude > range.positive_max) {
+            return MYLITE_ERROR;
+        }
+    }
+
+    *out_value = value;
+    return MYLITE_OK;
+}
+
 static int convert_column_default_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -42022,6 +42246,377 @@ static int convert_column_default_value(
 
     *out_value = (int64_t)magnitude;
     return MYLITE_OK;
+}
+
+static int evaluate_integer_default_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    struct scalar_arithmetic_eval_stack expression_stack = {0};
+    struct scalar_arithmetic_value_stack value_stack = {0};
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = scalar_arithmetic_eval_stack_push(
+        database,
+        &expression_stack,
+        SCALAR_ARITHMETIC_EVAL_ENTER,
+        expression,
+        MYLITE_SQL_AST_OPERATOR_NONE
+    );
+    while (rc == MYLITE_OK && expression_stack.count != 0U) {
+        struct scalar_arithmetic_eval_frame frame =
+            expression_stack.items[--expression_stack.count];
+
+        rc = evaluate_integer_default_frame(database, &expression_stack, &value_stack, &frame);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_integer_default_result(&value_stack, out_value);
+    }
+    scalar_arithmetic_eval_stack_deinit(&expression_stack);
+    scalar_arithmetic_value_stack_deinit(&value_stack);
+    return rc;
+}
+
+static int evaluate_integer_default_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct scalar_arithmetic_eval_frame *frame
+) {
+    if (frame == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (frame->kind == SCALAR_ARITHMETIC_EVAL_APPLY) {
+        return evaluate_integer_default_apply_frame(database, value_stack, frame->operator_kind);
+    }
+    if (frame->kind == SCALAR_ARITHMETIC_EVAL_APPLY_UNARY) {
+        return evaluate_integer_default_apply_unary_frame(
+            database,
+            value_stack,
+            frame->operator_kind
+        );
+    }
+    return evaluate_integer_default_enter_frame(
+        database,
+        expression_stack,
+        value_stack,
+        frame->expression
+    );
+}
+
+static int evaluate_integer_default_apply_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_arithmetic_value left = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value right = {.is_null = false, .integer = 0};
+    struct scalar_arithmetic_value result = {.is_null = false, .integer = 0};
+    int64_t integer_result = 0;
+    bool overflow = false;
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &right) ||
+        !scalar_arithmetic_value_stack_pop(value_stack, &left)) {
+        return MYLITE_ERROR;
+    }
+    if (left.is_null || right.is_null) {
+        result.is_null = true;
+        return scalar_arithmetic_value_stack_push(database, value_stack, result);
+    }
+
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        overflow = checked_int64_add(left.integer, right.integer, &integer_result);
+        break;
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        overflow = checked_int64_subtract(left.integer, right.integer, &integer_result);
+        break;
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        overflow = checked_int64_multiply(left.integer, right.integer, &integer_result);
+        break;
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        if (right.integer == 0 || (left.integer == INT64_MIN && right.integer == -1)) {
+            return MYLITE_ERROR;
+        }
+        integer_result = left.integer % right.integer;
+        break;
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        if (right.integer == 0 || (left.integer == INT64_MIN && right.integer == -1)) {
+            return MYLITE_ERROR;
+        }
+        integer_result = left.integer / right.integer;
+        break;
+    default:
+        return MYLITE_ERROR;
+    }
+    if (overflow) {
+        return MYLITE_ERROR;
+    }
+
+    result.integer = integer_result;
+    return scalar_arithmetic_value_stack_push(database, value_stack, result);
+}
+
+static int evaluate_integer_default_apply_unary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int64_t result = 0;
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &value)) {
+        return MYLITE_ERROR;
+    }
+    if (value.is_null || operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE ||
+        checked_int64_negate(value.integer, &result)) {
+        return MYLITE_ERROR;
+    }
+
+    value.integer = result;
+    return scalar_arithmetic_value_stack_push(database, value_stack, value);
+}
+
+static int evaluate_integer_default_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return evaluate_integer_default_literal_enter_frame(database, value_stack, expression);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return evaluate_integer_default_unary_enter_frame(
+            database,
+            expression_stack,
+            value_stack,
+            expression
+        );
+    case MYLITE_SQL_AST_MOD_FUNCTION:
+        return evaluate_integer_default_mod_enter_frame(database, expression_stack, expression);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return evaluate_integer_default_binary_enter_frame(database, expression_stack, expression);
+    default:
+        return MYLITE_ERROR;
+    }
+}
+
+static int evaluate_integer_default_literal_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = parse_integer_default_literal_value(expression, false, &value);
+
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    return rc;
+}
+
+static int evaluate_integer_default_unary_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    const struct mylite_sql_ast_node *operand =
+        unwrap_parenthesized_expression(child_at(expression, 0U));
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = MYLITE_OK;
+
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        return MYLITE_ERROR;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE && operand != NULL &&
+        operand->kind == MYLITE_SQL_AST_LITERAL) {
+        rc = parse_integer_default_literal_value(operand, true, &value);
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+        return rc;
+    }
+    rc = scalar_arithmetic_eval_stack_push(
+        database,
+        expression_stack,
+        SCALAR_ARITHMETIC_EVAL_APPLY_UNARY,
+        NULL,
+        operator_kind
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_ENTER,
+            operand,
+            MYLITE_SQL_AST_OPERATOR_NONE
+        );
+    }
+    return rc;
+}
+
+static int evaluate_integer_default_mod_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return MYLITE_ERROR;
+    }
+    rc = scalar_arithmetic_eval_stack_push(
+        database,
+        expression_stack,
+        SCALAR_ARITHMETIC_EVAL_APPLY,
+        NULL,
+        MYLITE_SQL_AST_OPERATOR_MODULO
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_ENTER,
+            child_at(expression, 1U),
+            MYLITE_SQL_AST_OPERATOR_NONE
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_ENTER,
+            child_at(expression, 0U),
+            MYLITE_SQL_AST_OPERATOR_NONE
+        );
+    }
+    return rc;
+}
+
+static int evaluate_integer_default_binary_enter_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_eval_stack *expression_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    int rc = MYLITE_OK;
+
+    if (!integer_default_binary_operator_is_supported(operator_kind)) {
+        return MYLITE_ERROR;
+    }
+    rc = scalar_arithmetic_eval_stack_push(
+        database,
+        expression_stack,
+        SCALAR_ARITHMETIC_EVAL_APPLY,
+        NULL,
+        operator_kind
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_ENTER,
+            child_at(expression, 1U),
+            MYLITE_SQL_AST_OPERATOR_NONE
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_ENTER,
+            child_at(expression, 0U),
+            MYLITE_SQL_AST_OPERATOR_NONE
+        );
+    }
+    return rc;
+}
+
+static bool integer_default_binary_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return (operator_kind == MYLITE_SQL_AST_OPERATOR_ADD ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_SUBTRACT ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_MULTIPLY ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE) != 0;
+}
+
+static int finish_integer_default_result(
+    struct scalar_arithmetic_value_stack *value_stack,
+    struct scalar_arithmetic_value *out_value
+) {
+    if (!scalar_arithmetic_value_stack_pop(value_stack, out_value)) {
+        return MYLITE_ERROR;
+    }
+    if (value_stack->count != 0U) {
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int parse_integer_default_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct scalar_arithmetic_value *out_value
+) {
+    const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    uint64_t limit = (uint64_t)INT64_MAX;
+    uint64_t magnitude = 0U;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_ERROR;
+    }
+    if (is_negative) {
+        limit = int64_min_magnitude;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        magnitude > limit) {
+        return MYLITE_ERROR;
+    }
+    if (is_negative && magnitude == int64_min_magnitude) {
+        out_value->integer = INT64_MIN;
+    } else if (is_negative && magnitude != 0U) {
+        out_value->integer = -(int64_t)magnitude;
+    } else {
+        out_value->integer = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static bool column_default_value_is_parenthesized_expression(
+    const struct mylite_sql_ast_node *default_node
+) {
+    const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
+
+    return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) != 0;
 }
 
 static int check_duplicate_column_names(
@@ -42694,6 +43289,39 @@ static bool planned_column_is_timestamp(const struct planned_column *column) {
     }
     return (strcmp(column->logical_type, "TIMESTAMP") == 0 &&
             strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
+static bool column_default_kind_has_integer_value(
+    enum mylite_catalog_column_default_kind default_kind
+) {
+    return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) != 0;
+}
+
+static bool column_default_kind_has_text_value(
+    enum mylite_catalog_column_default_kind default_kind
+) {
+    return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
+}
+
+static bool column_default_kind_is_expression(
+    enum mylite_catalog_column_default_kind default_kind
+) {
+    return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
+}
+
+static bool column_default_kind_materializes_value(
+    enum mylite_catalog_column_default_kind default_kind
+) {
+    return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
 }
 
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
@@ -44495,12 +45123,21 @@ static int check_insert_omitted_columns(
         }
         if (!column_is_targeted &&
             !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
+            !plan->columns[column_index].is_nullable &&
+            plan->columns[column_index].default_kind ==
+                MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+            if (plan->ignore_errors) {
+                continue;
+            }
+            set_bad_null_error(database, plan->columns[column_index].name);
+            return MYLITE_ERROR;
+        }
+        if (!column_is_targeted &&
+            !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT))) {
+              !column_default_kind_materializes_value(plan->columns[column_index].default_kind)))) {
             if (plan->ignore_errors) {
                 continue;
             }
@@ -44648,13 +45285,21 @@ static int append_insert_omitted_column_warnings(
                 break;
             }
         }
-        if (!column_is_targeted &&
+        if (!column_is_targeted && !plan->columns[column_index].is_nullable &&
+            plan->columns[column_index].default_kind ==
+                MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+            int rc = append_bad_null_warning(database, plan->columns[column_index].name);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        } else if (
+            !column_is_targeted &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
-              plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT))) {
+              !column_default_kind_materializes_value(plan->columns[column_index].default_kind)))
+        ) {
             int rc = append_no_default_warning(database, plan->columns[column_index].name);
 
             if (rc != MYLITE_OK) {
@@ -44751,7 +45396,7 @@ static int allocate_insert_column_value(
 ) {
     const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
 
-    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+    if (column_default_kind_has_integer_value(column->default_kind)) {
         out_value->is_null = false;
         out_value->is_text = false;
         out_value->integer = column->default_integer;
@@ -44762,6 +45407,13 @@ static int allocate_insert_column_value(
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+        if (!plan->ignore_errors || column->is_nullable) {
+            out_value->is_null = true;
+            return MYLITE_OK;
+        }
+        return make_insert_ignore_implicit_value(database, column, out_value);
     }
     if (!plan->ignore_errors || column->is_nullable) {
         out_value->is_null = true;
@@ -45011,7 +45663,7 @@ static int materialize_dml_default_value(
     bool ignore_errors,
     struct planned_value *out_value
 ) {
-    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+    if (column_default_kind_has_integer_value(column->default_kind)) {
         *out_value = (struct planned_value){
             .is_null = false,
             .is_text = false,
@@ -45028,6 +45680,9 @@ static int materialize_dml_default_value(
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+        return convert_null_insert_value(database, column, ignore_errors, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
@@ -50436,6 +51091,9 @@ static int append_show_column(
         }
         values[4] = default_text;
     }
+    if (!column->is_auto_increment && column_default_kind_is_expression(column->default_kind)) {
+        values[4] = column->default_text;
+    }
     if (!column->is_auto_increment &&
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
         values[4] = column->default_text;
@@ -50447,6 +51105,10 @@ static int append_show_column(
         values[show_columns_extra_column] = "auto_increment INVISIBLE";
     } else if (column->is_auto_increment) {
         values[show_columns_extra_column] = "auto_increment";
+    } else if (column_default_kind_is_expression(column->default_kind) && !column->is_visible) {
+        values[show_columns_extra_column] = "DEFAULT_GENERATED INVISIBLE";
+    } else if (column_default_kind_is_expression(column->default_kind)) {
+        values[show_columns_extra_column] = "DEFAULT_GENERATED";
     } else if (!column->is_visible) {
         values[show_columns_extra_column] = "INVISIBLE";
     }
@@ -51846,7 +52508,7 @@ static int append_alter_table_add_column_explicit_default(
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
 ) {
-    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+    if (column_default_kind_has_integer_value(plan->column.default_kind)) {
         char default_text[integer_text_capacity];
         int written = snprintf(
             default_text,
@@ -51859,6 +52521,9 @@ static int append_alter_table_add_column_explicit_default(
             return MYLITE_NOMEM;
         }
         return dynamic_string_append(string, default_text);
+    }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+        return dynamic_string_append(string, " DEFAULT NULL");
     }
     if (planned_column_is_approximate(&plan->column) &&
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
@@ -52889,8 +53554,9 @@ static int append_insert_select_target_expressions(
             rc = append_insert_select_temp_column_name(string, target_position);
         } else if (
             rc == MYLITE_OK &&
-            (plan->target.columns[column_index].default_kind ==
-                 MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER ||
+            (column_default_kind_has_integer_value(
+                 plan->target.columns[column_index].default_kind
+             ) ||
              plan->target.columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
              plan->target.columns[column_index].default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT)
@@ -55922,8 +56588,9 @@ static int bind_insert_select_parameters(
         if (find_insert_select_target_position(plan, column_index, &target_position)) {
             continue;
         }
-        if (plan->target.columns[column_index].default_kind !=
-                MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+        if (!column_default_kind_has_integer_value(
+                plan->target.columns[column_index].default_kind
+            ) &&
             plan->target.columns[column_index].default_kind !=
                 MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL &&
             plan->target.columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
@@ -55932,8 +56599,9 @@ static int bind_insert_select_parameters(
         if (parameter_index == 0U || parameter_index > (size_t)INT_MAX) {
             return MYLITE_ERROR;
         }
-        if (plan->target.columns[column_index].default_kind ==
-            MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        if (column_default_kind_has_integer_value(
+                plan->target.columns[column_index].default_kind
+            )) {
             rc = bind_int64_parameter(
                 statement,
                 (int)parameter_index,

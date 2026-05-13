@@ -18,6 +18,7 @@
 
 enum {
     test_path_capacity = 1024,
+    mysql_error_bad_null = 1048,
     mysql_error_invalid_default = 1067,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -27,6 +28,7 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_field_no_default = 1364,
     default_projection_column_count = 14,
+    expression_default_projection_column_count = 7,
     alter_add_projection_column_count = 5,
     alter_set_default_projection_column_count = 7,
     alter_set_default_boundary_column_count = 10,
@@ -61,6 +63,7 @@ struct expected_contains_query {
 };
 
 static int test_create_insert_metadata_and_persistence(void);
+static int test_integer_expression_defaults(void);
 static int test_alter_defaults(void);
 static int test_alter_column_set_default(void);
 static int test_alter_column_drop_default(void);
@@ -116,6 +119,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_insert_metadata_and_persistence();
+    failures += test_integer_expression_defaults();
     failures += test_alter_defaults();
     failures += test_alter_column_set_default();
     failures += test_alter_column_drop_default();
@@ -285,6 +289,269 @@ static int test_create_insert_metadata_and_persistence(void) {
             .column_count = default_projection_column_count,
             .row_count = 1U,
             .context = "reopened defaults persist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_integer_expression_defaults(void) {
+    static const char *const inserted_row[] = {
+        "3",
+        "9",
+        "4",
+        "1",
+        NULL,
+        "-9223372036854775808",
+        "9223372036854775807",
+    };
+    static const char *const show_i[] = {"i", "int", "YES", "", "(1 + 2)", "DEFAULT_GENERATED"};
+    static const char *const show_nul[] = {
+        "nul",
+        "int",
+        "YES",
+        "",
+        "NULL",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const information_schema_i[] = {"i", "(1 + 2)", "DEFAULT_GENERATED"};
+    static const char *const information_schema_nul[] = {"nul", "NULL", "DEFAULT_GENERATED"};
+    static const char *const alter_rows[] = {"1", "1", "2", "10", "3", NULL};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "integer_expression_defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open expression defaults");
+    failures += seed_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE expr_defaults ("
+        "id INT NOT NULL, "
+        "i INT DEFAULT (1 + 2), "
+        "m INT DEFAULT ((2 * 3) + MOD(7, 4)), "
+        "d INT DEFAULT (9 DIV 2), "
+        "r INT DEFAULT (9 % 4), "
+        "nul INT DEFAULT (NULL), "
+        "bi BIGINT DEFAULT (-9223372036854775808), "
+        "bu BIGINT UNSIGNED DEFAULT (9223372036854775807))"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO expr_defaults (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO expr_defaults (id, i) VALUES (2, DEFAULT)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, m, d, r, nul, bi, bu FROM expr_defaults WHERE id = 1",
+            .values = inserted_row,
+            .column_count = expression_default_projection_column_count,
+            .row_count = 1U,
+            .context = "expression defaults materialize inserted row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM expr_defaults LIKE 'i'",
+            .values = show_i,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS integer expression default",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM expr_defaults LIKE 'nul'",
+            .values = show_nul,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS NULL expression default",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'expr_defaults' "
+                   "AND COLUMN_NAME = 'i'",
+            .values = information_schema_i,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "information schema integer expression default metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'expr_defaults' "
+                   "AND COLUMN_NAME = 'nul'",
+            .values = information_schema_nul,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "information schema NULL expression default metadata",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE expr_defaults",
+            .needle = "`i` int DEFAULT ((1 + 2))",
+            .context = "SHOW CREATE TABLE integer expression default",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE expr_defaults",
+            .needle = "`nul` int DEFAULT (NULL)",
+            .context = "SHOW CREATE TABLE NULL expression default",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE expr_like LIKE expr_defaults");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO expr_like (id) VALUES (10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM expr_like LIKE 'i'",
+            .values = show_i,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE preserves expression default metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, m, d, r, nul, bi, bu FROM expr_like WHERE id = 10",
+            .values = inserted_row,
+            .column_count = expression_default_projection_column_count,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE materializes expression defaults",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE null_default (id INT NOT NULL, nn INT NOT NULL DEFAULT (NULL))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO null_default (id) VALUES (1)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'nn' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_range (a TINYINT DEFAULT (127 + 1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_unsigned (a INT UNSIGNED DEFAULT (-1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_division (a INT DEFAULT (1 DIV 0))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_operand (a INT DEFAULT ('1'))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE alter_expr (id INT NOT NULL, a INT DEFAULT 1)"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO alter_expr (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE alter_expr ALTER a SET DEFAULT (2 * 5)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO alter_expr (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE alter_expr ALTER a SET DEFAULT (NULL)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO alter_expr (id) VALUES (3)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a FROM alter_expr ORDER BY id",
+            .values = alter_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "ALTER SET expression defaults affect only later inserts",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen expression defaults");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, m, d, r, nul, bi, bu FROM expr_defaults WHERE id = 1",
+            .values = inserted_row,
+            .column_count = expression_default_projection_column_count,
+            .row_count = 1U,
+            .context = "reopened expression defaults persist",
         }
     );
 

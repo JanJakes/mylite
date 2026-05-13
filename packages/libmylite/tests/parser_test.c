@@ -13956,10 +13956,48 @@ static int test_syntax_errors(void) {
     failures += parse_sql("CREATE TABLE t (id VARCHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "CREATE TABLE t (id INT DEFAULT (NULL));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures += parse_sql("CREATE TABLE t (id INT DEFAULT (NULL));", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(
+            first_child_kind(
+                child_at(child_at(child_at(result.root, 0U), 1U), 0U),
+                MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized NULL default"
+    );
+    failures += expect_literal(
+        child_at(
+            child_at(
+                first_child_kind(
+                    child_at(child_at(child_at(result.root, 0U), 1U), 0U),
+                    MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+                ),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "parenthesized NULL default literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE t (id INT DEFAULT (1 + 2));", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_operator(
+        child_at(
+            child_at(
+                first_child_kind(
+                    child_at(child_at(child_at(result.root, 0U), 1U), 0U),
+                    MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+                ),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "parenthesized expression default"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -14574,8 +14612,13 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name ALTER old_col SET DEFAULT (1 + 1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "alter set parenthesized expression default"
     );
     mylite_sql_parse_result_deinit(&result);
 

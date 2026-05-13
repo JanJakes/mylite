@@ -3420,3 +3420,6 @@ column_default_value(A) ::= TRUE(T). {
 column_default_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
+column_default_value(A) ::= LPAREN(L) expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, E, R);
+}

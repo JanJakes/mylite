@@ -515,9 +515,9 @@ static int test_string_defaults_diagnostics(void) {
         database,
         "CREATE TABLE bad_expression (v VARCHAR(3) DEFAULT ('a'))",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "near '('",
+            .message_part = "Invalid default value for 'v'",
         }
     );
     failures += execute_error(

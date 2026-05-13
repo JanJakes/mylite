@@ -91,6 +91,44 @@ run_mysql \
          (12, 'User 0000020', NULL, NULL);" \
     "$DATABASE" >/dev/null
 
+run_mysql \
+    "CREATE TABLE family_target (
+         id INT PRIMARY KEY,
+         i INT NULL,
+         s VARCHAR(40) NULL,
+         txt TEXT NULL,
+         dec_value DECIMAL(6,2) NULL,
+         dbl_value DOUBLE NULL,
+         date_value DATE NULL,
+         time_value TIME NULL,
+         datetime_value DATETIME NULL,
+         timestamp_value TIMESTAMP NULL,
+         nn_v VARCHAR(40) NOT NULL DEFAULT 'nn'
+     );
+     CREATE TABLE family_source (
+         id INT PRIMARY KEY,
+         i INT NULL,
+         s VARCHAR(40) NULL,
+         txt TEXT NULL,
+         dec_value DECIMAL(6,2) NULL,
+         dbl_value DOUBLE NULL,
+         date_value DATE NULL,
+         time_value TIME NULL,
+         datetime_value DATETIME NULL,
+         timestamp_value TIMESTAMP NULL
+     );
+     INSERT INTO family_target VALUES (
+         1, 1, 'old', 'old text', 1.23, 1.5, '2024-01-01', '01:02:03',
+         '2024-01-01 01:02:03', '2024-01-01 01:02:03', DEFAULT
+     );
+     INSERT INTO family_source VALUES (
+         10, 42, 'new', 'new text', 12.34, 6.25, '2025-02-03', '04:05:06',
+         '2025-02-03 04:05:06', '2025-02-03 04:05:06'
+     ), (
+         11, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+     );" \
+    "$DATABASE" >/dev/null
+
 expect_output \
     "string scalar subquery assignment" \
     "1	0	1:old-18,2:source-19,3:NULL" \
@@ -192,6 +230,47 @@ expect_output \
          SET option_value = (SELECT option_value FROM source ORDER BY id ASC LIMIT 0)
          WHERE id = 2;
      SELECT ROW_COUNT(), @@warning_count, IFNULL(option_value, 'NULL') FROM target WHERE id = 2;" \
+    "$DATABASE"
+
+expect_output \
+    "compatible descriptor family scalar copy" \
+    "1	0	42	new	new text	12.34	6.25	2025-02-03	04:05:06	2025-02-03 04:05:06	2025-02-03 04:05:06" \
+    "UPDATE family_target SET i = (SELECT i FROM family_source WHERE id = 10) WHERE id = 1;
+     UPDATE family_target SET s = (SELECT s FROM family_source WHERE id = 10) WHERE id = 1;
+     UPDATE family_target SET txt = (SELECT txt FROM family_source WHERE id = 10) WHERE id = 1;
+     UPDATE family_target SET dec_value = (SELECT dec_value FROM family_source WHERE id = 10)
+         WHERE id = 1;
+     UPDATE family_target SET dbl_value = (SELECT dbl_value FROM family_source WHERE id = 10)
+         WHERE id = 1;
+     UPDATE family_target SET date_value = (SELECT date_value FROM family_source WHERE id = 10)
+         WHERE id = 1;
+     UPDATE family_target SET time_value = (SELECT time_value FROM family_source WHERE id = 10)
+         WHERE id = 1;
+     UPDATE family_target SET datetime_value = (
+         SELECT datetime_value FROM family_source WHERE id = 10
+     ) WHERE id = 1;
+     UPDATE family_target SET timestamp_value = (
+         SELECT timestamp_value FROM family_source WHERE id = 10
+     ) WHERE id = 1;
+     SELECT ROW_COUNT(), @@warning_count, i, s, txt, dec_value, dbl_value,
+         date_value, time_value, datetime_value, timestamp_value
+     FROM family_target WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "row null scalar subquery assigns null" \
+    "1	0	NULL" \
+    "UPDATE family_target SET s = (SELECT s FROM family_source WHERE id = 11) WHERE id = 1;
+     SELECT ROW_COUNT(), @@warning_count, IFNULL(s, 'NULL')
+     FROM family_target WHERE id = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "row null scalar subquery into not null" \
+    1048 \
+    23000 \
+    "Column 'nn_v' cannot be null" \
+    "UPDATE family_target SET nn_v = (SELECT s FROM family_source WHERE id = 11) WHERE id = 1;" \
     "$DATABASE"
 
 expect_error \

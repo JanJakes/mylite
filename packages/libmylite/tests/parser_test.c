@@ -13169,6 +13169,30 @@ static int test_update_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "UPDATE target SET value = (SELECT source_value FROM source WHERE source_id = 1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_SCALAR_SUBQUERY,
+        "update scalar subquery assignment value"
+    );
+    failures += expect_span_text(
+        child_at(assignment, 1U),
+        "(SELECT source_value FROM source WHERE source_id = 1)",
+        "update scalar subquery assignment span"
+    );
+    failures += expect_node(
+        child_at(child_at(assignment, 1U), 0U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "update scalar subquery inner select"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

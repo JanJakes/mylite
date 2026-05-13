@@ -46,6 +46,7 @@ enum {
     mysql_error_key_column_does_not_exist = 1072,
     mysql_error_cant_remove_all_fields = 1090,
     mysql_error_cant_drop_field_or_key = 1091,
+    mysql_error_update_table_used = 1093,
     mysql_error_no_tables_used = 1096,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
@@ -69,6 +70,7 @@ enum {
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
     mysql_error_operand_should_contain_one_column = 1241,
+    mysql_error_subquery_returns_more_than_one_row = 1242,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
@@ -981,6 +983,8 @@ struct planned_update {
     struct loaded_index_info *indexes;
     size_t index_count;
     const struct mylite_sql_ast_node *assignment_value_node;
+    bool assignment_value_is_scalar_subquery;
+    struct planned_select assignment_subquery;
     struct planned_value assignment_value;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
@@ -7706,11 +7710,76 @@ static int plan_update_assignment(
     size_t table_column_count,
     struct planned_update *out_plan
 );
+static int plan_update_scalar_subquery_assignment(
+    struct mylite_db *database,
+    struct planned_update *out_plan
+);
+static int validate_update_scalar_subquery_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int convert_update_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *value_node,
-    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_update *plan,
     struct planned_value *out_value
+);
+static int materialize_update_scalar_subquery_value(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static void cap_update_scalar_subquery_limit(struct planned_select_limit *limit);
+static int step_update_scalar_subquery_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static int materialize_update_scalar_subquery_sqlite_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static bool update_scalar_subquery_target_uses_text_storage(
+    const struct mylite_catalog_column_descriptor *target_column
+);
+static int materialize_update_scalar_subquery_text_storage_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+);
+static int validate_update_scalar_subquery_text_storage_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column
+);
+static int materialize_update_scalar_subquery_approximate_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+);
+static int materialize_update_scalar_subquery_integer_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int sqlite_type,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+);
+static int copy_update_scalar_subquery_text_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    struct planned_value *out_value
+);
+static bool update_scalar_subquery_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+);
+static const char *update_scalar_subquery_implicit_conversion_message(
+    const struct mylite_catalog_column_descriptor *target_column
 );
 static int convert_update_integer_literal(
     struct mylite_db *database,
@@ -8667,6 +8736,8 @@ static void set_parse_error(
 static void set_unsupported_error(struct mylite_db *database, const char *message);
 static void set_no_tables_used_error(struct mylite_db *database);
 static void set_scalar_subquery_column_count_error(struct mylite_db *database);
+static void set_scalar_subquery_row_count_error(struct mylite_db *database);
+static void set_update_table_used_error(struct mylite_db *database, const char *table_name);
 static void set_native_function_parameter_count_error(
     struct mylite_db *database,
     const char *function_name
@@ -26514,6 +26585,7 @@ static void planned_update_deinit(struct planned_update *plan) {
     }
 
     planned_select_predicate_deinit(&plan->predicate);
+    planned_select_deinit(&plan->assignment_subquery);
     planned_value_deinit(&plan->assignment_value);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};
@@ -26537,12 +26609,7 @@ static int execute_update_from_plan(
         rc = update_matches_any_row(database, plan, &matches_any_row);
     }
     if (rc == MYLITE_OK && matches_any_row) {
-        rc = convert_update_value(
-            database,
-            plan->assignment_value_node,
-            &plan->assignment_column,
-            &executable_plan.assignment_value
-        );
+        rc = convert_update_value(database, plan, &executable_plan.assignment_value);
     }
     if (rc == MYLITE_OK && matches_any_row) {
         rc = validate_update_string_key_value(database, &executable_plan);
@@ -47868,15 +47935,116 @@ static int plan_update_assignment(
         return MYLITE_ERROR;
     }
 
+    return plan_update_scalar_subquery_assignment(database, out_plan);
+}
+
+static int plan_update_scalar_subquery_assignment(
+    struct mylite_db *database,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_child_count(value_node) != 1U) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only parenthesized SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+
+    statement = child_at(value_node, 0U);
+    rc = validate_update_scalar_subquery_select(database, statement);
+    if (rc == MYLITE_OK) {
+        rc = plan_select(database, statement, &out_plan->assignment_subquery);
+    }
+    if (rc == MYLITE_OK && out_plan->assignment_subquery.column_count != 1U) {
+        set_scalar_subquery_column_count_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        out_plan->assignment_subquery.table.table_id == out_plan->table.table_id) {
+        set_update_table_used_error(database, out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->assignment_value_is_scalar_subquery = true;
+    }
+
+    return rc;
+}
+
+static int validate_update_scalar_subquery_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only parenthesized SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_options(statement) != 0U ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0 ||
+        mylite_sql_ast_node_select_locking_clause(statement) !=
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only plain inner SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+
+    select_list = child_at(statement, 0U);
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        select_list_is_wildcard(select_list)) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only one explicit source column"
+        );
+        return MYLITE_ERROR;
+    }
+
+    from_clause = child_at(statement, 1U);
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
     return MYLITE_OK;
 }
 
 static int convert_update_value(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *value_node,
-    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_update *plan,
     struct planned_value *out_value
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const struct mylite_catalog_column_descriptor *column = NULL;
+
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    value_node = unwrap_parenthesized_expression(plan->assignment_value_node);
+    column = &plan->assignment_column;
     if (value_node == NULL || column == NULL || out_value == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -47884,6 +48052,9 @@ static int convert_update_value(
 
     planned_value_deinit(out_value);
     *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        return materialize_update_scalar_subquery_value(database, plan, out_value);
+    }
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, false, out_value);
     }
@@ -47924,6 +48095,327 @@ static int convert_update_value(
     }
 
     return convert_update_integer_literal(database, value_node, column, out_value);
+}
+
+static int materialize_update_scalar_subquery_value(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_select scalar_plan = plan->assignment_subquery;
+    char *sql = NULL;
+    int rc = MYLITE_OK;
+
+    if (!plan->assignment_value_is_scalar_subquery ||
+        plan->assignment_subquery.column_count != 1U) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment supports only one descriptor source column"
+        );
+        return MYLITE_ERROR;
+    }
+
+    cap_update_scalar_subquery_limit(&scalar_plan.limit);
+    rc = build_select_sql(&scalar_plan, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_parameters(statement, &scalar_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_update_scalar_subquery_value(database, statement, plan, out_value);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static void cap_update_scalar_subquery_limit(struct planned_select_limit *limit) {
+    if (limit == NULL) {
+        return;
+    }
+    if (!limit->has_limit) {
+        *limit = (struct planned_select_limit){
+            .has_limit = true,
+            .row_count = 2,
+            .has_offset = false,
+            .offset = 0,
+        };
+        return;
+    }
+    if (limit->row_count > 2) {
+        limit->row_count = 2;
+    }
+}
+
+static int step_update_scalar_subquery_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+) {
+    int sqlite_rc = sqlite3_step(statement);
+    int rc = MYLITE_OK;
+
+    if (sqlite_rc == SQLITE_DONE) {
+        if (!plan->assignment_column.is_nullable) {
+            set_bad_null_error(database, plan->assignment_column.name);
+            return MYLITE_ERROR;
+        }
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+    if (sqlite_rc != SQLITE_ROW) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    rc = materialize_update_scalar_subquery_sqlite_value(database, statement, plan, out_value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc == SQLITE_ROW) {
+        set_scalar_subquery_row_count_error(database);
+        return MYLITE_ERROR;
+    }
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int materialize_update_scalar_subquery_sqlite_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    struct planned_value *out_value
+) {
+    const struct mylite_catalog_column_descriptor *source_column =
+        &plan->assignment_subquery.columns[0];
+    const struct mylite_catalog_column_descriptor *target_column = &plan->assignment_column;
+    int sqlite_type = sqlite3_column_type(statement, 0);
+
+    if (sqlite_type == SQLITE_NULL) {
+        if (!target_column->is_nullable) {
+            set_bad_null_error(database, target_column->name);
+            return MYLITE_ERROR;
+        }
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+    if (!update_scalar_subquery_source_target_types_are_compatible(source_column, target_column)) {
+        set_unsupported_error(
+            database,
+            update_scalar_subquery_implicit_conversion_message(target_column)
+        );
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_approximate(target_column)) {
+        return materialize_update_scalar_subquery_approximate_value(
+            database,
+            statement,
+            target_column,
+            out_value
+        );
+    }
+    if (update_scalar_subquery_target_uses_text_storage(target_column)) {
+        return materialize_update_scalar_subquery_text_storage_value(
+            database,
+            statement,
+            target_column,
+            out_value
+        );
+    }
+
+    return materialize_update_scalar_subquery_integer_value(
+        database,
+        statement,
+        sqlite_type,
+        target_column,
+        out_value
+    );
+}
+
+static bool update_scalar_subquery_target_uses_text_storage(
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (column_descriptor_is_string_family(target_column)) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(target_column)) {
+        return true;
+    }
+    if (column_descriptor_is_date(target_column)) {
+        return true;
+    }
+    if (column_descriptor_is_time(target_column)) {
+        return true;
+    }
+    if (column_descriptor_is_datetime(target_column)) {
+        return true;
+    }
+    if (column_descriptor_is_timestamp(target_column)) {
+        return true;
+    }
+    return false;
+}
+
+static int materialize_update_scalar_subquery_text_storage_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+) {
+    int rc = validate_update_scalar_subquery_text_storage_value(database, statement, target_column);
+
+    if (rc == MYLITE_OK) {
+        rc = copy_update_scalar_subquery_text_value(database, statement, 0, out_value);
+    }
+    return rc;
+}
+
+static int validate_update_scalar_subquery_text_storage_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (column_descriptor_is_string_family(target_column)) {
+        return validate_insert_select_string_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_decimal(target_column)) {
+        return validate_insert_select_decimal_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_date(target_column)) {
+        return validate_insert_select_date_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_time(target_column)) {
+        return validate_insert_select_time_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_datetime(target_column)) {
+        return validate_insert_select_datetime_value(database, statement, 0, target_column, 1U);
+    }
+    return validate_insert_select_timestamp_value(database, statement, 0, target_column, 1U);
+}
+
+static int materialize_update_scalar_subquery_approximate_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+) {
+    int rc = validate_insert_select_approximate_value(database, statement, 0, target_column, 1U);
+
+    if (rc == MYLITE_OK) {
+        *out_value = (struct planned_value){
+            .is_null = false,
+            .is_real = true,
+            .real = sqlite3_column_double(statement, 0),
+        };
+    }
+    return rc;
+}
+
+static int materialize_update_scalar_subquery_integer_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int sqlite_type,
+    const struct mylite_catalog_column_descriptor *target_column,
+    struct planned_value *out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (sqlite_type != SQLITE_INTEGER) {
+        set_unsupported_error(
+            database,
+            "UPDATE scalar subquery assignment does not support implicit integer conversion"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_insert_select_integer_value(database, statement, 0, target_column, 1U);
+    if (rc == MYLITE_OK) {
+        *out_value = (struct planned_value){
+            .is_null = false,
+            .integer = (int64_t)sqlite3_column_int64(statement, 0),
+        };
+    }
+    return rc;
+}
+
+static int copy_update_scalar_subquery_text_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    struct planned_value *out_value
+) {
+    const unsigned char *text = sqlite3_column_text(statement, selected_column_index);
+    int byte_count = sqlite3_column_bytes(statement, selected_column_index);
+    char *copy = NULL;
+
+    if (text == NULL || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    copy = malloc((size_t)byte_count + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, text, (size_t)byte_count);
+    copy[(size_t)byte_count] = '\0';
+
+    return assign_text_value(database, copy, (size_t)byte_count, out_value);
+}
+
+static bool update_scalar_subquery_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    return insert_select_source_target_types_are_compatible(source_column, target_column);
+}
+
+static const char *update_scalar_subquery_implicit_conversion_message(
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (column_descriptor_is_string_family(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit string conversion";
+    }
+    if (column_descriptor_is_decimal(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit DECIMAL conversion";
+    }
+    if (column_descriptor_is_approximate(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit FLOAT or DOUBLE "
+               "conversion";
+    }
+    if (column_descriptor_is_date(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit DATE conversion";
+    }
+    if (column_descriptor_is_time(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit TIME conversion";
+    }
+    if (column_descriptor_is_datetime(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit DATETIME conversion";
+    }
+    if (column_descriptor_is_timestamp(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit TIMESTAMP conversion";
+    }
+
+    return "UPDATE scalar subquery assignment does not support implicit integer conversion";
 }
 
 static int convert_update_integer_literal(
@@ -54368,6 +54860,35 @@ static void set_scalar_subquery_column_count_error(struct mylite_db *database) {
         mysql_error_operand_should_contain_one_column,
         "21000",
         "Operand should contain 1 column(s)"
+    );
+}
+
+static void set_scalar_subquery_row_count_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_subquery_returns_more_than_one_row,
+        "21000",
+        "Subquery returns more than 1 row"
+    );
+}
+
+static void set_update_table_used_error(struct mylite_db *database, const char *table_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "You can't specify target table '%s' for update in FROM clause",
+        table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_update_table_used,
+        "HY000",
+        message
     );
 }
 

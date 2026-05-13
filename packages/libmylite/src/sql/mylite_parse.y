@@ -1236,6 +1236,9 @@ update_value(A) ::= STRING(T). {
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
+update_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
 
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
     select_locking_clause_opt(K). {

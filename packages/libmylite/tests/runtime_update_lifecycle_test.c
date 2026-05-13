@@ -25,6 +25,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
+    mysql_error_update_table_used = 1093,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
@@ -898,9 +899,9 @@ static int test_update_diagnostics(void) {
         database,
         "UPDATE numbers SET i = (SELECT id FROM numbers)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_update_table_used,
+            .sqlstate = "HY000",
+            .message_part = "You can't specify target table 'numbers' for update in FROM clause",
         }
     );
     failures += execute_error(

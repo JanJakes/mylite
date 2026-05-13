@@ -129,6 +129,21 @@ run_mysql \
      );" \
     "$DATABASE" >/dev/null
 
+run_mysql \
+    "CREATE TABLE binary_target (
+         id INT PRIMARY KEY,
+         b BINARY(3),
+         v VARBINARY(1)
+     );
+     CREATE TABLE binary_source (
+         id INT PRIMARY KEY,
+         v VARBINARY(1),
+         b BINARY(3)
+     );
+     INSERT INTO binary_target VALUES (1, X'410000', X'41');
+     INSERT INTO binary_source VALUES (10, X'51', X'515253');" \
+    "$DATABASE" >/dev/null
+
 expect_output \
     "string scalar subquery assignment" \
     "1	0	1:old-18,2:source-19,3:NULL" \
@@ -271,6 +286,30 @@ expect_error \
     23000 \
     "Column 'nn_v' cannot be null" \
     "UPDATE family_target SET nn_v = (SELECT s FROM family_source WHERE id = 11) WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "binary scalar subquery assignment converts target descriptor" \
+    "1	0	510000	3
+0	0	510000	3" \
+    "UPDATE binary_target SET b = (SELECT v FROM binary_source WHERE id = 10) WHERE id = 1;
+     SELECT ROW_COUNT(), @@warning_count, HEX(b), LENGTH(b) FROM binary_target WHERE id = 1;
+     UPDATE binary_target SET b = (SELECT v FROM binary_source WHERE id = 10) WHERE id = 1;
+     SELECT ROW_COUNT(), @@warning_count, HEX(b), LENGTH(b) FROM binary_target WHERE id = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "binary scalar subquery overlong target fails" \
+    1406 \
+    22001 \
+    "Data too long for column 'v'" \
+    "UPDATE binary_target SET v = (SELECT b FROM binary_source WHERE id = 10) WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "binary scalar subquery failure leaves target unchanged" \
+    "41	1" \
+    "SELECT HEX(v), LENGTH(v) FROM binary_target WHERE id = 1;" \
     "$DATABASE"
 
 expect_error \

@@ -14964,10 +14964,10 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (1e0);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES (0x1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (0x1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
@@ -14997,10 +14997,10 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t SET id = 1e0;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = 0x1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = 0x1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = b'1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = b'1';", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

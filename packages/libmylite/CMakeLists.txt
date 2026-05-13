@@ -1704,6 +1704,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_text_type_test)
 
+  add_executable(mylite_runtime_binary_string_types_test
+    tests/runtime_binary_string_types_test.c
+  )
+  target_link_libraries(mylite_runtime_binary_string_types_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_binary_string_types_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_binary_string_types_test)
+
   add_executable(mylite_runtime_string_defaults_test
     tests/runtime_string_defaults_test.c
   )
@@ -2588,6 +2599,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.text_type
     COMMAND mylite_runtime_text_type_test
+  )
+  add_test(
+    NAME libmylite.runtime.binary_string_types
+    COMMAND mylite_runtime_binary_string_types_test
   )
   add_test(
     NAME libmylite.runtime.string_defaults

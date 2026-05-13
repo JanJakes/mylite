@@ -185,6 +185,21 @@ expect_output \
 "SHOW COLUMNS FROM char_byte_alias;" \
     "$DATABASE"
 
+alter_add_expected=$(cat <<\EXPECTED
+0000	2		0		0
+EXPECTED
+)
+expect_output \
+    "alter add binary not null backfills implicit values" \
+    "$alter_add_expected" \
+    "CREATE TABLE alter_binary (id INT); "\
+"INSERT INTO alter_binary VALUES (1); "\
+"ALTER TABLE alter_binary ADD COLUMN b BINARY(2) NOT NULL; "\
+"ALTER TABLE alter_binary ADD COLUMN v VARBINARY(2) NOT NULL; "\
+"ALTER TABLE alter_binary ADD COLUMN bl BLOB NOT NULL; "\
+"SELECT HEX(b), LENGTH(b), HEX(v), LENGTH(v), HEX(bl), LENGTH(bl) FROM alter_binary;" \
+    "$DATABASE"
+
 insert_readback_expected=$(cat <<\EXPECTED
 1	410000	3	4100	2	00	1	00	1	0000	2
 2	000000	3		0		0		0	4243	2
@@ -241,6 +256,73 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, HEX(b3), LENGTH(b3) FROM bin_types WHERE id = 1; "\
 "UPDATE bin_types SET v3 = X'420000' WHERE id = 1; "\
 "SELECT ROW_COUNT(), @@warning_count, HEX(v3), LENGTH(v3) FROM bin_types WHERE id = 1;" \
+    "$DATABASE"
+
+replace_expected=$(cat <<\EXPECTED
+1	4100	2	0102	2
+2	4200	2	03	1
+EXPECTED
+)
+expect_output \
+    "replace values and set convert binary strings" \
+    "$replace_expected" \
+    "CREATE TABLE replace_binary (id INT, b BINARY(2), v VARBINARY(3)); "\
+"REPLACE INTO replace_binary VALUES (1, 'A', X'0102'); "\
+"REPLACE INTO replace_binary SET id = 2, b = 'B', v = X'03'; "\
+"SELECT id, HEX(b), LENGTH(b), HEX(v), LENGTH(v) FROM replace_binary ORDER BY id;" \
+    "$DATABASE"
+
+insert_select_expected=$(cat <<\EXPECTED
+510000	3
+510000	3
+EXPECTED
+)
+expect_output \
+    "insert and replace select convert binary target descriptors" \
+    "$insert_select_expected" \
+    "CREATE TABLE copy_source (id INT, v VARBINARY(1), b BINARY(3)); "\
+"INSERT INTO copy_source VALUES (1, X'51', X'515253'); "\
+"CREATE TABLE copy_target (id INT, b BINARY(3)); "\
+"INSERT INTO copy_target SELECT id, v FROM copy_source; "\
+"SELECT HEX(b), LENGTH(b) FROM copy_target; "\
+"CREATE TABLE replace_target (id INT, b BINARY(3)); "\
+"REPLACE INTO replace_target SELECT id, v FROM copy_source; "\
+"SELECT HEX(b), LENGTH(b) FROM replace_target;" \
+    "$DATABASE"
+
+expect_error \
+    "insert select overlong binary target fails" \
+    1406 \
+    22001 \
+    "Data too long for column 'v' at row 1" \
+    "CREATE TABLE narrow_target (id INT, v VARBINARY(1)); "\
+"INSERT INTO narrow_target SELECT id, b FROM copy_source;" \
+    "$DATABASE"
+
+update_subquery_expected=$(cat <<\EXPECTED
+1	0	510000	3
+0	0	510000	3
+EXPECTED
+)
+expect_output \
+    "update scalar subquery converts binary target descriptors" \
+    "$update_subquery_expected" \
+    "CREATE TABLE scalar_source (id INT, v VARBINARY(1), b BINARY(3)); "\
+"INSERT INTO scalar_source VALUES (1, X'51', X'515253'); "\
+"CREATE TABLE scalar_target (id INT, b BINARY(3), v VARBINARY(1)); "\
+"INSERT INTO scalar_target VALUES (1, X'410000', X'41'); "\
+"UPDATE scalar_target SET b = (SELECT v FROM scalar_source WHERE id = 1) WHERE id = 1; "\
+"SELECT ROW_COUNT(), @@warning_count, HEX(b), LENGTH(b) FROM scalar_target WHERE id = 1; "\
+"UPDATE scalar_target SET b = (SELECT v FROM scalar_source WHERE id = 1) WHERE id = 1; "\
+"SELECT ROW_COUNT(), @@warning_count, HEX(b), LENGTH(b) FROM scalar_target WHERE id = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "update scalar subquery overlong binary target fails" \
+    1406 \
+    22001 \
+    "Data too long for column 'v'" \
+    "UPDATE scalar_target SET v = (SELECT b FROM scalar_source WHERE id = 1) WHERE id = 1;" \
     "$DATABASE"
 
 expect_output \
@@ -338,6 +420,13 @@ expect_upstream_accepts \
     "CREATE TABLE deferred_blob_default (b BLOB DEFAULT (X'41')); "\
 "INSERT INTO deferred_blob_default () VALUES (); "\
 "SELECT HEX(b), LENGTH(b) FROM deferred_blob_default;" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "mysql accepts deferred bit literals for binary strings" \
+    "CREATE TABLE deferred_bit_literal (b BINARY(2)); "\
+"INSERT INTO deferred_bit_literal VALUES (b'1010'); "\
+"SELECT HEX(b), LENGTH(b) FROM deferred_bit_literal;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_binary_string_types_expectations: ok"

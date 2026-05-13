@@ -5,6 +5,7 @@
 
 static int reserve_columns(mylite_result *result, size_t required_capacity);
 static int reserve_rows(mylite_result *result, size_t required_capacity);
+static int duplicate_bytes(const void *bytes, size_t size, char **out_copy);
 static char *duplicate_text(const char *text);
 static void free_values(char **values, size_t value_count);
 
@@ -33,6 +34,7 @@ void mylite_result_free(mylite_result *result) {
 
     free_values(result->column_names, result->column_count);
     free_values(result->values, result->row_count * result->column_count);
+    free(result->value_sizes);
     free(result);
 }
 
@@ -60,7 +62,8 @@ int mylite_result_append_column(mylite_result *result, const char *name) {
     return MYLITE_OK;
 }
 
-int mylite_result_append_text_row(mylite_result *result, const char *const *values) {
+int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_result_cell *values) {
+    size_t column_count = 0U;
     size_t value_offset = 0U;
     int rc = MYLITE_OK;
 
@@ -68,25 +71,64 @@ int mylite_result_append_text_row(mylite_result *result, const char *const *valu
         return MYLITE_MISUSE;
     }
 
+    column_count = result->column_count;
     rc = reserve_rows(result, result->row_count + 1U);
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    value_offset = result->row_count * result->column_count;
-    for (size_t column_index = 0U; column_index < result->column_count; ++column_index) {
-        result->values[value_offset + column_index] = duplicate_text(values[column_index]);
-        if (result->values[value_offset + column_index] == NULL && values[column_index] != NULL) {
+    value_offset = result->row_count * column_count;
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        const struct mylite_result_cell *cell = &values[column_index];
+
+        if (cell->is_null) {
+            result->values[value_offset + column_index] = NULL;
+            result->value_sizes[value_offset + column_index] = 0U;
+            continue;
+        }
+        rc = duplicate_bytes(cell->bytes, cell->size, &result->values[value_offset + column_index]);
+        if (rc != MYLITE_OK) {
             for (size_t rollback_index = 0U; rollback_index < column_index; ++rollback_index) {
                 free(result->values[value_offset + rollback_index]);
                 result->values[value_offset + rollback_index] = NULL;
+                result->value_sizes[value_offset + rollback_index] = 0U;
             }
-            return MYLITE_NOMEM;
+            return rc;
         }
+        result->value_sizes[value_offset + column_index] = cell->size;
     }
     ++result->row_count;
 
     return MYLITE_OK;
+}
+
+int mylite_result_append_text_row(mylite_result *result, const char *const *values) {
+    struct mylite_result_cell *cells = NULL;
+    int rc = MYLITE_OK;
+
+    if (result == NULL || values == NULL || result->column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    cells = calloc(result->column_count, sizeof(*cells));
+    if (cells == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t column_index = 0U; column_index < result->column_count; ++column_index) {
+        if (values[column_index] == NULL) {
+            cells[column_index] = (struct mylite_result_cell){.is_null = true};
+        } else {
+            cells[column_index] = (struct mylite_result_cell){
+                .bytes = values[column_index],
+                .size = strlen(values[column_index]),
+                .is_null = false,
+            };
+        }
+    }
+    rc = mylite_result_append_bytes_row(result, cells);
+    free(cells);
+
+    return rc;
 }
 
 void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_rows) {
@@ -166,6 +208,30 @@ const char *mylite_result_value_text(
     return result->values[(row_index * result->column_count) + column_index];
 }
 
+const void *mylite_result_value_bytes(
+    const mylite_result *result,
+    size_t row_index,
+    size_t column_index
+) {
+    if (result == NULL || row_index >= result->row_count || column_index >= result->column_count) {
+        return NULL;
+    }
+
+    return result->values[(row_index * result->column_count) + column_index];
+}
+
+size_t mylite_result_value_size(
+    const mylite_result *result,
+    size_t row_index,
+    size_t column_index
+) {
+    if (result == NULL || row_index >= result->row_count || column_index >= result->column_count) {
+        return 0U;
+    }
+
+    return result->value_sizes[(row_index * result->column_count) + column_index];
+}
+
 int64_t mylite_result_affected_rows(const mylite_result *result) {
     if (result == NULL) {
         return 0;
@@ -222,6 +288,7 @@ static int reserve_rows(mylite_result *result, size_t required_capacity) {
     enum { initial_row_capacity = 4 };
 
     char **values = NULL;
+    size_t *value_sizes = NULL;
     size_t capacity = result->row_capacity;
     size_t old_value_capacity = 0U;
 
@@ -250,12 +317,43 @@ static int reserve_rows(mylite_result *result, size_t required_capacity) {
     if (values == NULL) {
         return MYLITE_NOMEM;
     }
+    value_sizes = (size_t *)realloc(
+        (void *)result->value_sizes,
+        capacity * result->column_count * sizeof(*value_sizes)
+    );
+    if (value_sizes == NULL) {
+        result->values = values;
+        return MYLITE_NOMEM;
+    }
 
     for (size_t index = old_value_capacity; index < capacity * result->column_count; ++index) {
         values[index] = NULL;
+        value_sizes[index] = 0U;
     }
     result->values = values;
+    result->value_sizes = value_sizes;
     result->row_capacity = capacity;
+
+    return MYLITE_OK;
+}
+
+static int duplicate_bytes(const void *bytes, size_t size, char **out_copy) {
+    char *copy = NULL;
+
+    if (out_copy == NULL || (bytes == NULL && size != 0U) || size == SIZE_MAX) {
+        return MYLITE_MISUSE;
+    }
+    *out_copy = NULL;
+
+    copy = malloc(size + 1U);
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (size != 0U) {
+        memcpy(copy, bytes, size);
+    }
+    copy[size] = '\0';
+    *out_copy = copy;
 
     return MYLITE_OK;
 }

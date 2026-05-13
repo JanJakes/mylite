@@ -253,6 +253,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE = 244,
     MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR = 245,
     MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP = 246,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE = 247,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -324,6 +325,16 @@ enum mylite_sql_ast_text_type {
     MYLITE_SQL_AST_TEXT_TYPE_TEXT = 2,
     MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT = 3,
     MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT = 4,
+};
+
+enum mylite_sql_ast_binary_string_type {
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_NONE = 0,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY = 1,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_VARBINARY = 2,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_TINYBLOB = 3,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_BLOB = 4,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB = 5,
+    MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB = 6,
 };
 
 enum mylite_sql_ast_decimal_type {
@@ -416,6 +427,12 @@ struct mylite_sql_ast_text_type_payload {
     enum mylite_sql_ast_text_type kind;
 };
 
+struct mylite_sql_ast_binary_string_type_payload {
+    enum mylite_sql_ast_binary_string_type kind;
+    int has_length;
+    struct mylite_sql_source_span length_span;
+};
+
 struct mylite_sql_ast_decimal_type_payload {
     enum mylite_sql_ast_decimal_type kind;
     int has_precision;
@@ -452,6 +469,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_varchar_type_payload varchar_type;
     struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
+    struct mylite_sql_ast_binary_string_type_payload binary_string_type;
     struct mylite_sql_ast_decimal_type_payload decimal_type;
     struct mylite_sql_ast_approximate_type_payload approximate_type;
     struct mylite_sql_ast_nullability_payload nullability;
@@ -527,6 +545,10 @@ void mylite_sql_ast_node_set_text_type(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_text_type text_type
 );
+void mylite_sql_ast_node_set_binary_string_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_binary_string_type_payload payload
+);
 void mylite_sql_ast_node_set_decimal_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_decimal_type_payload payload
@@ -579,6 +601,13 @@ struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_binary_string_type_has_length(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_binary_string_type_length_span(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(
     const struct mylite_sql_ast_node *node
 );
@@ -614,6 +643,9 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
 const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_type);
+const char *mylite_sql_ast_binary_string_type_name(
+    enum mylite_sql_ast_binary_string_type binary_string_type
+);
 const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type decimal_type);
 const char *mylite_sql_ast_approximate_type_name(
     enum mylite_sql_ast_approximate_type approximate_type

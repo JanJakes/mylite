@@ -4225,6 +4225,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_binary_string_type_tokens tokens
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
+    struct mylite_sql_ast_node *type = NULL;
+
+    if (tokens.end_token.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.end_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_BINARY_STRING_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_binary_string_type(
+        type,
+        (struct mylite_sql_ast_binary_string_type_payload){
+            .kind = tokens.binary_string_type,
+            .has_length = tokens.has_length,
+            .length_span = span_from_token(&tokens.length_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_decimal_type_tokens tokens
@@ -4718,6 +4745,12 @@ static bool map_keyword_token(
         {"TIME", MYLITE_SQL_PARSE_TIME},
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
+        {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
+        {"BYTE", MYLITE_SQL_PARSE_BYTE},
+        {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},
+        {"BLOB", MYLITE_SQL_PARSE_BLOB},
+        {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
+        {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},

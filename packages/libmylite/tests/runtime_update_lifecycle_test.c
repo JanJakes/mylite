@@ -811,7 +811,8 @@ static int test_update_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
         }
     );
     failures += execute_error(
@@ -820,7 +821,8 @@ static int test_update_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
         }
     );
     failures += execute_error(

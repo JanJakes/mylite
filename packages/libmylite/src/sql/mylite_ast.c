@@ -187,6 +187,17 @@ void mylite_sql_ast_node_set_text_type(
     node->payload.text_type.kind = text_type;
 }
 
+void mylite_sql_ast_node_set_binary_string_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_binary_string_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.binary_string_type = payload;
+}
+
 void mylite_sql_ast_node_set_decimal_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_decimal_type_payload payload
@@ -410,6 +421,34 @@ enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(
     return node->payload.text_type.kind;
 }
 
+enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_BINARY_STRING_TYPE) {
+        return MYLITE_SQL_AST_BINARY_STRING_TYPE_NONE;
+    }
+
+    return node->payload.binary_string_type.kind;
+}
+
+int mylite_sql_ast_node_binary_string_type_has_length(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_BINARY_STRING_TYPE) {
+        return 0;
+    }
+
+    return node->payload.binary_string_type.has_length;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_binary_string_type_length_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_BINARY_STRING_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.binary_string_type.length_span;
+}
+
 enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(
     const struct mylite_sql_ast_node *node
 ) {
@@ -592,6 +631,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "char_type";
     case MYLITE_SQL_AST_TEXT_TYPE:
         return "text_type";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE:
+        return "binary_string_type";
     case MYLITE_SQL_AST_DECIMAL_TYPE:
         return "decimal_type";
     case MYLITE_SQL_AST_APPROXIMATE_TYPE:
@@ -1172,6 +1213,29 @@ const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_typ
         return "mediumtext";
     case MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT:
         return "longtext";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_binary_string_type_name(
+    enum mylite_sql_ast_binary_string_type binary_string_type
+) {
+    switch (binary_string_type) {
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY:
+        return "binary";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_VARBINARY:
+        return "varbinary";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_TINYBLOB:
+        return "tinyblob";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_BLOB:
+        return "blob";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB:
+        return "mediumblob";
+    case MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB:
+        return "longblob";
     }
 
     return "unknown";

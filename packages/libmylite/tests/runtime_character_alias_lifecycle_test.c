@@ -436,15 +436,7 @@ static int test_character_alias_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_char_byte (v CHAR BYTE)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += expect_statement_ok(database, "CREATE TABLE char_byte_alias (v CHAR BYTE)");
     failures += execute_error(
         database,
         "CREATE TABLE bad_character_set (v CHARACTER SET utf8mb4)",

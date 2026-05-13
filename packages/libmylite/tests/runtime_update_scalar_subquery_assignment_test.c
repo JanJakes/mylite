@@ -22,6 +22,7 @@ enum {
     mysql_error_table_does_not_exist = 1146,
     mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_subquery_returns_more_than_one_row = 1242,
+    mysql_error_data_too_long = 1406,
 };
 
 struct expected_sql_error {
@@ -38,6 +39,11 @@ struct expected_query {
     const char *context;
 };
 
+struct expected_bytes {
+    const unsigned char *bytes;
+    size_t size;
+};
+
 static int test_scalar_subquery_assignment_success_and_persistence(void);
 static int test_scalar_subquery_assignment_errors(void);
 static int open_seeded_database(const char *path, mylite_db **out_database);
@@ -51,6 +57,13 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    const char *context
+);
+static int expect_binary_cell(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    struct expected_bytes expected,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -81,6 +94,7 @@ int main(void) {
 }
 
 static int test_scalar_subquery_assignment_success_and_persistence(void) {
+    static const unsigned char binary_padded[] = {0x51U, 0x00U, 0x00U};
     static const char *const after_string_copy[] = {
         "1",
         "old-18",
@@ -279,6 +293,26 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
     );
     failures += expect_update_ok(
         database,
+        "UPDATE binary_target SET b = (SELECT v FROM binary_source WHERE id = 10) WHERE id = 1",
+        1
+    );
+    failures += execute_ok(database, "SELECT b FROM binary_target WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = binary_padded, .size = sizeof(binary_padded)},
+        "binary scalar subquery pads selected VARBINARY for BINARY target"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_update_ok(
+        database,
+        "UPDATE binary_target SET b = (SELECT v FROM binary_source WHERE id = 10) WHERE id = 1",
+        0
+    );
+    failures += expect_update_ok(
+        database,
         "UPDATE target "
         "SET option_value = (SELECT option_value FROM source WHERE option_name = 'User 0000018') "
         "ORDER BY id DESC LIMIT 1",
@@ -323,6 +357,16 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
             .context = "persisted scalar assignment values",
         }
     );
+    failures += execute_ok(database, "SELECT b FROM binary_target WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = binary_padded, .size = sizeof(binary_padded)},
+        "persisted binary scalar subquery assignment"
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     remove_related_files(path);
@@ -331,6 +375,7 @@ static int test_scalar_subquery_assignment_success_and_persistence(void) {
 }
 
 static int test_scalar_subquery_assignment_errors(void) {
+    static const unsigned char binary_original[] = {0x41U};
     static const char *const unchanged_values[] = {
         "1",
         "old-18",
@@ -347,6 +392,7 @@ static int test_scalar_subquery_assignment_errors(void) {
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "errors") != 0) {
@@ -460,6 +506,25 @@ static int test_scalar_subquery_assignment_errors(void) {
     );
     failures += execute_error(
         database,
+        "UPDATE binary_target SET v = (SELECT b FROM binary_source WHERE id = 10) WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long",
+        }
+    );
+    failures += execute_ok(database, "SELECT v FROM binary_target WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = binary_original, .size = sizeof(binary_original)},
+        "failed binary scalar subquery assignment leaves target unchanged"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
         "UPDATE target SET option_value = (SELECT 'literal') WHERE id = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -567,6 +632,20 @@ static int seed_tables(mylite_db *database) {
     result = NULL;
     failures += execute_ok(
         database,
+        "CREATE TABLE binary_target (id INT NOT NULL, b BINARY(3), v VARBINARY(1))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE binary_source (id INT NOT NULL, v VARBINARY(1), b BINARY(3))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
         "INSERT INTO target VALUES "
         "(1, 'User 0000018', 'old-18', 10, 7), "
         "(2, 'User 0000019', 'old-19', 20, 7), "
@@ -602,6 +681,14 @@ static int seed_tables(mylite_db *database) {
         "(11, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
         &result
     );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO binary_target VALUES (1, X'410000', X'41')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO binary_source VALUES (10, X'51', X'515253')", &result);
     mylite_result_free(result);
 
     return failures;
@@ -692,6 +779,25 @@ static int expect_result_value(
     }
 
     return expect_text(actual, expected, context);
+}
+
+static int expect_binary_cell(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    struct expected_bytes expected,
+    const char *context
+) {
+    const unsigned char *actual = mylite_result_value_bytes(result, row, column);
+    size_t actual_size = mylite_result_value_size(result, row, column);
+    int failures = expect_true(actual != NULL, context);
+
+    failures += expect_size(actual_size, expected.size, context);
+    if (actual != NULL && actual_size == expected.size) {
+        failures += expect_bytes(actual, expected.bytes, expected.size, context);
+    }
+
+    return failures;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

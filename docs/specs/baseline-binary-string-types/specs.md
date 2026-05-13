@@ -139,6 +139,9 @@ The implementation must add:
 - descriptor-backed `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, and
   `REPLACE ... SELECT` copying when source and target binary-string descriptors
   are compatible and SQLite values are already BLOB values;
+- descriptor-backed single-table `UPDATE` scalar subquery assignment for
+  compatible binary-string source and target descriptor families, with target
+  padding and length checks applied before binding the updated value;
 - `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`, `SHOW CREATE TABLE`, and
   limited `INFORMATION_SCHEMA.COLUMNS` rendering for binary string descriptors;
 - ordinary string literal values and hexadecimal literal values for
@@ -180,8 +183,8 @@ This feature must not implement:
 - explicit binary defaults, expression defaults, `DEFAULT(col_name)`, or
   durable binary default storage;
 - binary-to-integer, integer-to-binary, bit-literal, decimal/float, temporal,
-  function, subquery, user-variable, parameter, or arbitrary expression
-  assignment conversion;
+  function, incompatible subquery, user-variable, parameter, or arbitrary
+  expression assignment conversion;
 - `_binary` introducers, national strings, adjacent literal concatenation, or
   nonliteral client parameters;
 - binary comparison predicates, `LIKE`, `BETWEEN`, `IN`, truth predicates,

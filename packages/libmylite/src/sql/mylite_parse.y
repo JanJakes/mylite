@@ -40,6 +40,7 @@
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
+%type binary_string_type_name { struct mylite_sql_binary_string_type_tokens }
 %type decimal_type_name { struct mylite_sql_decimal_type_tokens }
 %type decimal_unsigned_opt { struct mylite_sql_decimal_type_tokens }
 %type approximate_precision_opt { struct mylite_sql_approximate_type_tokens }
@@ -1188,6 +1189,12 @@ insert_value(A) ::= FALSE(T). {
 insert_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
+insert_value(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+insert_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
 insert_value(A) ::= current_timestamp_value(T). {
     A = T;
 }
@@ -1245,6 +1252,12 @@ update_value(A) ::= FALSE(T). {
 }
 update_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+update_value(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+update_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 update_value(A) ::= current_timestamp_value(T). {
     A = T;
@@ -3016,6 +3029,9 @@ column_type(A) ::= char_type(T). {
 column_type(A) ::= text_type(T). {
     A = T;
 }
+column_type(A) ::= binary_string_type(T). {
+    A = T;
+}
 column_type(A) ::= decimal_type(T). {
     A = T;
 }
@@ -3143,6 +3159,105 @@ text_type_name(A) ::= LONGTEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
+    };
+}
+
+binary_string_type(A) ::= BINARY(T). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .end_token = T,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY,
+            .has_length = 0,
+        });
+}
+binary_string_type(A) ::= BINARY(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY,
+            .has_length = 1,
+        });
+}
+binary_string_type(A) ::= VARBINARY(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_VARBINARY,
+            .has_length = 1,
+        });
+}
+binary_string_type(A) ::= CHAR(T) BYTE(B). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .end_token = B,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY,
+            .has_length = 0,
+        });
+}
+binary_string_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN BYTE(B). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = B,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BINARY,
+            .has_length = 1,
+        });
+}
+binary_string_type(A) ::= binary_string_type_name(T). {
+    A = mylite_sql_parser_make_binary_string_type(state, T);
+}
+
+binary_string_type_name(A) ::= TINYBLOB(T). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_TINYBLOB,
+        .has_length = 0,
+    };
+}
+binary_string_type_name(A) ::= BLOB(T). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BLOB,
+        .has_length = 0,
+    };
+}
+binary_string_type_name(A) ::= BLOB(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .length_token = L,
+        .end_token = R,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_BLOB,
+        .has_length = 1,
+    };
+}
+binary_string_type_name(A) ::= MEDIUMBLOB(T). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB,
+        .has_length = 0,
+    };
+}
+binary_string_type_name(A) ::= LONGBLOB(T). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = T,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB,
+        .has_length = 0,
     };
 }
 

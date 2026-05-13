@@ -556,8 +556,8 @@ static int test_create_table_like_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "CREATE TABLE LIKE supports only integer, string, decimal, approximate numeric, "
-                "DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
+                "CREATE TABLE LIKE supports only integer, string, binary string, decimal, "
+                "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
         }
     );
 

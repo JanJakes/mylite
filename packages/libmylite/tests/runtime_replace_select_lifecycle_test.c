@@ -539,6 +539,15 @@ static int test_replace_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "REPLACE INTO dst(id) SELECT src.id FROM src JOIN src other",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REPLACE ... SELECT does not support joined SELECT",
+        }
+    );
+    failures += execute_error(
+        database,
         "REPLACE INTO dst SELECT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

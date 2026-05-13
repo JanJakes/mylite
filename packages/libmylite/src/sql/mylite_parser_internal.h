@@ -796,6 +796,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *alias
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token where_token,

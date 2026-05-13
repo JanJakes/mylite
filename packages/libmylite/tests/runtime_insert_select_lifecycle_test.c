@@ -543,6 +543,15 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id) SELECT src.id FROM src JOIN src other",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT ... SELECT does not support joined SELECT",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);

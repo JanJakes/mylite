@@ -9,10 +9,10 @@ join family.
 
 This is intentionally not full MySQL join support. It supports two readable
 MyLite table descriptors, optional source aliases, optional one-column
-descriptor equality `ON`, the existing descriptor `WHERE` predicate subset,
-one descriptor `ORDER BY` key, and the existing `LIMIT` forms. It does not
-implement outer joins, `USING`, natural joins, derived tables, join updates, or
-general expression projection.
+same-family integer or ASCII string descriptor equality `ON`, the existing
+descriptor `WHERE` predicate subset, one descriptor `ORDER BY` key, and the
+existing `LIMIT` forms. It does not implement outer joins, `USING`, natural
+joins, derived tables, join updates, or general expression projection.
 
 ## Sources
 
@@ -50,13 +50,13 @@ CREATE TABLE rights(id INT NOT NULL, k INT NULL, w INT NULL, name VARCHAR(20));
 INSERT INTO lefts VALUES (1,10,100,'alpha'),(2,20,200,'Beta'),(3,NULL,300,'none');
 INSERT INTO rights VALUES (7,10,700,'ALPHA'),(8,10,800,'beta'),(9,NULL,900,'none');
 
-SELECT * FROM lefts JOIN rights ON lefts.k = rights.k ORDER BY lefts.id, rights.id;
-SELECT l.id, r.w FROM lefts AS l INNER JOIN rights AS r ON l.k = r.k ORDER BY l.id, r.id;
-SELECT l.id, r.id FROM lefts l CROSS JOIN rights r ORDER BY l.id, r.id LIMIT 4;
-SELECT l.id, r.id FROM lefts l CROSS JOIN rights r ON l.k = r.k ORDER BY l.id, r.id;
-SELECT l.id, r.id FROM lefts l JOIN rights r ORDER BY l.id, r.id LIMIT 4;
+SELECT * FROM lefts JOIN rights ON lefts.k = rights.k ORDER BY rights.id;
+SELECT l.id, r.w FROM lefts AS l INNER JOIN rights AS r ON l.k = r.k ORDER BY r.id;
+SELECT l.id, r.id FROM lefts l CROSS JOIN rights r WHERE l.id = 1 ORDER BY r.id;
+SELECT l.id, r.id FROM lefts l CROSS JOIN rights r ON l.k = r.k ORDER BY r.id;
+SELECT l.id, r.id FROM lefts l JOIN rights r WHERE l.id = 1 ORDER BY r.id LIMIT 2;
 SELECT lefts.id, rights.id FROM lefts JOIN rights ON lefts.name = rights.name
-ORDER BY lefts.id, rights.id;
+ORDER BY rights.id;
 ```
 
 Observed behavior:
@@ -86,7 +86,8 @@ In scope:
 - `SELECT * FROM left_source join_operator right_source ...`;
 - `join_operator` forms `JOIN`, `INNER JOIN`, and `CROSS JOIN`;
 - optional `ON left_column = right_column` where both operands resolve to
-  descriptor columns in the two-source scope;
+  supported same-family integer-family columns or supported ASCII string-family
+  columns in the two-source scope;
 - no `ON` condition, producing the cartesian product accepted by MySQL for the
   admitted join operators;
 - unqualified, table-qualified, alias-qualified, and schema-table-qualified
@@ -113,6 +114,9 @@ Out of scope:
   table functions, CTEs, partitions, and index hints;
 - qualified wildcards such as `table.*` or `alias.*`;
 - join predicates other than one descriptor-column equality;
+- mixed-type join comparisons and MySQL's conversion/warning behavior for those
+  comparisons;
+- decimal, approximate, temporal, binary-string, and bit join key equality;
 - literal, expression, function, arithmetic, scalar-subquery, row-constructor,
   or parameter join predicates;
 - general table-backed expression projection, aggregate joins, grouped joins,
@@ -219,8 +223,11 @@ parameter binding, and result conversion.
 - `JOIN` and `INNER JOIN` use standard inner-join behavior.
 - `CROSS JOIN` without `ON` produces the cartesian product.
 - `JOIN`, `INNER JOIN`, and `CROSS JOIN` with `ON left = right` return rows
-  where the descriptor column equality is true. `NULL` values do not match for
-  the admitted `=` operator.
+  where the same-family descriptor column equality is true. `NULL` values do
+  not match for the admitted `=` operator.
+- Mixed-type `ON` equality is rejected for now. MySQL applies type conversion
+  and may produce warnings for those comparisons; this slice does not implement
+  that conversion surface inside join predicates.
 - `SELECT *` expands visible columns from the left source, then visible columns
   from the right source, preserving duplicate labels.
 - Explicit descriptor projections may name invisible columns as existing
@@ -274,6 +281,7 @@ needed.
 | Reserved `_mylite_*` schema or table | existing reserved-name diagnostic |
 | Duplicate source reference name | `1066 / 42000`, not unique table/alias |
 | Unsupported join operator or join condition | deterministic unsupported diagnostic |
+| Unsupported join-condition column family | deterministic unsupported diagnostic |
 | Unknown selected column | `1054 / 42S22`, field list |
 | Ambiguous selected column | `1052 / 23000`, field list |
 | Unknown join-condition column | `1054 / 42S22`, on clause |

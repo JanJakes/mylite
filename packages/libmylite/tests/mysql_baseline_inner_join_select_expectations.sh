@@ -103,7 +103,7 @@ expect_output_with_headers \
 @@warning_count	ROW_COUNT()
 0	-1" \
     "DO 0; SELECT * FROM lefts JOIN rights ON lefts.k = rights.k "\
-"ORDER BY lefts.id, rights.id; SELECT @@warning_count, ROW_COUNT();" \
+"ORDER BY rights.id; SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
 expect_output_with_headers \
@@ -112,7 +112,7 @@ expect_output_with_headers \
 1	700
 1	800" \
     "SELECT l.id, r.w FROM lefts AS l INNER JOIN rights AS r "\
-"ON l.k = r.k ORDER BY l.id, r.id;" \
+"ON l.k = r.k ORDER BY r.id;" \
     "$DATABASE"
 
 expect_output_with_headers \
@@ -120,9 +120,8 @@ expect_output_with_headers \
     "id	id
 1	7
 1	8
-1	9
-2	7" \
-    "SELECT l.id, r.id FROM lefts l CROSS JOIN rights r ORDER BY l.id, r.id LIMIT 4;" \
+1	9" \
+    "SELECT l.id, r.id FROM lefts l CROSS JOIN rights r WHERE l.id = 1 ORDER BY r.id;" \
     "$DATABASE"
 
 expect_output_with_headers \
@@ -131,17 +130,15 @@ expect_output_with_headers \
 1	7
 1	8" \
     "SELECT l.id, r.id FROM lefts l CROSS JOIN rights r ON l.k = r.k "\
-"ORDER BY l.id, r.id;" \
+"ORDER BY r.id;" \
     "$DATABASE"
 
 expect_output_with_headers \
     "join without on" \
     "id	id
 1	7
-1	8
-1	9
-2	7" \
-    "SELECT l.id, r.id FROM lefts l JOIN rights r ORDER BY l.id, r.id LIMIT 4;" \
+1	8" \
+    "SELECT l.id, r.id FROM lefts l JOIN rights r WHERE l.id = 1 ORDER BY r.id LIMIT 2;" \
     "$DATABASE"
 
 expect_output_with_headers \
@@ -168,7 +165,7 @@ expect_output_with_headers \
 2	8
 3	9" \
     "SELECT lefts.id, rights.id FROM lefts JOIN rights ON lefts.name = rights.name "\
-"ORDER BY lefts.id, rights.id;" \
+"ORDER BY rights.id;" \
     "$DATABASE"
 
 expect_output \

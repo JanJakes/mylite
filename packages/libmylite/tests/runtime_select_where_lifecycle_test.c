@@ -675,7 +675,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers JOIN null_probe WHERE i = 1",
+        "SELECT i FROM numbers JOIN null_probe USING (i) WHERE i = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

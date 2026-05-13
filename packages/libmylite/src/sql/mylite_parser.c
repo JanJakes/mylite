@@ -2726,6 +2726,62 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     return from_table;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+) {
+    struct mylite_sql_source_span span =
+        table_name != NULL ? table_name->span : (struct mylite_sql_source_span){0};
+    struct mylite_sql_ast_node *from_table = NULL;
+
+    if (alias != NULL) {
+        span = span_join(span, alias->span);
+    }
+
+    from_table = make_node(state, MYLITE_SQL_AST_FROM_TABLE, span);
+    if (from_table == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(from_table, table_name);
+    if (alias != NULL) {
+        mylite_sql_ast_node_append_child(from_table, alias);
+    }
+    return from_table;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition
+) {
+    struct mylite_sql_source_span span = span_from_token(&from_token);
+    struct mylite_sql_ast_node *join = NULL;
+
+    if (left != NULL) {
+        span = span_join(span, left->span);
+    }
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+    if (condition != NULL) {
+        span = span_join(span, condition->span);
+    }
+
+    join = make_node(state, MYLITE_SQL_AST_FROM_JOIN, span);
+    if (join == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(join, left);
+    mylite_sql_ast_node_append_child(join, right);
+    mylite_sql_ast_node_append_child(join, condition);
+    return join;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token where_token,
@@ -4727,6 +4783,7 @@ static bool map_keyword_token(
         {"BIT_COUNT", MYLITE_SQL_PARSE_BIT_COUNT},
         {"BIT_OR", MYLITE_SQL_PARSE_BIT_OR},
         {"BIT_XOR", MYLITE_SQL_PARSE_BIT_XOR},
+        {"CROSS", MYLITE_SQL_PARSE_CROSS},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
         {"CURRENT_ROLE", MYLITE_SQL_PARSE_CURRENT_ROLE},
@@ -4812,6 +4869,8 @@ static bool map_keyword_token(
         {"FOR", MYLITE_SQL_PARSE_FOR},
         {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
+        {"INNER", MYLITE_SQL_PARSE_INNER},
+        {"JOIN", MYLITE_SQL_PARSE_JOIN},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
         {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
         {"HIGH_PRIORITY", MYLITE_SQL_PARSE_HIGH_PRIORITY},

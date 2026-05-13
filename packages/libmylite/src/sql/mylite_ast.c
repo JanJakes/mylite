@@ -943,6 +943,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_row";
     case MYLITE_SQL_AST_FROM_TABLE:
         return "from_table";
+    case MYLITE_SQL_AST_FROM_JOIN:
+        return "from_join";
     case MYLITE_SQL_AST_WHERE_CLAUSE:
         return "where_clause";
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:

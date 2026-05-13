@@ -1334,6 +1334,13 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
 }
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator
+    table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
+    having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, RT, J), W, G, H, O, L, K);
+}
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
@@ -1352,6 +1359,34 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator
+    table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
+    having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_join(state, F, LT, RT, J), W, G, H, O, L, K);
+}
+
+table_source(A) ::= table_name(N) table_alias_opt(AL). {
+    A = mylite_sql_parser_make_table_source(state, N, AL);
+}
+
+join_operator ::= JOIN.
+join_operator ::= INNER JOIN.
+join_operator ::= CROSS JOIN.
+
+join_condition_opt(A) ::= . {
+    A = NULL;
+}
+join_condition_opt(A) ::= ON join_condition(C). {
+    A = C;
+}
+
+join_condition(A) ::= qualified_identifier(L) EQUAL(O) qualified_identifier(R). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, L, O, MYLITE_SQL_AST_OPERATOR_EQUAL, R);
 }
 
 select_modifiers(A) ::=

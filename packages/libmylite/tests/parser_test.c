@@ -126,6 +126,7 @@ static int test_select_noop_modifier_clause(void);
 static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
+static int test_select_inner_join_clause(void);
 static int test_select_item_alias_clause(void);
 static int test_insert_select_statement(void);
 static int test_insert_modifier_statements(void);
@@ -349,6 +350,7 @@ int main(void) {
     failures += test_select_locking_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
+    failures += test_select_inner_join_clause();
     failures += test_select_item_alias_clause();
     failures += test_insert_select_statement();
     failures += test_insert_modifier_statements();
@@ -13105,6 +13107,80 @@ static int test_select_table_alias_clause(void) {
     return failures;
 }
 
+static int test_select_inner_join_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *from_join = NULL;
+    const struct mylite_sql_ast_node *left_source = NULL;
+    const struct mylite_sql_ast_node *right_source = NULL;
+    const struct mylite_sql_ast_node *condition = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT l.id, r.w FROM lefts AS l JOIN rights AS r ON l.k = r.k "
+        "WHERE l.v = 100 ORDER BY r.w LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    left_source = child_at(from_join, 0U);
+    right_source = child_at(from_join, 1U);
+    condition = child_at(from_join, 2U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "join from clause");
+    failures += expect_child_count(from_join, 3U, "join child count");
+    failures += expect_node(left_source, MYLITE_SQL_AST_FROM_TABLE, "join left source");
+    failures += expect_span_text(child_at(left_source, 0U), "lefts", "join left table");
+    failures += expect_span_text(child_at(left_source, 1U), "l", "join left alias");
+    failures += expect_node(right_source, MYLITE_SQL_AST_FROM_TABLE, "join right source");
+    failures += expect_span_text(child_at(right_source, 0U), "rights", "join right table");
+    failures += expect_span_text(child_at(right_source, 1U), "r", "join right alias");
+    failures += expect_node(condition, MYLITE_SQL_AST_COMPARISON_PREDICATE, "join on condition");
+    failures += expect_operator(condition, MYLITE_SQL_AST_OPERATOR_EQUAL, "join equality operator");
+    failures += expect_span_text(child_at(condition, 0U), "l.k", "join left key");
+    failures += expect_span_text(child_at(condition, 1U), "r.k", "join right key");
+    failures += expect_span_text(child_at(order_clause, 0U), "r.w", "join order key");
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "join limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "join limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM lefts CROSS JOIN rights;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "cross join wildcard"
+    );
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "cross join from clause");
+    failures += expect_child_count(from_join, 2U, "cross join omits condition child");
+    failures += expect_span_text(child_at(child_at(from_join, 0U), 0U), "lefts", "cross left");
+    failures += expect_span_text(child_at(child_at(from_join, 1U), 0U), "rights", "cross right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l INNER JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_JOIN, "inner join");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_item_alias_clause(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -15454,7 +15530,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SELECT id FROM t JOIN other WHERE id = 1;",
+        "SELECT id FROM t JOIN other USING (id);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

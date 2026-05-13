@@ -17,5 +17,5 @@
 - [x] Add focused fast C runtime tests and register any new test binary.
 - [x] Run focused MySQL expectations, build, focused CTest entries, and full
       `cmake --workflow --preset check`.
-- [ ] Review the final diff with a subagent, fix findings, commit, push, and
-      continue.
+- [x] Attempt release-gate subagent review, complete local final diff review
+      after subagent timeouts, commit, push, and continue.

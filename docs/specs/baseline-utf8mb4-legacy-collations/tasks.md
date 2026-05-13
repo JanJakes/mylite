@@ -15,4 +15,4 @@
   independent handles, and preamble safety.
 - [x] Update compatibility documentation with limited wording.
 - [x] Run the MySQL expectation script, focused CTests, and full check workflow.
-- [ ] Commit, push to `origin/main`, and run a review subagent.
+- [x] Commit, push to `origin/main`, and run a review subagent.

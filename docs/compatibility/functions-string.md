@@ -16,7 +16,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `CONCAT_WS()` | ❌ | Return concatenate with separator |
 | `ELT()` | ❌ | Return string at index number |
 | `EXPORT_SET()` | ❌ | Bitmask-to-string mapping |
-| `FIELD()` | ❌ | Index (position) of first argument in subsequent arguments |
+| `FIELD()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over flat all-string or all-integer argument lists with `NULL`, ASCII string literals, signed-64 integer/boolean literals, and supported descriptor columns; returns the 1-based first-match position or `0`; no mixed domains, binary strings, non-ASCII collation parity, predicates, DML assignments, ordering/grouping expressions, or general expression metadata |
 | `FIND_IN_SET()` | ❌ | Index (position) of first argument within second argument |
 | `FROM_BASE64()` | ❌ | Decode base64 encoded string and return result |
 | `HEX()` | ❌ | Hexadecimal representation of decimal or string value |

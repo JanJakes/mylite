@@ -256,8 +256,40 @@ statement(A) ::= delete_statement(B). {
 statement(A) ::= update_statement(B). {
     A = B;
 }
+statement(A) ::= transaction_control_statement(B). {
+    A = B;
+}
 statement(A) ::= do_statement(B). {
     A = B;
+}
+
+transaction_control_statement(A) ::= START(S) TRANSACTION(T). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, S, T);
+}
+transaction_control_statement(A) ::= BEGIN(B). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, B);
+}
+transaction_control_statement(A) ::= BEGIN(B) WORK(W). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, W);
+}
+transaction_control_statement(A) ::= COMMIT(C). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, C);
+}
+transaction_control_statement(A) ::= COMMIT(C) WORK(W). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, W);
+}
+transaction_control_statement(A) ::= ROLLBACK(R). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, R);
+}
+transaction_control_statement(A) ::= ROLLBACK(R) WORK(W). {
+    A = mylite_sql_parser_make_transaction_control_statement(
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, W);
 }
 
 use_statement(A) ::= USE(T) identifier(B). {
@@ -2912,6 +2944,24 @@ identifier(A) ::= YEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DUPLICATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= START(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TRANSACTION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= BEGIN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= WORK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COMMIT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ROLLBACK(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

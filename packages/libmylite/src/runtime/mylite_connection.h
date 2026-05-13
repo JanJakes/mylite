@@ -78,6 +78,7 @@ struct mylite_session_state {
     uint64_t last_insert_id;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
+    bool user_transaction_active;
     bool has_timestamp_override;
     int64_t timestamp_override;
     int64_t active_statement_time;

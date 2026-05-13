@@ -360,6 +360,17 @@ struct table_name_resolution {
     char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+enum mylite_statement_transaction_kind {
+    MYLITE_STATEMENT_TRANSACTION_NONE = 0,
+    MYLITE_STATEMENT_TRANSACTION_DIRECT = 1,
+    MYLITE_STATEMENT_TRANSACTION_SAVEPOINT = 2,
+};
+
+struct mylite_statement_transaction {
+    enum mylite_statement_transaction_kind kind;
+    bool active;
+};
+
 struct select_source_context {
     const struct table_name_resolution *source;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -2895,6 +2906,12 @@ static int execute_set_system_variable_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_start_transaction_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
+static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_set_connection_character_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2991,6 +3008,23 @@ static void set_read_only_system_variable_error(
     struct mylite_db *database,
     const char *variable_name
 );
+static bool statement_requires_implicit_user_transaction_commit(
+    const struct mylite_sql_ast_node *statement
+);
+static int commit_active_user_transaction_for_ddl(struct mylite_db *database);
+static int begin_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+);
+static int commit_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+);
+static void rollback_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+);
+static int normalize_sqlite_control_rc(struct mylite_db *database, int rc);
 static int execute_create_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -10307,6 +10341,14 @@ static int execute_parsed_statement(
     }
     database->session.active_statement_time = (int64_t)mylite_statement_context_time(context);
 
+    if (statement_requires_implicit_user_transaction_commit(statement)) {
+        int rc = commit_active_user_transaction_for_ddl(database);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
     switch (statement->kind) {
     case MYLITE_SQL_AST_USE_STATEMENT:
         return execute_use_statement(database, statement, out_result);
@@ -10316,6 +10358,12 @@ static int execute_parsed_statement(
         return execute_set_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
         return execute_set_system_variable_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
+        return execute_start_transaction_statement(database, out_result);
+    case MYLITE_SQL_AST_COMMIT_STATEMENT:
+        return execute_commit_statement(database, out_result);
+    case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
+        return execute_rollback_statement(database, out_result);
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return execute_create_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -10725,6 +10773,234 @@ static int execute_set_system_variable_statement(
 
     mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
+}
+
+static int execute_start_transaction_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    if (database->session.user_transaction_active) {
+        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+        if (rc == MYLITE_OK) {
+            database->session.user_transaction_active = false;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = normalize_sqlite_control_rc(
+            database,
+            execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+        );
+        if (rc == MYLITE_OK) {
+            database->session.user_transaction_active = true;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    if (database->session.user_transaction_active) {
+        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+        if (rc == MYLITE_OK) {
+            database->session.user_transaction_active = false;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    if (database->session.user_transaction_active) {
+        rc =
+            normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
+        if (rc == MYLITE_OK) {
+            database->session.user_transaction_active = false;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static bool statement_requires_implicit_user_transaction_commit(
+    const struct mylite_sql_ast_node *statement
+) {
+    if (statement == NULL) {
+        return false;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int commit_active_user_transaction_for_ddl(struct mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    if (!database->session.user_transaction_active) {
+        return MYLITE_OK;
+    }
+
+    rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+    if (rc == MYLITE_OK) {
+        database->session.user_transaction_active = false;
+    }
+    return rc;
+}
+
+static int begin_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    int rc = MYLITE_OK;
+
+    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    transaction->active = false;
+    if (database->session.user_transaction_active) {
+        rc = normalize_sqlite_control_rc(
+            database,
+            execute_sqlite_control_sql(database, "SAVEPOINT _mylite_statement")
+        );
+        if (rc == MYLITE_OK) {
+            transaction->kind = MYLITE_STATEMENT_TRANSACTION_SAVEPOINT;
+            transaction->active = true;
+        }
+        return rc;
+    }
+
+    rc = normalize_sqlite_control_rc(
+        database,
+        execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+    );
+    if (rc == MYLITE_OK) {
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
+        transaction->active = true;
+    }
+    return rc;
+}
+
+static int commit_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    int rc = MYLITE_OK;
+
+    if (!transaction->active) {
+        return MYLITE_OK;
+    }
+
+    if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
+        rc = normalize_sqlite_control_rc(
+            database,
+            execute_sqlite_control_sql(database, "RELEASE SAVEPOINT _mylite_statement")
+        );
+    } else {
+        rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
+    }
+    if (rc == MYLITE_OK) {
+        transaction->active = false;
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    }
+    return rc;
+}
+
+static void rollback_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    if (!transaction->active) {
+        return;
+    }
+
+    if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
+        (void)execute_sqlite_control_sql(database, "ROLLBACK TO SAVEPOINT _mylite_statement");
+        (void)execute_sqlite_control_sql(database, "RELEASE SAVEPOINT _mylite_statement");
+    } else {
+        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    }
+    transaction->active = false;
+    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+}
+
+static int normalize_sqlite_control_rc(struct mylite_db *database, int rc) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    set_physical_sqlite_error(database);
+    return MYLITE_ERROR;
 }
 
 static int execute_set_connection_character_set_statement(
@@ -18690,6 +18966,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
+    case MYLITE_SQL_AST_COMMIT_STATEMENT:
+    case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -20515,10 +20794,6 @@ static int plan_create_table_select(
         set_reserved_name_error(database, "table", out_plan->create_table.target.table_name);
         rc = MYLITE_ERROR;
     }
-    if (rc != MYLITE_OK) {
-        planned_create_table_select_deinit(out_plan);
-    }
-
     return rc;
 }
 
@@ -27611,17 +27886,16 @@ static int execute_insert_from_plan(
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     struct insert_execution_counters counters = {0};
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     int rc = build_insert_sql(plan, &sql);
 
     if (plan->has_auto_increment) {
         counters.auto_increment_next_after_rows = plan->auto_increment_next;
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
@@ -27638,13 +27912,10 @@ static int execute_insert_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &transaction);
     }
     free(sql);
 
@@ -28045,7 +28316,7 @@ static int execute_insert_select_from_plan(
     char *validation_sql = NULL;
     char *insert_sql = NULL;
     char *drop_sql = NULL;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     bool temporary_table_created = false;
     int64_t affected_rows = 0;
     int rc = build_insert_select_temp_table_name(
@@ -28067,10 +28338,9 @@ static int execute_insert_select_from_plan(
         rc = build_drop_temp_table_sql(temporary_table_name, &drop_sql);
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = execute_sqlite_control_sql(database, drop_sql);
     }
     if (rc == MYLITE_OK) {
@@ -28105,13 +28375,10 @@ static int execute_insert_select_from_plan(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK && temporary_table_created) {
         (void)execute_sqlite_control_sql(database, drop_sql);
@@ -29315,13 +29582,12 @@ static int execute_update_from_plan(
     mylite_result *result
 ) {
     struct planned_update executable_plan = *plan;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     bool matches_any_row = false;
     int64_t affected_rows = 0;
-    int rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+    int rc = begin_statement_transaction(database, &transaction);
 
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = update_matches_any_row(database, plan, &matches_any_row);
     }
     if (rc == MYLITE_OK) {
@@ -29339,13 +29605,10 @@ static int execute_update_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &transaction);
     }
     planned_value_deinit(&executable_plan.assignment_value);
     planned_value_deinit(&executable_plan.auto_update_value);
@@ -44550,16 +44813,15 @@ static int execute_delete_from_plan(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
-    bool transaction_started = false;
+    struct mylite_statement_transaction transaction = {0};
     int64_t affected_rows = 0;
     int sqlite_rc = SQLITE_OK;
     int rc = build_delete_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+        rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        transaction_started = true;
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
@@ -44576,19 +44838,19 @@ static int execute_delete_from_plan(
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, "COMMIT");
-        if (rc == MYLITE_OK) {
-            transaction_started = false;
-        }
+        rc = commit_statement_transaction(database, &transaction);
     }
-    if (rc != MYLITE_OK && transaction_started) {
-        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &transaction);
     }
     free(sql);
 
     if (rc != MYLITE_OK) {
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
             return rc;
         }
         set_physical_sqlite_row_error(database);

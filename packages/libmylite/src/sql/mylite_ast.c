@@ -971,6 +971,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "delete_statement";
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
         return "update_statement";
+    case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
+        return "start_transaction_statement";
+    case MYLITE_SQL_AST_COMMIT_STATEMENT:
+        return "commit_statement";
+    case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
+        return "rollback_statement";
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
         return "update_assignment_list";
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:

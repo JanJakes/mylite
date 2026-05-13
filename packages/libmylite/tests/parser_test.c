@@ -133,6 +133,7 @@ static int test_replace_select_statement(void);
 static int test_replace_modifier_statements(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
+static int test_transaction_control_statements(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -354,6 +355,7 @@ int main(void) {
     failures += test_replace_modifier_statements();
     failures += test_delete_statement();
     failures += test_update_statement();
+    failures += test_transaction_control_statements();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -13945,6 +13947,82 @@ static int test_update_statement(void) {
         MYLITE_SQL_AST_SELECT_STATEMENT,
         "update scalar subquery inner select"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_transaction_control_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("START TRANSACTION;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_START_TRANSACTION_STATEMENT,
+        "start transaction statement"
+    );
+    failures += expect_child_count(statement, 0U, "start transaction children");
+    failures += expect_span_text(statement, "START TRANSACTION", "start transaction span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("BEGIN;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "begin");
+    failures += expect_span_text(statement, "BEGIN", "begin span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("BEGIN WORK;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "begin work");
+    failures += expect_span_text(statement, "BEGIN WORK", "begin work span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("COMMIT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_COMMIT_STATEMENT, "commit");
+    failures += expect_span_text(statement, "COMMIT", "commit span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("COMMIT WORK;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_COMMIT_STATEMENT, "commit work");
+    failures += expect_span_text(statement, "COMMIT WORK", "commit work span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ROLLBACK;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_STATEMENT, "rollback");
+    failures += expect_span_text(statement, "ROLLBACK", "rollback span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ROLLBACK WORK;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_ROLLBACK_STATEMENT, "rollback work");
+    failures += expect_span_text(statement, "ROLLBACK WORK", "rollback work span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE transaction (begin INT, commit INT, rollback INT, work INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "transaction keywords as identifiers"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "transaction", "transaction table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("START TRANSACTION READ WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK RELEASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

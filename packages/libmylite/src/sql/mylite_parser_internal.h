@@ -201,6 +201,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_token use_token,
     struct mylite_sql_ast_node *schema_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,

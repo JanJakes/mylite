@@ -243,6 +243,10 @@ static void destroy_database_handle(struct mylite_db *database) {
         return;
     }
 
+    if (database->sqlite != NULL && database->session.user_transaction_active) {
+        (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
+        database->session.user_transaction_active = false;
+    }
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
@@ -318,6 +322,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->last_insert_id = 0U;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
+    session->user_transaction_active = false;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;

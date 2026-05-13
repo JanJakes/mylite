@@ -53,6 +53,10 @@ slice:
 - MySQL 8.4.9's default session mode includes `STRICT_TRANS_TABLES`,
   `NO_ZERO_IN_DATE`, and `NO_ZERO_DATE`; direct zero `DATE`, `DATETIME`, and
   `TIMESTAMP` inputs fail under that default.
+- MySQL accepts some pre-1000 and zero-year non-full-zero `DATE` and
+  `DATETIME` values that are outside MyLite's current temporal descriptor
+  envelope. This slice deliberately keeps those cases deferred instead of
+  broadening the baseline range.
 - `SET sql_mode=''` admits full zero values: `0000-00-00` and
   `0000-00-00 00:00:00` store and read back without warnings.
 - `STRICT_TRANS_TABLES` or `STRICT_ALL_TABLES` alone still admits full zero
@@ -103,7 +107,8 @@ The implementation must add:
 - strict-disabled invalid canonical-shaped `DATE`, `DATETIME`, and `TIMESTAMP`
   adjustment to full zero with warning `1264`;
 - `ALLOW_INVALID_DATES` storage for canonical-shaped `DATE` and `DATETIME`
-  values whose month is `1..12` and day is `1..31`, while keeping
+  values in MyLite's current `1000..9999` year envelope whose month is
+  `1..12` and day is `1..31`, while keeping
   `TIMESTAMP` invalid-date conversion unchanged;
 - descriptor-backed predicate conversion for the supported zero and partial-zero
   `DATE` / `DATETIME` forms, plus full-zero `TIMESTAMP` forms, in the existing
@@ -185,11 +190,15 @@ current session SQL mode when the target descriptor is `DATE`, `DATETIME`, or
 
 MyLite classifies canonical-shaped date text before applying mode rules:
 
-- `normal`: a nonzero valid date in the currently supported range;
+- `normal`: a nonzero valid date in the currently supported `1000..9999`
+  range;
 - `full_zero`: `0000-00-00`;
-- `partial_zero`: month or day is `00`, excluding `full_zero`;
-- `allow_invalid_candidate`: `year >= 1000`, month `1..12`, and day `1..31`,
-  but not a real calendar date;
+- `partial_zero`: year is inside the currently supported `1000..9999` range,
+  month or day is `00`, excluding `full_zero`, and the remaining month/day
+  fields are inside the basic `0..12` / `0..31` field envelope;
+- `allow_invalid_candidate`: year is inside the currently supported
+  `1000..9999` range, month is `1..12`, and day is `1..31`, but the value is
+  not a real calendar date;
 - `invalid`: all other canonical-shaped values.
 
 For `DATETIME`, the date part is classified the same way and the time part must

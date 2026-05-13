@@ -121,6 +121,17 @@ expect_error \
 "(4, '0000-00-00', '0000-00-00 00:00:00', '0000-00-00 00:00:00');" \
     "$DATABASE"
 
+expect_error \
+    "STRICT_ALL_TABLES NO_ZERO_DATE rejects full zero date" \
+    1292 \
+    "22007" \
+    "Incorrect date value: '0000-00-00' for column 'd' at row 1" \
+    "SET time_zone = '+00:00'; SET sql_mode = 'STRICT_ALL_TABLES,NO_ZERO_DATE'; "\
+"TRUNCATE temporal_modes; "\
+"INSERT INTO temporal_modes VALUES "\
+"(11, '0000-00-00', '0000-00-00 00:00:00', '0000-00-00 00:00:00');" \
+    "$DATABASE"
+
 expect_output \
     "empty sql_mode admits partial-zero DATE and DATETIME" \
     "1	0

@@ -151,6 +151,7 @@ enum {
     date_first_day = 1,
     date_february = 2,
     date_months_per_year = 12,
+    date_maximum_day_field = 31,
     date_leap_day = 29,
     date_leap_year_quadricentennial = 400,
     date_leap_year_century = 100,
@@ -317,6 +318,15 @@ enum column_reference_diagnostic_context {
     COLUMN_REFERENCE_ORDER = 2,
     COLUMN_REFERENCE_GROUP = 3,
     COLUMN_REFERENCE_HAVING = 4,
+};
+
+enum temporal_text_kind {
+    TEMPORAL_TEXT_NORMAL = 0,
+    TEMPORAL_TEXT_FULL_ZERO = 1,
+    TEMPORAL_TEXT_PARTIAL_ZERO = 2,
+    TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE = 3,
+    TEMPORAL_TEXT_INVALID = 4,
+    TEMPORAL_TEXT_DEFERRED = 5,
 };
 
 struct planned_column {
@@ -7384,6 +7394,53 @@ static int canonicalize_datetime_text(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static bool temporal_sql_mode_is_strict(const struct mylite_db *database);
+static bool temporal_sql_mode_has_no_zero_date(const struct mylite_db *database);
+static bool temporal_sql_mode_has_no_zero_in_date(const struct mylite_db *database);
+static bool temporal_sql_mode_has_allow_invalid_dates(const struct mylite_db *database);
+static enum temporal_text_kind classify_date_text(const char *text, size_t text_length);
+static enum temporal_text_kind classify_datetime_text(const char *text, size_t text_length);
+static enum temporal_text_kind classify_temporal_date_components(
+    uint32_t year,
+    uint32_t month,
+    uint32_t day
+);
+static int make_date_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int make_datetime_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int make_timestamp_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static bool predicate_date_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+);
+static bool predicate_datetime_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+);
+static bool predicate_timestamp_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+);
 static bool date_text_is_canonical_valid(const char *text, size_t text_length);
 static bool date_text_has_canonical_shape(const char *text, size_t text_length);
 static bool date_text_is_zero_date(const char *text, size_t text_length);
@@ -9325,6 +9382,11 @@ static void set_incorrect_datetime_value_error(
     const char *value_text,
     const char *column_name,
     size_t row_number
+);
+static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text);
+static void set_incorrect_datetime_literal_error(
+    struct mylite_db *database,
+    const char *value_text
 );
 static void set_incorrect_timestamp_value_error(struct mylite_db *database, const char *value_text);
 static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
@@ -26791,8 +26853,7 @@ static int validate_insert_select_date_value(
         set_physical_sqlite_row_error(database);
         return MYLITE_ERROR;
     }
-    if (!date_text_is_canonical_valid((const char *)text, (size_t)byte_count) &&
-        !date_text_is_zero_date((const char *)text, (size_t)byte_count)) {
+    if (!predicate_date_text_admitted(database, (const char *)text, (size_t)byte_count)) {
         set_incorrect_date_value_error(
             database,
             (const char *)text,
@@ -26864,8 +26925,7 @@ static int validate_insert_select_datetime_value(
         set_physical_sqlite_row_error(database);
         return MYLITE_ERROR;
     }
-    if (!datetime_text_is_canonical_valid((const char *)text, (size_t)byte_count) &&
-        !datetime_text_is_zero_datetime((const char *)text, (size_t)byte_count)) {
+    if (!predicate_datetime_text_admitted(database, (const char *)text, (size_t)byte_count)) {
         set_incorrect_datetime_value_error(
             database,
             (const char *)text,
@@ -26901,7 +26961,7 @@ static int validate_insert_select_timestamp_value(
         set_physical_sqlite_row_error(database);
         return MYLITE_ERROR;
     }
-    if (!timestamp_text_is_canonical_valid((const char *)text, (size_t)byte_count)) {
+    if (!predicate_timestamp_text_admitted(database, (const char *)text, (size_t)byte_count)) {
         set_incorrect_datetime_value_error(
             database,
             (const char *)text,
@@ -28438,14 +28498,12 @@ static int canonicalize_date_text(
     bool ignore_errors,
     struct planned_value *out_value
 ) {
-    int rc = MYLITE_OK;
+    enum temporal_text_kind kind = TEMPORAL_TEXT_INVALID;
+    bool strict = false;
 
     if (text == NULL || column_name == NULL || out_value == NULL) {
         free(text);
         return MYLITE_MISUSE;
-    }
-    if (date_text_is_canonical_valid(text, text_length)) {
-        return assign_text_value(database, text, text_length, out_value);
     }
     if (!date_text_has_canonical_shape(text, text_length)) {
         set_unsupported_error(database, "DATE values support only canonical YYYY-MM-DD strings");
@@ -28453,18 +28511,47 @@ static int canonicalize_date_text(
         return MYLITE_ERROR;
     }
 
-    if (!ignore_errors) {
-        set_incorrect_date_value_error(database, text, column_name, row_number);
-        free(text);
-        return MYLITE_ERROR;
+    kind = classify_date_text(text, text_length);
+    strict = temporal_sql_mode_is_strict(database);
+    switch (kind) {
+    case TEMPORAL_TEXT_NORMAL:
+        return assign_text_value(database, text, text_length, out_value);
+    case TEMPORAL_TEXT_FULL_ZERO:
+        if (!temporal_sql_mode_has_no_zero_date(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_date_zero_with_warning(database, text, column_name, row_number, out_value);
+        }
+        break;
+    case TEMPORAL_TEXT_PARTIAL_ZERO:
+        if (!temporal_sql_mode_has_no_zero_in_date(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_date_zero_with_warning(database, text, column_name, row_number, out_value);
+        }
+        break;
+    case TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE:
+        if (temporal_sql_mode_has_allow_invalid_dates(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_date_zero_with_warning(database, text, column_name, row_number, out_value);
+        }
+        break;
+    case TEMPORAL_TEXT_INVALID:
+        if (ignore_errors || !strict) {
+            return make_date_zero_with_warning(database, text, column_name, row_number, out_value);
+        }
+        break;
+    case TEMPORAL_TEXT_DEFERRED:
+        break;
     }
 
-    rc = append_out_of_range_warning(database, column_name, row_number);
+    set_incorrect_date_value_error(database, text, column_name, row_number);
     free(text);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    return make_zero_date_value(database, out_value);
+    return MYLITE_ERROR;
 }
 
 static int convert_time_literal(
@@ -28664,19 +28751,32 @@ static int convert_timestamp_literal(
         free(text);
         return MYLITE_ERROR;
     }
-
-    if (!ignore_errors) {
-        set_incorrect_datetime_value_error(database, text, column->name, row_number);
-        free(text);
-        return MYLITE_ERROR;
+    if (datetime_text_is_zero_datetime(text, text_length)) {
+        if (!temporal_sql_mode_has_no_zero_date(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !temporal_sql_mode_is_strict(database)) {
+            return make_timestamp_zero_with_warning(
+                database,
+                text,
+                column->name,
+                row_number,
+                out_value
+            );
+        }
+    } else if (ignore_errors || !temporal_sql_mode_is_strict(database)) {
+        return make_timestamp_zero_with_warning(
+            database,
+            text,
+            column->name,
+            row_number,
+            out_value
+        );
     }
 
-    rc = append_out_of_range_warning(database, column->name, row_number);
+    set_incorrect_datetime_value_error(database, text, column->name, row_number);
     free(text);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    return make_zero_timestamp_value(database, out_value);
+    return MYLITE_ERROR;
 }
 
 static int canonicalize_datetime_text(
@@ -28688,14 +28788,12 @@ static int canonicalize_datetime_text(
     bool ignore_errors,
     struct planned_value *out_value
 ) {
-    int rc = MYLITE_OK;
+    enum temporal_text_kind kind = TEMPORAL_TEXT_INVALID;
+    bool strict = false;
 
     if (text == NULL || column_name == NULL || out_value == NULL) {
         free(text);
         return MYLITE_MISUSE;
-    }
-    if (datetime_text_is_canonical_valid(text, text_length)) {
-        return assign_text_value(database, text, text_length, out_value);
     }
     if (!datetime_text_has_canonical_shape(text, text_length)) {
         set_unsupported_error(
@@ -28706,18 +28804,238 @@ static int canonicalize_datetime_text(
         return MYLITE_ERROR;
     }
 
-    if (!ignore_errors) {
-        set_incorrect_datetime_value_error(database, text, column_name, row_number);
-        free(text);
-        return MYLITE_ERROR;
+    kind = classify_datetime_text(text, text_length);
+    strict = temporal_sql_mode_is_strict(database);
+    switch (kind) {
+    case TEMPORAL_TEXT_NORMAL:
+        return assign_text_value(database, text, text_length, out_value);
+    case TEMPORAL_TEXT_FULL_ZERO:
+        if (!temporal_sql_mode_has_no_zero_date(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_datetime_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        break;
+    case TEMPORAL_TEXT_PARTIAL_ZERO:
+        if (!temporal_sql_mode_has_no_zero_in_date(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_datetime_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        break;
+    case TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE:
+        if (temporal_sql_mode_has_allow_invalid_dates(database)) {
+            return assign_text_value(database, text, text_length, out_value);
+        }
+        if (ignore_errors || !strict) {
+            return make_datetime_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        break;
+    case TEMPORAL_TEXT_INVALID:
+        if (ignore_errors || !strict) {
+            return make_datetime_zero_with_warning(
+                database,
+                text,
+                column_name,
+                row_number,
+                out_value
+            );
+        }
+        break;
+    case TEMPORAL_TEXT_DEFERRED:
+        break;
     }
 
-    rc = append_out_of_range_warning(database, column_name, row_number);
+    set_incorrect_datetime_value_error(database, text, column_name, row_number);
+    free(text);
+    return MYLITE_ERROR;
+}
+
+static bool temporal_sql_mode_is_strict(const struct mylite_db *database) {
+    if (database == NULL) {
+        return false;
+    }
+    return (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_STRICT_TRANS_TABLES) ||
+            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_STRICT_ALL_TABLES)) !=
+           0;
+}
+
+static bool temporal_sql_mode_has_no_zero_date(const struct mylite_db *database) {
+    return (database != NULL &&
+            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_ZERO_DATE)) != 0;
+}
+
+static bool temporal_sql_mode_has_no_zero_in_date(const struct mylite_db *database) {
+    return (database != NULL &&
+            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_ZERO_IN_DATE)) != 0;
+}
+
+static bool temporal_sql_mode_has_allow_invalid_dates(const struct mylite_db *database) {
+    return (
+               database != NULL &&
+               session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ALLOW_INVALID_DATES)
+           ) != 0;
+}
+
+static enum temporal_text_kind classify_date_text(const char *text, size_t text_length) {
+    uint32_t year = 0U;
+    uint32_t month = 0U;
+    uint32_t day = 0U;
+
+    if (!date_text_has_canonical_shape(text, text_length)) {
+        return TEMPORAL_TEXT_INVALID;
+    }
+    if (date_text_is_zero_date(text, text_length)) {
+        return TEMPORAL_TEXT_FULL_ZERO;
+    }
+    if (!date_component_text_to_u32(text + date_year_text_offset, date_year_text_length, &year) ||
+        !date_component_text_to_u32(
+            text + date_month_text_offset,
+            date_month_text_length,
+            &month
+        ) ||
+        !date_component_text_to_u32(text + date_day_text_offset, date_day_text_length, &day)) {
+        return TEMPORAL_TEXT_INVALID;
+    }
+
+    return classify_temporal_date_components(year, month, day);
+}
+
+static enum temporal_text_kind classify_datetime_text(const char *text, size_t text_length) {
+    uint32_t year = 0U;
+    uint32_t month = 0U;
+    uint32_t day = 0U;
+    uint32_t hour = 0U;
+    uint32_t minute = 0U;
+    uint32_t second = 0U;
+
+    if (!datetime_text_has_canonical_shape(text, text_length)) {
+        return TEMPORAL_TEXT_INVALID;
+    }
+    if (datetime_text_is_zero_datetime(text, text_length)) {
+        return TEMPORAL_TEXT_FULL_ZERO;
+    }
+    if (!date_component_text_to_u32(text + date_year_text_offset, date_year_text_length, &year) ||
+        !date_component_text_to_u32(
+            text + date_month_text_offset,
+            date_month_text_length,
+            &month
+        ) ||
+        !date_component_text_to_u32(text + date_day_text_offset, date_day_text_length, &day) ||
+        !date_component_text_to_u32(
+            text + datetime_hour_text_offset,
+            datetime_hour_text_length,
+            &hour
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_minute_text_offset,
+            datetime_minute_text_length,
+            &minute
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_second_text_offset,
+            datetime_second_text_length,
+            &second
+        )) {
+        return TEMPORAL_TEXT_INVALID;
+    }
+    if (!datetime_time_components_valid(hour, minute, second)) {
+        return TEMPORAL_TEXT_INVALID;
+    }
+
+    return classify_temporal_date_components(year, month, day);
+}
+
+static enum temporal_text_kind classify_temporal_date_components(
+    uint32_t year,
+    uint32_t month,
+    uint32_t day
+) {
+    if (year < date_minimum_year || year > date_maximum_year) {
+        return TEMPORAL_TEXT_DEFERRED;
+    }
+    if (month == 0U || day == 0U) {
+        if (month <= date_months_per_year && day <= date_maximum_day_field) {
+            return TEMPORAL_TEXT_PARTIAL_ZERO;
+        }
+        return TEMPORAL_TEXT_INVALID;
+    }
+    if (date_year_month_day_valid(year, month, day)) {
+        return TEMPORAL_TEXT_NORMAL;
+    }
+    if (month >= date_first_month && month <= date_months_per_year &&
+        day <= date_maximum_day_field) {
+        return TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE;
+    }
+    return TEMPORAL_TEXT_INVALID;
+}
+
+static int make_date_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    int rc = append_out_of_range_warning(database, column_name, row_number);
+
+    free(text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return make_zero_date_value(database, out_value);
+}
+
+static int make_datetime_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    int rc = append_out_of_range_warning(database, column_name, row_number);
+
     free(text);
     if (rc != MYLITE_OK) {
         return rc;
     }
     return make_zero_datetime_value(database, out_value);
+}
+
+static int make_timestamp_zero_with_warning(
+    struct mylite_db *database,
+    char *text,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    int rc = append_out_of_range_warning(database, column_name, row_number);
+
+    free(text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return make_zero_timestamp_value(database, out_value);
 }
 
 static bool date_text_is_canonical_valid(const char *text, size_t text_length) {
@@ -50748,6 +51066,7 @@ static int convert_predicate_date_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
+    (void)column;
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "WHERE DATE predicates support only string literals");
@@ -50765,9 +51084,8 @@ static int convert_predicate_date_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!date_text_is_canonical_valid(text, text_length) &&
-        !date_text_is_zero_date(text, text_length)) {
-        set_incorrect_date_value_error(database, text, column->name, 1U);
+    if (!predicate_date_text_admitted(database, text, text_length)) {
+        set_incorrect_date_literal_error(database, text);
         free(text);
         return MYLITE_ERROR;
     }
@@ -50824,6 +51142,7 @@ static int convert_predicate_datetime_literal(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
+    (void)column;
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "WHERE DATETIME predicates support only string literals");
@@ -50841,9 +51160,8 @@ static int convert_predicate_datetime_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!datetime_text_is_canonical_valid(text, text_length) &&
-        !datetime_text_is_zero_datetime(text, text_length)) {
-        set_incorrect_datetime_value_error(database, text, column->name, 1U);
+    if (!predicate_datetime_text_admitted(database, text, text_length)) {
+        set_incorrect_datetime_literal_error(database, text);
         free(text);
         return MYLITE_ERROR;
     }
@@ -50879,13 +51197,88 @@ static int convert_predicate_timestamp_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!timestamp_text_is_canonical_valid(text, text_length)) {
+    if (!predicate_timestamp_text_admitted(database, text, text_length)) {
         set_incorrect_timestamp_value_error(database, text);
         free(text);
         return MYLITE_ERROR;
     }
 
     return assign_text_value(database, text, text_length, out_value);
+}
+
+static bool predicate_date_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+) {
+    enum temporal_text_kind kind = classify_date_text(text, text_length);
+
+    switch (kind) {
+    case TEMPORAL_TEXT_NORMAL:
+        return true;
+    case TEMPORAL_TEXT_FULL_ZERO:
+        if (temporal_sql_mode_has_no_zero_date(database)) {
+            return false;
+        }
+        return true;
+    case TEMPORAL_TEXT_PARTIAL_ZERO:
+        if (temporal_sql_mode_has_no_zero_in_date(database)) {
+            return false;
+        }
+        return true;
+    case TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE:
+        return temporal_sql_mode_has_allow_invalid_dates(database);
+    case TEMPORAL_TEXT_INVALID:
+    case TEMPORAL_TEXT_DEFERRED:
+        return false;
+    }
+    return false;
+}
+
+static bool predicate_datetime_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+) {
+    enum temporal_text_kind kind = classify_datetime_text(text, text_length);
+
+    switch (kind) {
+    case TEMPORAL_TEXT_NORMAL:
+        return true;
+    case TEMPORAL_TEXT_FULL_ZERO:
+        if (temporal_sql_mode_has_no_zero_date(database)) {
+            return false;
+        }
+        return true;
+    case TEMPORAL_TEXT_PARTIAL_ZERO:
+        if (temporal_sql_mode_has_no_zero_in_date(database)) {
+            return false;
+        }
+        return true;
+    case TEMPORAL_TEXT_ALLOW_INVALID_CANDIDATE:
+        return temporal_sql_mode_has_allow_invalid_dates(database);
+    case TEMPORAL_TEXT_INVALID:
+    case TEMPORAL_TEXT_DEFERRED:
+        return false;
+    }
+    return false;
+}
+
+static bool predicate_timestamp_text_admitted(
+    const struct mylite_db *database,
+    const char *text,
+    size_t text_length
+) {
+    if (timestamp_text_is_canonical_valid(text, text_length)) {
+        return true;
+    }
+    if (datetime_text_is_zero_datetime(text, text_length)) {
+        if (temporal_sql_mode_has_no_zero_date(database)) {
+            return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 static int convert_integer_for_predicate(
@@ -59756,6 +60149,39 @@ static void set_incorrect_datetime_value_error(
         mylite_connection_diagnostics(database),
         mysql_error_incorrect_date_value,
         "22007",
+        message
+    );
+}
+
+static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Incorrect DATE value: '%s'", value_text);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_timestamp_value,
+        "HY000",
+        message
+    );
+}
+
+static void set_incorrect_datetime_literal_error(
+    struct mylite_db *database,
+    const char *value_text
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Incorrect DATETIME value: '%s'", value_text);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_timestamp_value,
+        "HY000",
         message
     );
 }

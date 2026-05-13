@@ -48,6 +48,7 @@ add_library(mylite STATIC
   src/runtime/mylite_sqlite_bootstrap.c
   src/runtime/mylite_sqlite_registration.c
   src/runtime/mylite_statement_context.c
+  src/runtime/mylite_temporary_catalog.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
@@ -1409,6 +1410,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_table_rename_lifecycle_test)
 
+  add_executable(mylite_runtime_temporary_table_lifecycle_test
+    tests/runtime_temporary_table_lifecycle_test.c
+  )
+  target_link_libraries(mylite_runtime_temporary_table_lifecycle_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_temporary_table_lifecycle_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_temporary_table_lifecycle_test)
+
   add_executable(mylite_runtime_row_values_lifecycle_test
     tests/runtime_row_values_lifecycle_test.c
   )
@@ -2547,6 +2559,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.table_rename_lifecycle
     COMMAND mylite_runtime_table_rename_lifecycle_test
+  )
+  add_test(
+    NAME libmylite.runtime.temporary_table_lifecycle
+    COMMAND mylite_runtime_temporary_table_lifecycle_test
   )
   add_test(
     NAME libmylite.runtime.alter_table_rename_to

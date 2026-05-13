@@ -592,7 +592,7 @@ static int test_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TEMPORARY TABLE IF NOT EXISTS temp_table (id INT)",
+        "CREATE TEMPORARY TABLE temp_table LIKE other_table",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -601,7 +601,7 @@ static int test_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "DROP TEMPORARY TABLE IF EXISTS temp_table",
+        "DROP TEMPORARY TABLE IF EXISTS temp_table RESTRICT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

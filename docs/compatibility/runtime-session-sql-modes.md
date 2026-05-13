@@ -15,7 +15,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | Affected rows | ❌ | Found/changed row counts |
 | Warnings and diagnostics | ❌ | Warnings, errors, diagnostics area |
 | Prepared statement registry | ❌ | Per-connection prepared statements |
-| Temporary table namespace | ❌ | Per-session temporary table metadata and shadowing |
+| Temporary table namespace | 🟡 | Limited per-session temporary table descriptors for explicit `CREATE TEMPORARY TABLE` / `DROP TEMPORARY TABLE`, same-schema shadowing for current descriptor-driven DML and selected SHOW statements, and close-time cleanup; no cross-handle visibility, temporary DDL inside active user transactions, temporary auto-increment counters, temporary `LIKE`/CTAS/ALTER/RENAME/TRUNCATE, or privilege state |
 | Role and privilege state | ❌ | Role and privilege state |
 | Locks | ❌ | Named, table, metadata, backup locks |
 

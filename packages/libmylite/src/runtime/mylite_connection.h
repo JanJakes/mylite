@@ -6,6 +6,7 @@
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_sqlite_bootstrap.h"
+#include "mylite_temporary_catalog.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -72,6 +73,7 @@ struct mylite_session_state {
     char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    struct mylite_temporary_catalog temporary_catalog;
     uint64_t connection_id;
     int64_t previous_row_count;
     uint64_t found_rows;

@@ -94,6 +94,9 @@ statement(A) ::= set_system_variable_statement(B). {
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
+statement(A) ::= create_temporary_table_statement(B). {
+    A = B;
+}
 statement(A) ::= create_table_like_statement(B). {
     A = B;
 }
@@ -107,6 +110,9 @@ statement(A) ::= create_schema_statement(B). {
     A = B;
 }
 statement(A) ::= drop_table_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_temporary_table_statement(B). {
     A = B;
 }
 statement(A) ::= drop_schema_statement(B). {
@@ -402,6 +408,11 @@ create_table_statement(A) ::=
     create_table_item_list(L) RPAREN(R) table_option_list_opt(O). {
     A = mylite_sql_parser_make_create_table_statement(state, C, E, T, P, L, R, O);
 }
+create_temporary_table_statement(A) ::=
+    CREATE(C) TEMPORARY TABLE create_if_not_exists_opt(E) table_name(T) LPAREN(P)
+    create_table_item_list(L) RPAREN(R) table_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_temporary_table_statement(state, C, E, T, P, L, R, O);
+}
 create_table_like_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LIKE table_name(S). {
     A = mylite_sql_parser_make_create_table_like_statement(state, C, E, T, S);
@@ -503,6 +514,10 @@ create_schema_if_not_exists_opt(A) ::= IF(I) NOT EXISTS(E). {
 
 drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name_list(T). {
     A = mylite_sql_parser_make_drop_table_statement(state, D, E, T);
+}
+drop_temporary_table_statement(A) ::=
+    DROP(D) TEMPORARY TABLE drop_if_exists_opt(E) table_name_list(T). {
+    A = mylite_sql_parser_make_drop_temporary_table_statement(state, D, E, T);
 }
 
 drop_if_exists_opt(A) ::= . {
@@ -2845,6 +2860,9 @@ identifier(A) ::= COLUMNS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TABLES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TEMPORARY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TEXT(T). {

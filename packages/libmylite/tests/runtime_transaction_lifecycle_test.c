@@ -14,6 +14,7 @@
 
 enum {
     test_path_capacity = 1024,
+    mysql_error_unknown_table = 1051,
     mysql_error_duplicate_key = 1062,
 };
 
@@ -25,10 +26,21 @@ struct expected_query {
     const char *context;
 };
 
+struct expected_nonquery {
+    int64_t affected_rows;
+    size_t warning_count;
+};
+
 static int test_transaction_control_and_dml(void);
+static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
 static int expect_nonquery(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_nonquery_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    struct expected_nonquery expected
+);
 static int expect_error(mylite_db *database, const char *sql, int expected_code);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_row_count_zero(mylite_db *database);
@@ -59,6 +71,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_transaction_control_and_dml();
+    failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
 
     return failures == 0 ? 0 : 1;
@@ -226,6 +239,60 @@ static int test_transaction_control_and_dml(void) {
     return failures;
 }
 
+static int test_drop_table_missing_implicitly_commits_transaction(void) {
+    static const char *const first_insert_committed[] = {"1"};
+    static const char *const second_insert_committed[] = {"1"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "drop_missing_commit") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open drop-missing file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (40, 400)", 1);
+    failures += expect_error(database, "DROP TABLE missing_drop", mysql_error_unknown_table);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE id = 40",
+            .values = first_insert_committed,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "missing DROP TABLE implicitly commits before error",
+        }
+    );
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (50, 500)", 1);
+    failures += expect_nonquery_with_warnings(
+        database,
+        "DROP TABLE IF EXISTS missing_if_exists",
+        (struct expected_nonquery){0, 1U}
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE id = 50",
+            .values = second_insert_committed,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "missing DROP TABLE IF EXISTS implicitly commits before warning",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_file_close_rolls_back_transaction(void) {
     static const char *const committed_rows[] = {"1", "10"};
     char path[test_path_capacity];
@@ -288,6 +355,18 @@ static int seed_schema(mylite_db *database) {
 }
 
 static int expect_nonquery(mylite_db *database, const char *sql, int64_t affected_rows) {
+    return expect_nonquery_with_warnings(
+        database,
+        sql,
+        (struct expected_nonquery){affected_rows, 0U}
+    );
+}
+
+static int expect_nonquery_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    struct expected_nonquery expected
+) {
     mylite_result *result = NULL;
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
@@ -296,8 +375,12 @@ static int expect_nonquery(mylite_db *database, const char *sql, int64_t affecte
     if (rc == MYLITE_OK) {
         failures += expect_size(mylite_result_column_count(result), 0U, "nonquery column count");
         failures += expect_size(mylite_result_row_count(result), 0U, "nonquery row count");
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
-        failures += expect_size(mylite_result_warning_count(result), 0U, "nonquery warning count");
+        failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+        failures += expect_size(
+            mylite_result_warning_count(result),
+            expected.warning_count,
+            "nonquery warning count"
+        );
     } else {
         fprintf(stderr, "%s failed: %s\n", sql, mylite_errmsg(database));
     }

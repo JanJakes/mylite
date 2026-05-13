@@ -452,6 +452,11 @@ struct planned_create_table {
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct temporary_index_descriptor_positions {
+    size_t index;
+    size_t index_column;
+};
+
 struct loaded_index_part {
     struct mylite_catalog_index_column_descriptor index_column;
     struct mylite_catalog_column_descriptor column;
@@ -479,6 +484,7 @@ struct planned_drop_table_target {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     bool missing;
+    bool is_temporary;
 };
 
 struct planned_drop_table {
@@ -486,6 +492,9 @@ struct planned_drop_table {
     size_t target_count;
     size_t missing_count;
     size_t existing_count;
+    size_t temporary_existing_count;
+    size_t persistent_existing_count;
+    bool temporary_only;
 };
 
 struct planned_rename_table {
@@ -3030,6 +3039,11 @@ static int execute_create_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_temporary_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_create_table_like_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3062,9 +3076,15 @@ static int execute_drop_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_drop_temporary_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int plan_drop_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool temporary_only,
     struct planned_drop_table *out_plan
 );
 static int plan_drop_table_target(
@@ -3086,12 +3106,28 @@ static int finish_drop_table_missing_targets(
     struct mylite_db *database,
     const struct planned_drop_table *plan
 );
+static bool drop_table_plan_requires_implicit_commit(const struct planned_drop_table *plan);
 static int append_drop_table_missing_notes(
     struct mylite_db *database,
     const struct planned_drop_table *plan
 );
 static void planned_drop_table_deinit(struct planned_drop_table *plan);
 static int execute_drop_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+);
+static bool planned_drop_table_has_temporary_targets(const struct planned_drop_table *plan);
+static bool planned_drop_table_has_persistent_targets(const struct planned_drop_table *plan);
+static int delete_drop_table_persistent_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan,
+    struct mylite_catalog_mutation *mutation
+);
+static int drop_existing_physical_tables(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+);
+static int remove_drop_table_temporary_descriptors(
     struct mylite_db *database,
     const struct planned_drop_table *plan
 );
@@ -3979,9 +4015,17 @@ static int append_decoded_table_option_name_escape(
 );
 static void planned_create_table_deinit(struct planned_create_table *plan);
 static int create_table_from_plan(struct mylite_db *database, struct planned_create_table *plan);
+static int create_temporary_table_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+);
 static int assign_create_table_index_ids(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
+    struct planned_create_table *plan
+);
+static int assign_create_temporary_table_index_ids(
+    struct mylite_db *database,
     struct planned_create_table *plan
 );
 static int insert_create_table_catalog_rows(
@@ -4002,9 +4046,48 @@ static int insert_create_table_index_catalog_rows(
 static int execute_physical_create_table(
     struct mylite_db *database,
     const struct planned_create_table *plan,
-    const char *physical_name
+    const char *physical_name,
+    bool temporary
 );
 static int execute_physical_drop_table(struct mylite_db *database, const char *physical_name);
+static int build_temporary_table_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const char *physical_name,
+    struct mylite_temporary_catalog_table *out_table
+);
+static int build_temporary_table_column_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    struct mylite_temporary_catalog_table *out_table,
+    int64_t **out_column_ids
+);
+static int build_temporary_table_index_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table
+);
+static int append_temporary_primary_index_descriptor(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table,
+    struct temporary_index_descriptor_positions *positions
+);
+static int append_temporary_secondary_index_descriptor(
+    struct mylite_db *database,
+    const struct planned_secondary_index *planned,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table,
+    struct temporary_index_descriptor_positions *positions
+);
+static bool planned_create_table_has_auto_increment(const struct planned_create_table *plan);
 static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
@@ -6621,6 +6704,12 @@ static int maybe_finish_create_if_not_exists_noop(
     const struct planned_create_table *plan,
     bool *out_finished
 );
+static int maybe_finish_create_temporary_if_not_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct planned_create_table *plan,
+    bool *out_finished
+);
 static bool create_table_has_if_not_exists(const struct mylite_sql_ast_node *statement);
 static const struct mylite_sql_ast_node *create_table_options_node(
     const struct mylite_sql_ast_node *statement
@@ -6693,16 +6782,29 @@ static int resolve_table_name(
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
 );
-static int resolve_drop_if_exists_table_name(
+static int resolve_visible_table_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int resolve_table_name_allow_missing_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution,
     bool *out_missing_schema
 );
+static int resolve_readable_table(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+);
 static int resolve_show_columns_table_name(
     struct mylite_db *database,
     struct show_columns_target_nodes nodes,
-    struct table_name_resolution *out_resolution
+    struct table_name_resolution *out_resolution,
+    bool *out_missing_schema
 );
 static int copy_show_columns_explicit_table_name(
     struct mylite_db *database,
@@ -9061,6 +9163,7 @@ static int build_physical_index_name(int64_t index_id, char *destination, size_t
 static int build_create_table_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
+    bool temporary,
     char **out_sql
 );
 static int append_create_table_columns_sql(
@@ -10370,6 +10473,8 @@ static int execute_parsed_statement(
         return execute_drop_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
         return execute_create_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
+        return execute_create_temporary_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
         return execute_create_table_like_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
@@ -10381,6 +10486,8 @@ static int execute_parsed_statement(
         return execute_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return execute_drop_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
+        return execute_drop_temporary_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
         return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -10876,7 +10983,6 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
-    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
@@ -11853,6 +11959,55 @@ static int execute_create_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_create_temporary_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_table plan = {0};
+    mylite_result *result = NULL;
+    bool finished = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        mylite_result_free(result);
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_create_table(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc =
+            maybe_finish_create_temporary_if_not_exists_noop(database, statement, &plan, &finished);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = finalize_planned_column_defaults(database, plan.columns, plan.column_count);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = check_duplicate_column_names(database, plan.columns, plan.column_count);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = validate_planned_table_row_size(database, plan.columns, plan.column_count);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = create_temporary_table_from_plan(database, &plan);
+    }
+    planned_create_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_create_table_like_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -12043,7 +12198,62 @@ static int execute_drop_table_statement(
         return rc;
     }
 
-    rc = plan_drop_table(database, statement, &plan);
+    rc = plan_drop_table(database, statement, false, &plan);
+    if (rc == MYLITE_OK && plan.temporary_existing_count != 0U &&
+        database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && drop_table_plan_requires_implicit_commit(&plan)) {
+        rc = commit_active_user_transaction_for_ddl(database);
+    }
+    if (rc == MYLITE_OK && plan.missing_count != 0U && !drop_table_has_if_exists(statement)) {
+        rc = finish_drop_table_missing_targets(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_drop_table_missing_notes(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_drop_table_from_plan(database, &plan);
+    }
+    planned_drop_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_drop_temporary_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_drop_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        mylite_result_free(result);
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_drop_table(database, statement, true, &plan);
+    if (rc == MYLITE_OK && plan.missing_count != 0U && !drop_table_has_if_exists(statement)) {
+        rc = finish_drop_table_missing_targets(database, &plan);
+    }
     if (rc == MYLITE_OK) {
         rc = append_drop_table_missing_notes(database, &plan);
     }
@@ -12062,14 +12272,14 @@ static int execute_drop_table_statement(
 static int plan_drop_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool temporary_only,
     struct planned_drop_table *out_plan
 ) {
     const struct mylite_sql_ast_node *target_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *target_node = NULL;
-    bool drop_if_exists = drop_table_has_if_exists(statement);
     int rc = MYLITE_OK;
 
-    *out_plan = (struct planned_drop_table){0};
+    *out_plan = (struct planned_drop_table){.temporary_only = temporary_only};
     if (target_list == NULL || target_list->kind != MYLITE_SQL_AST_TABLE_NAME_LIST) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -12098,9 +12308,6 @@ static int plan_drop_table(
             target_node = target_node->next_sibling;
         }
     }
-    if (rc == MYLITE_OK && !drop_if_exists && out_plan->missing_count != 0U) {
-        rc = finish_drop_table_missing_targets(database, out_plan);
-    }
     if (rc != MYLITE_OK) {
         planned_drop_table_deinit(out_plan);
     }
@@ -12119,7 +12326,12 @@ static int plan_drop_table_target(
     bool found = false;
     int rc = MYLITE_OK;
 
-    rc = resolve_drop_if_exists_table_name(database, target_node, &target->target, &missing_schema);
+    rc = resolve_table_name_allow_missing_schema(
+        database,
+        target_node,
+        &target->target,
+        &missing_schema
+    );
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target->target.table_name)) {
         set_reserved_name_error(database, "table", target->target.table_name);
         rc = MYLITE_ERROR;
@@ -12130,7 +12342,25 @@ static int plan_drop_table_target(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (missing_schema) {
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        target->target.schema.name,
+        target->target.table_name,
+        &target->table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found) {
+        target->is_temporary = true;
+        ++out_plan->existing_count;
+        ++out_plan->temporary_existing_count;
+        return MYLITE_OK;
+    }
+    if (out_plan->temporary_only || missing_schema) {
         target->missing = true;
         ++out_plan->missing_count;
         return MYLITE_OK;
@@ -12154,6 +12384,7 @@ static int plan_drop_table_target(
     }
 
     ++out_plan->existing_count;
+    ++out_plan->persistent_existing_count;
     return MYLITE_OK;
 }
 
@@ -12206,6 +12437,19 @@ static int finish_drop_table_missing_targets(
     return set_unknown_drop_tables_error(database, plan);
 }
 
+static bool drop_table_plan_requires_implicit_commit(const struct planned_drop_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->persistent_existing_count != 0U) {
+        return true;
+    }
+    if (plan->missing_count != 0U) {
+        return true;
+    }
+    return false;
+}
+
 static int append_drop_table_missing_notes(
     struct mylite_db *database,
     const struct planned_drop_table *plan
@@ -12242,25 +12486,101 @@ static int execute_drop_table_from_plan(
     const struct planned_drop_table *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    bool has_persistent_targets = planned_drop_table_has_persistent_targets(plan);
+    bool has_temporary_targets = planned_drop_table_has_temporary_targets(plan);
     int rc = MYLITE_OK;
 
     if (plan->existing_count == 0U) {
         return MYLITE_OK;
     }
+    if (has_temporary_targets && database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    if (has_persistent_targets) {
+        rc = commit_active_user_transaction_for_ddl(database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
 
-    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (has_persistent_targets) {
+        rc = mylite_catalog_begin_mutation(database, &mutation);
+    }
+    if (rc == MYLITE_OK && has_persistent_targets) {
+        rc = delete_drop_table_persistent_catalog_rows(database, plan, &mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = drop_existing_physical_tables(database, plan);
+    }
+    if (rc == MYLITE_OK && has_persistent_targets) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        if (has_persistent_targets) {
+            mylite_catalog_rollback_mutation(database, &mutation);
+        }
+        return rc;
+    }
+    rc = remove_drop_table_temporary_descriptors(database, plan);
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to remove temporary table descriptor");
+        return rc;
+    }
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static bool planned_drop_table_has_temporary_targets(const struct planned_drop_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->temporary_existing_count != 0U) {
+        return true;
+    }
+    return false;
+}
+
+static bool planned_drop_table_has_persistent_targets(const struct planned_drop_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->persistent_existing_count != 0U) {
+        return true;
+    }
+    return false;
+}
+
+static int delete_drop_table_persistent_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan,
+    struct mylite_catalog_mutation *mutation
+) {
+    int rc = MYLITE_OK;
+
     for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
          ++target_index) {
         const struct planned_drop_table_target *target = &plan->targets[target_index];
 
-        if (!target->missing) {
-            rc = mylite_catalog_delete_table_in_mutation(
-                database,
-                &mutation,
-                target->table.table_id
-            );
+        if (!target->missing && !target->is_temporary) {
+            rc =
+                mylite_catalog_delete_table_in_mutation(database, mutation, target->table.table_id);
         }
     }
+
+    return rc;
+}
+
+static int drop_existing_physical_tables(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    int rc = MYLITE_OK;
+
     for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
          ++target_index) {
         const struct planned_drop_table_target *target = &plan->targets[target_index];
@@ -12269,17 +12589,29 @@ static int execute_drop_table_from_plan(
             rc = execute_physical_drop_table(database, target->table.physical_name);
         }
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_commit_mutation(database, &mutation);
-    }
-    if (rc != MYLITE_OK) {
-        mylite_catalog_rollback_mutation(database, &mutation);
-        return rc;
+
+    return rc;
+}
+
+static int remove_drop_table_temporary_descriptors(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing && target->is_temporary) {
+            rc = mylite_temporary_catalog_remove_table_by_id(
+                &database->session.temporary_catalog,
+                target->table.table_id
+            );
+        }
     }
 
-    ++database->session.sqlite_schema_generation;
-
-    return MYLITE_OK;
+    return rc;
 }
 
 static int maybe_finish_create_if_not_exists_noop(
@@ -12306,6 +12638,43 @@ static int maybe_finish_create_if_not_exists_noop(
     );
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+        return rc;
+    }
+    if (!found) {
+        return MYLITE_OK;
+    }
+
+    rc = append_table_exists_note(database, plan->target.table_name);
+    if (rc == MYLITE_OK) {
+        *out_finished = true;
+    }
+    return rc;
+}
+
+static int maybe_finish_create_temporary_if_not_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct planned_create_table *plan,
+    bool *out_finished
+) {
+    struct mylite_catalog_table_descriptor table = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_finished = false;
+    if (!create_table_has_if_not_exists(statement)) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        plan->target.schema.name,
+        plan->target.table_name,
+        &table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
         return rc;
     }
     if (!found) {
@@ -17734,6 +18103,8 @@ static int execute_show_columns_statement(
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
     struct primary_key_info primary_key = primary_key_info_init();
+    size_t column_count = 0U;
+    bool missing_schema = false;
     const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
     const struct mylite_sql_ast_node *schema_node = second_child;
     const struct mylite_sql_ast_node *like_node = child_at(statement, 2U);
@@ -17756,14 +18127,13 @@ static int execute_show_columns_statement(
             .table = child_at(statement, 0U),
             .schema = schema_node,
         },
-        &target
+        &target,
+        &missing_schema
     );
     if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &target, &table);
+        rc = resolve_readable_table(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
-        size_t column_count = 0U;
-
         rc = load_table_columns(database, table.table_id, &columns, &column_count);
         if (rc == MYLITE_OK) {
             rc = load_primary_key_info(
@@ -17808,12 +18178,10 @@ static int execute_show_columns_statement(
         context.filter = &filter;
         context.primary_key = &primary_key;
         context.indexes = indexes;
-        rc = mylite_catalog_for_each_column_in_table(
-            database,
-            table.table_id,
-            append_show_column,
-            &context
-        );
+        for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count;
+             ++column_index) {
+            rc = append_show_column(&columns[column_index], &context);
+        }
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         } else if (
@@ -17867,6 +18235,7 @@ static int execute_show_index_statement(
     struct loaded_index_info *indexes = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
+    bool missing_schema = false;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
@@ -17876,10 +18245,11 @@ static int execute_show_index_statement(
             .table = child_at(statement, 0U),
             .schema = child_at(statement, 1U),
         },
-        &target
+        &target,
+        &missing_schema
     );
     if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &target, &table);
+        rc = resolve_readable_table(database, &target, missing_schema, &table);
     }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(database, table.table_id, &columns, &column_count);
@@ -18124,14 +18494,12 @@ static int plan_show_create_table(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -18219,7 +18587,11 @@ static int build_show_create_table_sql(
     *out_sql = NULL;
     dynamic_string_init(&string);
 
-    rc = dynamic_string_append(&string, "CREATE TABLE ");
+    rc = dynamic_string_append(
+        &string,
+        plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY ? "CREATE TEMPORARY TABLE "
+                                                                : "CREATE TABLE "
+    );
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_mysql_quoted_identifier(&string, plan->table.name);
     }
@@ -18970,11 +19342,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
@@ -20876,7 +21250,12 @@ static int create_table_select_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = execute_physical_create_table(database, &plan->create_table, table.physical_name);
+        rc = execute_physical_create_table(
+            database,
+            &plan->create_table,
+            table.physical_name,
+            false
+        );
     }
     if (rc == MYLITE_OK) {
         rc = execute_create_table_select_copy(
@@ -21887,7 +22266,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
         );
     }
     if (rc == MYLITE_OK) {
-        rc = execute_physical_create_table(database, plan, table.physical_name);
+        rc = execute_physical_create_table(database, plan, table.physical_name, false);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
@@ -21899,6 +22278,80 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
 
     ++database->session.sqlite_schema_generation;
 
+    return MYLITE_OK;
+}
+
+static int create_temporary_table_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+) {
+    struct mylite_temporary_catalog_table temporary_table = {0};
+    struct mylite_catalog_table_descriptor existing_table = {0};
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    bool existing_table_found = false;
+    bool physical_table_created = false;
+    int64_t table_id = 0;
+    int rc = MYLITE_OK;
+
+    if (planned_create_table_has_auto_increment(plan)) {
+        set_unsupported_error(database, "Temporary AUTO_INCREMENT tables are not yet supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        plan->target.schema.name,
+        plan->target.table_name,
+        &existing_table,
+        &existing_table_found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (existing_table_found) {
+        set_table_exists_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_temporary_catalog_allocate_table_identity(
+        &database->session.temporary_catalog,
+        &table_id,
+        physical_name,
+        sizeof(physical_name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = assign_create_temporary_table_index_ids(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_temporary_table_descriptors(
+            database,
+            plan,
+            table_id,
+            physical_name,
+            &temporary_table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_create_table(database, plan, physical_name, true);
+        physical_table_created = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_append_table(
+            &database->session.temporary_catalog,
+            &temporary_table
+        );
+    }
+    if (rc != MYLITE_OK) {
+        if (physical_table_created) {
+            (void)execute_physical_drop_table(database, physical_name);
+        }
+        mylite_temporary_catalog_table_deinit(&temporary_table);
+        set_internal_error_if_clear(database, rc, "failed to create temporary table descriptor");
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
     return MYLITE_OK;
 }
 
@@ -21954,6 +22407,38 @@ static int assign_create_table_index_ids(
     }
 
     return MYLITE_OK;
+}
+
+static int assign_create_temporary_table_index_ids(
+    struct mylite_db *database,
+    struct planned_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (!plan->has_primary_key && plan->secondary_index_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (plan->has_primary_key) {
+        rc = mylite_temporary_catalog_allocate_index_identity(
+            &database->session.temporary_catalog,
+            &plan->primary_key_index_id,
+            plan->primary_key_physical_name,
+            sizeof(plan->primary_key_physical_name)
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->secondary_index_count; ++index) {
+        rc = mylite_temporary_catalog_allocate_index_identity(
+            &database->session.temporary_catalog,
+            &plan->secondary_indexes[index].index_id,
+            plan->secondary_indexes[index].physical_name,
+            sizeof(plan->secondary_indexes[index].physical_name)
+        );
+    }
+
+    return rc;
 }
 
 static int insert_create_table_catalog_rows(
@@ -22118,13 +22603,354 @@ static int insert_create_table_index_catalog_rows(
     return rc;
 }
 
+static int build_temporary_table_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const char *physical_name,
+    struct mylite_temporary_catalog_table *out_table
+) {
+    int64_t *column_ids = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_table == NULL || physical_name == NULL) {
+        set_runtime_error(database, "invalid temporary table descriptor");
+        return MYLITE_ERROR;
+    }
+    *out_table = (struct mylite_temporary_catalog_table){0};
+    snprintf(
+        out_table->schema_name,
+        sizeof(out_table->schema_name),
+        "%s",
+        plan->target.schema.name
+    );
+    out_table->table = (struct mylite_catalog_table_descriptor){
+        .table_id = table_id,
+        .schema_id = plan->target.schema.schema_id,
+        .kind = MYLITE_CATALOG_TABLE_KIND_TEMPORARY,
+        .auto_increment_next = 1,
+    };
+    snprintf(out_table->table.name, sizeof(out_table->table.name), "%s", plan->target.table_name);
+    snprintf(
+        out_table->table.physical_name,
+        sizeof(out_table->table.physical_name),
+        "%s",
+        physical_name
+    );
+    snprintf(
+        out_table->table.default_charset,
+        sizeof(out_table->table.default_charset),
+        "%s",
+        plan->default_charset
+    );
+    snprintf(
+        out_table->table.default_collation,
+        sizeof(out_table->table.default_collation),
+        "%s",
+        plan->default_collation
+    );
+
+    rc = build_temporary_table_column_descriptors(database, plan, table_id, out_table, &column_ids);
+    if (rc == MYLITE_OK) {
+        rc = build_temporary_table_index_descriptors(
+            database,
+            plan,
+            table_id,
+            column_ids,
+            out_table
+        );
+    }
+
+    free(column_ids);
+    if (rc != MYLITE_OK) {
+        mylite_temporary_catalog_table_deinit(out_table);
+    }
+    return rc;
+}
+
+static int build_temporary_table_column_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    struct mylite_temporary_catalog_table *out_table,
+    int64_t **out_column_ids
+) {
+    int64_t *column_ids = NULL;
+    int rc = MYLITE_OK;
+
+    *out_column_ids = NULL;
+    if (plan->column_count > SIZE_MAX / sizeof(*out_table->columns) ||
+        plan->column_count > SIZE_MAX / sizeof(*column_ids)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_table->columns = calloc(plan->column_count, sizeof(*out_table->columns));
+    column_ids = calloc(plan->column_count, sizeof(*column_ids));
+    if (out_table->columns == NULL || column_ids == NULL) {
+        free(column_ids);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_table->column_count = plan->column_count;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct planned_column *column = &plan->columns[column_index];
+        struct mylite_catalog_column_descriptor *descriptor = &out_table->columns[column_index];
+
+        rc = mylite_temporary_catalog_allocate_column_id(
+            &database->session.temporary_catalog,
+            &column_ids[column_index]
+        );
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        *descriptor = (struct mylite_catalog_column_descriptor){
+            .column_id = column_ids[column_index],
+            .table_id = table_id,
+            .ordinal_position = (int64_t)column_index + 1,
+            .is_nullable = column->is_nullable,
+            .is_visible = column->is_visible,
+            .is_auto_increment = false,
+            .default_kind = column->default_kind,
+            .default_integer = column->default_integer,
+            .on_update_current_timestamp = column->on_update_current_timestamp,
+        };
+        snprintf(descriptor->name, sizeof(descriptor->name), "%s", column->name);
+        snprintf(
+            descriptor->logical_type,
+            sizeof(descriptor->logical_type),
+            "%s",
+            column->logical_type
+        );
+        snprintf(
+            descriptor->physical_type,
+            sizeof(descriptor->physical_type),
+            "%s",
+            column->physical_type
+        );
+        snprintf(
+            descriptor->default_text,
+            sizeof(descriptor->default_text),
+            "%s",
+            column->default_text
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(column_ids);
+        return rc;
+    }
+
+    *out_column_ids = column_ids;
+    return MYLITE_OK;
+}
+
+static int build_temporary_table_index_descriptors(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table
+) {
+    size_t primary_index_count = 0U;
+    size_t index_count = 0U;
+    size_t index_column_count = 0U;
+    struct temporary_index_descriptor_positions positions = {0};
+    int rc = MYLITE_OK;
+
+    if (plan->has_primary_key) {
+        primary_index_count = 1U;
+        index_column_count = plan->primary_key_part_count;
+    }
+    index_count = plan->secondary_index_count + primary_index_count;
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        index_column_count += plan->secondary_indexes[index].part_count;
+    }
+    if (index_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (index_column_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    if (index_count > SIZE_MAX / sizeof(*out_table->indexes) ||
+        index_column_count > SIZE_MAX / sizeof(*out_table->index_columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_table->indexes = calloc(index_count, sizeof(*out_table->indexes));
+    out_table->index_columns = calloc(index_column_count, sizeof(*out_table->index_columns));
+    if (out_table->indexes == NULL || out_table->index_columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_table->index_count = index_count;
+    out_table->index_column_count = index_column_count;
+
+    if (plan->has_primary_key) {
+        rc = append_temporary_primary_index_descriptor(
+            database,
+            plan,
+            table_id,
+            column_ids,
+            out_table,
+            &positions
+        );
+    }
+    for (size_t index_index = 0U; rc == MYLITE_OK && index_index < plan->secondary_index_count;
+         ++index_index) {
+        rc = append_temporary_secondary_index_descriptor(
+            database,
+            &plan->secondary_indexes[index_index],
+            table_id,
+            column_ids,
+            out_table,
+            &positions
+        );
+    }
+
+    return rc;
+}
+
+static int append_temporary_primary_index_descriptor(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table,
+    struct temporary_index_descriptor_positions *positions
+) {
+    struct mylite_catalog_index_descriptor *index = NULL;
+
+    if (positions->index >= out_table->index_count) {
+        return MYLITE_ERROR;
+    }
+    index = &out_table->indexes[positions->index];
+    ++positions->index;
+
+    *index = (struct mylite_catalog_index_descriptor){
+        .index_id = plan->primary_key_index_id,
+        .table_id = table_id,
+        .kind = MYLITE_CATALOG_INDEX_KIND_PRIMARY,
+        .is_unique = true,
+    };
+    snprintf(index->name, sizeof(index->name), "%s", "PRIMARY");
+    snprintf(
+        index->physical_name,
+        sizeof(index->physical_name),
+        "%s",
+        plan->primary_key_physical_name
+    );
+
+    for (size_t part_index = 0U; part_index < plan->primary_key_part_count; ++part_index) {
+        size_t column_index = plan->primary_key_parts[part_index].column_index;
+        struct mylite_catalog_index_column_descriptor *part = NULL;
+        int64_t index_column_id = 0;
+        int rc = MYLITE_OK;
+
+        if (positions->index_column >= out_table->index_column_count) {
+            return MYLITE_ERROR;
+        }
+        part = &out_table->index_columns[positions->index_column];
+        ++positions->index_column;
+
+        rc = mylite_temporary_catalog_allocate_index_column_id(
+            &database->session.temporary_catalog,
+            &index_column_id
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *part = (struct mylite_catalog_index_column_descriptor){
+            .index_column_id = index_column_id,
+            .index_id = plan->primary_key_index_id,
+            .table_id = table_id,
+            .column_id = column_ids[column_index],
+            .ordinal_position = (int64_t)part_index + 1,
+        };
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_temporary_secondary_index_descriptor(
+    struct mylite_db *database,
+    const struct planned_secondary_index *planned,
+    int64_t table_id,
+    const int64_t *column_ids,
+    struct mylite_temporary_catalog_table *out_table,
+    struct temporary_index_descriptor_positions *positions
+) {
+    struct mylite_catalog_index_descriptor *index = NULL;
+
+    if (positions->index >= out_table->index_count) {
+        return MYLITE_ERROR;
+    }
+    index = &out_table->indexes[positions->index];
+    ++positions->index;
+
+    *index = (struct mylite_catalog_index_descriptor){
+        .index_id = planned->index_id,
+        .table_id = table_id,
+        .kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+        .is_unique = planned->is_unique,
+    };
+    snprintf(index->name, sizeof(index->name), "%s", planned->name);
+    snprintf(index->physical_name, sizeof(index->physical_name), "%s", planned->physical_name);
+
+    for (size_t part_index = 0U; part_index < planned->part_count; ++part_index) {
+        const struct planned_secondary_index_part *planned_part = &planned->parts[part_index];
+        struct mylite_catalog_index_column_descriptor *part = NULL;
+        int64_t index_column_id = 0;
+        int rc = MYLITE_OK;
+
+        if (positions->index_column >= out_table->index_column_count) {
+            return MYLITE_ERROR;
+        }
+        part = &out_table->index_columns[positions->index_column];
+        ++positions->index_column;
+
+        rc = mylite_temporary_catalog_allocate_index_column_id(
+            &database->session.temporary_catalog,
+            &index_column_id
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *part = (struct mylite_catalog_index_column_descriptor){
+            .index_column_id = index_column_id,
+            .index_id = planned->index_id,
+            .table_id = table_id,
+            .column_id = column_ids[planned_part->column_index],
+            .ordinal_position = (int64_t)part_index + 1,
+            .has_prefix_length = planned_part->has_prefix_length,
+            .prefix_length = planned_part->prefix_length,
+        };
+    }
+
+    return MYLITE_OK;
+}
+
+static bool planned_create_table_has_auto_increment(const struct planned_create_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_auto_increment) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int execute_physical_create_table(
     struct mylite_db *database,
     const struct planned_create_table *plan,
-    const char *physical_name
+    const char *physical_name,
+    bool temporary
 ) {
     char *sql = NULL;
-    int rc = build_create_table_sql(plan, physical_name, &sql);
+    int rc = build_create_table_sql(plan, physical_name, temporary, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
@@ -27134,14 +27960,12 @@ static int plan_insert(
     *out_plan = (struct planned_insert){0};
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -27249,14 +28073,12 @@ static int plan_insert_set(
     *out_plan = (struct planned_insert){0};
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -28163,18 +28985,12 @@ static int plan_insert_select(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target.target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(
-            database,
-            &out_plan->target.target,
-            &out_plan->target.table
-        );
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target.target,
+        &out_plan->target.table
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -29462,14 +30278,12 @@ static int plan_update(
         optional_clause = optional_clause->next_sibling;
     }
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -29876,14 +30690,12 @@ static int plan_select(
         optional_clause = optional_clause->next_sibling;
     }
 
-    rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(from_clause, 0U),
+        &out_plan->source,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
@@ -30082,15 +30894,12 @@ static int plan_row_scalar_select_source(
     struct mylite_catalog_column_descriptor **out_table_columns,
     size_t *out_table_column_count
 ) {
-    int rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
-
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
-    }
+    int rc = resolve_visible_table_reference(
+        database,
+        child_at(from_clause, 0U),
+        &out_plan->source,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
@@ -30338,17 +31147,15 @@ static int plan_grouped_aggregate_source(
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 ) {
-    int rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
+    int rc = resolve_visible_table_reference(
+        database,
+        child_at(from_clause, 0U),
+        &out_plan->source,
+        &out_plan->table
+    );
 
     *out_columns = NULL;
     *out_column_count = 0U;
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
-    }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
@@ -33084,14 +33891,12 @@ static int plan_count_table_source(
     int rc = MYLITE_OK;
 
     out_plan->has_source = true;
-    rc = resolve_table_name(database, child_at(nodes->from_clause, 0U), &out_plan->source);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(nodes->from_clause, 0U),
+        &out_plan->source,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
@@ -33648,14 +34453,12 @@ static int plan_column_aggregate(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(from_clause, 0U),
+        &out_plan->source,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
@@ -44739,14 +45542,12 @@ static int plan_delete(
         optional_clause = optional_clause->next_sibling;
     }
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
-    }
+    rc = resolve_visible_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
     if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
         rc = load_table_columns(
             database,
@@ -44906,7 +45707,27 @@ static int resolve_table_name(
     return MYLITE_ERROR;
 }
 
-static int resolve_drop_if_exists_table_name(
+static int resolve_visible_table_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    bool missing_schema = false;
+    int rc =
+        resolve_table_name_allow_missing_schema(database, node, out_resolution, &missing_schema);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_resolution->table_name)) {
+        set_reserved_name_error(database, "table", out_resolution->table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_table(database, out_resolution, missing_schema, out_table);
+    }
+    return rc;
+}
+
+static int resolve_table_name_allow_missing_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution,
@@ -44942,10 +45763,6 @@ static int resolve_drop_if_exists_table_name(
             set_reserved_name_error(database, "database", parts[0]);
             return MYLITE_ERROR;
         }
-        if (mylite_catalog_name_is_reserved(parts[1])) {
-            set_reserved_name_error(database, "table", parts[1]);
-            return MYLITE_ERROR;
-        }
         rc = mylite_catalog_try_read_schema_by_name(
             database,
             parts[0],
@@ -44960,35 +45777,104 @@ static int resolve_drop_if_exists_table_name(
         if (!schema_found) {
             memcpy(out_resolution->schema.name, parts[0], sizeof(out_resolution->schema.name));
             *out_missing_schema = true;
-            return MYLITE_OK;
         }
         return MYLITE_OK;
     }
 
     set_parse_error(database, NULL);
-
     return MYLITE_ERROR;
+}
+
+static int resolve_readable_table(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    bool missing_schema,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    bool found_temporary = false;
+    int rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        resolution->schema.name,
+        resolution->table_name,
+        out_table,
+        &found_temporary
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found_temporary) {
+        return MYLITE_OK;
+    }
+    if (missing_schema) {
+        set_unknown_database_error(database, resolution->schema.name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
+        database,
+        resolution->schema.schema_id,
+        resolution->table_name,
+        out_table
+    );
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(database, resolution->schema.name, resolution->table_name);
+        return MYLITE_ERROR;
+    }
+    if (out_table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "statement supports only persistent base tables");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int resolve_show_columns_table_name(
     struct mylite_db *database,
     struct show_columns_target_nodes nodes,
-    struct table_name_resolution *out_resolution
+    struct table_name_resolution *out_resolution,
+    bool *out_missing_schema
 ) {
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
     *out_resolution = (struct table_name_resolution){0};
+    *out_missing_schema = false;
     if (nodes.schema == NULL) {
-        rc = resolve_table_name(database, nodes.table, out_resolution);
+        rc = resolve_table_name_allow_missing_schema(
+            database,
+            nodes.table,
+            out_resolution,
+            out_missing_schema
+        );
     } else {
+        bool schema_found = false;
+
         rc = copy_identifier_text(nodes.schema, schema_name, sizeof(schema_name), database);
         if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
             set_reserved_name_error(database, "database", schema_name);
             rc = MYLITE_ERROR;
         }
         if (rc == MYLITE_OK) {
-            rc = resolve_schema_name(database, schema_name, &out_resolution->schema);
+            rc = mylite_catalog_try_read_schema_by_name(
+                database,
+                schema_name,
+                &out_resolution->schema,
+                &schema_found
+            );
+            if (rc != MYLITE_OK) {
+                set_internal_error_if_clear(database, rc, "failed to read schema descriptor");
+                return rc;
+            }
+            if (!schema_found) {
+                memcpy(
+                    out_resolution->schema.name,
+                    schema_name,
+                    sizeof(out_resolution->schema.name)
+                );
+                *out_missing_schema = true;
+            }
         }
         if (rc == MYLITE_OK) {
             rc = copy_show_columns_explicit_table_name(
@@ -48490,8 +49376,21 @@ static int load_table_columns(
 
     *out_columns = NULL;
     *out_column_count = 0U;
-    rc =
-        mylite_catalog_for_each_column_in_table(database, table_id, append_loaded_column, &context);
+    if (table_id < 0) {
+        rc = mylite_temporary_catalog_for_each_column_in_table(
+            &database->session.temporary_catalog,
+            table_id,
+            append_loaded_column,
+            &context
+        );
+    } else {
+        rc = mylite_catalog_for_each_column_in_table(
+            database,
+            table_id,
+            append_loaded_column,
+            &context
+        );
+    }
     if (rc != MYLITE_OK) {
         free(context.columns);
         if (rc == MYLITE_NOMEM) {
@@ -48568,12 +49467,21 @@ static int load_primary_key_info(
     }
     *out_info = primary_key_info_init();
 
-    rc = mylite_catalog_try_read_primary_index_by_table_id(
-        database,
-        table_id,
-        &out_info->index,
-        &found
-    );
+    if (table_id < 0) {
+        rc = mylite_temporary_catalog_try_read_primary_index_by_table_id(
+            &database->session.temporary_catalog,
+            table_id,
+            &out_info->index,
+            &found
+        );
+    } else {
+        rc = mylite_catalog_try_read_primary_index_by_table_id(
+            database,
+            table_id,
+            &out_info->index,
+            &found
+        );
+    }
     if (rc != MYLITE_OK) {
         set_runtime_error(database, "failed to load primary-key descriptor");
         return rc;
@@ -48585,12 +49493,21 @@ static int load_primary_key_info(
     context.database = database;
     context.columns = columns;
     context.column_count = column_count;
-    rc = mylite_catalog_for_each_index_column_in_index(
-        database,
-        out_info->index.index_id,
-        append_loaded_primary_key_column,
-        &context
-    );
+    if (table_id < 0) {
+        rc = mylite_temporary_catalog_for_each_index_column_in_index(
+            &database->session.temporary_catalog,
+            out_info->index.index_id,
+            append_loaded_primary_key_column,
+            &context
+        );
+    } else {
+        rc = mylite_catalog_for_each_index_column_in_index(
+            database,
+            out_info->index.index_id,
+            append_loaded_primary_key_column,
+            &context
+        );
+    }
     if (rc != MYLITE_OK || context.count == 0U) {
         free(context.parts);
         set_runtime_error(database, "invalid primary-key column descriptor");
@@ -48628,12 +49545,21 @@ static int load_table_index_infos(
     *out_indexes = NULL;
     *out_index_count = 0U;
 
-    rc = mylite_catalog_for_each_index_in_table(
-        database,
-        table_id,
-        append_loaded_index_info,
-        &context
-    );
+    if (table_id < 0) {
+        rc = mylite_temporary_catalog_for_each_index_in_table(
+            &database->session.temporary_catalog,
+            table_id,
+            append_loaded_index_info,
+            &context
+        );
+    } else {
+        rc = mylite_catalog_for_each_index_in_table(
+            database,
+            table_id,
+            append_loaded_index_info,
+            &context
+        );
+    }
     if (rc != MYLITE_OK) {
         loaded_index_infos_deinit(&context.indexes, &context.count);
         if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
@@ -48731,12 +49657,21 @@ static int load_index_parts(
     *out_parts = NULL;
     *out_part_count = 0U;
 
-    rc = mylite_catalog_for_each_index_column_in_index(
-        database,
-        index_id,
-        append_loaded_index_part,
-        &context
-    );
+    if (index_id < 0) {
+        rc = mylite_temporary_catalog_for_each_index_column_in_index(
+            &database->session.temporary_catalog,
+            index_id,
+            append_loaded_index_part,
+            &context
+        );
+    } else {
+        rc = mylite_catalog_for_each_index_column_in_index(
+            database,
+            index_id,
+            append_loaded_index_part,
+            &context
+        );
+    }
     if (rc != MYLITE_OK || context.count == 0U) {
         free(context.parts);
         set_runtime_error(database, "invalid index column descriptor");
@@ -57831,15 +58766,20 @@ static int build_physical_index_name(int64_t index_id, char *destination, size_t
 static int build_create_table_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
+    bool temporary,
     char **out_sql
 ) {
     struct dynamic_string string;
+    const char *create_prefix = "CREATE TABLE ";
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
     dynamic_string_init(&string);
 
-    rc = dynamic_string_append(&string, "CREATE TABLE ");
+    if (temporary) {
+        create_prefix = "CREATE TEMPORARY TABLE ";
+    }
+    rc = dynamic_string_append(&string, create_prefix);
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, physical_name);
     }

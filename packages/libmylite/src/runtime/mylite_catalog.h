@@ -32,6 +32,7 @@ enum {
 enum mylite_catalog_table_kind {
     MYLITE_CATALOG_TABLE_KIND_INVALID = 0,
     MYLITE_CATALOG_TABLE_KIND_BASE = 1,
+    MYLITE_CATALOG_TABLE_KIND_TEMPORARY = 2,
 };
 
 enum mylite_catalog_column_default_kind {

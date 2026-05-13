@@ -689,6 +689,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *table_options
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_create_table_statement(
+        state,
+        create_token,
+        if_not_exists_clause,
+        table_name,
+        left_paren,
+        columns,
+        right_paren,
+        table_options
+    );
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT;
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -992,6 +1019,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     mylite_sql_ast_node_append_child(statement, table_names);
     if (if_exists_clause != NULL) {
         mylite_sql_ast_node_append_child(statement, if_exists_clause);
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_temporary_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *table_names
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_drop_table_statement(
+        state,
+        drop_token,
+        if_exists_clause,
+        table_names
+    );
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT;
     }
     return statement;
 }
@@ -4698,6 +4744,7 @@ static bool map_keyword_token(
         {"USE", MYLITE_SQL_PARSE_USE},
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"TEMPORARY", MYLITE_SQL_PARSE_TEMPORARY},
         {"IF", MYLITE_SQL_PARSE_IF},
         {"IFNULL", MYLITE_SQL_PARSE_IFNULL},
         {"COALESCE", MYLITE_SQL_PARSE_COALESCE},

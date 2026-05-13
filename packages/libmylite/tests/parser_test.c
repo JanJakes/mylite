@@ -81,6 +81,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_temporary_table_lifecycle_statements(void);
 static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
@@ -303,6 +304,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_temporary_table_lifecycle_statements();
     failures += test_serial_alias_statements();
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
@@ -7468,6 +7470,103 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_temporary_table_lifecycle_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_names = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *if_not_exists = NULL;
+    const struct mylite_sql_ast_node *if_exists = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TEMPORARY TABLE IF NOT EXISTS app.temp_lifecycle ("
+        "id INT, note VARCHAR(10), KEY note_idx (note(3)));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    columns = child_at(statement, 1U);
+    if_not_exists = child_at(statement, 2U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT,
+        "create temporary table statement"
+    );
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "create temporary target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "create temporary schema");
+    failures += expect_span_text(child_at(table_name, 1U), "temp_lifecycle", "temporary table");
+    failures += expect_child_count(columns, 3U, "temporary create item list");
+    failures += expect_node(
+        if_not_exists,
+        MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE,
+        "temporary create if not exists clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DROP TEMPORARY TABLE IF EXISTS first_temp, app.second_temp;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    if_exists = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT,
+        "drop temporary table statement"
+    );
+    failures += expect_child_count(statement, 2U, "drop temporary if exists child count");
+    failures += expect_child_count(table_names, 2U, "drop temporary table name count");
+    failures += expect_span_text(child_at(table_names, 0U), "first_temp", "first temp drop");
+    failures += expect_span_text(child_at(table_names, 1U), "app.second_temp", "second temp drop");
+    failures += expect_node(
+        if_exists,
+        MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE,
+        "drop temporary if exists clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE temporary (temporary INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "temporary nonreserved create table statement"
+    );
+    failures += expect_span_text(table_name, "temporary", "temporary nonreserved table name");
+    failures += expect_span_text(
+        child_at(child_at(columns, 0U), 0U),
+        "temporary",
+        "temporary nonreserved column name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT temporary FROM temporary;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SELECT_STATEMENT, "temporary nonreserved select");
+    failures += expect_span_text(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        "temporary",
+        "temporary nonreserved projection"
+    );
+    failures += expect_span_text(
+        child_at(child_at(statement, 1U), 0U),
+        "temporary",
+        "temporary nonreserved source"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -247,6 +247,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_token right_paren,
     struct mylite_sql_ast_node *table_options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *table_options
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -321,6 +331,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_if_not_exists_c
     struct mylite_sql_token exists_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *table_names
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_temporary_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists_clause,

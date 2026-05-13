@@ -247,6 +247,7 @@ static void destroy_database_handle(struct mylite_db *database) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
         database->session.user_transaction_active = false;
     }
+    mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
@@ -316,6 +317,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     );
     session->character_set_state_is_placeholder = true;
     session->system_variables_are_placeholder = true;
+    mylite_temporary_catalog_init(&session->temporary_catalog);
     session->connection_id = allocate_session_connection_id();
     session->previous_row_count = -1;
     session->found_rows = 1U;

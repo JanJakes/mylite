@@ -55,6 +55,7 @@ static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_pi_function(void);
+static int test_rand_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
@@ -260,6 +261,7 @@ int main(void) {
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
     failures += test_pi_function();
+    failures += test_rand_function();
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
@@ -2889,6 +2891,87 @@ static int test_pi_function(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare pi identifier");
     failures += expect_span_text(first_expression, "PI", "bare pi span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_rand_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT RAND(), Rand(), rand() FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_RAND_FUNCTION, "rand function");
+    failures += expect_span_text(first_expression, "RAND()", "rand function span");
+    failures += expect_child_count(first_expression, 0U, "rand argument count");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_RAND_FUNCTION, "mixed rand function");
+    failures += expect_span_text(second_expression, "Rand()", "mixed rand span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_RAND_FUNCTION, "lower rand function");
+    failures += expect_span_text(third_expression, "rand()", "lower rand span");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "rand from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT RAND (), (RAND());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_RAND_FUNCTION, "spaced rand");
+    failures += expect_span_text(first_expression, "RAND ()", "spaced rand span");
+    failures += expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped rand");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_RAND_FUNCTION, "rand child");
+    failures += expect_span_text(parenthesized, "(RAND())", "parenthesized rand span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT RAND(1), RAND(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED,
+        "rand seed unsupported"
+    );
+    failures += expect_child_count(first_expression, 1U, "rand seed argument count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR,
+        "rand argument count error"
+    );
+    failures += expect_child_count(second_expression, 1U, "rand count marker child count");
+    failures += expect_child_count(child_at(second_expression, 0U), 1U, "rand extra arguments");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO RAND(), RAND(1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    first_expression = child_at(child_at(statement, 0U), 0U);
+    second_expression = child_at(child_at(statement, 0U), 1U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_RAND_FUNCTION, "do rand function");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED, "do rand seed");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE rand (rand INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "rand identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT RAND;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare rand identifier");
+    failures += expect_span_text(first_expression, "RAND", "bare rand span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

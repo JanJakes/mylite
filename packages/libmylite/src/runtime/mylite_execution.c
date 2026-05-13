@@ -228,6 +228,8 @@ enum {
     base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
+    rand_double_value_bits = 53,
+    rand_double_discard_bits = scalar_bitwise_integer_bits - rand_double_value_bits,
     double_format_error_capacity = 80,
     float_text_max_significant_digits = 6,
     approximate_numeric_text_capacity = 48,
@@ -4924,6 +4926,12 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int rand_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static double random_unit_double(void);
 static int scalar_subquery_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -9591,6 +9599,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
@@ -11858,8 +11869,8 @@ static int execute_do_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise operators, "
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
             "predicates, limited numeric "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "ACOS()/ASIN()/ATAN()/ATAN2() "
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
+            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited FIELD(), and top-level CASE expressions"
         );
@@ -11991,8 +12002,8 @@ static int execute_select_statement(
             "scalar comparison, scalar logical, scalar IS, signed 64-bit +, binary -, and * "
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
-            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
-            "ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
+            "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
+            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
             "CAST(value AS BINARY), and DATE_ADD(... INTERVAL ... SECOND)"
         );
         return MYLITE_ERROR;
@@ -17387,6 +17398,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
@@ -31013,6 +31027,7 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         return rc;
     }
     if (!text_equals_ascii_case_insensitive(column_name, "pi") &&
+        !text_equals_ascii_case_insensitive(column_name, "rand") &&
         !text_equals_ascii_case_insensitive(column_name, "sqrt") &&
         !text_equals_ascii_case_insensitive(column_name, "degrees") &&
         !text_equals_ascii_case_insensitive(column_name, "radians") &&
@@ -31563,6 +31578,8 @@ static const char *argument_count_error_node_function_name(
         return "VERSION";
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
         return "PI";
+    case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
+        return "RAND";
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
         return "SQRT";
     case MYLITE_SQL_AST_DEGREES_ARGUMENT_COUNT_ERROR:
@@ -31669,6 +31686,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_PI_FUNCTION:
         out_cell->value = scalar_pi_text;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+        return rand_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+        set_unsupported_error(database, "RAND(seed) is not supported");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -31775,6 +31797,44 @@ static int session_scalar_value(
     default:
         return MYLITE_OK;
     }
+}
+
+static int rand_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_RAND_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 0U) {
+        set_unsupported_error(database, "RAND() supports only zero arguments");
+        return MYLITE_ERROR;
+    }
+
+    rc = format_double_text(
+        database,
+        random_unit_double(),
+        "RAND",
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->double_text;
+    }
+    return rc;
+}
+
+static double random_unit_double(void) {
+    uint64_t random_bits = 0U;
+
+    sqlite3_randomness((int)sizeof(random_bits), &random_bits);
+    random_bits >>= rand_double_discard_bits;
+    return ldexp((double)random_bits, -rand_double_value_bits);
 }
 
 static int scalar_subquery_value(
@@ -39228,6 +39288,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_PI_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {

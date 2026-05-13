@@ -740,6 +740,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"QUERY", 0U},
         {"QUICK", 0U},
         {"RADIANS", 0U},
+        {"RAND", 0U},
         {"RANDOM", 0U},
         {"RANGE", MYLITE_SQL_KEYWORD_RESERVED},
         {"RANK", MYLITE_SQL_KEYWORD_RESERVED},

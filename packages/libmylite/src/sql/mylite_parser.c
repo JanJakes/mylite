@@ -4547,6 +4547,7 @@ static bool map_keyword_token(
         {"FLOOR", MYLITE_SQL_PARSE_FLOOR},
         {"ROUND", MYLITE_SQL_PARSE_ROUND},
         {"PI", MYLITE_SQL_PARSE_PI},
+        {"RAND", MYLITE_SQL_PARSE_RAND},
         {"SQRT", MYLITE_SQL_PARSE_SQRT},
         {"DEGREES", MYLITE_SQL_PARSE_DEGREES},
         {"RADIANS", MYLITE_SQL_PARSE_RADIANS},

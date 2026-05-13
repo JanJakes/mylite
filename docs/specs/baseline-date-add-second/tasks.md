@@ -7,13 +7,13 @@
   `DO`, and deferred wider forms.
 - [x] Write an independently authored feature spec with MyLite Lemon snippets.
 - [x] Add MySQL 8.4.9 expectation artifact.
-- [ ] Add parser/AST support for the narrow `DATE_ADD` interval-second shape.
-- [ ] Implement MyLite-owned scalar evaluator support without SQLite fork
+- [x] Add parser/AST support for the narrow `DATE_ADD` interval-second shape.
+- [x] Implement MyLite-owned scalar evaluator support without SQLite fork
   changes.
-- [ ] Add fast C parser/runtime tests and CTest registration.
+- [x] Add fast C parser/runtime tests and CTest registration.
 - [x] Update compatibility docs with limited wording.
-- [ ] Run MySQL expectation script, focused CTests, `cmake --build --preset
+- [x] Run MySQL expectation script, focused CTests, `cmake --build --preset
   dev`, and `cmake --workflow --preset check`.
-- [ ] Review final diff for MySQL evidence, scope control, SQL-mode behavior,
+- [x] Review final diff for MySQL evidence, scope control, SQL-mode behavior,
   temporal arithmetic correctness, no catalog/storage mutation, cleanup, and
   docs accuracy.

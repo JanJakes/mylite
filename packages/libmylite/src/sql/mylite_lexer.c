@@ -386,6 +386,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"DATAFILE", 0U},
         {"DATE", 0U},
         {"DATETIME", 0U},
+        {"DATE_ADD", 0U},
         {"DAY", 0U},
         {"DAY_HOUR", MYLITE_SQL_KEYWORD_RESERVED},
         {"DAY_MICROSECOND", MYLITE_SQL_KEYWORD_RESERVED},

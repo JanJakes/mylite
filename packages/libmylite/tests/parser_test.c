@@ -44,6 +44,7 @@ static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
 static int test_cast_binary_expression(void);
+static int test_date_add_second_function(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
@@ -130,6 +131,11 @@ static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
 static int parse_sql(
+    const char *sql,
+    enum mylite_sql_parse_status expected_status,
+    struct mylite_sql_parse_result *out_result
+);
+static int parse_sql_with_ignore_space(
     const char *sql,
     enum mylite_sql_parse_status expected_status,
     struct mylite_sql_parse_result *out_result
@@ -242,6 +248,7 @@ int main(void) {
     failures += test_coalesce_function();
     failures += test_concat_function();
     failures += test_cast_binary_expression();
+    failures += test_date_add_second_function();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
     failures += test_isnull_function();
@@ -1837,6 +1844,129 @@ static int test_cast_binary_expression(void) {
         parse_sql("CREATE TABLE t (cast INT); SELECT cast FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("CREATE TABLE t (binary INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_date_add_second_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+        "Date_Add('2008-01-02', INTERVAL -1 SECOND) AS shifted FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_DATE_ADD_FUNCTION, "date_add function");
+    failures += expect_span_text(
+        first_expression,
+        "DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "date_add span"
+    );
+    failures += expect_child_count(first_expression, 2U, "date_add child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date_add date argument"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "date_add interval argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_DATE_ADD_FUNCTION,
+        "mixed-case date_add function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed date_add interval argument"
+    );
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "date_add dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO DATE_ADD(NULL, INTERVAL +0 SECOND), DATE_ADD('2024-02-29', INTERVAL NULL SECOND);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "date_add do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_DATE_ADD_FUNCTION,
+        "do date_add function"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_DATE_ADD_FUNCTION,
+        "do date_add null interval"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE date_add_keywords (date_add INT, second INT); "
+        "SELECT date_add, second FROM date_add_keywords;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE date_add(id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE date_add (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATE_ADD ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "SELECT DATE_ADD ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE date_add (id INT);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE `date_add` (id INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("CREATE TABLE t (second INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATE_ADD('2008-01-02', INTERVAL 1 MINUTE);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE interval (interval INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -14676,6 +14806,34 @@ static int parse_sql(
             .input = sql,
             .length = strlen(sql),
             .modes = 0U,
+        },
+        out_result
+    );
+
+    if (actual != expected_status) {
+        fprintf(
+            stderr,
+            "parse '%s': expected %s, got %s\n",
+            sql,
+            mylite_sql_parse_status_name(expected_status),
+            mylite_sql_parse_status_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int parse_sql_with_ignore_space(
+    const char *sql,
+    enum mylite_sql_parse_status expected_status,
+    struct mylite_sql_parse_result *out_result
+) {
+    enum mylite_sql_parse_status actual = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = sql,
+            .length = strlen(sql),
+            .modes = MYLITE_SQL_MODE_IGNORE_SPACE,
         },
         out_result
     );

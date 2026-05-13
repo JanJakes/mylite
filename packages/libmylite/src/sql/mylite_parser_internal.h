@@ -9,6 +9,7 @@
 
 struct mylite_sql_parser_state {
     struct mylite_sql_parse_result *result;
+    unsigned int modes;
     bool accepted;
 };
 
@@ -213,6 +214,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren,
     struct mylite_sql_ast_node *table_options
@@ -870,6 +872,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_ignore_space_sensitive_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_identifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -977,6 +983,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
     struct mylite_sql_token left_paren,
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_ast_node *argument,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *first_argument,
+    struct mylite_sql_ast_node *second_argument,
     struct mylite_sql_token right_paren
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_one_argument_function(

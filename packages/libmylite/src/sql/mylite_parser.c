@@ -58,6 +58,15 @@ static bool previous_token_allows_select_noop_modifier(int previous_parser_token
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static char ascii_upper(unsigned char byte);
 static bool is_parse_ok(const struct mylite_sql_parser_state *state);
+static bool parser_sql_mode_has(
+    const struct mylite_sql_parser_state *state,
+    enum mylite_sql_mode mode
+);
+static bool create_table_name_is_no_space_function_identifier(
+    const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *table_name,
+    const struct mylite_sql_token *left_paren
+);
 static void set_state_status(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_parse_status status
@@ -72,6 +81,11 @@ static struct mylite_sql_source_span span_join(
     struct mylite_sql_source_span left,
     struct mylite_sql_source_span right
 );
+static const struct mylite_sql_ast_node *last_identifier_component(
+    const struct mylite_sql_ast_node *identifier
+);
+static bool span_text_equals(const struct mylite_sql_source_span *span, const char *text);
+static bool span_text_matches_ignore_space_function_name(const struct mylite_sql_source_span *span);
 static int scan_column_attribute_positions(
     struct mylite_sql_parser_state *state,
     const struct mylite_sql_ast_node *attributes,
@@ -113,6 +127,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     state = (struct mylite_sql_parser_state){
         .result = out_result,
+        .modes = config.modes,
         .accepted = false,
     };
 
@@ -631,14 +646,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren,
     struct mylite_sql_ast_node *table_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&create_token), span_from_token(&right_paren));
-    struct mylite_sql_ast_node *statement =
-        make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (create_table_name_is_no_space_function_identifier(state, table_name, &left_paren)) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
     if (statement == NULL) {
         return NULL;
     }
@@ -3082,6 +3104,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     return make_node(state, MYLITE_SQL_AST_IDENTIFIER, span_from_token(&token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_ignore_space_sensitive_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    if (parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE)) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, token);
+        return NULL;
+    }
+    return mylite_sql_parser_make_identifier(state, token);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_identifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -3388,7 +3421,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_zero_argument_functi
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_token right_paren
 ) {
-    if (left_paren.offset != function_token.offset + function_token.length) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
         mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
         return NULL;
     }
@@ -3409,7 +3443,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
     struct mylite_sql_ast_node *argument,
     struct mylite_sql_token right_paren
 ) {
-    if (left_paren.offset != function_token.offset + function_token.length) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
         mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
         return NULL;
     }
@@ -3419,6 +3454,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
         function_token,
         function_kind,
         argument,
+        right_paren
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *first_argument,
+    struct mylite_sql_ast_node *second_argument,
+    struct mylite_sql_token right_paren
+) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_two_argument_function(
+        state,
+        function_token,
+        function_kind,
+        first_argument,
+        second_argument,
         right_paren
     );
 }
@@ -4531,6 +4591,7 @@ static bool map_keyword_token(
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
         {"DATABASES", MYLITE_SQL_PARSE_DATABASES},
+        {"DATE_ADD", MYLITE_SQL_PARSE_DATE_ADD},
         {"DROP", MYLITE_SQL_PARSE_DROP},
         {"TRUNCATE", MYLITE_SQL_PARSE_TRUNCATE},
         {"SHOW", MYLITE_SQL_PARSE_SHOW},
@@ -4615,6 +4676,8 @@ static bool map_keyword_token(
         {"REAL", MYLITE_SQL_PARSE_REAL},
         {"DATE", MYLITE_SQL_PARSE_DATE},
         {"DATETIME", MYLITE_SQL_PARSE_DATETIME},
+        {"INTERVAL", MYLITE_SQL_PARSE_INTERVAL},
+        {"SECOND", MYLITE_SQL_PARSE_SECOND},
         {"TIME", MYLITE_SQL_PARSE_TIME},
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
@@ -4835,6 +4898,37 @@ static bool is_parse_ok(const struct mylite_sql_parser_state *state) {
     return false;
 }
 
+static bool parser_sql_mode_has(
+    const struct mylite_sql_parser_state *state,
+    enum mylite_sql_mode mode
+) {
+    if (state == NULL) {
+        return false;
+    }
+    return (state->modes & (unsigned int)mode) != 0U;
+}
+
+static bool create_table_name_is_no_space_function_identifier(
+    const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *table_name,
+    const struct mylite_sql_token *left_paren
+) {
+    const struct mylite_sql_ast_node *last_identifier = NULL;
+
+    if (parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) || table_name == NULL ||
+        left_paren == NULL) {
+        return false;
+    }
+    last_identifier = last_identifier_component(table_name);
+    if (last_identifier == NULL) {
+        return false;
+    }
+    if (left_paren->offset != last_identifier->span.offset + last_identifier->span.length) {
+        return false;
+    }
+    return span_text_matches_ignore_space_function_name(&last_identifier->span);
+}
+
 static void set_state_status(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_parse_status status
@@ -4900,4 +4994,59 @@ static struct mylite_sql_source_span span_join(
 
     start.length = end - start.offset;
     return start;
+}
+
+static const struct mylite_sql_ast_node *last_identifier_component(
+    const struct mylite_sql_ast_node *identifier
+) {
+    const struct mylite_sql_ast_node *current = identifier;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        current = current->last_child;
+    }
+    if (current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return current;
+    }
+    return NULL;
+}
+
+static bool span_text_equals(const struct mylite_sql_source_span *span, const char *text) {
+    size_t length = strlen(text);
+
+    if (span == NULL || span->text == NULL || span->length != length) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < length; ++index) {
+        if (ascii_upper((unsigned char)span->text[index]) != text[index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool span_text_matches_ignore_space_function_name(
+    const struct mylite_sql_source_span *span
+) {
+    static const char *const function_names[] = {
+        "BIT_AND",
+        "BIT_OR",
+        "BIT_XOR",
+        "CAST",
+        "COUNT",
+        "DATE_ADD",
+        "MAX",
+        "MIN",
+        "SESSION_USER",
+        "SUM",
+        "SYSTEM_USER",
+    };
+
+    for (size_t index = 0U; index < sizeof(function_names) / sizeof(function_names[0]); ++index) {
+        if (span_text_equals(span, function_names[index])) {
+            return true;
+        }
+    }
+    return false;
 }

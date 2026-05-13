@@ -141,6 +141,7 @@ enum {
     datetime_maximum_hour = 23,
     datetime_minimum_minute_or_second = 0,
     datetime_maximum_minute_or_second = 59,
+    datetime_hours_per_day = 24,
     date_decimal_base = 10,
     date_minimum_year = 1000,
     date_maximum_year = 9999,
@@ -152,6 +153,20 @@ enum {
     date_leap_year_quadricentennial = 400,
     date_leap_year_century = 100,
     date_leap_year_quadrennial = 4,
+    date_add_march_year_shift_month = date_february,
+    date_add_march_based_month_switch = 10,
+    date_add_month_shift = 3,
+    date_add_march_based_months_after_february = 9,
+    date_add_month_scale = 153,
+    date_add_month_bias = 2,
+    date_add_month_divisor = 5,
+    date_add_days_per_non_leap_year = 365,
+    date_add_era_year_offset = date_leap_year_quadricentennial - 1,
+    date_add_leap_cycle_four_year_days = 1460,
+    date_add_leap_cycle_century_days = 36524,
+    date_add_days_per_era = 146097,
+    date_add_days_per_era_offset = date_add_days_per_era - 1,
+    date_add_unix_epoch_day_offset = 719468,
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
     show_columns_extra_column = 5,
@@ -2361,9 +2376,24 @@ struct session_scalar_cell {
     char literal_text[literal_projection_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
     char double_text[double_text_capacity];
+    char datetime_text[datetime_text_length + 1U];
     size_t staged_division_by_zero_warning_count;
     bool has_staged_truncated_decimal_warning;
     char staged_truncated_decimal_text[integer_text_capacity];
+};
+
+struct date_add_datetime_parts {
+    int64_t year;
+    uint32_t month;
+    uint32_t day;
+    uint32_t hour;
+    uint32_t minute;
+    uint32_t second;
+};
+
+struct date_add_day_second {
+    int64_t days;
+    int64_t day_seconds;
 };
 
 struct scalar_arithmetic_value {
@@ -5066,6 +5096,58 @@ static int cast_binary_input_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int date_add_second_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int date_add_second_temporal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct date_add_datetime_parts *out_datetime,
+    bool *out_is_null
+);
+static int date_add_second_interval_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_interval,
+    bool *out_is_null
+);
+static int date_add_second_apply(
+    struct mylite_db *database,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_seconds,
+    struct date_add_datetime_parts *out_datetime
+);
+static int date_add_second_format(
+    struct mylite_db *database,
+    const struct date_add_datetime_parts *datetime,
+    struct session_scalar_cell *out_cell
+);
+static bool date_add_parse_datetime_text(
+    const char *text,
+    size_t text_length,
+    struct date_add_datetime_parts *out_datetime
+);
+static bool date_add_signed_integer_literal(
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_out_of_range
+);
+static int date_add_set_unknown_identifier_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static bool date_add_copy_identifier_span_text(
+    const struct mylite_sql_source_span *span,
+    char *destination,
+    size_t destination_size
+);
+static bool date_add_checked_add_int64(int64_t left, int64_t right, int64_t *out_value);
+static int64_t date_add_seconds_per_day(void);
+static int64_t date_add_days_from_datetime(const struct date_add_datetime_parts *datetime);
+static void date_add_civil_from_days(int64_t days, struct date_add_datetime_parts *out_datetime);
+static struct date_add_day_second date_add_floor_divmod_seconds(int64_t total_seconds);
 static int evaluate_bit_count_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -5813,6 +5895,7 @@ static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expr
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_arithmetic_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -9271,6 +9354,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -10170,6 +10254,9 @@ static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session
     }
     if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
         modes |= MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES;
+    }
+    if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_IGNORE_SPACE)) {
+        modes |= MYLITE_SQL_MODE_IGNORE_SPACE;
     }
     return modes;
 }
@@ -11643,8 +11730,8 @@ static int execute_do_statement(
             "predicates, limited numeric "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
             "ACOS()/ASIN()/ATAN()/ATAN2() "
-            "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), and top-level "
-            "CASE expressions"
+            "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), limited "
+            "DATE_ADD(... INTERVAL ... SECOND), and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -11776,7 +11863,7 @@ static int execute_select_statement(
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/SQRT()/DEGREES()/RADIANS()/"
             "ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
-            "CAST(value AS BINARY)"
+            "CAST(value AS BINARY), and DATE_ADD(... INTERVAL ... SECOND)"
         );
         return MYLITE_ERROR;
     }
@@ -17061,6 +17148,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -31526,6 +31614,8 @@ static int session_scalar_value(
         return bit_count_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return cast_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+        return date_add_second_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
         return if_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IFNULL_FUNCTION:
@@ -34126,6 +34216,526 @@ static int cast_binary_input_value(
         "CAST AS BINARY supports only string, integer, boolean, and NULL values"
     );
     return MYLITE_ERROR;
+}
+
+static int date_add_second_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct date_add_datetime_parts input = {0};
+    struct date_add_datetime_parts output = {0};
+    int64_t interval_seconds = 0;
+    bool temporal_is_null = false;
+    bool interval_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_DATE_ADD_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() supports only DATE_ADD(date, INTERVAL value SECOND)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = date_add_second_temporal_argument(
+        database,
+        child_at(expression, 0U),
+        &input,
+        &temporal_is_null
+    );
+    if (rc != MYLITE_OK || temporal_is_null) {
+        return rc;
+    }
+    rc = date_add_second_interval_argument(
+        database,
+        child_at(expression, 1U),
+        &interval_seconds,
+        &interval_is_null
+    );
+    if (rc != MYLITE_OK || interval_is_null) {
+        return rc;
+    }
+    rc = date_add_second_apply(database, &input, interval_seconds, &output);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return date_add_second_format(database, &output, out_cell);
+}
+
+static int date_add_second_temporal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct date_add_datetime_parts *out_datetime,
+    bool *out_is_null
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_datetime == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_datetime = (struct date_add_datetime_parts){0};
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() supports only date or datetime string literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() supports only date or datetime string literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        "DATE_ADD() supports only date or datetime string literals and NULL",
+        "DATE_ADD() date literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && memchr(text, '\0', text_length) != NULL) {
+        set_unsupported_error(database, "DATE_ADD() date literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !date_add_parse_datetime_text(text, text_length, out_datetime)) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() supports only canonical YYYY-MM-DD or YYYY-MM-DD HH:MM:SS values"
+        );
+        rc = MYLITE_ERROR;
+    }
+    free(text);
+    return rc;
+}
+
+static int date_add_second_interval_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_interval,
+    bool *out_is_null
+) {
+    bool out_of_range = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_interval == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_interval = 0;
+    *out_is_null = false;
+
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (!date_add_signed_integer_literal(expression, out_interval, &out_of_range)) {
+        if (out_of_range) {
+            set_unsupported_error(
+                database,
+                "DATE_ADD() INTERVAL SECOND literals must fit the signed 64-bit range"
+            );
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(
+            database,
+            "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int date_add_second_apply(
+    struct mylite_db *database,
+    const struct date_add_datetime_parts *input,
+    int64_t interval_seconds,
+    struct date_add_datetime_parts *out_datetime
+) {
+    const int64_t seconds_per_day = date_add_seconds_per_day();
+    struct date_add_day_second result_day_second = {0};
+    int64_t days = 0;
+    int64_t day_seconds = 0;
+    int64_t base_seconds = 0;
+    int64_t result_seconds = 0;
+    int64_t result_day_seconds = 0;
+
+    if (input == NULL || out_datetime == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_datetime = (struct date_add_datetime_parts){0};
+
+    days = date_add_days_from_datetime(input);
+    day_seconds = ((int64_t)input->hour * (int64_t)time_second_per_hour) +
+                  ((int64_t)input->minute * (int64_t)time_second_per_minute) +
+                  (int64_t)input->second;
+    base_seconds = (days * seconds_per_day) + day_seconds;
+    if (!date_add_checked_add_int64(base_seconds, interval_seconds, &result_seconds)) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() result is outside the supported datetime range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    result_day_second = date_add_floor_divmod_seconds(result_seconds);
+    date_add_civil_from_days(result_day_second.days, out_datetime);
+    if (out_datetime->year < date_minimum_year || out_datetime->year > date_maximum_year) {
+        set_unsupported_error(
+            database,
+            "DATE_ADD() result is outside the supported datetime range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    result_day_seconds = result_day_second.day_seconds;
+    out_datetime->hour = (uint32_t)(result_day_seconds / time_second_per_hour);
+    result_day_seconds %= time_second_per_hour;
+    out_datetime->minute = (uint32_t)(result_day_seconds / time_second_per_minute);
+    out_datetime->second = (uint32_t)(result_day_seconds % time_second_per_minute);
+    return MYLITE_OK;
+}
+
+static int date_add_second_format(
+    struct mylite_db *database,
+    const struct date_add_datetime_parts *datetime,
+    struct session_scalar_cell *out_cell
+) {
+    int written = 0;
+
+    if (datetime == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        out_cell->datetime_text,
+        sizeof(out_cell->datetime_text),
+        "%04" PRId64 "-%02" PRIu32 "-%02" PRIu32 " %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
+        datetime->year,
+        datetime->month,
+        datetime->day,
+        datetime->hour,
+        datetime->minute,
+        datetime->second
+    );
+    if (written != datetime_text_length) {
+        set_runtime_error(database, "failed to format DATE_ADD() result");
+        return MYLITE_ERROR;
+    }
+
+    out_cell->value = out_cell->datetime_text;
+    return MYLITE_OK;
+}
+
+static bool date_add_parse_datetime_text(
+    const char *text,
+    size_t text_length,
+    struct date_add_datetime_parts *out_datetime
+) {
+    uint32_t year = 0U;
+
+    if (out_datetime == NULL) {
+        return false;
+    }
+    *out_datetime = (struct date_add_datetime_parts){0};
+    if (date_text_is_canonical_valid(text, text_length)) {
+        if (!date_component_text_to_u32(
+                text + date_year_text_offset,
+                date_year_text_length,
+                &year
+            ) ||
+            !date_component_text_to_u32(
+                text + date_month_text_offset,
+                date_month_text_length,
+                &out_datetime->month
+            ) ||
+            !date_component_text_to_u32(
+                text + date_day_text_offset,
+                date_day_text_length,
+                &out_datetime->day
+            )) {
+            return false;
+        }
+        out_datetime->year = (int64_t)year;
+        out_datetime->hour = 0U;
+        out_datetime->minute = 0U;
+        out_datetime->second = 0U;
+        return true;
+    }
+    if (!datetime_text_is_canonical_valid(text, text_length)) {
+        return false;
+    }
+    if (!date_component_text_to_u32(text + date_year_text_offset, date_year_text_length, &year) ||
+        !date_component_text_to_u32(
+            text + date_month_text_offset,
+            date_month_text_length,
+            &out_datetime->month
+        ) ||
+        !date_component_text_to_u32(
+            text + date_day_text_offset,
+            date_day_text_length,
+            &out_datetime->day
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_hour_text_offset,
+            datetime_hour_text_length,
+            &out_datetime->hour
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_minute_text_offset,
+            datetime_minute_text_length,
+            &out_datetime->minute
+        ) ||
+        !date_component_text_to_u32(
+            text + datetime_second_text_offset,
+            datetime_second_text_length,
+            &out_datetime->second
+        )) {
+        return false;
+    }
+    out_datetime->year = (int64_t)year;
+    return true;
+}
+
+static bool date_add_signed_integer_literal(
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_out_of_range
+) {
+    const uint64_t signed_negative_abs_max = 9223372036854775808ULL;
+    const struct mylite_sql_ast_node *literal = expression;
+    uint64_t magnitude = 0U;
+    bool is_negative = false;
+
+    if (out_value == NULL || out_out_of_range == NULL) {
+        return false;
+    }
+    *out_value = 0;
+    *out_out_of_range = false;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return false;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    } else {
+        literal = expression;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return false;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        *out_out_of_range = true;
+        return false;
+    }
+
+    if (is_negative) {
+        if (magnitude > signed_negative_abs_max) {
+            *out_out_of_range = true;
+            return false;
+        }
+        if (magnitude == signed_negative_abs_max) {
+            *out_value = INT64_MIN;
+        } else {
+            *out_value = -(int64_t)magnitude;
+        }
+        return true;
+    }
+    if (magnitude > (uint64_t)INT64_MAX) {
+        *out_out_of_range = true;
+        return false;
+    }
+    *out_value = (int64_t)magnitude;
+    return true;
+}
+
+static int date_add_set_unknown_identifier_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+    if (expression == NULL ||
+        !date_add_copy_identifier_span_text(&expression->span, column_name, sizeof(column_name))) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    set_unknown_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+static bool date_add_copy_identifier_span_text(
+    const struct mylite_sql_source_span *span,
+    char *destination,
+    size_t destination_size
+) {
+    const char *source = NULL;
+    size_t source_size = 0U;
+    size_t destination_index = 0U;
+
+    if (span == NULL || span->text == NULL || span->length == 0U || destination == NULL ||
+        destination_size == 0U) {
+        return false;
+    }
+
+    source = span->text;
+    source_size = span->length;
+    if (source[0] != '`' && source[0] != '"') {
+        if (source_size >= destination_size) {
+            return false;
+        }
+        memcpy(destination, source, source_size);
+        destination[source_size] = '\0';
+        return true;
+    }
+    if (source_size < 2U || source[source_size - 1U] != source[0]) {
+        return false;
+    }
+    for (size_t source_index = 1U; source_index + 1U < source_size; ++source_index) {
+        if (destination_index + 1U >= destination_size) {
+            return false;
+        }
+        if (source[source_index] == source[0] && source[source_index + 1U] == source[0]) {
+            destination[destination_index] = source[0];
+            ++source_index;
+        } else {
+            destination[destination_index] = source[source_index];
+        }
+        ++destination_index;
+    }
+    destination[destination_index] = '\0';
+    return destination_index != 0U;
+}
+
+static bool date_add_checked_add_int64(int64_t left, int64_t right, int64_t *out_value) {
+    if (out_value == NULL) {
+        return false;
+    }
+    if ((right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right)) {
+        return false;
+    }
+    *out_value = left + right;
+    return true;
+}
+
+static int64_t date_add_seconds_per_day(void) {
+    return (int64_t)datetime_hours_per_day * (int64_t)time_second_per_hour;
+}
+
+static int64_t date_add_days_from_datetime(const struct date_add_datetime_parts *datetime) {
+    uint32_t month_prime = 0U;
+    uint32_t year_of_era = 0U;
+    uint32_t day_of_year = 0U;
+    uint32_t day_of_era = 0U;
+    int64_t era = 0;
+    int64_t year = 0;
+
+    if (datetime == NULL) {
+        return 0;
+    }
+    year = datetime->year;
+    year -= datetime->month <= date_add_march_year_shift_month ? 1 : 0;
+    era = (year >= 0 ? year : year - date_add_era_year_offset) / date_leap_year_quadricentennial;
+    year_of_era = (uint32_t)(year - (era * date_leap_year_quadricentennial));
+    month_prime = datetime->month > date_add_march_year_shift_month
+                      ? datetime->month - date_add_month_shift
+                      : datetime->month + date_add_march_based_months_after_february;
+    day_of_year =
+        (((date_add_month_scale * month_prime) + date_add_month_bias) / date_add_month_divisor) +
+        datetime->day - 1U;
+    day_of_era = (year_of_era * date_add_days_per_non_leap_year) +
+                 (year_of_era / date_leap_year_quadrennial) -
+                 (year_of_era / date_leap_year_century) + day_of_year;
+
+    return (era * date_add_days_per_era) + (int64_t)day_of_era - date_add_unix_epoch_day_offset;
+}
+
+static void date_add_civil_from_days(int64_t days, struct date_add_datetime_parts *out_datetime) {
+    uint32_t day_of_era = 0U;
+    uint32_t year_of_era = 0U;
+    uint32_t day_of_year = 0U;
+    uint32_t month_prime = 0U;
+    int64_t era = 0;
+    int64_t year = 0;
+
+    if (out_datetime == NULL) {
+        return;
+    }
+    days += date_add_unix_epoch_day_offset;
+    era = (days >= 0 ? days : days - date_add_days_per_era_offset) / date_add_days_per_era;
+    day_of_era = (uint32_t)(days - (era * date_add_days_per_era));
+    year_of_era = (day_of_era - (day_of_era / date_add_leap_cycle_four_year_days) +
+                   (day_of_era / date_add_leap_cycle_century_days) -
+                   (day_of_era / date_add_days_per_era_offset)) /
+                  date_add_days_per_non_leap_year;
+    year = (int64_t)year_of_era + (era * date_leap_year_quadricentennial);
+    day_of_year = day_of_era - ((date_add_days_per_non_leap_year * year_of_era) +
+                                (year_of_era / date_leap_year_quadrennial) -
+                                (year_of_era / date_leap_year_century));
+    month_prime =
+        ((date_add_month_divisor * day_of_year) + date_add_month_bias) / date_add_month_scale;
+
+    out_datetime->day =
+        day_of_year -
+        (((date_add_month_scale * month_prime) + date_add_month_bias) / date_add_month_divisor) +
+        1U;
+    out_datetime->month = month_prime < date_add_march_based_month_switch
+                              ? month_prime + date_add_month_shift
+                              : month_prime - date_add_march_based_months_after_february;
+    out_datetime->year = year + (out_datetime->month <= date_add_march_year_shift_month ? 1 : 0);
+}
+
+static struct date_add_day_second date_add_floor_divmod_seconds(int64_t total_seconds) {
+    const int64_t seconds_per_day = date_add_seconds_per_day();
+    struct date_add_day_second result = {0};
+
+    result.days = total_seconds / seconds_per_day;
+    result.day_seconds = total_seconds % seconds_per_day;
+
+    if (result.day_seconds < 0) {
+        result.day_seconds += seconds_per_day;
+        --result.days;
+    }
+    return result;
 }
 
 static int evaluate_bit_count_operand(
@@ -37357,6 +37967,15 @@ static void copy_session_scalar_cell(
         destination->value = destination->literal_text;
         return;
     }
+    if (source->value == source->datetime_text) {
+        memcpy(
+            destination->datetime_text,
+            source->datetime_text,
+            sizeof(destination->datetime_text)
+        );
+        destination->value = destination->datetime_text;
+        return;
+    }
 
     destination->value = source->value;
 }
@@ -38816,6 +39435,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_cast_binary_projection_expression(expression)) {
         return true;
     }
+    if (is_date_add_second_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_logical_projection_expression(expression)) {
         return true;
     }
@@ -39010,6 +39632,18 @@ static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_nod
         return false;
     }
     return mylite_sql_ast_node_child_count(expression) == 1U;
+}
+
+static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_DATE_ADD_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
 }
 
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -39440,6 +40074,7 @@ static bool is_scalar_value_projection_attempt_expression(
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:

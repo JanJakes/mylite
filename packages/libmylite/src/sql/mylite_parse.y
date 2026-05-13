@@ -355,9 +355,9 @@ set_system_variable_value(A) ::= STRING(T). {
 }
 
 create_table_statement(A) ::=
-    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN(P)
     create_table_item_list(L) RPAREN(R) table_option_list_opt(O). {
-    A = mylite_sql_parser_make_create_table_statement(state, C, E, T, L, R, O);
+    A = mylite_sql_parser_make_create_table_statement(state, C, E, T, P, L, R, O);
 }
 create_table_like_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LIKE table_name(S). {
@@ -1802,6 +1802,10 @@ expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
 expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
+expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, V, I, R);
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
@@ -2526,7 +2530,10 @@ identifier(A) ::= CONCAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CAST(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= DATE_ADD(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -2538,10 +2545,10 @@ identifier(A) ::= USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SESSION_USER(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= SYSTEM_USER(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BOOL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -2565,16 +2572,16 @@ identifier(A) ::= END(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COUNT(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= MIN(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= MAX(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= SUM(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= AVG(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -2631,13 +2638,13 @@ identifier(A) ::= ROUND(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= BIT_AND(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_OR(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_XOR(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_COUNT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -2739,6 +2746,9 @@ identifier(A) ::= SERIAL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SECOND(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATETIME(T). {

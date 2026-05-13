@@ -95,6 +95,9 @@ runtime probes for this feature. Observed behavior that shapes this slice:
 - `ALTER TABLE ... ADD y YEAR NOT NULL` on a non-empty table backfills existing
   rows with `0000` and records no warnings; adding a nullable `YEAR` backfills
   `NULL`.
+- `ALTER TABLE ... ALTER [COLUMN] y SET DEFAULT value` accepts the same
+  non-expression `YEAR` default literal subset as column definitions and updates
+  future omitted-column materialization without changing existing rows.
 - MySQL accepts nonunique and unique secondary indexes on `YEAR`; index
   metadata renders `year` descriptors while comparison and ordering use the
   represented year value.
@@ -352,8 +355,11 @@ for that column still follows the ordinary no-default `NOT NULL` diagnostics.
 year text without quotes. `SHOW CREATE TABLE` renders explicit defaults as
 quoted canonical year strings.
 
-`ALTER TABLE ... ALTER [COLUMN] SET DEFAULT` for `YEAR` is deferred in this
-slice even though row materialization can reuse the same conversion helpers.
+`ALTER TABLE ... ALTER [COLUMN] SET DEFAULT` for `YEAR` uses the same
+non-expression conversion rules as column definitions. It is catalog-only:
+existing rows and SQLite physical schema are unchanged, while future omitted
+values materialize from the updated descriptor default. `DROP DEFAULT` keeps the
+existing descriptor behavior shared by all column families.
 
 ## Predicates And Ordering
 

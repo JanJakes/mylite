@@ -4278,6 +4278,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_bit_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_year_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_year_type_tokens tokens
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
+    struct mylite_sql_ast_node *type = NULL;
+
+    if (tokens.end_token.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.end_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_YEAR_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_year_type(
+        type,
+        (struct mylite_sql_ast_year_type_payload){
+            .has_width = tokens.has_width,
+            .width_span = span_from_token(&tokens.width_token),
+        }
+    );
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_decimal_type_tokens tokens
@@ -4771,6 +4797,7 @@ static bool map_keyword_token(
         {"SECOND", MYLITE_SQL_PARSE_SECOND},
         {"TIME", MYLITE_SQL_PARSE_TIME},
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
+        {"YEAR", MYLITE_SQL_PARSE_YEAR},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
         {"BYTE", MYLITE_SQL_PARSE_BYTE},

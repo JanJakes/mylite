@@ -209,6 +209,17 @@ void mylite_sql_ast_node_set_bit_type(
     node->payload.bit_type = payload;
 }
 
+void mylite_sql_ast_node_set_year_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_year_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.year_type = payload;
+}
+
 void mylite_sql_ast_node_set_decimal_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_decimal_type_payload payload
@@ -478,6 +489,24 @@ struct mylite_sql_source_span mylite_sql_ast_node_bit_type_length_span(
     return node->payload.bit_type.length_span;
 }
 
+int mylite_sql_ast_node_year_type_has_width(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_YEAR_TYPE) {
+        return 0;
+    }
+
+    return node->payload.year_type.has_width;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_year_type_width_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_YEAR_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.year_type.width_span;
+}
+
 enum mylite_sql_ast_decimal_type mylite_sql_ast_node_decimal_type(
     const struct mylite_sql_ast_node *node
 ) {
@@ -664,6 +693,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "binary_string_type";
     case MYLITE_SQL_AST_BIT_TYPE:
         return "bit_type";
+    case MYLITE_SQL_AST_YEAR_TYPE:
+        return "year_type";
     case MYLITE_SQL_AST_DECIMAL_TYPE:
         return "decimal_type";
     case MYLITE_SQL_AST_APPROXIMATE_TYPE:

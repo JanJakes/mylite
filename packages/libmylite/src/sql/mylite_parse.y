@@ -2908,6 +2908,9 @@ identifier(A) ::= TIME(T). {
 identifier(A) ::= TIMESTAMP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= YEAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= DUPLICATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3063,6 +3066,9 @@ column_type(A) ::= time_type(T). {
     A = T;
 }
 column_type(A) ::= timestamp_type(T). {
+    A = T;
+}
+column_type(A) ::= year_type(T). {
     A = T;
 }
 
@@ -3474,6 +3480,26 @@ time_type(A) ::= TIME(T). {
 
 timestamp_type(A) ::= TIMESTAMP(T). {
     A = mylite_sql_parser_make_timestamp_type(state, T);
+}
+
+year_type(A) ::= YEAR(T). {
+    A = mylite_sql_parser_make_year_type(
+        state,
+        (struct mylite_sql_year_type_tokens){
+            .type_token = T,
+            .end_token = T,
+            .has_width = 0,
+        });
+}
+year_type(A) ::= YEAR(T) LPAREN INTEGER(W) RPAREN(R). {
+    A = mylite_sql_parser_make_year_type(
+        state,
+        (struct mylite_sql_year_type_tokens){
+            .type_token = T,
+            .width_token = W,
+            .end_token = R,
+            .has_width = 1,
+        });
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {

@@ -13,6 +13,7 @@ enum {
     integer_default_column_count = 5,
     decimal_column_count = 6,
     approximate_column_count = 9,
+    year_column_count = 3,
     date_column_count = 3,
     datetime_column_count = 3,
     time_column_count = 3,
@@ -85,6 +86,7 @@ static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_bit_type_statements(void);
+static int test_year_type_statements(void);
 static int test_decimal_type_statements(void);
 static int test_approximate_type_statements(void);
 static int test_date_type_statements(void);
@@ -206,6 +208,12 @@ static int expect_bit_type(
     int expected_explicit_length,
     const char *context
 );
+static int expect_year_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_width,
+    int expected_explicit_width,
+    const char *context
+);
 static int expect_decimal_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_decimal_type expected,
@@ -299,6 +307,7 @@ int main(void) {
     failures += test_char_type_statements();
     failures += test_text_type_statements();
     failures += test_bit_type_statements();
+    failures += test_year_type_statements();
     failures += test_decimal_type_statements();
     failures += test_approximate_type_statements();
     failures += test_date_type_statements();
@@ -8018,6 +8027,113 @@ static int test_bit_type_statements(void) {
     return failures;
 }
 
+static int test_year_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE year_types (y YEAR, y4 YEAR(4) NOT NULL DEFAULT '70', year INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, year_column_count, "year column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_year_type(column_type, NULL, 0, "bare year column type");
+    failures += expect_span_text(column_type, "YEAR", "bare year span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_year_type(column_type, "4", 1, "year width column type");
+    failures += expect_span_text(column_type, "YEAR(4)", "year width span");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "year width not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "year string default"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "year", "year keyword identifier");
+    failures +=
+        expect_node(child_at(column, 1U), MYLITE_SQL_AST_INTEGER_TYPE, "year identifier type");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE year_types ADD COLUMN created YEAR DEFAULT 70;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_year_type(child_at(column, 1U), NULL, 0, "alter add year");
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "alter year default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM year_types WHERE y IN ('70', 2000, NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "year in predicate");
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "year in string"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "year in integer"
+    );
+    failures += expect_literal(
+        child_at(child_at(predicate, 1U), 2U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "year in null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE year_types SET y = '69';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "year update string value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_year (y YEAR());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_year (y YEAR(-1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_year (y YEAR(1.0));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_decimal_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -15667,6 +15783,51 @@ static int expect_bit_type(
             "%s: expected BIT length %s, got %.*s\n",
             context,
             expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_year_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_width,
+    int expected_explicit_width,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+    int has_explicit_width = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_YEAR_TYPE, context) != 0) {
+        return 1;
+    }
+
+    has_explicit_width = mylite_sql_ast_node_year_type_has_width(node);
+    if (has_explicit_width != expected_explicit_width) {
+        fprintf(
+            stderr,
+            "%s: expected explicit YEAR width %d, got %d\n",
+            context,
+            expected_explicit_width,
+            has_explicit_width
+        );
+        return 1;
+    }
+    if (expected_width == NULL) {
+        return 0;
+    }
+
+    span = mylite_sql_ast_node_year_type_width_span(node);
+    if (span.text == NULL || span.length != strlen(expected_width) ||
+        strncmp(span.text, expected_width, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected YEAR width %s, got %.*s\n",
+            context,
+            expected_width,
             (int)span.length,
             span.text == NULL ? "" : span.text
         );

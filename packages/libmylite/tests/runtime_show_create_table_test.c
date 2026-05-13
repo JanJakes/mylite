@@ -454,7 +454,8 @@ static int test_show_create_descriptor_failure_paths(void) {
             .sqlstate = "42000",
             .message_part =
                 "SHOW CREATE TABLE supports only integer, BIT, string, binary string, decimal, "
-                "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP column descriptors",
+                "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP column "
+                "descriptors",
         }
     );
     failures += execute_error(

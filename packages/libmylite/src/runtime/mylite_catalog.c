@@ -5154,6 +5154,7 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
         catalog_logical_type_equals(logical_type, "TIME") ||
         catalog_logical_type_equals(logical_type, "DATETIME") ||
         catalog_logical_type_equals(logical_type, "TIMESTAMP") ||
+        catalog_logical_type_equals(logical_type, "YEAR") ||
         catalog_logical_type_equals(logical_type, "FLOAT") ||
         catalog_logical_type_equals(logical_type, "FLOAT UNSIGNED") ||
         catalog_logical_type_equals(logical_type, "DOUBLE") ||

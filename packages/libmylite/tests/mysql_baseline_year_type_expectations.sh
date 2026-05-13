@@ -191,6 +191,32 @@ expect_output \
 "WHERE ynn BETWEEN 0 AND 70;" \
     "$DATABASE"
 
+replace_expected=$(cat <<\EXPECTED
+2	0
+1	0
+1	0
+1	1970	1970	1970	1970
+2	NULL	NULL	0000	0
+3	2069	2069	2001	2001
+4	2001	2001	2001	2001
+EXPECTED
+)
+expect_output \
+    "year replace conversion and descriptor copies" \
+    "$replace_expected" \
+    "CREATE TABLE replace_t (id INT, y YEAR, ynn YEAR NOT NULL DEFAULT 1970); "\
+"REPLACE INTO replace_t VALUES (1, '70', DEFAULT), (2, NULL, 0); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"REPLACE INTO replace_t SET id = 3, y = '69', ynn = TRUE; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"CREATE TABLE replace_src (id INT, y YEAR, ynn YEAR NOT NULL DEFAULT 1970); "\
+"INSERT INTO replace_src VALUES (4, 1, 1); "\
+"REPLACE INTO replace_t (id, y, ynn) SELECT id, y, ynn FROM replace_src; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT id, IF(y IS NULL, 'NULL', y), IF(y IS NULL, 'NULL', y + 0), "\
+"ynn, ynn + 0 FROM replace_t ORDER BY id;" \
+    "$DATABASE"
+
 in_expected=$(cat <<\EXPECTED
 eq70	3,4,5
 eqs70	3,4,5
@@ -301,15 +327,26 @@ alter_expected=$(
 1	NULL	NULL
 2	NULL	NULL
 EXPECTED
+    printf '%b\n' \
+        "id\tint\tYES\t\tNULL\t" \
+        "y\tyear\tNO\t\t1970\t" \
+        "yn\tyear\tYES\t\tNULL\t"
+    cat <<\EXPECTED
+3	1970	1970
+EXPECTED
 )
 expect_output \
-    "year alter add backfills existing rows" \
+    "year alter add and set default use year descriptors" \
     "$alter_expected" \
     "CREATE TABLE alter_t (id INT); INSERT INTO alter_t VALUES (1), (2); "\
 "ALTER TABLE alter_t ADD y YEAR NOT NULL; SHOW WARNINGS; SHOW COLUMNS FROM alter_t; "\
 "SELECT id, y, y + 0 FROM alter_t ORDER BY id; "\
 "ALTER TABLE alter_t ADD yn YEAR NULL; SHOW WARNINGS; "\
-"SELECT id, IF(yn IS NULL, 'NULL', yn), yn + 0 FROM alter_t ORDER BY id;" \
+"SELECT id, IF(yn IS NULL, 'NULL', yn), yn + 0 FROM alter_t ORDER BY id; "\
+"ALTER TABLE alter_t ALTER COLUMN y SET DEFAULT '70'; "\
+"SHOW COLUMNS FROM alter_t; "\
+"INSERT INTO alter_t(id) VALUES (3); "\
+"SELECT id, y, y + 0 FROM alter_t WHERE id = 3;" \
     "$DATABASE"
 
 index_expected=$(cat <<\EXPECTED

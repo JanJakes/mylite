@@ -78,6 +78,7 @@ enum {
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
+    mysql_error_truncated_wrong_value_for_field = 1366,
     mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_found_rows_deprecated = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
@@ -108,9 +109,12 @@ enum {
     mysql_warning_sql_mode_should_be_used_with_strict = 3135,
     mysql_warning_sql_mode_pad_char_deprecated = 3090,
     mysql_warning_integer_display_width_deprecated = 1681,
+    mysql_warning_year_display_width_deprecated = 1287,
     mysql_warning_decimal_unsigned_deprecated = 1681,
+    mysql_error_invalid_year_display_width = 1818,
     mysql_error_must_have_visible_column = 4028,
     sqlite_use_nul_terminated_string = -1,
+    year_conversion_incorrect_integer = 2,
     decimal_base = 10,
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
@@ -283,6 +287,16 @@ enum {
     time_row_size_bytes = 3,
     datetime_row_size_bytes = 5,
     timestamp_row_size_bytes = 4,
+    year_row_size_bytes = 1,
+    year_text_length = 4,
+    year_minimum_normal = 1901,
+    year_maximum = 2155,
+    year_two_digit_high_max = 69,
+    year_two_digit_low_min = 70,
+    year_two_digit_max = 99,
+    year_two_digit_high_base = 2000,
+    year_two_digit_low_base = 1900,
+    year_direct_maximum = 9999,
     time_text_minimum_length = 8,
     time_text_maximum_length = 10,
     time_minute_second_suffix_length = 6,
@@ -4670,6 +4684,13 @@ static int validate_insert_select_timestamp_value(
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number
 );
+static int validate_insert_select_year_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+);
 static int validate_insert_select_integer_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -6894,6 +6915,10 @@ static int finalize_planned_column_bit_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_year_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_date_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -7064,6 +7089,11 @@ static int map_bit_type(
     const char *column_name,
     struct planned_column *out_column
 );
+static int map_year_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+);
 static int map_binary_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -7113,6 +7143,7 @@ static int map_integer_display_width(
     uint64_t *out_display_width
 );
 static int append_integer_display_width_warning(struct mylite_db *database);
+static int append_year_display_width_warning(struct mylite_db *database);
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
 static bool planned_column_is_varchar(const struct planned_column *column);
 static bool planned_column_is_char(const struct planned_column *column);
@@ -7121,6 +7152,7 @@ static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
 static bool planned_column_is_bit(const struct planned_column *column);
+static bool planned_column_is_year(const struct planned_column *column);
 static bool planned_column_is_decimal(const struct planned_column *column);
 static bool planned_column_is_approximate(const struct planned_column *column);
 static bool planned_column_is_date(const struct planned_column *column);
@@ -7150,6 +7182,7 @@ static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_bit(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_year(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_approximate(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_date(const struct mylite_catalog_column_descriptor *column);
@@ -7715,6 +7748,65 @@ static int convert_timestamp_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_year_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_year_integer_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_year_string_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_year_string_magnitude(const char *text, size_t text_length, uint32_t *out_year);
+static int convert_year_direct_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+);
+static int convert_year_direct_string(const char *text, size_t text_length, uint32_t *out_year);
+static int parse_year_value_magnitude(
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_magnitude,
+    bool *out_is_negative,
+    bool *out_parse_overflow
+);
+static bool convert_year_numeric_magnitude(
+    uint64_t magnitude,
+    bool is_negative,
+    uint32_t *out_year
+);
+static int make_year_value(
+    struct mylite_db *database,
+    uint32_t year,
+    struct planned_value *out_value
+);
+static int make_zero_year_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_zero_year_value_with_warning(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool incorrect_integer,
+    char *value_text,
+    struct planned_value *out_value
+);
+static bool year_text_is_canonical(const char *text, size_t text_length);
 static int canonicalize_date_text(
     struct mylite_db *database,
     char *text,
@@ -8395,6 +8487,17 @@ static int convert_predicate_in_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static int convert_predicate_year_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count
+);
+static bool year_in_value_list_uses_string_conversion(
+    const struct mylite_sql_ast_node *value_list,
+    size_t value_count
+);
 static int append_planned_select_predicate_node(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
@@ -8480,6 +8583,12 @@ static int convert_predicate_integer_literal(
     struct planned_value *out_value
 );
 static int convert_predicate_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_year_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
@@ -8578,6 +8687,12 @@ static int validate_update_scalar_subquery_select(
 static int convert_update_value(
     struct mylite_db *database,
     const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static int convert_update_column_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
 static int materialize_update_scalar_subquery_value(
@@ -9907,6 +10022,12 @@ static void set_incorrect_datetime_value_error(
     const char *column_name,
     size_t row_number
 );
+static void set_incorrect_integer_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+);
 static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text);
 static void set_incorrect_datetime_literal_error(
     struct mylite_db *database,
@@ -9917,6 +10038,12 @@ static int append_bad_null_warning(struct mylite_db *database, const char *colum
 static int append_no_default_warning(struct mylite_db *database, const char *column_name);
 static int append_out_of_range_warning(
     struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
+static int append_incorrect_integer_value_warning(
+    struct mylite_db *database,
+    const char *value_text,
     const char *column_name,
     size_t row_number
 );
@@ -9943,6 +10070,7 @@ static void set_bit_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
 );
+static void set_invalid_year_display_width_error(struct mylite_db *database);
 static void set_decimal_precision_too_big_error(
     struct mylite_db *database,
     const char *column_name,
@@ -10312,6 +10440,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_APPROXIMATE_TYPE:
+    case MYLITE_SQL_AST_YEAR_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
     case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_TIME_TYPE:
@@ -15834,6 +15963,9 @@ static const char *information_schema_data_type_for_descriptor(
     if (column_descriptor_is_timestamp(column)) {
         return "timestamp";
     }
+    if (column_descriptor_is_year(column)) {
+        return "year";
+    }
     if (logical_type == NULL) {
         return "";
     }
@@ -15912,7 +16044,8 @@ static const char *information_schema_numeric_precision_for_descriptor(
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
         column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return NULL;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -15956,7 +16089,7 @@ static const char *information_schema_numeric_scale_for_descriptor(
         column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
         column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
         column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column)) {
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return NULL;
     }
     return "0";
@@ -18129,7 +18262,7 @@ static int show_create_table_type_text(
         buffer,
         buffer_size,
         "SHOW CREATE TABLE supports only integer, BIT, string, binary string, decimal, "
-        "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP column descriptors",
+        "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP column descriptors",
         out_type_text
     );
 }
@@ -18226,6 +18359,10 @@ static int show_descriptor_type_text(
     }
     if (strcmp(logical_type, "TIMESTAMP") == 0) {
         *out_type_text = "timestamp";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "YEAR") == 0) {
+        *out_type_text = "year";
         return MYLITE_OK;
     }
 
@@ -18603,6 +18740,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
     case MYLITE_SQL_AST_APPROXIMATE_TYPE:
+    case MYLITE_SQL_AST_YEAR_TYPE:
     case MYLITE_SQL_AST_DATE_TYPE:
     case MYLITE_SQL_AST_DATETIME_TYPE:
     case MYLITE_SQL_AST_TIME_TYPE:
@@ -19944,7 +20082,7 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         planned_column_is_bit(column) || planned_column_is_decimal(column) ||
         planned_column_is_approximate(column) || planned_column_is_date(column) ||
         planned_column_is_time(column) || planned_column_is_datetime(column) ||
-        planned_column_is_timestamp(column)
+        planned_column_is_timestamp(column) || planned_column_is_year(column)
     ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
@@ -20219,6 +20357,7 @@ static int validate_create_table_like_source_columns(
             column_descriptor_is_bit(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
             column_descriptor_is_approximate(&columns[column_index]) ||
+            column_descriptor_is_year(&columns[column_index]) ||
             column_descriptor_is_date(&columns[column_index]) ||
             column_descriptor_is_time(&columns[column_index]) ||
             column_descriptor_is_datetime(&columns[column_index]) ||
@@ -20230,7 +20369,7 @@ static int validate_create_table_like_source_columns(
             set_unsupported_error(
                 database,
                 "CREATE TABLE LIKE supports only integer, BIT, string, binary string, decimal, "
-                "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
+                "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
             );
             return MYLITE_ERROR;
         }
@@ -20238,7 +20377,7 @@ static int validate_create_table_like_source_columns(
             database,
             &columns[column_index],
             "CREATE TABLE LIKE supports only integer, BIT, string, binary string, decimal, "
-            "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
+            "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range
         );
 
@@ -20527,6 +20666,7 @@ static int validate_create_table_select_source_columns(
             column_descriptor_is_bit(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
             column_descriptor_is_approximate(&columns[column_index]) ||
+            column_descriptor_is_year(&columns[column_index]) ||
             column_descriptor_is_date(&columns[column_index]) ||
             column_descriptor_is_time(&columns[column_index]) ||
             column_descriptor_is_datetime(&columns[column_index]) ||
@@ -20538,7 +20678,7 @@ static int validate_create_table_select_source_columns(
             set_unsupported_error(
                 database,
                 "CREATE TABLE SELECT supports only integer, BIT, string, binary string, decimal, "
-                "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
+                "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
             );
             return MYLITE_ERROR;
         }
@@ -20546,7 +20686,7 @@ static int validate_create_table_select_source_columns(
             database,
             &columns[column_index],
             "CREATE TABLE SELECT supports only integer, BIT, string, binary string, decimal, "
-            "approximate numeric, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
+            "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range
         );
         if (rc != MYLITE_OK) {
@@ -23684,9 +23824,9 @@ static int validate_alter_table_add_index_column(
     if (column_descriptor_is_char_or_varchar(column)) {
         return validate_descriptor_string_key_column(database, column);
     }
-    if (column_descriptor_is_decimal(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column)) {
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_year(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
         return MYLITE_OK;
     }
 
@@ -25873,12 +26013,14 @@ static int complete_alter_table_modify_column_plan(
         column_descriptor_is_time(&out_plan->original_column) ||
         column_descriptor_is_datetime(&out_plan->original_column) ||
         column_descriptor_is_timestamp(&out_plan->original_column) ||
+        column_descriptor_is_year(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
         planned_column_is_bit(&out_plan->column) || planned_column_is_decimal(&out_plan->column) ||
         planned_column_is_approximate(&out_plan->column) ||
         planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
         planned_column_is_datetime(&out_plan->column) ||
-        planned_column_is_timestamp(&out_plan->column)) {
+        planned_column_is_timestamp(&out_plan->column) ||
+        planned_column_is_year(&out_plan->column)) {
         set_unsupported_error(database, out_plan->integer_support_message);
         return MYLITE_ERROR;
     }
@@ -28329,6 +28471,15 @@ static int validate_insert_select_value(
             row_number
         );
     }
+    if (column_descriptor_is_year(target_column)) {
+        return validate_insert_select_year_value(
+            database,
+            statement,
+            selected_column_index,
+            target_column,
+            row_number
+        );
+    }
     if (column_descriptor_is_decimal(target_column)) {
         return validate_insert_select_decimal_value(
             database,
@@ -28410,6 +28561,9 @@ static bool insert_select_source_target_types_are_compatible(
         return (column_descriptor_is_bit(source_column) &&
                 strcmp(source_column->logical_type, target_column->logical_type) == 0) != 0;
     }
+    if (column_descriptor_is_year(target_column)) {
+        return column_descriptor_is_year(source_column);
+    }
     if (column_descriptor_is_decimal(target_column)) {
         return column_descriptor_is_decimal(source_column);
     }
@@ -28445,6 +28599,9 @@ static const char *insert_select_implicit_conversion_message(
     }
     if (column_descriptor_is_bit(target_column)) {
         return "INSERT ... SELECT does not support implicit BIT conversion";
+    }
+    if (column_descriptor_is_year(target_column)) {
+        return "INSERT ... SELECT does not support implicit YEAR conversion";
     }
     if (column_descriptor_is_decimal(target_column)) {
         return "INSERT ... SELECT does not support implicit DECIMAL conversion";
@@ -28816,6 +28973,37 @@ static int validate_insert_select_timestamp_value(
             target_column->name,
             row_number
         );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_insert_select_year_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number
+) {
+    const unsigned char *text = NULL;
+    int byte_count = 0;
+
+    if (sqlite3_column_type(statement, selected_column_index) != SQLITE_TEXT) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT does not support implicit YEAR conversion"
+        );
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_column_text(statement, selected_column_index);
+    byte_count = sqlite3_column_bytes(statement, selected_column_index);
+    if (text == NULL || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!year_text_is_canonical((const char *)text, (size_t)byte_count)) {
+        set_out_of_range_error(database, target_column->name, row_number);
         return MYLITE_ERROR;
     }
 
@@ -30667,6 +30855,416 @@ static int convert_timestamp_literal(
     set_incorrect_datetime_value_error(database, text, column->name, row_number);
     free(text);
     return MYLITE_ERROR;
+}
+
+static int convert_year_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(value_node);
+    bool is_negative = false;
+    bool parse_overflow = false;
+    uint64_t magnitude = 0U;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || column == NULL || out_value == NULL) {
+        set_unsupported_error(
+            database,
+            "YEAR values support only integer, boolean, string, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "YEAR values support only string literals",
+            "YEAR values do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return convert_year_string_value(
+            database,
+            text,
+            text_length,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    rc = parse_year_value_magnitude(literal, &magnitude, &is_negative, &parse_overflow);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "YEAR values support only integer, boolean, string, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+    if (parse_overflow) {
+        if (!ignore_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return make_zero_year_value_with_warning(
+            database,
+            column,
+            row_number,
+            false,
+            NULL,
+            out_value
+        );
+    }
+
+    return convert_year_integer_value(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_year_integer_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    uint32_t year = 0U;
+
+    if (!convert_year_numeric_magnitude(magnitude, is_negative, &year)) {
+        if (ignore_errors) {
+            return make_zero_year_value_with_warning(
+                database,
+                column,
+                row_number,
+                false,
+                NULL,
+                out_value
+            );
+        }
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    return make_year_value(database, year, out_value);
+}
+
+static int convert_year_string_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    uint32_t year = 0U;
+    int rc = convert_year_string_magnitude(text, text_length, &year);
+
+    if (rc == MYLITE_OK) {
+        free(text);
+        return make_year_value(database, year, out_value);
+    }
+    if (ignore_errors) {
+        bool incorrect_integer = rc == year_conversion_incorrect_integer;
+
+        return make_zero_year_value_with_warning(
+            database,
+            column,
+            row_number,
+            incorrect_integer,
+            text,
+            out_value
+        );
+    }
+    if (rc == year_conversion_incorrect_integer) {
+        set_incorrect_integer_value_error(database, text, column->name, row_number);
+        free(text);
+        return MYLITE_ERROR;
+    }
+
+    set_out_of_range_error(database, column->name, row_number);
+    free(text);
+    return MYLITE_ERROR;
+}
+
+static int convert_year_string_magnitude(const char *text, size_t text_length, uint32_t *out_year) {
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+
+    if (text == NULL || out_year == NULL || text_length == 0U) {
+        return year_conversion_incorrect_integer;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            return year_conversion_incorrect_integer;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (magnitude > (UINT64_MAX - digit) / decimal_base) {
+            overflow = true;
+        } else if (!overflow) {
+            magnitude = (magnitude * decimal_base) + digit;
+        }
+    }
+    if (overflow) {
+        return MYLITE_ERROR;
+    }
+    if (text_length == 1U || text_length == 2U) {
+        if (magnitude == 0U) {
+            *out_year = (uint32_t)year_two_digit_high_base;
+            return MYLITE_OK;
+        }
+        if (convert_year_numeric_magnitude(magnitude, false, out_year)) {
+            return MYLITE_OK;
+        }
+        return MYLITE_ERROR;
+    }
+    if (text_length == year_text_length) {
+        if (magnitude == 0U) {
+            *out_year = 0U;
+            return MYLITE_OK;
+        }
+        if (magnitude >= year_minimum_normal && magnitude <= year_maximum) {
+            *out_year = (uint32_t)magnitude;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int convert_year_direct_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(value_node);
+    bool is_negative = false;
+    bool parse_overflow = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL) {
+        set_unsupported_error(database, "WHERE YEAR predicates support only scalar literals");
+        return MYLITE_ERROR;
+    }
+    if (literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *text = NULL;
+        size_t text_length = 0U;
+        uint32_t represented_year = 0U;
+
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "WHERE YEAR predicates support only string literals",
+            "WHERE YEAR predicate literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = convert_year_direct_string(text, text_length, &represented_year);
+        free(text);
+        if (rc != MYLITE_OK) {
+            return make_year_value(database, 1U, out_value);
+        }
+        return make_year_value(database, represented_year, out_value);
+    }
+
+    rc = parse_year_value_magnitude(literal, &magnitude, &is_negative, &parse_overflow);
+    if (rc != MYLITE_OK || parse_overflow || is_negative) {
+        return make_year_value(database, 1U, out_value);
+    }
+    if (magnitude == 0U) {
+        return make_year_value(database, 0U, out_value);
+    }
+    if (magnitude <= year_direct_maximum) {
+        return make_year_value(database, (uint32_t)magnitude, out_value);
+    }
+    return make_year_value(database, 1U, out_value);
+}
+
+static int convert_year_direct_string(const char *text, size_t text_length, uint32_t *out_year) {
+    uint64_t magnitude = 0U;
+    bool overflow = false;
+
+    if (text == NULL || text_length == 0U || out_year == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            return MYLITE_ERROR;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (magnitude > (UINT64_MAX - digit) / decimal_base) {
+            overflow = true;
+        } else if (!overflow) {
+            magnitude = (magnitude * decimal_base) + digit;
+        }
+    }
+    if (overflow || magnitude > year_direct_maximum) {
+        return MYLITE_ERROR;
+    }
+
+    *out_year = (uint32_t)magnitude;
+    return MYLITE_OK;
+}
+
+static int parse_year_value_magnitude(
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_magnitude,
+    bool *out_is_negative,
+    bool *out_parse_overflow
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node == NULL || out_magnitude == NULL || out_is_negative == NULL ||
+        out_parse_overflow == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_magnitude = 0U;
+    *out_is_negative = false;
+    *out_parse_overflow = false;
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            *out_is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(value_node, 0U));
+    }
+    if (boolean_literal_magnitude(literal, out_magnitude)) {
+        return MYLITE_OK;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_ERROR;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, out_magnitude) != MYLITE_OK) {
+        *out_parse_overflow = true;
+    }
+    return MYLITE_OK;
+}
+
+static bool convert_year_numeric_magnitude(
+    uint64_t magnitude,
+    bool is_negative,
+    uint32_t *out_year
+) {
+    if (out_year == NULL) {
+        return false;
+    }
+    if (is_negative && magnitude != 0U) {
+        return false;
+    }
+    if (magnitude == 0U) {
+        *out_year = 0U;
+        return true;
+    }
+    if (magnitude <= year_two_digit_high_max) {
+        *out_year = (uint32_t)(year_two_digit_high_base + magnitude);
+        return true;
+    }
+    if (magnitude >= year_two_digit_low_min && magnitude <= year_two_digit_max) {
+        *out_year = (uint32_t)(year_two_digit_low_base + magnitude);
+        return true;
+    }
+    if (magnitude >= year_minimum_normal && magnitude <= year_maximum) {
+        *out_year = (uint32_t)magnitude;
+        return true;
+    }
+
+    return false;
+}
+
+static int make_year_value(
+    struct mylite_db *database,
+    uint32_t year,
+    struct planned_value *out_value
+) {
+    char text[year_text_length + 1U];
+    int written = snprintf(text, sizeof(text), "%04" PRIu32, year);
+
+    if (written != year_text_length) {
+        set_runtime_error(database, "failed to format YEAR value");
+        return MYLITE_ERROR;
+    }
+    return copy_text_value(database, text, out_value);
+}
+
+static int make_zero_year_value(struct mylite_db *database, struct planned_value *out_value) {
+    return make_year_value(database, 0U, out_value);
+}
+
+static int make_zero_year_value_with_warning(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool incorrect_integer,
+    char *value_text,
+    struct planned_value *out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (incorrect_integer) {
+        rc = append_incorrect_integer_value_warning(
+            database,
+            value_text == NULL ? "" : value_text,
+            column->name,
+            row_number
+        );
+    } else {
+        rc = append_out_of_range_warning(database, column->name, row_number);
+    }
+    free(value_text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return make_zero_year_value(database, out_value);
+}
+
+static bool year_text_is_canonical(const char *text, size_t text_length) {
+    uint32_t year = 0U;
+
+    if (convert_year_direct_string(text, text_length, &year) != MYLITE_OK) {
+        return false;
+    }
+    if (text_length != year_text_length) {
+        return false;
+    }
+    if (year == 0U || (year >= year_minimum_normal && year <= year_maximum)) {
+        return true;
+    }
+    return false;
 }
 
 static int canonicalize_datetime_text(
@@ -44516,7 +45114,7 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
-        if (planned_column_is_bit(column)) {
+        if (planned_column_is_bit(column) || planned_column_is_year(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -44534,6 +45132,9 @@ static int finalize_planned_column_default(
     }
     if (planned_column_is_bit(column)) {
         return finalize_planned_column_bit_default(database, column);
+    }
+    if (planned_column_is_year(column)) {
+        return finalize_planned_column_year_default(database, column);
     }
     if (planned_column_is_date(column)) {
         return finalize_planned_column_date_default(database, column);
@@ -44765,6 +45366,43 @@ static int finalize_planned_column_bit_default(
     if (rc == MYLITE_OK) {
         column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
     }
+    return rc;
+}
+
+static int finalize_planned_column_year_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_year_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        &value
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
     return rc;
 }
 
@@ -45573,6 +46211,9 @@ static int map_column_type(
     if (type_node->kind == MYLITE_SQL_AST_BIT_TYPE) {
         return map_bit_type(database, type_node, column_name, out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_YEAR_TYPE) {
+        return map_year_type(database, type_node, out_column);
+    }
     if (type_node->kind == MYLITE_SQL_AST_DECIMAL_TYPE) {
         return map_decimal_type(database, type_node, column_name, out_column);
     }
@@ -45967,6 +46608,37 @@ static int map_bit_type(
     return assign_bit_descriptor_type(database, out_column, length);
 }
 
+static int map_year_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+) {
+    if (mylite_sql_ast_node_year_type_has_width(type_node) != 0) {
+        struct mylite_sql_source_span width_span =
+            mylite_sql_ast_node_year_type_width_span(type_node);
+        uint64_t width = 0U;
+        int rc = parse_unsigned_integer_literal(&width_span, &width);
+
+        if (rc != MYLITE_OK || width != 4U) {
+            set_invalid_year_display_width_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = append_year_display_width_warning(database);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    snprintf(out_column->logical_type_storage, sizeof(out_column->logical_type_storage), "YEAR");
+    snprintf(out_column->physical_type_storage, sizeof(out_column->physical_type_storage), "TEXT");
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
+    return MYLITE_OK;
+}
+
 static int assign_bit_descriptor_type(
     struct mylite_db *database,
     struct planned_column *out_column,
@@ -46239,6 +46911,15 @@ static int append_integer_display_width_warning(struct mylite_db *database) {
     );
 }
 
+static int append_year_display_width_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_year_display_width_deprecated,
+        "HY000",
+        "'YEAR(4)' is deprecated and will be removed in a future release. Please use YEAR instead"
+    );
+}
+
 static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type) {
     switch (integer_type.type) {
     case MYLITE_SQL_AST_INTEGER_TYPE_NONE:
@@ -46364,6 +47045,14 @@ static bool planned_column_is_bit(const struct planned_column *column) {
         column->physical_type
     );
     return column_descriptor_is_bit(&descriptor);
+}
+
+static bool planned_column_is_year(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strcmp(column->logical_type, "YEAR") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
 static bool planned_column_is_decimal(const struct planned_column *column) {
@@ -46554,6 +47243,14 @@ static bool column_descriptor_is_bit(const struct mylite_catalog_column_descript
         return false;
     }
     return bit_width_for_logical_type(column->logical_type, &width) == MYLITE_OK;
+}
+
+static bool column_descriptor_is_year(const struct mylite_catalog_column_descriptor *column) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    return (strcmp(column->logical_type, "YEAR") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
 static bool column_descriptor_is_decimal(const struct mylite_catalog_column_descriptor *column) {
@@ -47118,6 +47815,10 @@ static int text_backed_row_size_bytes(
     }
     if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
         return decimal_row_size_bytes(&decimal_info, out_size);
+    }
+    if (strcmp(logical_type, "YEAR") == 0) {
+        *out_size = year_row_size_bytes;
+        return MYLITE_OK;
     }
     if (strcmp(logical_type, "DATE") == 0) {
         *out_size = date_row_size_bytes;
@@ -48844,6 +49545,9 @@ static int make_insert_ignore_implicit_value(
     if (column_descriptor_is_bit(column)) {
         return make_implicit_bit_value(database, column, out_value);
     }
+    if (column_descriptor_is_year(column)) {
+        return make_zero_year_value(database, out_value);
+    }
     if (column_descriptor_is_decimal(column)) {
         struct decimal_type_info info = {0};
         int rc = decimal_type_info_for_logical_type(column->logical_type, &info);
@@ -48942,6 +49646,16 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    if (column_descriptor_is_year(column)) {
+        return convert_year_literal(
             database,
             value_node,
             column,
@@ -49079,6 +49793,9 @@ static int convert_null_insert_value(
     if (column_descriptor_is_bit(column)) {
         return make_implicit_bit_value(database, column, out_value);
     }
+    if (column_descriptor_is_year(column)) {
+        return make_zero_year_value(database, out_value);
+    }
     if (column_descriptor_is_decimal(column)) {
         struct decimal_type_info info = {0};
 
@@ -49184,6 +49901,8 @@ static int materialize_dml_missing_default_value(
         return make_implicit_binary_value(database, column, out_value);
     } else if (column_descriptor_is_bit(column)) {
         return make_implicit_bit_value(database, column, out_value);
+    } else if (column_descriptor_is_year(column)) {
+        return make_zero_year_value(database, out_value);
     } else if (column_descriptor_is_decimal(column)) {
         struct decimal_type_info info = {0};
 
@@ -52998,7 +53717,7 @@ static bool row_scalar_column_descriptor_is_supported(
     if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_binary_string_family(column) || column_descriptor_is_date(column) ||
         column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column)) {
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return true;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -53011,8 +53730,8 @@ static bool row_scalar_column_descriptor_is_supported(
 
     set_unsupported_error(
         database,
-        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, and temporal "
-        "columns"
+        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, YEAR, and "
+        "temporal columns"
     );
     return false;
 }
@@ -54146,6 +54865,15 @@ static int convert_predicate_in_value_list(
         set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
         return MYLITE_ERROR;
     }
+    if (column_descriptor_is_year(column)) {
+        return convert_predicate_year_in_value_list(
+            database,
+            value_list,
+            column,
+            out_values,
+            out_value_count
+        );
+    }
     if (value_count > SIZE_MAX / sizeof(*values)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -54166,6 +54894,9 @@ static int convert_predicate_in_value_list(
         );
     }
     if (rc != MYLITE_OK) {
+        for (size_t cleanup_index = 0U; cleanup_index < value_count; ++cleanup_index) {
+            planned_value_deinit(&values[cleanup_index]);
+        }
         free(values);
         return rc;
     }
@@ -54188,6 +54919,76 @@ static int convert_predicate_in_value(
     }
 
     return convert_predicate_value(database, value_node, column, out_value);
+}
+
+static int convert_predicate_year_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count
+) {
+    struct planned_value *values = NULL;
+    size_t value_count = mylite_sql_ast_node_child_count(value_list);
+    bool uses_string_conversion =
+        year_in_value_list_uses_string_conversion(value_list, value_count);
+    int rc = MYLITE_OK;
+
+    if (value_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(value_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+            values[value_index] = (struct planned_value){.is_null = true, .integer = 0};
+        } else if (uses_string_conversion) {
+            rc = convert_predicate_year_literal(database, value_node, column, &values[value_index]);
+        } else {
+            rc = convert_year_direct_value(database, value_node, &values[value_index]);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        for (size_t cleanup_index = 0U; cleanup_index < value_count; ++cleanup_index) {
+            planned_value_deinit(&values[cleanup_index]);
+        }
+        free(values);
+        return rc;
+    }
+
+    *out_values = values;
+    *out_value_count = value_count;
+    return MYLITE_OK;
+}
+
+static bool year_in_value_list_uses_string_conversion(
+    const struct mylite_sql_ast_node *value_list,
+    size_t value_count
+) {
+    if (value_count == 1U) {
+        return true;
+    }
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node =
+            unwrap_parenthesized_expression(child_at(value_list, value_index));
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+            continue;
+        }
+        if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int append_planned_select_predicate_node(
@@ -54489,6 +55290,9 @@ static int convert_predicate_value(
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(database, value_node, column, 1U, false, out_value);
     }
+    if (column_descriptor_is_year(column)) {
+        return convert_predicate_year_literal(database, value_node, column, out_value);
+    }
     if (column_descriptor_is_date(column)) {
         return convert_predicate_date_literal(database, value_node, column, out_value);
     }
@@ -54502,6 +55306,15 @@ static int convert_predicate_value(
         return convert_predicate_timestamp_literal(database, value_node, column, out_value);
     }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_year_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    return convert_year_literal(database, value_node, column, 1U, false, out_value);
 }
 
 static int convert_predicate_string_literal(
@@ -54891,14 +55704,15 @@ static int plan_select_order(
         !column_descriptor_is_time(&out_order->column) &&
         !column_descriptor_is_datetime(&out_order->column) &&
         !column_descriptor_is_timestamp(&out_order->column) &&
+        !column_descriptor_is_year(&out_order->column) &&
         !column_descriptor_is_bit(&out_order->column)) {
         struct integer_column_range range = {0};
 
         rc = integer_range_for_column(
             database,
             &out_order->column,
-            "ORDER BY supports only integer, BIT, DATE, TIME, DATETIME, or TIMESTAMP descriptor "
-            "columns",
+            "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, or TIMESTAMP "
+            "descriptor columns",
             &range
         );
     }
@@ -55251,6 +56065,16 @@ static int convert_update_value(
         }
         return MYLITE_OK;
     }
+
+    return convert_update_column_value(database, value_node, column, out_value);
+}
+
+static int convert_update_column_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
     if (column_descriptor_is_char(column)) {
         return convert_char_literal(database, value_node, column, 1U, out_value);
     }
@@ -55265,6 +56089,9 @@ static int convert_update_value(
     }
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(database, value_node, column, 1U, false, out_value);
+    }
+    if (column_descriptor_is_year(column)) {
+        return convert_year_literal(database, value_node, column, 1U, false, out_value);
     }
     if (column_descriptor_is_decimal(column)) {
         return convert_decimal_literal(database, value_node, column, 1U, false, out_value);
@@ -55471,6 +56298,9 @@ static bool update_scalar_subquery_target_uses_text_storage(
     if (column_descriptor_is_timestamp(target_column)) {
         return true;
     }
+    if (column_descriptor_is_year(target_column)) {
+        return true;
+    }
     return false;
 }
 
@@ -55533,6 +56363,9 @@ static int validate_update_scalar_subquery_text_storage_value(
     }
     if (column_descriptor_is_datetime(target_column)) {
         return validate_insert_select_datetime_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_year(target_column)) {
+        return validate_insert_select_year_value(database, statement, 0, target_column, 1U);
     }
     return validate_insert_select_timestamp_value(database, statement, 0, target_column, 1U);
 }
@@ -55645,6 +56478,9 @@ static const char *update_scalar_subquery_implicit_conversion_message(
     }
     if (column_descriptor_is_timestamp(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit TIMESTAMP conversion";
+    }
+    if (column_descriptor_is_year(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit YEAR conversion";
     }
 
     return "UPDATE scalar subquery assignment does not support implicit integer conversion";
@@ -57426,6 +58262,9 @@ static int append_alter_table_add_column_default(
     }
     if (planned_column_is_bit(&plan->column)) {
         return append_alter_table_add_column_bit_zero(string, plan);
+    }
+    if (planned_column_is_year(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT '0000'");
     }
     if (planned_column_is_decimal(&plan->column)) {
         return append_alter_table_add_column_decimal_zero(database, string, plan);
@@ -63984,6 +64823,65 @@ static int append_out_of_range_warning(
     return rc;
 }
 
+static void set_incorrect_integer_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect integer value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_truncated_wrong_value_for_field,
+        "HY000",
+        message
+    );
+}
+
+static int append_incorrect_integer_value_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect integer value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_truncated_wrong_value_for_field,
+        "HY000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
 static int append_data_truncated_warning(
     struct mylite_db *database,
     const char *column_name,
@@ -64117,6 +65015,15 @@ static void set_bit_display_width_out_of_range_error(
         mysql_error_display_width_out_of_range,
         "42000",
         message
+    );
+}
+
+static void set_invalid_year_display_width_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_year_display_width,
+        "HY000",
+        "Invalid display width. Use YEAR instead."
     );
 }
 

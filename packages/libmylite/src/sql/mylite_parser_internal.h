@@ -61,6 +61,13 @@ struct mylite_sql_bit_type_tokens {
     int has_length;
 };
 
+struct mylite_sql_year_type_tokens {
+    struct mylite_sql_token type_token;
+    struct mylite_sql_token width_token;
+    struct mylite_sql_token end_token;
+    int has_width;
+};
+
 struct mylite_sql_decimal_type_tokens {
     struct mylite_sql_token type_token;
     struct mylite_sql_token precision_token;
@@ -1198,6 +1205,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
 struct mylite_sql_ast_node *mylite_sql_parser_make_bit_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_bit_type_tokens tokens
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_year_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_year_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_decimal_type(
     struct mylite_sql_parser_state *state,

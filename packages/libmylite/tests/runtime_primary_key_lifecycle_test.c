@@ -1246,14 +1246,9 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "PRIMARY KEY supports only unqualified key columns",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE cpk_string_part (a INT, b VARCHAR(10), PRIMARY KEY (a,b))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only single-column CHAR/VARCHAR keys",
-        }
+        "CREATE TABLE cpk_string_part (a INT, b VARCHAR(10), PRIMARY KEY (a,b))"
     );
     failures += execute_error(
         database,

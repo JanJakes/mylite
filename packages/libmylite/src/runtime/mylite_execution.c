@@ -4073,6 +4073,10 @@ static int alter_table_add_primary_key_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan
 );
+static int validate_alter_table_primary_key_key_length(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
 static int append_alter_table_primary_key_part(
     struct mylite_db *database,
     struct planned_alter_table_add_primary_key *plan,
@@ -6826,6 +6830,15 @@ static int validate_planned_secondary_index_key_length(
     struct mylite_db *database,
     const struct planned_create_table *plan,
     const struct planned_secondary_index *index
+);
+static int validate_create_table_primary_key_key_length(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+);
+static int planned_primary_key_part_key_bytes(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *out_key_bytes
 );
 static int parse_secondary_index_part_prefix_length(
     struct mylite_db *database,
@@ -19185,7 +19198,6 @@ static int apply_create_table_primary_key_definition(
 ) {
     const struct mylite_sql_ast_node *part_list = child_at(primary_key, 0U);
     const struct mylite_sql_ast_node *part = NULL;
-    size_t part_count = 0U;
     int rc = MYLITE_OK;
 
     if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION ||
@@ -19198,7 +19210,6 @@ static int apply_create_table_primary_key_definition(
         return MYLITE_ERROR;
     }
 
-    part_count = mylite_sql_ast_node_child_count(part_list);
     part = child_at(part_list, 0U);
     while (rc == MYLITE_OK && part != NULL) {
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -19226,13 +19237,6 @@ static int apply_create_table_primary_key_definition(
             set_duplicate_column_error(database, plan->columns[column_index].name);
             return MYLITE_ERROR;
         }
-        if (part_count != 1U && planned_column_is_char_or_varchar(&plan->columns[column_index])) {
-            set_unsupported_error(
-                database,
-                "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
-            );
-            return MYLITE_ERROR;
-        }
         if (plan->columns[column_index].nullability == MYLITE_SQL_AST_NULLABILITY_NULL ||
             (plan->columns[column_index].default_node != NULL &&
              plan->columns[column_index].default_node->kind ==
@@ -19242,6 +19246,9 @@ static int apply_create_table_primary_key_definition(
         }
         rc = mark_primary_key_column(database, plan, column_index);
         part = part->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_primary_key_key_length(database, plan);
     }
 
     return rc;
@@ -22585,6 +22592,9 @@ static int plan_alter_table_add_primary_key(
         }
         part = part->next_sibling;
     }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_primary_key_key_length(database, out_plan);
+    }
 
     primary_key_info_deinit(&existing_primary_key);
     free(columns);
@@ -22599,6 +22609,38 @@ static void planned_alter_table_add_primary_key_deinit(
     }
     free(plan->parts);
     *plan = (struct planned_alter_table_add_primary_key){0};
+}
+
+static int validate_alter_table_primary_key_key_length(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    uint64_t total = 0U;
+
+    if (plan == NULL || plan->parts == NULL || plan->part_count == 0U) {
+        set_runtime_error(database, "invalid primary-key key parts");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+        uint64_t part_bytes = 0U;
+        int rc = column_descriptor_index_part_key_bytes(database, &part->column, &part_bytes);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (total > UINT64_MAX - part_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+        total += part_bytes;
+        if (total > innodb_max_key_length_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static int append_alter_table_primary_key_part(
@@ -22621,26 +22663,10 @@ static int append_alter_table_primary_key_part(
     }
 
     if (column_descriptor_is_char_or_varchar(&columns[column_index])) {
-        if (plan->part_count != 0U) {
-            set_unsupported_error(
-                database,
-                "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
-            );
-            return MYLITE_ERROR;
-        }
         rc = validate_descriptor_string_key_column(database, &columns[column_index]);
     } else {
         struct integer_column_range range = {0};
 
-        for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
-            if (column_descriptor_is_char_or_varchar(&plan->parts[part_index].column)) {
-                set_unsupported_error(
-                    database,
-                    "PRIMARY KEY supports only single-column CHAR/VARCHAR keys"
-                );
-                return MYLITE_ERROR;
-            }
-        }
         rc = integer_range_for_column(
             database,
             &columns[column_index],
@@ -23625,6 +23651,91 @@ static int validate_loaded_index_part_list(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_create_table_primary_key_key_length(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+) {
+    uint64_t total = 0U;
+
+    if (plan == NULL || !plan->has_primary_key || plan->primary_key_part_count == 0U) {
+        set_runtime_error(database, "invalid primary-key descriptor");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < plan->primary_key_part_count; ++part_index) {
+        const struct planned_primary_key_part *part = &plan->primary_key_parts[part_index];
+        const struct planned_column *column = NULL;
+        uint64_t part_bytes = 0U;
+        int rc = MYLITE_OK;
+
+        if (part->column_index >= plan->column_count) {
+            set_runtime_error(database, "invalid primary-key key part");
+            return MYLITE_ERROR;
+        }
+        column = &plan->columns[part->column_index];
+        rc = planned_primary_key_part_key_bytes(database, column, &part_bytes);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (total > UINT64_MAX - part_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+        total += part_bytes;
+        if (total > innodb_max_key_length_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int planned_primary_key_part_key_bytes(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid primary-key key part");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "string keys support only baseline CHAR descriptors",
+            &column_length
+        );
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+    if (planned_column_is_varchar(column)) {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "string keys support only baseline VARCHAR descriptors",
+            &column_length
+        );
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
+        }
+        return rc;
+    }
+
+    return row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "PRIMARY KEY supports only integer columns",
+        out_key_bytes
+    );
 }
 
 static int add_secondary_index_from_plan(

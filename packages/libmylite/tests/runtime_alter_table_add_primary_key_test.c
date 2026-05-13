@@ -1201,15 +1201,8 @@ static int test_alter_add_primary_key_diagnostics(void) {
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE text_comp_pk (a INT, b VARCHAR(10))");
-    failures += execute_error(
-        database,
-        "ALTER TABLE text_comp_pk ADD PRIMARY KEY (a, b)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only single-column CHAR/VARCHAR keys",
-        }
-    );
+    failures +=
+        expect_alter_primary_key_ok(database, "ALTER TABLE text_comp_pk ADD PRIMARY KEY (a, b)");
     failures += expect_statement_ok(database, "CREATE TABLE qualified_pk (id INT)");
     failures += execute_error(
         database,

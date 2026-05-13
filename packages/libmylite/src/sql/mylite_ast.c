@@ -1134,6 +1134,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "bitwise_and";
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
         return "bitwise_or";
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+        return "like";
     }
 
     return "unknown";

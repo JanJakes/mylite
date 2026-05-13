@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "storage/mylite_file_format.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +16,10 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     mysql_error_parse = 1064,
-    string_row_count = 5,
+    mysql_error_unknown_column = 1054,
+    string_row_count = 8,
+    like_ab_match_count = 6,
+    like_remaining_row_count = 5,
 };
 
 struct expected_sql_error {
@@ -31,9 +36,11 @@ struct expected_query {
     const char *context;
 };
 
-static int test_string_predicate_queries(void);
-static int test_string_predicate_dml(void);
-static int test_string_predicate_diagnostics(void);
+static int test_like_predicate_queries(void);
+static int test_like_predicate_dml_persistence(void);
+static int test_like_sql_mode(void);
+static int test_like_predicate_diagnostics(void);
+static int test_independent_like_handles(void);
 static int populate_strings(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -45,10 +52,12 @@ static int open_app_database(
     char *path,
     size_t path_size
 );
+static int reopen_app_database(mylite_db **out_database, const char *path);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
+static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -61,26 +70,34 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+);
 
 int main(void) {
     int failures = 0;
 
-    failures += test_string_predicate_queries();
-    failures += test_string_predicate_dml();
-    failures += test_string_predicate_diagnostics();
+    failures += test_like_predicate_queries();
+    failures += test_like_predicate_dml_persistence();
+    failures += test_like_sql_mode();
+    failures += test_like_predicate_diagnostics();
+    failures += test_independent_like_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_string_predicate_queries(void) {
-    static const char *const varchar_equal_ids[] = {"1", "2"};
-    static const char *const char_equal_ids[] = {"1", "2", "3"};
-    static const char *const text_equal_ids[] = {"1", "2"};
-    static const char *const varchar_not_equal_ids[] = {"3", "5"};
-    static const char *const varchar_null_safe_ids[] = {"1", "2"};
-    static const char *const not_null_safe_ids[] = {"3", "4", "5"};
-    static const char *const logical_ids[] = {"1", "2", "5"};
-    static const char *const aggregate_count[] = {"2"};
+static int test_like_predicate_queries(void) {
+    static const char *const like_ab_ids[] = {"1", "2", "3", "4", "5", "6"};
+    static const char *const like_ab_single_ids[] = {"1", "2"};
+    static const char *const char_exact_ids[] = {"1", "2", "6"};
+    static const char *const escaped_underscore_ids[] = {"4"};
+    static const char *const escaped_percent_ids[] = {"5"};
+    static const char *const not_like_ab_ids[] = {"8"};
+    static const char *const aggregate_count[] = {"6"};
+    static const char *const logical_ids[] = {"1", "8"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -90,91 +107,102 @@ static int test_string_predicate_queries(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v = 'abc' ORDER BY id",
-            .values = varchar_equal_ids,
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab%' ORDER BY id",
+            .values = like_ab_ids,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "varchar equality folds ASCII case",
+            .row_count = like_ab_match_count,
+            .context = "varchar LIKE prefix folds ASCII case",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE c = 'abc' ORDER BY id",
-            .values = char_equal_ids,
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab_' ORDER BY id",
+            .values = like_ab_single_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "varchar LIKE single-character wildcard",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE c LIKE 'abc' ORDER BY id",
+            .values = char_exact_ids,
             .column_count = 1U,
             .row_count = 3U,
-            .context = "char equality uses canonical char storage",
+            .context = "char LIKE uses canonical char storage",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE t = 'abc' ORDER BY id",
-            .values = text_equal_ids,
+            .sql = "SELECT id FROM strings WHERE t LIKE 'ab%' ORDER BY id",
+            .values = like_ab_ids,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "text equality folds ASCII case",
+            .row_count = like_ab_match_count,
+            .context = "text LIKE prefix folds ASCII case",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v <> 'abc' ORDER BY id",
-            .values = varchar_not_equal_ids,
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab\\_%' ORDER BY id",
+            .values = escaped_underscore_ids,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "varchar inequality excludes nulls",
+            .row_count = 1U,
+            .context = "default LIKE backslash escapes underscore",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v != 'abc' ORDER BY id",
-            .values = varchar_not_equal_ids,
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab\\%%' ORDER BY id",
+            .values = escaped_percent_ids,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "varchar bang inequality excludes nulls",
+            .row_count = 1U,
+            .context = "default LIKE backslash escapes percent",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v <=> 'abc' ORDER BY id",
-            .values = varchar_null_safe_ids,
+            .sql = "SELECT id FROM strings WHERE v NOT LIKE 'ab%' ORDER BY id",
+            .values = not_like_ab_ids,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "varchar null-safe equality",
+            .row_count = 1U,
+            .context = "NOT LIKE excludes NULL values",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE NOT (v <=> 'abc') ORDER BY id",
-            .values = not_null_safe_ids,
+            .sql = "SELECT id FROM strings WHERE NOT (v LIKE 'ab%') ORDER BY id",
+            .values = not_like_ab_ids,
             .column_count = 1U,
-            .row_count = 3U,
-            .context = "not null-safe equality includes nulls",
+            .row_count = 1U,
+            .context = "prefix NOT over LIKE excludes NULL values",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v = 'abc' OR t = 'ab' ORDER BY id",
-            .values = logical_ids,
-            .column_count = 1U,
-            .row_count = 3U,
-            .context = "string predicates compose with logical operators",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT COUNT(*) FROM strings WHERE v = 'abc'",
+            .sql = "SELECT COUNT(*) FROM strings WHERE v LIKE 'ab%'",
             .values = aggregate_count,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "aggregate source filter string predicate",
+            .context = "aggregate source filter LIKE predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE (v LIKE 'ab%' AND id = 1) OR t LIKE 'xy' "
+                   "ORDER BY id",
+            .values = logical_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "LIKE predicates compose with logical operators",
         }
     );
 
@@ -183,34 +211,50 @@ static int test_string_predicate_queries(void) {
     return failures;
 }
 
-static int test_string_predicate_dml(void) {
+static int test_like_predicate_dml_persistence(void) {
     static const char *const after_update_rows[] = {
         "1",
-        "hit",
+        "abc",
         "2",
-        "hit",
+        "ABC",
         "3",
-        "abc  ",
+        "prefix",
         "4",
-        NULL,
+        "prefix",
         "5",
-        "ab",
+        "ab%1",
+        "6",
+        "abc  ",
+        "7",
+        NULL,
+        "8",
+        "xy",
     };
     static const char *const after_delete_rows[] = {
-        "3",
-        "abc  ",
-        "4",
-        NULL,
+        "1",
+        "abc",
+        "2",
+        "ABC",
         "5",
-        "ab",
+        "ab%1",
+        "6",
+        "abc  ",
+        "7",
+        NULL,
     };
     char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "dml", path, sizeof(path));
     failures += populate_strings(database);
-    failures += expect_dml_ok(database, "UPDATE strings SET v = 'hit' WHERE v = 'abc'", 2);
+    failures += expect_dml_ok(
+        database,
+        "UPDATE strings SET v = 'prefix' WHERE v LIKE 'abcd' OR v LIKE 'ab\\_1'",
+        2
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -218,18 +262,42 @@ static int test_string_predicate_dml(void) {
             .values = after_update_rows,
             .column_count = 2U,
             .row_count = string_row_count,
-            .context = "updated rows after string predicate",
+            .context = "updated rows after LIKE predicate",
         }
     );
-    failures += expect_dml_ok(database, "DELETE FROM strings WHERE t = 'ABC'", 2);
+    failures += expect_dml_ok(database, "DELETE FROM strings WHERE v NOT LIKE 'ab%'", 3);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, t FROM strings ORDER BY id",
+            .sql = "SELECT id, v FROM strings ORDER BY id",
             .values = after_delete_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "remaining rows after string predicate delete",
+            .row_count = like_remaining_row_count,
+            .context = "remaining rows after NOT LIKE delete",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    mylite_file_preamble_init(expected_preamble);
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "LIKE DML preserves preamble"
+    );
+
+    failures += reopen_app_database(&database, path);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM strings ORDER BY id",
+            .values = after_delete_rows,
+            .column_count = 2U,
+            .row_count = like_remaining_row_count,
+            .context = "LIKE DML persists after reopen",
         }
     );
 
@@ -238,7 +306,48 @@ static int test_string_predicate_dml(void) {
     return failures;
 }
 
-static int test_string_predicate_diagnostics(void) {
+static int test_like_sql_mode(void) {
+    static const char *const default_escape_ids[] = {"4"};
+    static const char *const no_backslash_escape_ids[] = {"9"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "sql-mode", path, sizeof(path));
+    failures += populate_strings(database);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab\\_%' ORDER BY id",
+            .values = default_escape_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "default sql_mode LIKE escape",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO strings VALUES (9, 'ab\\\\_1', 'ab\\\\_1', 'ab\\\\_1')",
+        NULL
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'", NULL);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab\\_%' ORDER BY id",
+            .values = no_backslash_escape_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_BACKSLASH_ESCAPES treats LIKE backslash as ordinary text",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_like_predicate_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -247,50 +356,68 @@ static int test_string_predicate_diagnostics(void) {
     failures += populate_strings(database);
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v > 'abc'",
+        "SELECT id FROM strings WHERE id LIKE '1%'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only =, <=>, <>, !=, and LIKE",
+            .message_part = "WHERE LIKE predicates support only string columns",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v = 1",
+        "SELECT id FROM strings WHERE missing LIKE 'a%'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only string literals",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v IN ('abc')",
+        "SELECT id FROM strings WHERE v LIKE 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE string predicates do not yet support IN",
+            .message_part = "near '1'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v BETWEEN 'a' AND 'z'",
+        "SELECT id FROM strings WHERE v LIKE DATABASE()",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE string predicates do not yet support BETWEEN",
+            .message_part = "near 'DATABASE'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v = '"
+        "SELECT id FROM strings WHERE v LIKE 'a%' ESCAPE '#'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'ESCAPE'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM strings WHERE v LIKE '"
         "\xC3"
         "\xA9"
-        "'",
+        "%'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE string predicate literals support only ASCII text",
+            .message_part = "WHERE LIKE pattern literals support only ASCII text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM strings WHERE v LIKE 'a\\0%'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE LIKE pattern literals do not support NUL bytes",
         }
     );
 
@@ -299,12 +426,54 @@ static int test_string_predicate_diagnostics(void) {
     return failures;
 }
 
+static int test_independent_like_handles(void) {
+    static const char *const left_row[] = {"left"};
+    static const char *const right_row[] = {"xy"};
+    char left_path[test_path_capacity];
+    char right_path[test_path_capacity];
+    mylite_db *left = NULL;
+    mylite_db *right = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&left, "independent-left", left_path, sizeof(left_path));
+    failures += open_app_database(&right, "independent-right", right_path, sizeof(right_path));
+    failures += populate_strings(left);
+    failures += populate_strings(right);
+    failures += expect_dml_ok(left, "UPDATE strings SET v = 'left' WHERE v LIKE 'xy'", 1);
+    failures += expect_query_values(
+        left,
+        (struct expected_query){
+            .sql = "SELECT v FROM strings WHERE id = 8",
+            .values = left_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "left handle LIKE update",
+        }
+    );
+    failures += expect_query_values(
+        right,
+        (struct expected_query){
+            .sql = "SELECT v FROM strings WHERE id = 8",
+            .values = right_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "right handle remains independent",
+        }
+    );
+
+    mylite_close(left);
+    mylite_close(right);
+    remove_related_files(left_path);
+    remove_related_files(right_path);
+    return failures;
+}
+
 static int populate_strings(mylite_db *database) {
     int failures = 0;
 
     failures += execute_ok(
         database,
-        "CREATE TABLE strings (id INT, c CHAR(5), v VARCHAR(5), t TEXT)",
+        "CREATE TABLE strings (id INT, c CHAR(5), v VARCHAR(8), t TEXT)",
         NULL
     );
     failures += execute_ok(
@@ -312,9 +481,12 @@ static int populate_strings(mylite_db *database) {
         "INSERT INTO strings VALUES "
         "(1, 'abc', 'abc', 'abc'), "
         "(2, 'ABC', 'ABC', 'ABC'), "
-        "(3, 'abc  ', 'abc  ', 'abc  '), "
-        "(4, NULL, NULL, NULL), "
-        "(5, 'ab', 'ab', 'ab')",
+        "(3, 'abcd', 'abcd', 'abcd'), "
+        "(4, 'ab_1', 'ab_1', 'ab_1'), "
+        "(5, 'ab%1', 'ab%1', 'ab%1'), "
+        "(6, 'abc  ', 'abc  ', 'abc  '), "
+        "(7, NULL, NULL, NULL), "
+        "(8, 'xy', 'xy', 'xy')",
         NULL
     );
     return failures;
@@ -421,11 +593,20 @@ static int open_app_database(
     return failures;
 }
 
+static int reopen_app_database(mylite_db **out_database, const char *path) {
+    int failures = expect_int(mylite_open(path, out_database), MYLITE_OK, "reopen app database");
+
+    if (failures == 0) {
+        failures += execute_ok(*out_database, "USE app", NULL);
+    }
+    return failures;
+}
+
 static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite-string-equality-predicates-%s-%d.mylite",
+        "/tmp/mylite-like-predicates-%s-%d.mylite",
         name,
         current_process_id()
     );
@@ -456,6 +637,34 @@ static void remove_with_suffix(const char *path, const char *suffix) {
         return;
     }
     (void)remove(related_path);
+}
+
+static int read_file_at(const char *path, long offset, void *buffer, size_t size) {
+    FILE *file = fopen(path, "rb");
+    size_t bytes_read = 0U;
+    int failures = 0;
+
+    if (file == NULL) {
+        fprintf(stderr, "%s: failed to open file\n", path);
+        return 1;
+    }
+    if (fseek(file, offset, SEEK_SET) != 0) {
+        fprintf(stderr, "%s: failed to seek file\n", path);
+        failures += 1;
+    }
+    if (failures == 0) {
+        bytes_read = fread(buffer, 1U, size, file);
+        if (bytes_read != size) {
+            fprintf(stderr, "%s: expected %zu bytes, read %zu\n", path, size, bytes_read);
+            failures += 1;
+        }
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "%s: failed to close file\n", path);
+        failures += 1;
+    }
+
+    return failures;
 }
 
 static int expect_result_value(
@@ -515,21 +724,34 @@ static int expect_text(const char *actual, const char *expected, const char *con
         return 0;
     }
     if (strcmp(actual, expected) != 0) {
-        fprintf(stderr, "%s: expected %s, got %s\n", context, expected, actual);
+        fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
         return 1;
     }
     return 0;
 }
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+    if (actual == NULL || strstr(actual, needle) == NULL) {
         fprintf(
             stderr,
-            "%s: expected message containing %s, got %s\n",
+            "%s: expected \"%s\" to contain \"%s\"\n",
             context,
-            needle == NULL ? "(null)" : needle,
-            actual == NULL ? "(null)" : actual
+            actual == NULL ? "(null)" : actual,
+            needle
         );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_bytes(
+    const unsigned char *actual,
+    const void *expected,
+    size_t size,
+    const char *context
+) {
+    if (memcmp(actual, expected, size) != 0) {
+        fprintf(stderr, "%s: byte sequence mismatch\n", context);
         return 1;
     }
     return 0;

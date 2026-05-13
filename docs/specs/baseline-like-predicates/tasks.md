@@ -6,11 +6,11 @@
   predicate subset.
 - [x] Write the independently authored feature specification.
 - [x] Add a MySQL 8.4.9 expectation script.
-- [ ] Extend parser and AST support for descriptor `LIKE` predicates.
-- [ ] Implement descriptor-driven `LIKE` / `NOT LIKE` planning and SQLite
+- [x] Extend parser and AST support for descriptor `LIKE` predicates.
+- [x] Implement descriptor-driven `LIKE` / `NOT LIKE` planning and SQLite
   predicate generation without MyLite row materialization.
-- [ ] Extend runtime tests for success, diagnostics, DML effects, SQL mode,
+- [x] Extend runtime tests for success, diagnostics, DML effects, SQL mode,
   persistence, and preamble safety.
-- [ ] Update compatibility documentation with limited wording.
-- [ ] Run the MySQL expectation script, focused CTests, and full check workflow.
-- [ ] Commit, push to `origin/main`, and run a review subagent.
+- [x] Update compatibility documentation with limited wording.
+- [x] Run the MySQL expectation script, focused CTests, and full check workflow.
+- [x] Commit, push to `origin/main`, and run a review subagent.

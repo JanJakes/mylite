@@ -11112,6 +11112,11 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id LIKE '1%';",
+            MYLITE_SQL_AST_OPERATOR_LIKE,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id = TRUE;",
             MYLITE_SQL_AST_OPERATOR_EQUAL,
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
@@ -11353,6 +11358,28 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT LIKE '1%';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not like predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "not like child"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_LIKE,
+        "not like child operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE NOT id IN (-2, 1, NULL);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -11453,6 +11480,20 @@ static int test_select_where_predicates(void) {
         child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U), 0U),
         MYLITE_SQL_AST_LITERAL_STRING,
         "string IN value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id LIKE DATABASE();",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id LIKE '1%' ESCAPE '#';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

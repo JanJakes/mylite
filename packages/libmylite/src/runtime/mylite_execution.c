@@ -780,6 +780,7 @@ struct planned_select_predicate_node {
     size_t value_count;
     size_t left_index;
     size_t right_index;
+    bool like_uses_escape;
 };
 
 struct planned_select_predicate {
@@ -8004,7 +8005,8 @@ static int plan_comparison_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
-static bool comparison_operator_is_string_equality(enum mylite_sql_ast_operator operator_kind);
+static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
+static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind);
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -8145,6 +8147,11 @@ static int convert_predicate_value(
     struct planned_value *out_value
 );
 static int convert_predicate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+);
+static int convert_predicate_string_pattern_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct planned_value *out_value
@@ -8920,6 +8927,11 @@ static int append_time_seconds_value_sql(
     const struct mylite_catalog_column_descriptor *column
 );
 static int append_select_comparison_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_like_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
@@ -51500,6 +51512,7 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -51546,20 +51559,37 @@ static int plan_comparison_predicate(
     );
 
     if (rc == MYLITE_OK) {
+        if (comparison_operator_is_like(node.operator_kind) &&
+            !column_descriptor_is_string_family(&node.column)) {
+            set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
+            return MYLITE_ERROR;
+        }
         if (column_descriptor_is_string_family(&node.column) &&
-            !comparison_operator_is_string_equality(node.operator_kind)) {
+            !comparison_operator_is_string_predicate(node.operator_kind)) {
             set_unsupported_error(
                 database,
-                "WHERE string predicates support only =, <=>, <>, and !="
+                "WHERE string predicates support only =, <=>, <>, !=, and LIKE"
             );
             return MYLITE_ERROR;
         }
-        rc = convert_predicate_value(
-            database,
-            child_at(predicate_node, 1U),
-            &node.column,
-            &node.value
-        );
+        if (comparison_operator_is_like(node.operator_kind)) {
+            node.like_uses_escape = (bool)!session_sql_mode_has(
+                &database->session,
+                MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
+            );
+            rc = convert_predicate_string_pattern_literal(
+                database,
+                child_at(predicate_node, 1U),
+                &node.value
+            );
+        } else {
+            rc = convert_predicate_value(
+                database,
+                child_at(predicate_node, 1U),
+                &node.column,
+                &node.value
+            );
+        }
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -51568,15 +51598,20 @@ static int plan_comparison_predicate(
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
 }
 
-static bool comparison_operator_is_string_equality(enum mylite_sql_ast_operator operator_kind) {
+static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
         return true;
     default:
         return false;
     }
+}
+
+static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind) {
+    return operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE;
 }
 
 static int plan_is_null_predicate(
@@ -52152,6 +52187,44 @@ static int convert_predicate_string_literal(
     if (!text_value_is_supported_string_key(text, text_length)) {
         free(text);
         set_unsupported_error(database, "WHERE string predicate literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}
+
+static int convert_predicate_string_pattern_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "WHERE LIKE predicates support only string pattern literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE LIKE predicates support only string pattern literals",
+        "WHERE LIKE pattern literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE LIKE pattern literals support only ASCII text");
         return MYLITE_ERROR;
     }
 
@@ -57215,6 +57288,12 @@ static int append_select_comparison_predicate_term_sql(
 ) {
     int rc = dynamic_string_append_char(string, ' ');
 
+    if (comparison_operator_is_like(node->operator_kind)) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_like_predicate_term_sql(string, node, next_parameter);
+        }
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
     }
@@ -57226,6 +57305,26 @@ static int append_select_comparison_predicate_term_sql(
     }
     if (rc == MYLITE_OK) {
         ++(*next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_select_like_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, "LIKE ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK && node->like_uses_escape) {
+        rc = dynamic_string_append(string, " ESCAPE '\\'");
     }
 
     return rc;
@@ -57274,6 +57373,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -57805,6 +57905,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:

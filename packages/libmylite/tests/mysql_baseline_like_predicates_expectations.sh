@@ -133,11 +133,15 @@ expect_output \
 "GROUP_CONCAT(CONCAT(id, ':', IFNULL(v, 'NULL')) ORDER BY id) FROM strings;" \
     "$DATABASE"
 
+run_mysql \
+    "INSERT INTO strings VALUES (9, 'ab\\\\_1', 'ab\\\\_1', 'ab\\\\_1');" \
+    "$DATABASE" >/dev/null
+
 expect_output \
-    "no backslash escapes disables default pattern escaping" \
-    "" \
+    "no backslash escapes treats pattern backslash as ordinary text" \
+    "9" \
     "SET sql_mode = 'NO_BACKSLASH_ESCAPES'; "\
-"SELECT IFNULL(GROUP_CONCAT(id ORDER BY id), '') FROM strings WHERE v LIKE 'ab\\_%';" \
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v LIKE 'ab\\_%';" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_like_predicates_expectations: ok"

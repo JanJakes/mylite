@@ -306,6 +306,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT = 33,
     MYLITE_SQL_AST_OPERATOR_BITWISE_AND = 34,
     MYLITE_SQL_AST_OPERATOR_BITWISE_OR = 35,
+    MYLITE_SQL_AST_OPERATOR_LIKE = 36,
 };
 
 enum mylite_sql_ast_integer_type {

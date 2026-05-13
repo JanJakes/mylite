@@ -13,7 +13,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP` | ❌ | Synonyms for NOW() |
 | `CURTIME()` | ❌ | Return current time |
 | `DATE()` | ❌ | Extract the date part of a date or datetime expression |
-| `DATE_ADD()` | ❌ | Add time values (intervals) to a date value |
+| `DATE_ADD()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_ADD(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over canonical date/datetime strings in the current storage baseline range, returning datetime text/`NULL`, with MySQL-compatible whitespace handling for the function name under `IGNORE_SPACE`; no other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `DATE_FORMAT()` | ❌ | Format date as specified |
 | `DATE_SUB()` | ❌ | Subtract a time value (interval) from a date |
 | `DATEDIFF()` | ❌ | Subtract two dates |

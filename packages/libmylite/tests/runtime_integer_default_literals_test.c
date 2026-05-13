@@ -320,6 +320,52 @@ static int test_integer_expression_defaults(void) {
     static const char *const information_schema_i[] = {"i", "(1 + 2)", "DEFAULT_GENERATED"};
     static const char *const information_schema_nul[] = {"nul", "NULL", "DEFAULT_GENERATED"};
     static const char *const alter_rows[] = {"1", "1", "2", "10", "3", NULL};
+    static const char *const ddl_path_added_rows[] = {"1", "1", "5", "2", "1", "5"};
+    static const char *const ddl_path_modified_rows[] = {"1", "1", "2", "1", "3", "20"};
+    static const char *const ddl_path_changed_rows[] = {
+        "1",
+        "1",
+        "2",
+        "1",
+        "3",
+        "20",
+        "4",
+        "13",
+    };
+    static const char *const show_added[] = {
+        "added",
+        "int",
+        "YES",
+        "",
+        "(2 + 3)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const show_modified[] = {
+        "v",
+        "int",
+        "YES",
+        "",
+        "(4 * 5)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const show_changed[] = {
+        "changed",
+        "int",
+        "YES",
+        "",
+        "(6 + 7)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const ctas_show_a[] = {
+        "a",
+        "int",
+        "YES",
+        "",
+        "(1 + 2)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const ctas_show_b[] = {"b", "int", "YES", "", NULL, ""};
+    static const char *const ctas_rows[] = {"3", "9"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -499,6 +545,105 @@ static int test_integer_expression_defaults(void) {
             .message_part = "Invalid default value for 'a'",
         }
     );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_column_ref (base INT, a INT DEFAULT (base))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_decimal_operand (a INT DEFAULT (1.2))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_float_operand (a INT DEFAULT (1e0))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_hex_operand (a INT DEFAULT (0x1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_bit_operand (a INT DEFAULT (b'1'))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_function_operand (a INT DEFAULT (ABS(-1)))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_subquery_operand (a INT DEFAULT ((SELECT 1)))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_variable_operand (a INT DEFAULT (@@sql_mode))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_cast_operand (a INT DEFAULT (CAST(1 AS BINARY)))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_boolean_operand (a INT DEFAULT (1 AND 1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_arithmetic_division (a INT DEFAULT (1 / 0))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'a'",
+        }
+    );
 
     failures += execute_statement_ok(
         database,
@@ -537,6 +682,146 @@ static int test_integer_expression_defaults(void) {
             .column_count = 2U,
             .row_count = 3U,
             .context = "ALTER SET expression defaults affect only later inserts",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE ddl_paths (id INT NOT NULL, v INT DEFAULT 1)");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO ddl_paths (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE ddl_paths ADD COLUMN added INT DEFAULT (2 + 3)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO ddl_paths (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, added FROM ddl_paths ORDER BY id",
+            .values = ddl_path_added_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "ALTER ADD expression default backfill and future insert",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ddl_paths LIKE 'added'",
+            .values = show_added,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "ALTER ADD expression default metadata",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE ddl_paths MODIFY v INT DEFAULT (4 * 5)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO ddl_paths (id) VALUES (3)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM ddl_paths ORDER BY id",
+            .values = ddl_path_modified_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "ALTER MODIFY expression default affects future rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ddl_paths LIKE 'v'",
+            .values = show_modified,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "ALTER MODIFY expression default metadata",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE ddl_paths CHANGE v changed INT DEFAULT (6 + 7)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO ddl_paths (id) VALUES (4)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, changed FROM ddl_paths ORDER BY id",
+            .values = ddl_path_changed_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "ALTER CHANGE expression default affects future rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ddl_paths LIKE 'changed'",
+            .values = show_changed,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "ALTER CHANGE expression default metadata",
+        }
+    );
+
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE ctas_src (a INT DEFAULT (1 + 2), b INT)");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO ctas_src (b) VALUES (9)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE ctas_copy AS SELECT a, b FROM ctas_src",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ctas_copy LIKE 'a'",
+            .values = ctas_show_a,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "CTAS expression default metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ctas_copy LIKE 'b'",
+            .values = ctas_show_b,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "CTAS non-default metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b FROM ctas_copy",
+            .values = ctas_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "CTAS expression default materialized row",
         }
     );
 

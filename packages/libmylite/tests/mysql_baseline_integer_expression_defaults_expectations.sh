@@ -177,6 +177,86 @@ expect_output \
 "SELECT a, @@warning_count, ROW_COUNT() FROM t;" \
     "$DATABASE"
 
+alter_definition_paths_expected=$(cat <<\EXPECTED
+1	1	5
+2	1	5
+added	int	YES		(2 + 3)	DEFAULT_GENERATED
+1	1
+2	1
+3	20
+v	int	YES		(4 * 5)	DEFAULT_GENERATED
+1	1
+2	1
+3	20
+4	13
+changed	int	YES		(6 + 7)	DEFAULT_GENERATED
+EXPECTED
+)
+expect_output \
+    "ALTER ADD MODIFY CHANGE expression defaults" \
+    "$alter_definition_paths_expected" \
+    "CREATE TABLE alter_definition_paths (id INT NOT NULL, v INT DEFAULT 1); "\
+"INSERT INTO alter_definition_paths (id) VALUES (1); "\
+"ALTER TABLE alter_definition_paths ADD COLUMN added INT DEFAULT (2 + 3); "\
+"INSERT INTO alter_definition_paths (id) VALUES (2); "\
+"SELECT id, v, added FROM alter_definition_paths ORDER BY id; "\
+"SHOW COLUMNS FROM alter_definition_paths LIKE 'added'; "\
+"ALTER TABLE alter_definition_paths MODIFY v INT DEFAULT (4 * 5); "\
+"INSERT INTO alter_definition_paths (id) VALUES (3); "\
+"SELECT id, v FROM alter_definition_paths ORDER BY id; "\
+"SHOW COLUMNS FROM alter_definition_paths LIKE 'v'; "\
+"ALTER TABLE alter_definition_paths CHANGE v changed INT DEFAULT (6 + 7); "\
+"INSERT INTO alter_definition_paths (id) VALUES (4); "\
+"SELECT id, changed FROM alter_definition_paths ORDER BY id; "\
+"SHOW COLUMNS FROM alter_definition_paths LIKE 'changed';" \
+    "$DATABASE"
+
+ctas_expected=$(printf '%s\n%s\t\n%s' \
+    "a	int	YES		(1 + 2)	DEFAULT_GENERATED" \
+    "b	int	YES		NULL" \
+    "3	9")
+expect_output \
+    "CREATE TABLE SELECT expression default metadata" \
+    "$ctas_expected" \
+    "CREATE TABLE ctas_src (a INT DEFAULT (1 + 2), b INT); "\
+"INSERT INTO ctas_src (b) VALUES (9); "\
+"CREATE TABLE ctas_copy AS SELECT a, b FROM ctas_src; "\
+"SHOW COLUMNS FROM ctas_copy; "\
+"SELECT a, b FROM ctas_copy;" \
+    "$DATABASE"
+
+broader_mysql_expression_defaults_expected=$(cat <<\EXPECTED
+a	int	YES		`base`	DEFAULT_GENERATED
+b	int	YES		_latin1\'1\'	DEFAULT_GENERATED
+c	int	YES		1.2	DEFAULT_GENERATED
+d	int	YES		1e0	DEFAULT_GENERATED
+e	int	YES		0x01	DEFAULT_GENERATED
+f	int	YES		0x01	DEFAULT_GENERATED
+g	int	YES		abs(-(1))	DEFAULT_GENERATED
+h	int	YES		cast(1 as signed)	DEFAULT_GENERATED
+i	int	YES		((0 <> 1) and (0 <> 1))	DEFAULT_GENERATED
+4	4	1	1	1	1	1	1	1	1
+EXPECTED
+)
+expect_output \
+    "MySQL accepts broader expression defaults deferred by MyLite" \
+    "$broader_mysql_expression_defaults_expected" \
+    "CREATE TABLE broader_mysql_defaults ("\
+"base INT DEFAULT 4, "\
+"a INT DEFAULT (base), "\
+"b INT DEFAULT ('1'), "\
+"c INT DEFAULT (1.2), "\
+"d INT DEFAULT (1e0), "\
+"e INT DEFAULT (0x1), "\
+"f INT DEFAULT (b'1'), "\
+"g INT DEFAULT (ABS(-1)), "\
+"h INT DEFAULT (CAST(1 AS SIGNED)), "\
+"i INT DEFAULT (1 AND 1)); "\
+"SHOW COLUMNS FROM broader_mysql_defaults WHERE Field <> 'base'; "\
+"INSERT INTO broader_mysql_defaults () VALUES (); "\
+"SELECT base,a,b,c,d,e,f,g,h,i FROM broader_mysql_defaults;" \
+    "$DATABASE"
+
 not_null_null_expected=$(cat <<\EXPECTED
 a	int	NO		NULL	DEFAULT_GENERATED
 EXPECTED

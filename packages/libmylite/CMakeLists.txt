@@ -516,6 +516,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_date_add_second_test)
 
+  add_executable(mylite_runtime_field_function_test
+    tests/runtime_field_function_test.c
+  )
+  target_link_libraries(mylite_runtime_field_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_field_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_field_function_test)
+
   add_executable(mylite_runtime_scalar_comparison_projection_test
     tests/runtime_scalar_comparison_projection_test.c
   )
@@ -2101,6 +2112,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.date_add_second
     COMMAND mylite_runtime_date_add_second_test
+  )
+  add_test(
+    NAME libmylite.runtime.field_function
+    COMMAND mylite_runtime_field_function_test
   )
   add_test(
     NAME libmylite.runtime.scalar_comparison_projection

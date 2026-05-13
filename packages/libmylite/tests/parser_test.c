@@ -43,6 +43,7 @@ static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
+static int test_field_function(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_scalar_subquery_expression(void);
@@ -247,6 +248,7 @@ int main(void) {
     failures += test_ifnull_function();
     failures += test_coalesce_function();
     failures += test_concat_function();
+    failures += test_field_function();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_scalar_subquery_expression();
@@ -1782,6 +1784,92 @@ static int test_concat_function(void) {
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
     failures += expect_span_text(first_expression, "concat", "concat identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_field_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT FIELD('b', 'a', 'b'), field(v, 'x', 'y') AS pos "
+        "FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_FIELD_FUNCTION, "field function");
+    failures += expect_span_text(first_expression, "FIELD('b', 'a', 'b')", "field span");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "field args");
+    failures += expect_child_count(arguments, 3U, "field three arguments");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_STRING, "field search");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "field first");
+    failures +=
+        expect_literal(child_at(arguments, 2U), MYLITE_SQL_AST_LITERAL_STRING, "field second");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_FIELD_FUNCTION, "lower field");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 3U, "field row arguments");
+    failures += expect_node(child_at(arguments, 0U), MYLITE_SQL_AST_IDENTIFIER, "field column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "field alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "field from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FIELD();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR,
+        "field zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FIELD('x');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FIELD_FUNCTION,
+        "field one argument runtime marker"
+    );
+    arguments = child_at(first_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "field one argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO FIELD('x', 'a'), FIELD(NULL, NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "field do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_FIELD_FUNCTION, "do field");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_FIELD_FUNCTION, "do field null");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE field (field INT); SELECT field FROM field;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FIELD('b', 'a', 'b') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

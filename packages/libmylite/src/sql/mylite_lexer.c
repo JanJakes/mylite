@@ -463,6 +463,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"FAST", 0U},
         {"FAULTS", 0U},
         {"FETCH", MYLITE_SQL_KEYWORD_RESERVED},
+        {"FIELD", 0U},
         {"FIELDS", 0U},
         {"FILE", MYLITE_SQL_KEYWORD_RESTRICTED_ROLE},
         {"FILE_BLOCK_SIZE", 0U},

@@ -704,6 +704,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "concat_function";
     case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
         return "concat_argument_count_error";
+    case MYLITE_SQL_AST_FIELD_FUNCTION:
+        return "field_function";
+    case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
+        return "field_argument_count_error";
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
         return "scalar_subquery";
     case MYLITE_SQL_AST_PI_FUNCTION:

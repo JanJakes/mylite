@@ -88,7 +88,7 @@ Performance Schema variable tables remain unsupported.
 | `auto_generate_certs` | ❌ | Value, scope, SET, diagnostics |
 | `auto_increment_increment` | ❌ | Value, scope, SET, diagnostics |
 | `auto_increment_offset` | ❌ | Value, scope, SET, diagnostics |
-| `autocommit` | 🟡 | Limited scalar `SELECT @@autocommit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled autocommit baseline `1`; limited fixed no-op `SET` forms may preserve `1`; no mutable global/session state, explicit transaction boundaries, session-state tracking, protocol status flags |
+| `autocommit` | 🟡 | Limited scalar `SELECT @@autocommit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed visible autocommit baseline `1`; limited fixed no-op `SET` forms may preserve `1`; explicit `START TRANSACTION` / `BEGIN` user transactions are tracked separately while visible autocommit remains `1`; no mutable global/session state, `SET autocommit = 0`, session-state tracking, or protocol status flags |
 | `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
 | `back_log` | ❌ | Value, scope, SET, diagnostics |
 | `basedir` | ❌ | Value, scope, SET, diagnostics |

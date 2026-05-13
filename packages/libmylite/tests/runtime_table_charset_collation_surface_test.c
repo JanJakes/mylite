@@ -40,6 +40,7 @@ struct create_form {
     const char *create_sql;
     const char *show_sql;
     const char *table_name;
+    const char *expected_collation;
     const char *context;
 };
 
@@ -105,6 +106,8 @@ int main(void) {
 static int test_charset_collation_create_forms_persistence_and_preamble(void) {
     static const char *const select_columns[] = {"id"};
     static const char *const select_values[] = {"1"};
+    static const char *const table_collation_columns[] = {"TABLE_COLLATION"};
+    static const char *const unicode_table_collation[] = {"utf8mb4_unicode_ci"};
     static const struct create_form forms[] = {
         {
             .create_sql = "CREATE TABLE default_charset (id INT) DEFAULT CHARSET=utf8mb4",
@@ -136,6 +139,43 @@ static int test_charset_collation_create_forms_persistence_and_preamble(void) {
             .show_sql = "SHOW CREATE TABLE collate_only",
             .table_name = "collate_only",
             .context = "collate only",
+        },
+        {
+            .create_sql = "CREATE TABLE legacy_general (id INT) COLLATE=utf8mb4_general_ci",
+            .show_sql = "SHOW CREATE TABLE legacy_general",
+            .table_name = "legacy_general",
+            .expected_collation = "utf8mb4_general_ci",
+            .context = "legacy general collation",
+        },
+        {
+            .create_sql = "CREATE TABLE legacy_bin (id INT) COLLATE=utf8mb4_bin",
+            .show_sql = "SHOW CREATE TABLE legacy_bin",
+            .table_name = "legacy_bin",
+            .expected_collation = "utf8mb4_bin",
+            .context = "legacy bin collation",
+        },
+        {
+            .create_sql = "CREATE TABLE legacy_unicode (id INT) DEFAULT CHARSET=utf8mb4 "
+                          "COLLATE=utf8mb4_unicode_ci",
+            .show_sql = "SHOW CREATE TABLE legacy_unicode",
+            .table_name = "legacy_unicode",
+            .expected_collation = "utf8mb4_unicode_ci",
+            .context = "legacy unicode collation",
+        },
+        {
+            .create_sql = "CREATE TABLE legacy_unicode_520 (id INT) COLLATE=utf8mb4_unicode_520_ci",
+            .show_sql = "SHOW CREATE TABLE legacy_unicode_520",
+            .table_name = "legacy_unicode_520",
+            .expected_collation = "utf8mb4_unicode_520_ci",
+            .context = "legacy unicode 520 collation",
+        },
+        {
+            .create_sql = "CREATE TABLE repeated_collation (id INT) COLLATE=utf8mb4_general_ci "
+                          "COLLATE=utf8mb4_unicode_ci",
+            .show_sql = "SHOW CREATE TABLE repeated_collation",
+            .table_name = "repeated_collation",
+            .expected_collation = "utf8mb4_unicode_ci",
+            .context = "repeated collation last wins",
         },
         {
             .create_sql = "CREATE TABLE default_collate (id INT) DEFAULT COLLATE "
@@ -215,6 +255,17 @@ static int test_charset_collation_create_forms_persistence_and_preamble(void) {
         );
         failures += expect_show_create_single_int(database, forms[form_index]);
     }
+    failures += expect_single_row_result(
+        database,
+        "SELECT TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'legacy_unicode'",
+        (struct expected_single_row_result){
+            .columns = table_collation_columns,
+            .values = unicode_table_collation,
+            .column_count = sizeof(table_collation_columns) / sizeof(table_collation_columns[0]),
+        },
+        "information schema table collation"
+    );
     failures += execute_create_table_ok(
         database,
         (struct create_table_statement){
@@ -325,15 +376,6 @@ static int test_charset_collation_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_collation (id INT) COLLATE=utf8mb4_bin",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_collation,
-            .sqlstate = "HY000",
-            .message_part = "Unknown collation: 'utf8mb4_bin'",
-        }
-    );
-    failures += execute_error(
-        database,
         "CREATE TABLE charset_default (id INT) DEFAULT CHARSET=DEFAULT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -420,10 +462,8 @@ static int test_independent_charset_collation_handles(void) {
 
     failures += execute_statement_ok(second, "CREATE DATABASE app");
     failures += execute_statement_ok(second, "USE app");
-    failures += execute_statement_ok(
-        second,
-        "CREATE TABLE only_second (id INT) COLLATE=utf8mb4_0900_ai_ci"
-    );
+    failures +=
+        execute_statement_ok(second, "CREATE TABLE only_second (id INT) COLLATE=utf8mb4_bin");
 
     failures += expect_show_create_single_int(
         first,
@@ -438,6 +478,7 @@ static int test_independent_charset_collation_handles(void) {
         (struct create_form){
             .show_sql = "SHOW CREATE TABLE only_second",
             .table_name = "only_second",
+            .expected_collation = "utf8mb4_bin",
             .context = "second handle collation table",
         }
     );
@@ -451,13 +492,16 @@ static int test_independent_charset_collation_handles(void) {
 
 static int expect_show_create_single_int(mylite_db *database, struct create_form expected) {
     char create_sql[show_create_sql_capacity];
+    const char *collation =
+        expected.expected_collation == NULL ? "utf8mb4_0900_ai_ci" : expected.expected_collation;
     int written = snprintf(
         create_sql,
         sizeof(create_sql),
         "CREATE TABLE `%s` (\n"
         "  `id` int DEFAULT NULL\n"
-        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
-        expected.table_name
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=%s",
+        expected.table_name,
+        collation
     );
     const char *const values[show_create_column_count] = {expected.table_name, create_sql};
 

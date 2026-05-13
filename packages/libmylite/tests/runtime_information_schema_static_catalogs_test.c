@@ -91,6 +91,34 @@ static int test_information_schema_static_catalogs(void) {
         "PAD_ATTRIBUTE",
     };
     static const char *const collations_values[] = {
+        "utf8mb4_general_ci",
+        "utf8mb4",
+        "45",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "46",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_unicode_ci",
+        "utf8mb4",
+        "224",
+        "",
+        "Yes",
+        "8",
+        "PAD SPACE",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
+        "246",
+        "",
+        "Yes",
+        "8",
+        "PAD SPACE",
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "255",
@@ -109,6 +137,7 @@ static int test_information_schema_static_catalogs(void) {
     static const char *const support_value[] = {"DEFAULT"};
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_one[] = {"1"};
+    static const char *const count_five[] = {"5"};
     static const char *const count_zero[] = {"0"};
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
@@ -433,7 +462,8 @@ static int test_information_schema_static_catalogs(void) {
             .column_names = collations_columns,
             .column_count = sizeof(collations_columns) / sizeof(collations_columns[0]),
             .values = collations_values,
-            .row_count = 1U,
+            .row_count = sizeof(collations_values) / sizeof(collations_values[0]) /
+                         (sizeof(collations_columns) / sizeof(collations_columns[0])),
             .context = "collations static row",
         }
     );
@@ -489,7 +519,7 @@ static int test_information_schema_static_catalogs(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATIONS",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_one,
+            .values = count_five,
             .row_count = 1U,
             .context = "collations count star",
         }

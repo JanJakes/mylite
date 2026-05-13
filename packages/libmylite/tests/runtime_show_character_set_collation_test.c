@@ -53,7 +53,35 @@ static const char *const collation_columns[collation_column_count] = {
     "Pad_attribute",
 };
 
-static const char *const collation_row[collation_column_count] = {
+static const char *const collation_rows[] = {
+    "utf8mb4_general_ci",
+    "utf8mb4",
+    "45",
+    "",
+    "Yes",
+    "1",
+    "PAD SPACE",
+    "utf8mb4_bin",
+    "utf8mb4",
+    "46",
+    "",
+    "Yes",
+    "1",
+    "PAD SPACE",
+    "utf8mb4_unicode_ci",
+    "utf8mb4",
+    "224",
+    "",
+    "Yes",
+    "8",
+    "PAD SPACE",
+    "utf8mb4_unicode_520_ci",
+    "utf8mb4",
+    "246",
+    "",
+    "Yes",
+    "8",
+    "PAD SPACE",
     "utf8mb4_0900_ai_ci",
     "utf8mb4",
     "255",
@@ -61,6 +89,26 @@ static const char *const collation_row[collation_column_count] = {
     "Yes",
     "0",
     "NO PAD",
+};
+
+static const char *const collation_0900_row[collation_column_count] = {
+    "utf8mb4_0900_ai_ci",
+    "utf8mb4",
+    "255",
+    "Yes",
+    "Yes",
+    "0",
+    "NO PAD",
+};
+
+static const char *const collation_unicode_row[collation_column_count] = {
+    "utf8mb4_unicode_ci",
+    "utf8mb4",
+    "224",
+    "",
+    "Yes",
+    "8",
+    "PAD SPACE",
 };
 
 static int test_show_character_set_and_collation_values_filters_and_state(void);
@@ -163,8 +211,8 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW COLLATION",
         collation_columns,
         collation_column_count,
-        collation_row,
-        1U,
+        collation_rows,
+        sizeof(collation_rows) / sizeof(collation_rows[0]) / collation_column_count,
         "show collation"
     );
     failures += expect_result(
@@ -172,7 +220,7 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW COLLATION LIKE 'UTF8MB4_0900_AI_CI'",
         collation_columns,
         collation_column_count,
-        collation_row,
+        collation_0900_row,
         1U,
         "show collation uppercase like"
     );
@@ -181,9 +229,18 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW COLLATION LIKE 'utf8mb4\\_0900\\_ai\\_ci'",
         collation_columns,
         collation_column_count,
-        collation_row,
+        collation_0900_row,
         1U,
         "show collation escaped underscore"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION LIKE 'utf8mb4_unicode_ci'",
+        collation_columns,
+        collation_column_count,
+        collation_unicode_row,
+        1U,
+        "show legacy collation like"
     );
     failures += expect_result(
         database,
@@ -248,8 +305,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW COLLATION",
         collation_columns,
         collation_column_count,
-        collation_row,
-        1U,
+        collation_rows,
+        sizeof(collation_rows) / sizeof(collation_rows[0]) / collation_column_count,
         "show collation with selected schema"
     );
     session = mylite_connection_session_state(database);
@@ -289,7 +346,7 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'",
         collation_columns,
         collation_column_count,
-        collation_row,
+        collation_0900_row,
         1U,
         "reopened show collation"
     );
@@ -478,7 +535,7 @@ static int test_independent_show_character_set_and_collation_handles(void) {
         "SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'",
         collation_columns,
         collation_column_count,
-        collation_row,
+        collation_0900_row,
         1U,
         "second handle collation"
     );
@@ -517,13 +574,15 @@ static int expect_result(
     failures += expect_size(mylite_result_row_count(result), expected_row_count, context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, context);
     failures += expect_size(mylite_result_warning_count(result), 0U, context);
-    if (expected_row_count == 1U && expected_row != NULL) {
-        for (size_t column_index = 0U; column_index < expected_column_count; ++column_index) {
-            failures += expect_text_or_null(
-                mylite_result_value_text(result, 0U, column_index),
-                expected_row[column_index],
-                context
-            );
+    if (expected_row != NULL) {
+        for (size_t row_index = 0U; row_index < expected_row_count; ++row_index) {
+            for (size_t column_index = 0U; column_index < expected_column_count; ++column_index) {
+                failures += expect_text_or_null(
+                    mylite_result_value_text(result, row_index, column_index),
+                    expected_row[(row_index * expected_column_count) + column_index],
+                    context
+                );
+            }
         }
     }
     failures += expect_row_count(database, -1, context);

@@ -176,6 +176,8 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             "items",
             "phys_items",
             MYLITE_CATALOG_TABLE_KIND_BASE,
+            MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
+            MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
             &table
         ),
         MYLITE_OK,
@@ -396,6 +398,8 @@ static int test_catalog_default_text_validation(void) {
             "defaults",
             "phys_defaults",
             MYLITE_CATALOG_TABLE_KIND_BASE,
+            MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
+            MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
             &table
         ),
         MYLITE_OK,

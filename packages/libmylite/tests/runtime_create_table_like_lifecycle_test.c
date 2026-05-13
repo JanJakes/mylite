@@ -239,6 +239,13 @@ static int test_create_table_like_success_persistence_and_preamble(void) {
         "create-like allocates a new physical name"
     );
     failures += expect_uint64(clone_table.descriptor_version, 1U, "clone table descriptor version");
+    failures +=
+        expect_text(clone_table.default_charset, source_table.default_charset, "clone charset");
+    failures += expect_text(
+        clone_table.default_collation,
+        source_table.default_collation,
+        "clone collation"
+    );
     if (catalog != NULL) {
         failures += expect_uint64(
             catalog->generation,
@@ -720,7 +727,7 @@ static int seed_like_source(mylite_db *database) {
         "id INT NOT NULL DEFAULT 7, "
         "n INTEGER NULL DEFAULT NULL, "
         "b BIGINT UNSIGNED NOT NULL, "
-        "hidden INT DEFAULT 3)"
+        "hidden INT DEFAULT 3) COLLATE=utf8mb4_unicode_ci"
     );
     failures += execute_statement_ok(database, "ALTER TABLE app.source ALTER hidden SET INVISIBLE");
 

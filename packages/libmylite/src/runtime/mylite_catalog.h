@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 12
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 12
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 13
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 13
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -25,6 +25,9 @@ enum {
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
     MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY = 1024,
 };
+
+#define MYLITE_CATALOG_DEFAULT_TABLE_CHARSET "utf8mb4"
+#define MYLITE_CATALOG_DEFAULT_TABLE_COLLATION "utf8mb4_0900_ai_ci"
 
 enum mylite_catalog_table_kind {
     MYLITE_CATALOG_TABLE_KIND_INVALID = 0,
@@ -73,6 +76,8 @@ struct mylite_catalog_table_descriptor {
     enum mylite_catalog_table_kind kind;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     int64_t auto_increment_next;
+    char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -189,6 +194,8 @@ int mylite_catalog_insert_table_in_mutation(
     const char *physical_name,
     enum mylite_catalog_table_kind kind,
     int64_t auto_increment_next,
+    const char *default_charset,
+    const char *default_collation,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_insert_column_in_mutation(
@@ -290,6 +297,14 @@ int mylite_catalog_update_table_identity_in_mutation(
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
 );
+int mylite_catalog_update_table_default_charset_collation_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *default_charset,
+    const char *default_collation,
+    struct mylite_catalog_table_descriptor *out_table
+);
 int mylite_catalog_update_table_auto_increment_next(
     struct mylite_db *database,
     int64_t table_id,
@@ -355,6 +370,8 @@ int mylite_catalog_create_table(
     const char *name,
     const char *physical_name,
     enum mylite_catalog_table_kind kind,
+    const char *default_charset,
+    const char *default_collation,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_read_table_by_name(

@@ -6,13 +6,13 @@
   `INFORMATION_SCHEMA.COLLATIONS`.
 - [x] Write the independently authored feature spec.
 - [x] Add the MySQL 8.4.9 expectation script.
-- [ ] Add table descriptor charset/collation catalog fields and migration.
-- [ ] Preserve table collation through `CREATE TABLE`, `CREATE TABLE ... LIKE`,
+- [x] Add table descriptor charset/collation catalog fields and migration.
+- [x] Preserve table collation through `CREATE TABLE`, `CREATE TABLE ... LIKE`,
   `SHOW CREATE TABLE`, `ALTER TABLE`, reopen, and `INFORMATION_SCHEMA.TABLES`.
-- [ ] Extend admitted static collation rows and `SET NAMES ... COLLATE`
+- [x] Extend admitted static collation rows and `SET NAMES ... COLLATE`
   session readback.
-- [ ] Extend runtime tests for success, metadata, diagnostics, persistence,
+- [x] Extend runtime tests for success, metadata, diagnostics, persistence,
   independent handles, and preamble safety.
-- [ ] Update compatibility documentation with limited wording.
-- [ ] Run the MySQL expectation script, focused CTests, and full check workflow.
+- [x] Update compatibility documentation with limited wording.
+- [x] Run the MySQL expectation script, focused CTests, and full check workflow.
 - [ ] Commit, push to `origin/main`, and run a review subagent.

@@ -18,6 +18,7 @@ enum {
     charset_value_column_count = 7,
     mysql_error_parse = 1064,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
 };
 
@@ -89,6 +90,16 @@ static int test_set_connection_character_set_success_and_persistence(void) {
         "0",
         "0",
     };
+    static const char *const unicode_charset_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_unicode_ci",
+        "0",
+        "0",
+        "0",
+    };
+    static const char *const bin_collation_value[] = {"utf8mb4_bin"};
     static const char *const reopened_charset_values[] = {
         "utf8mb4",
         "utf8mb4",
@@ -138,6 +149,31 @@ static int test_set_connection_character_set_success_and_persistence(void) {
             .context = "set charset keeps fixed connection values",
         }
     );
+    failures += expect_set_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@character_set_connection, "
+                   "@@character_set_results, @@collation_connection, @@warning_count, "
+                   "@@error_count, ROW_COUNT()",
+            .values = unicode_charset_values,
+            .column_count = charset_value_column_count,
+            .row_count = 1U,
+            .context = "set names legacy collation values",
+        }
+    );
+    failures += expect_set_ok(database, "SET NAMES UTF8MB4 COLLATE UTF8MB4_BIN");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@collation_connection",
+            .values = bin_collation_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "set names canonicalizes legacy collation",
+        }
+    );
+    failures += expect_set_ok(database, "SET NAMES utf8mb4");
 
     session = mylite_connection_session_state(database);
     if (session != NULL) {
@@ -250,20 +286,12 @@ static int test_set_connection_character_set_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SET NAMES utf8mb4 COLLATE utf8mb4_bin",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_collation,
-            .sqlstate = "HY000",
-            .message_part = "Unknown collation: 'utf8mb4_bin'",
-        }
-    );
-    failures += execute_error(
-        database,
         "SET NAMES utf8mb4 COLLATE latin1_swedish_ci",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_collation,
-            .sqlstate = "HY000",
-            .message_part = "Unknown collation: 'latin1_swedish_ci'",
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET "
+                            "'utf8mb4'",
         }
     );
     failures += execute_error(
@@ -333,7 +361,7 @@ static int test_set_connection_character_set_diagnostics(void) {
 static int test_set_connection_character_set_independent_handles(void) {
     static const char *const values[] = {
         "utf8mb4",
-        "utf8mb4_0900_ai_ci",
+        "utf8mb4_bin",
         "0",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
@@ -354,7 +382,7 @@ static int test_set_connection_character_set_independent_handles(void) {
 
     failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
     failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
-    failures += expect_set_ok(first, "SET NAMES utf8mb4");
+    failures += expect_set_ok(first, "SET NAMES utf8mb4 COLLATE utf8mb4_bin");
     failures += expect_set_ok(second, "SET CHARACTER SET DEFAULT");
     failures += expect_query_values(
         first,

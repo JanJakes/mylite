@@ -51,6 +51,7 @@ struct alter_form {
 struct show_create_expectation {
     const char *show_sql;
     const char *table_name;
+    const char *expected_collation;
     const char *context;
 };
 
@@ -235,6 +236,55 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             "alter preserves SQLite schema generation"
         );
     }
+    before_table = after_table;
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        catalog_generation_before = catalog->generation;
+    }
+    failures += expect_alter_ok(
+        database,
+        (struct alter_form){
+            .sql = "ALTER TABLE target COLLATE=utf8mb4_unicode_ci",
+            .context = "legacy unicode collation",
+        }
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "target", &after_table),
+        MYLITE_OK,
+        "read target table after collation change"
+    );
+    failures += expect_text(after_table.default_charset, "utf8mb4", "alter stores table charset");
+    failures += expect_text(
+        after_table.default_collation,
+        "utf8mb4_unicode_ci",
+        "alter stores table collation"
+    );
+    failures += expect_uint64(
+        after_table.descriptor_version,
+        before_table.descriptor_version + 1U,
+        "alter bumps table descriptor version"
+    );
+    failures += expect_uint64(
+        after_table.updated_catalog_generation,
+        catalog_generation_before + 1U,
+        "alter updates table generation"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before + 1U,
+            "alter updates catalog generation"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before,
+            "collation alter preserves SQLite schema generation"
+        );
+    }
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -279,6 +329,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
         (struct show_create_expectation){
             .show_sql = "SHOW CREATE TABLE target",
             .table_name = "target",
+            .expected_collation = "utf8mb4_unicode_ci",
             .context = "show create",
         }
     );
@@ -311,6 +362,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
         (struct show_create_expectation){
             .show_sql = "SHOW CREATE TABLE target",
             .table_name = "target",
+            .expected_collation = "utf8mb4_unicode_ci",
             .context = "reopened show create",
         }
     );
@@ -425,15 +477,6 @@ static int test_alter_table_default_charset_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE target COLLATE=utf8mb4_bin",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_collation,
-            .sqlstate = "HY000",
-            .message_part = "Unknown collation: 'utf8mb4_bin'",
-        }
-    );
-    failures += execute_error(
-        database,
         "ALTER TABLE target DEFAULT CHARSET=utf8mb4 CHARSET=latin1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_character_set,
@@ -525,8 +568,25 @@ static int test_independent_alter_table_default_charset_handles(void) {
     failures += expect_alter_ok(
         first,
         (struct alter_form){
-            .sql = "ALTER TABLE target DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+            .sql = "ALTER TABLE target DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin",
             .context = "first handle alter",
+        }
+    );
+    failures += expect_show_create_single_int(
+        first,
+        (struct show_create_expectation){
+            .show_sql = "SHOW CREATE TABLE target",
+            .table_name = "target",
+            .expected_collation = "utf8mb4_bin",
+            .context = "first handle show create",
+        }
+    );
+    failures += expect_show_create_single_int(
+        second,
+        (struct show_create_expectation){
+            .show_sql = "SHOW CREATE TABLE target",
+            .table_name = "target",
+            .context = "second handle show create",
         }
     );
     failures += expect_query_values(
@@ -579,13 +639,16 @@ static int expect_show_create_single_int(
     struct show_create_expectation expected
 ) {
     char create_sql[show_create_sql_capacity];
+    const char *collation =
+        expected.expected_collation == NULL ? "utf8mb4_0900_ai_ci" : expected.expected_collation;
     int written = snprintf(
         create_sql,
         sizeof(create_sql),
         "CREATE TABLE `%s` (\n"
         "  `id` int DEFAULT NULL\n"
-        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
-        expected.table_name
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=%s",
+        expected.table_name,
+        collation
     );
     const char *const values[show_create_column_count] = {expected.table_name, create_sql};
 

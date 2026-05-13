@@ -525,7 +525,7 @@ tests.
 | `CURTIME()` | ❌ | Current time. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `DATE()` | ❌ | Extract date part. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `DATE_ADD()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_ADD(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over canonical date/datetime strings in the current storage baseline range, returning datetime text/`NULL`, with MySQL-compatible whitespace handling for the function name under `IGNORE_SPACE`; no other interval units, interval expressions, string/fractional intervals, invalid-date warning semantics, table-backed expressions, DML assignments, defaults, predicates, or general temporal arithmetic. | [temporal functions](docs/compatibility/functions-temporal.md) |
-| `DATE_FORMAT()` | ❌ | Format date. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `DATE_FORMAT()` | ❌ | Planned next baseline slice for limited no-source, `DUAL`, `DO`, and single-table row-scalar formatting over canonical date/datetime/timestamp/string values; see `docs/specs/baseline-date-format-function/specs.md`. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `DATE_SUB()` | ❌ | Subtract interval from date. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `DATEDIFF()` | ❌ | Date difference. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `DAY()` | ❌ | Day-of-month synonym. | [temporal functions](docs/compatibility/functions-temporal.md) |

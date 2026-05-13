@@ -121,6 +121,18 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+truncated_numeric_expected=$(cat <<EXPECTED
+1	1
+Warning	1292	Truncated incorrect DOUBLE value: '2008-01-02'
+EXPECTED
+)
+expect_output \
+    "DATE_FORMAT broader numeric comparison warning deferred by MyLite" \
+    "$truncated_numeric_expected" \
+    "SELECT DATE_FORMAT('2008-01-02','%Y-%m-%d') = 2008, @@warning_count; "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
 names_expected=$(cat <<EXPECTED
 Wed|Wednesday|Jan|January|2nd|002|3
 EXPECTED

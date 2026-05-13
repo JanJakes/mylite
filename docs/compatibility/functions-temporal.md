@@ -14,7 +14,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `CURTIME()` | ❌ | Return current time |
 | `DATE()` | ❌ | Extract the date part of a date or datetime expression |
 | `DATE_ADD()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_ADD(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over canonical date/datetime strings in the current storage baseline range, returning datetime text/`NULL`, with MySQL-compatible whitespace handling for the function name under `IGNORE_SPACE`; no other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
-| `DATE_FORMAT()` | ❌ | Planned next baseline slice for limited no-source, `DUAL`, `DO`, and single-table row-scalar formatting over canonical date/datetime/timestamp/string values; see `docs/specs/baseline-date-format-function/specs.md` |
+| `DATE_FORMAT()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `DATE_FORMAT(value, format)` over `NULL`, canonical date/datetime strings, and descriptor `DATE` / `DATETIME` / `TIMESTAMP` / string-family columns, with a verified token subset and exact top-level numeric equality for `DATE_FORMAT(..., '%H.%i') = numeric_literal`; invalid temporal inputs return `NULL` with warning 1292; no `TIME` inputs, week/year-week tokens, locale/time-zone effects, relaxed temporal parsing, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `DATE_SUB()` | ❌ | Subtract a time value (interval) from a date |
 | `DATEDIFF()` | ❌ | Subtract two dates |
 | `DAY()` | ❌ | Synonym for DAYOFMONTH() |

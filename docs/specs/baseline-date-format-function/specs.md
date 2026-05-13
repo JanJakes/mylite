@@ -93,8 +93,8 @@ MyLite supports:
   - `%%`, a trailing `%`, and unknown non-format percent sequences such as
     `%q` as MySQL-style literal output;
 - top-level row-scalar numeric equality of the exact form
-  `DATE_FORMAT(value, format) = numeric_literal` or
-  `numeric_literal = DATE_FORMAT(value, format)`, where `numeric_literal` is a
+  `DATE_FORMAT(value, '%H.%i') = numeric_literal` or
+  `numeric_literal = DATE_FORMAT(value, '%H.%i')`, where `numeric_literal` is a
   decimal integer or fixed decimal literal with optional unary sign;
 - output text/`NULL` values through existing result APIs;
 - warning count `0` for supported valid in-range forms.
@@ -167,8 +167,14 @@ date_format_value(A) ::= NULL(T).
 date_format_format(A) ::= string_literal(T).
 date_format_format(A) ::= NULL(T).
 
-date_format_numeric_equal(A) ::= date_format_expr(B) EQUAL numeric_literal(C).
-date_format_numeric_equal(A) ::= numeric_literal(B) EQUAL date_format_expr(C).
+date_format_numeric_equal(A) ::=
+    DATE_FORMAT LPAREN date_format_value COMMA hour_minute_decimal_format RPAREN
+    EQUAL numeric_literal(C).
+date_format_numeric_equal(A) ::=
+    numeric_literal(B) EQUAL
+    DATE_FORMAT LPAREN date_format_value COMMA hour_minute_decimal_format RPAREN.
+
+hour_minute_decimal_format(A) ::= string_literal_with_decoded_value_percent_H_dot_percent_i(T).
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -186,7 +192,10 @@ Planning:
 4. Decode string literal arguments using the current statement SQL mode,
    including `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`.
 5. Validate the format literal for this slice. Known deferred week tokens fail
-   deterministically rather than returning wrong values.
+   deterministically rather than returning wrong values. The numeric equality
+   form additionally requires the decoded format literal to be exactly
+   `%H.%i`, because other formatted strings need MySQL-compatible numeric
+   coercion and truncation warnings.
 6. Generate SQLite projection SQL over stable physical table names and quoted
    physical column names. String literals and comparison literals are bound
    parameters.
@@ -213,7 +222,7 @@ _mylite_date_format(value_expr, format_expr, input_kind_expr)
 `input_kind_expr` is a bound MyLite-internal discriminator such as `string`,
 `date`, `datetime`, or `timestamp`. It is not user-visible.
 
-The row-backed generated SQL shape for the admitted numeric equality is:
+The row-backed generated SQL shape for the admitted `%H.%i` numeric equality is:
 
 ```sql
 CAST(_mylite_date_format(value_expr, format_expr, input_kind_expr) AS REAL)
@@ -298,6 +307,8 @@ Add MySQL-runtime expectation coverage for:
   `NULL` values;
 - the user-shaped numeric equality
   `DATE_FORMAT(option_value, '%H.%i') = 0.42`;
+- MySQL's truncation-warning behavior for broader formatted-string numeric
+  comparisons, which MyLite defers instead of accepting silently;
 - wrong-arity diagnostics;
 - MySQL-accepted but deferred `TIME`, week tokens, format columns, string/float
   nonliteral format arguments, and broader expression comparison forms.

@@ -46,6 +46,7 @@ static int test_concat_function(void);
 static int test_field_function(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
+static int test_date_format_function(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
@@ -252,6 +253,7 @@ int main(void) {
     failures += test_field_function();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
+    failures += test_date_format_function();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
     failures += test_isnull_function();
@@ -2057,6 +2059,125 @@ static int test_date_add_second_function(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("CREATE TABLE interval (interval INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_date_format_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DATE_FORMAT('2008-01-02 13:29:17', '%Y'), "
+        "Date_Format(option_value, '%H.%i') = 0.42 AS matched FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, "date_format function");
+    failures += expect_span_text(
+        first_expression,
+        "DATE_FORMAT('2008-01-02 13:29:17', '%Y')",
+        "date_format span"
+    );
+    failures += expect_child_count(first_expression, 2U, "date_format child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date_format value argument"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "date_format format argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "date_format numeric comparison"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_DATE_FORMAT_FUNCTION,
+        "date_format comparison left"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "date_format alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO DATE_FORMAT(NULL, '%Y'), DATE_FORMAT('2008-01-02', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "date_format do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_DATE_FORMAT_FUNCTION,
+        "do date_format null value"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_DATE_FORMAT_FUNCTION,
+        "do date_format null format"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATE_FORMAT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR,
+        "date_format zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATE_FORMAT('2008-01-02');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR,
+        "date_format one argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DATE_FORMAT('2008-01-02', '%Y', 'extra');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR,
+        "date_format extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATE_FORMAT ('2008-01-02', '%Y') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

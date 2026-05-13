@@ -1,6 +1,7 @@
 #include "mylite_sqlite_bootstrap.h"
 
 #include "mylite_bitwise_aggregate.h"
+#include "mylite_date_format.h"
 #include "mylite_sqlite_registration.h"
 #include "sqlite3.h"
 
@@ -188,6 +189,9 @@ static int initialize_function_registration_surface(
 
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_bitwise_aggregate_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_date_format_function(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

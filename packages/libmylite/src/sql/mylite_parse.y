@@ -1806,6 +1806,10 @@ expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, V, I, R);
 }
+expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
@@ -2063,6 +2067,21 @@ expression(A) ::= CONCAT(T) LPAREN RPAREN(R). {
 expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= DATE_FORMAT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= ABS(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -2550,6 +2569,9 @@ identifier(A) ::= CONCAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DATE_FORMAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CAST(T). {

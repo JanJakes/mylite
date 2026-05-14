@@ -15,9 +15,11 @@
 enum {
     test_path_capacity = 1024,
     dml_default_projection_column_count = 10,
+    empty_values_default_column_count = 5,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
     mysql_error_unknown_table = 1146,
+    mysql_error_column_count = 1136,
     mysql_error_no_default = 1364,
 };
 
@@ -40,6 +42,7 @@ struct expected_query {
     const char *context;
 };
 
+static int test_empty_insert_values_lifecycle(void);
 static int test_dml_default_success_persistence_and_rename(void);
 static int test_dml_default_diagnostics_and_ignore_warnings(void);
 static int test_dml_default_independent_handles(void);
@@ -81,11 +84,502 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
+    failures += test_empty_insert_values_lifecycle();
     failures += test_dml_default_success_persistence_and_rename();
     failures += test_dml_default_diagnostics_and_ignore_warnings();
     failures += test_dml_default_independent_handles();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_empty_insert_values_lifecycle(void) {
+    static const char *const default_row[] = {"10", NULL, "x", "1.25", "2024-01-02"};
+    static const char *const default_count[] = {"2"};
+    static const char *const expression_row[] = {"3", "7", NULL};
+    static const char *const auto_rows[] = {"1", "5", "2", "5"};
+    static const char *const auto_reopened_rows[] = {"1", "5", "2", "5", "3", "5"};
+    static const char *const last_insert_id_one[] = {"1"};
+    static const char *const last_insert_id_three[] = {"3"};
+    static const char *const ignore_count[] = {"3"};
+    static const char *const ignore_warnings[] = {
+        "Warning",
+        "1364",
+        "Field 'id' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 's' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 'd' doesn't have a default value",
+    };
+    static const char *const ignore_row[] = {"0", NULL, "", "0000-00-00"};
+    static const char *const replace_row[] = {"10", "x"};
+    static const char *const replace_count[] = {"2"};
+    static const char *const replace_multi_count[] = {"4"};
+    static const char *const duplicate_value_twenty[] = {"20"};
+    static const char *const duplicate_value_ten[] = {"10"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "empty_values") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open empty values file");
+    failures += seed_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE defaults_t("
+        "id INT NOT NULL DEFAULT 10, "
+        "n INT NULL DEFAULT NULL, "
+        "s VARCHAR(10) NOT NULL DEFAULT 'x', "
+        "d DECIMAL(5,2) DEFAULT 1.25, "
+        "dt DATE DEFAULT '2024-01-02')",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values defaults table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO defaults_t () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "explicit empty values insert"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, s, d, dt FROM defaults_t",
+            .values = default_row,
+            .column_count = empty_values_default_column_count,
+            .row_count = 1U,
+            .context = "explicit empty values row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE defaults_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate empty values defaults"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO defaults_t VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "omitted empty values insert"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, s, d, dt FROM defaults_t",
+            .values = default_row,
+            .column_count = empty_values_default_column_count,
+            .row_count = 1U,
+            .context = "omitted empty values row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE defaults_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for multi empty values"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO defaults_t VALUES (), ()",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "multi omitted empty values insert"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM defaults_t",
+            .values = default_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi omitted empty values count",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE defaults_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for explicit multi empty values"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO defaults_t () VALUES (), ()",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "multi empty values insert"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM defaults_t",
+            .values = default_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi empty values count",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE expr_t("
+        "a INT NOT NULL DEFAULT (1 + 2), "
+        "b INT DEFAULT ((2 * 3) + 1), "
+        "c INT DEFAULT (NULL))",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values expression defaults"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO expr_t () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "empty values expression defaults"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM expr_t",
+            .values = expression_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "expression default empty row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ai_t(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT NOT NULL DEFAULT 5)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values auto increment table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO ai_t () VALUES (), ()",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "multi empty values auto increment"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "empty values first last insert id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM ai_t ORDER BY id",
+            .values = auto_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "empty values auto increment rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO ai_t VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "omitted empty values auto increment"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_three,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "empty values third last insert id",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ignore_t(id INT NOT NULL, n INT NULL, s VARCHAR(5) NOT NULL, "
+        "d DATE NOT NULL)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values ignore table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT IGNORE INTO ignore_t () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 3U},
+        "empty values insert ignore"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = ignore_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "empty values insert ignore warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, s, d FROM ignore_t",
+            .values = ignore_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "empty values insert ignore row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT IGNORE INTO ignore_t VALUES (), ()",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 3U},
+        "multi omitted empty values insert ignore"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM ignore_t",
+            .values = ignore_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi empty values insert ignore count",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE replace_t(id INT NOT NULL DEFAULT 10, s VARCHAR(5) NOT NULL DEFAULT 'x')",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values replace table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO replace_t () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "explicit empty values replace"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, s FROM replace_t",
+            .values = replace_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "replace empty values row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO replace_t VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "omitted empty values replace"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM replace_t",
+            .values = replace_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "replace empty values count",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO replace_t () VALUES (), ()",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "multi empty values replace"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM replace_t",
+            .values = replace_multi_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi replace empty values count",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE duplicate_t(id INT NOT NULL DEFAULT 1 PRIMARY KEY, "
+        "v INT NOT NULL DEFAULT 10)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values duplicate table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_t () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "insert duplicate seed empty values"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_t () VALUES () ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "empty values duplicate literal update"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM duplicate_t",
+            .values = duplicate_value_twenty,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "empty values duplicate literal row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_t VALUES () ON DUPLICATE KEY UPDATE v = DEFAULT",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "empty values duplicate default update"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_t () VALUES () ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 1U},
+        "empty values duplicate values reference"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM duplicate_t",
+            .values = duplicate_value_ten,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "empty values duplicate default row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_t () VALUES (), () ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 0U},
+        "multi empty values duplicate update"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM duplicate_t",
+            .values = duplicate_value_twenty,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi empty values duplicate row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE no_default_t(id INT NOT NULL, n INT NULL)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create empty values no default table"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO no_default_t () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'id' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t () VALUES (1)",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t VALUES (), (1, NULL, 'y', 2.00, '2024-01-03')",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 2",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t VALUES (1, NULL, 'y', 2.00, '2024-01-03'), ()",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 2",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t () SELECT id FROM defaults_t",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t () VALUE ()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults_t VALUES ROW()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read empty values preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "empty values preamble preserved"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen empty values file");
+    failures += expect_statement_ok(
+        database,
+        "USE app",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "use empty values reopened schema"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM ai_t ORDER BY id",
+            .values = auto_reopened_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "empty values reopened rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
 }
 
 static int test_dml_default_success_persistence_and_rename(void) {
@@ -537,15 +1031,15 @@ static int test_dml_default_independent_handles(void) {
     );
     failures += expect_statement_ok(
         first,
-        "INSERT INTO t VALUES(DEFAULT, DEFAULT, DEFAULT)",
+        "INSERT INTO t () VALUES ()",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
-        "first insert default"
+        "first empty insert default"
     );
     failures += expect_statement_ok(
         second,
-        "INSERT INTO t VALUES(DEFAULT, DEFAULT, DEFAULT)",
+        "INSERT INTO t () VALUES ()",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
-        "second insert default"
+        "second empty insert default"
     );
     failures += expect_statement_ok(
         first,

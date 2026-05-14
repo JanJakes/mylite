@@ -1286,6 +1286,9 @@ duplicate_update_value(A) ::= VALUES(V) LPAREN qualified_identifier(I) RPAREN(R)
 insert_column_list_opt(A) ::= . {
     A = mylite_sql_parser_make_identifier_list(state, NULL);
 }
+insert_column_list_opt(A) ::= LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_empty_identifier_list(state, L, R);
+}
 insert_column_list_opt(A) ::= LPAREN identifier_list(L) RPAREN. {
     A = L;
 }
@@ -1306,6 +1309,14 @@ insert_row_list(A) ::= insert_row_list(B) COMMA insert_row(C). {
 
 insert_row(A) ::= LPAREN(L) insert_value_list(V) RPAREN(R). {
     A = mylite_sql_parser_make_insert_row(state, L, V, R);
+}
+insert_row(A) ::= LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(
+        state,
+        L,
+        mylite_sql_parser_make_insert_row_values(state, NULL),
+        R
+    );
 }
 
 insert_value_list(A) ::= insert_value(B). {

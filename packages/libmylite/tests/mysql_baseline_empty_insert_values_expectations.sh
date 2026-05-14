@@ -74,6 +74,8 @@ defaults_expected=$(cat <<'EXPECTED'
 10	NULL	x	1.25	2024-01-02
 2	0
 2	10:x,10:x
+2	0
+2	10:x,10:x
 EXPECTED
 )
 expect_output \
@@ -92,6 +94,10 @@ expect_output \
 "INSERT INTO defaults_t VALUES (); "\
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SELECT id, IFNULL(n, 'NULL'), s, d, dt FROM defaults_t; "\
+"TRUNCATE defaults_t; "\
+"INSERT INTO defaults_t VALUES (), (); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT COUNT(*), GROUP_CONCAT(CONCAT(id, ':', s) ORDER BY id, s) FROM defaults_t; "\
 "TRUNCATE defaults_t; "\
 "INSERT INTO defaults_t () VALUES (), (); "\
 "SELECT ROW_COUNT(), @@warning_count; "\
@@ -171,9 +177,23 @@ expect_output \
 "INSERT IGNORE INTO ignore_warnings_t () VALUES (); SHOW WARNINGS;" \
     "$DATABASE"
 
+ignore_multi_expected=$(cat <<'EXPECTED'
+2	3	2
+EXPECTED
+)
+expect_output \
+    "multi-row insert ignore empty values adjustments" \
+    "$ignore_multi_expected" \
+    "CREATE TABLE ignore_multi_t ("\
+"id INT NOT NULL, n INT NULL, s VARCHAR(5) NOT NULL, d DATE NOT NULL) ENGINE=InnoDB; "\
+"INSERT IGNORE INTO ignore_multi_t VALUES (), (); "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM ignore_multi_t;" \
+    "$DATABASE"
+
 replace_expected=$(cat <<'EXPECTED'
 1	0	10	x
 1	0	2	10:x,10:x
+2	0	4	10:x,10:x,10:x,10:x
 EXPECTED
 )
 expect_output \
@@ -185,6 +205,9 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, id, s FROM replace_t; "\
 "REPLACE INTO replace_t VALUES (); "\
 "SELECT ROW_COUNT(), @@warning_count, COUNT(*), "\
+"GROUP_CONCAT(CONCAT(id, ':', s) ORDER BY id, s) FROM replace_t; "\
+"REPLACE INTO replace_t () VALUES (), (); "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*), "\
 "GROUP_CONCAT(CONCAT(id, ':', s) ORDER BY id, s) FROM replace_t;" \
     "$DATABASE"
 
@@ -193,6 +216,7 @@ insert	1	0
 update_literal	2	0	20
 update_default	2	0	10
 update_values	0	1	10
+update_multi	2	0	20
 EXPECTED
 )
 expect_output \
@@ -208,7 +232,9 @@ expect_output \
 "INSERT INTO duplicate_t VALUES () ON DUPLICATE KEY UPDATE v = DEFAULT; "\
 "SELECT 'update_default', ROW_COUNT(), @@warning_count, v FROM duplicate_t; "\
 "INSERT INTO duplicate_t () VALUES () ON DUPLICATE KEY UPDATE v = VALUES(v); "\
-"SELECT 'update_values', ROW_COUNT(), @@warning_count, v FROM duplicate_t;" \
+"SELECT 'update_values', ROW_COUNT(), @@warning_count, v FROM duplicate_t; "\
+"INSERT INTO duplicate_t () VALUES (), () ON DUPLICATE KEY UPDATE v = 20; "\
+"SELECT 'update_multi', ROW_COUNT(), @@warning_count, v FROM duplicate_t;" \
     "$DATABASE"
 
 expect_error \

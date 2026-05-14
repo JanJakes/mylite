@@ -10268,9 +10268,12 @@ static int collect_insert_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_list,
     const struct planned_insert *plan,
+    const struct mylite_sql_ast_node *row_list,
     size_t **out_indexes,
     size_t *out_index_count
 );
+static bool insert_column_list_is_omitted(const struct mylite_sql_ast_node *column_list);
+static bool insert_row_list_first_row_is_empty(const struct mylite_sql_ast_node *row_list);
 static size_t count_visible_insert_target_columns(const struct planned_insert *plan);
 static void collect_visible_insert_target_indexes(
     const struct planned_insert *plan,
@@ -34959,6 +34962,7 @@ static int plan_insert(
             database,
             column_list,
             out_plan,
+            row_list,
             &target_indexes,
             &target_count
         );
@@ -36121,6 +36125,7 @@ static int plan_insert_select(
             database,
             column_list,
             &out_plan->target,
+            NULL,
             &out_plan->target_indexes,
             &out_plan->target_count
         );
@@ -60910,11 +60915,13 @@ static int collect_insert_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_list,
     const struct planned_insert *plan,
+    const struct mylite_sql_ast_node *row_list,
     size_t **out_indexes,
     size_t *out_index_count
 ) {
     size_t explicit_column_count = mylite_sql_ast_node_child_count(column_list);
     size_t column_count = explicit_column_count;
+    bool omitted_column_list = false;
     size_t *indexes = NULL;
 
     *out_indexes = NULL;
@@ -60923,12 +60930,12 @@ static int collect_insert_target_indexes(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    omitted_column_list = insert_column_list_is_omitted(column_list);
     if (explicit_column_count == 0U) {
+        if (!omitted_column_list || insert_row_list_first_row_is_empty(row_list)) {
+            return MYLITE_OK;
+        }
         column_count = count_visible_insert_target_columns(plan);
-    }
-    if (column_count == 0U) {
-        set_unsupported_error(database, "INSERT requires at least one target column");
-        return MYLITE_ERROR;
     }
     if (column_count > SIZE_MAX / sizeof(*indexes)) {
         set_nomem_error(database);
@@ -60962,6 +60969,34 @@ static int collect_insert_target_indexes(
     *out_index_count = column_count;
 
     return MYLITE_OK;
+}
+
+static bool insert_column_list_is_omitted(const struct mylite_sql_ast_node *column_list) {
+    if (column_list == NULL) {
+        return true;
+    }
+    if (column_list->span.text != NULL) {
+        return false;
+    }
+    if (column_list->span.length != 0U) {
+        return false;
+    }
+    return true;
+}
+
+static bool insert_row_list_first_row_is_empty(const struct mylite_sql_ast_node *row_list) {
+    const struct mylite_sql_ast_node *first_row = child_at(row_list, 0U);
+
+    if (first_row == NULL) {
+        return false;
+    }
+    if (first_row->kind != MYLITE_SQL_AST_INSERT_ROW) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(first_row) != 0U) {
+        return false;
+    }
+    return true;
 }
 
 static size_t count_visible_insert_target_columns(const struct planned_insert *plan) {

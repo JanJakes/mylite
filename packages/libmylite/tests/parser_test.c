@@ -88,6 +88,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_empty_insert_values_statements(void);
 static int test_table_maintenance_statements(void);
 static int test_temporary_table_lifecycle_statements(void);
 static int test_serial_alias_statements(void);
@@ -333,6 +334,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_empty_insert_values_statements();
     failures += test_table_maintenance_statements();
     failures += test_temporary_table_lifecycle_statements();
     failures += test_serial_alias_statements();
@@ -7898,6 +7900,52 @@ static int test_table_lifecycle_statements(void) {
         "amount",
         "second projection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_empty_insert_values_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("INSERT INTO simple_lifecycle VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert empty row");
+    failures += expect_child_count(child_at(statement, 1U), 0U, "empty row omitted columns");
+    failures += expect_child_count(child_at(statement, 2U), 1U, "empty row list count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        0U,
+        "empty insert row value count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO simple_lifecycle () VALUES ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert explicit empty");
+    failures += expect_span_text(child_at(statement, 1U), "()", "explicit empty insert columns");
+    failures += expect_child_count(child_at(statement, 1U), 0U, "explicit empty column count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        0U,
+        "explicit empty insert row value count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO simple_lifecycle () VALUES (), ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "replace explicit empty");
+    failures += expect_span_text(child_at(statement, 1U), "()", "explicit empty replace columns");
+    failures += expect_child_count(child_at(statement, 2U), 2U, "empty replace rows");
+    failures +=
+        expect_child_count(child_at(child_at(statement, 2U), 0U), 0U, "first empty replace row");
+    failures +=
+        expect_child_count(child_at(child_at(statement, 2U), 1U), 0U, "second empty replace row");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -16496,6 +16544,12 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUE ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT INTO t VALUES ROW();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);

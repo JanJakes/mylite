@@ -4831,6 +4831,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_identifier_list(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_empty_identifier_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *list = mylite_sql_parser_make_identifier_list(state, NULL);
+
+    if (list == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_span(
+        list,
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren))
+    );
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_append_identifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,

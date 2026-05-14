@@ -13,23 +13,23 @@
 
 ## Implementation
 
-- [ ] Preserve parser distinction between omitted column lists and explicit
+- [x] Preserve parser distinction between omitted column lists and explicit
       empty `()` column lists.
-- [ ] Admit empty insert rows in `INSERT ... VALUES` and `REPLACE ... VALUES`.
-- [ ] Extend the insert planner so omitted-column empty rows and explicit empty
+- [x] Admit empty insert rows in `INSERT ... VALUES` and `REPLACE ... VALUES`.
+- [x] Extend the insert planner so omitted-column empty rows and explicit empty
       column lists plan zero explicit targets and materialize descriptor
       defaults.
-- [ ] Keep ordinary omitted-column nonempty rows mapped to visible descriptor
+- [x] Keep ordinary omitted-column nonempty rows mapped to visible descriptor
       columns.
-- [ ] Preserve existing descriptor default, auto-increment, duplicate-key,
+- [x] Preserve existing descriptor default, auto-increment, duplicate-key,
       foreign-key, `INSERT IGNORE`, `REPLACE`, result, and transaction behavior.
-- [ ] Add focused parser and runtime C coverage.
+- [x] Add focused parser and runtime C coverage.
 
 ## Verification
 
-- [ ] Run `packages/libmylite/tests/mysql_baseline_empty_insert_values_expectations.sh`.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run the new CTest entry plus parser, insert, insert-ignore,
+- [x] Run `packages/libmylite/tests/mysql_baseline_empty_insert_values_expectations.sh`.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run the new CTest entry plus parser, insert, insert-ignore,
       duplicate-key, replace, defaults, auto-increment, and file-backed entries.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote main.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote main.

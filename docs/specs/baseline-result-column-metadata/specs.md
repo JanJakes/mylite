@@ -120,7 +120,7 @@ MySQL 8.4.9 probes establish these expectations for the admitted slice:
 The new API exposes metadata through accessors:
 
 ```c
-typedef enum mylite_result_column_type {
+enum mylite_result_column_type {
     MYLITE_RESULT_COLUMN_TYPE_UNKNOWN = -1,
     MYLITE_RESULT_COLUMN_TYPE_DECIMAL = 0,
     MYLITE_RESULT_COLUMN_TYPE_TINY = 1,
@@ -142,14 +142,14 @@ typedef enum mylite_result_column_type {
     MYLITE_RESULT_COLUMN_TYPE_BLOB = 252,
     MYLITE_RESULT_COLUMN_TYPE_VAR_STRING = 253,
     MYLITE_RESULT_COLUMN_TYPE_STRING = 254
-} mylite_result_column_type;
+};
 
 const char *mylite_result_column_schema_name(const mylite_result *, size_t);
 const char *mylite_result_column_table_name(const mylite_result *, size_t);
 const char *mylite_result_column_origin_schema_name(const mylite_result *, size_t);
 const char *mylite_result_column_origin_table_name(const mylite_result *, size_t);
 const char *mylite_result_column_origin_name(const mylite_result *, size_t);
-mylite_result_column_type mylite_result_column_type(const mylite_result *, size_t);
+enum mylite_result_column_type mylite_result_column_type(const mylite_result *, size_t);
 uint32_t mylite_result_column_flags(const mylite_result *, size_t);
 uint32_t mylite_result_column_charset_id(const mylite_result *, size_t);
 uint32_t mylite_result_column_collation_id(const mylite_result *, size_t);
@@ -229,10 +229,11 @@ set by a future caller, lengths and flags are zero, and nullable is true.
 
 The current descriptor catalog has table-level default charset/collation but no
 per-column charset/collation descriptor. Nonbinary string metadata therefore
-uses MyLite's current fixed result collation ID `255` for `utf8mb4_0900_ai_ci`.
-If a table default collation is `utf8mb4_bin`, string columns additionally
-carry `BINARY`, matching the verified MySQL behavior for the current table
-default slice.
+uses the current session `collation_connection` ID for admitted `SET NAMES`
+`utf8mb4` collations, defaulting to `255` for `utf8mb4_0900_ai_ci`. If a table
+default collation is `utf8mb4_bin`, string columns additionally carry
+`BINARY`, matching the verified MySQL behavior for the current table default
+slice.
 
 ## Flags
 
@@ -260,7 +261,8 @@ not part of this result metadata API.
 This phase does not add new SQL diagnostics. Metadata allocation failures map
 to the existing `MYLITE_NOMEM` path and set the existing out-of-memory
 diagnostic. Public accessor misuse is non-failing and follows existing result
-accessor conventions by returning empty values.
+accessor conventions by returning `NULL`, `0`, or
+`MYLITE_RESULT_COLUMN_TYPE_UNKNOWN`.
 
 ## Performance And SQLite
 

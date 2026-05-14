@@ -129,4 +129,14 @@ expect_contains "utf8mb4_bin result collation stays result charset" \
     'Collation:  utf8mb4_0900_ai_ci (255)' "$binary_collation_output"
 expect_contains "utf8mb4_bin sets binary flag" 'Flags:      BINARY ' "$binary_collation_output"
 
+connection_collation_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SET NAMES utf8mb4 COLLATE utf8mb4_bin; "\
+"SELECT v FROM meta LIMIT 0;" \
+    "$DATABASE")
+
+expect_contains "connection collation selects utf8mb4_bin metadata" \
+    'Collation:  utf8mb4_bin (46)' "$connection_collation_output"
+expect_contains "connection collation does not imply binary flag" \
+    'Flags:      MULTIPLE_KEY PART_KEY ' "$connection_collation_output"
+
 printf '%s\n' "mysql_baseline_result_column_metadata_expectations: ok"

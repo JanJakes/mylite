@@ -243,6 +243,21 @@ enum {
     base_conversion_octal_base = 8,
     base_conversion_max_base = 36,
     base_conversion_text_capacity = scalar_bitwise_integer_bits + 2,
+    mysql_collation_binary_id = 63,
+    mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+    mysql_float_display_length = 12,
+    mysql_double_display_length = 22,
+    mysql_approximate_decimals = 31,
+    mysql_tinyint_bool_display_length = 1,
+    mysql_signed_tinyint_display_length = 4,
+    mysql_unsigned_tinyint_display_length = 3,
+    mysql_signed_smallint_display_length = 6,
+    mysql_unsigned_smallint_display_length = 5,
+    mysql_signed_mediumint_display_length = 9,
+    mysql_unsigned_mediumint_display_length = 8,
+    mysql_signed_int_display_length = 11,
+    mysql_unsigned_int_display_length = 10,
+    mysql_bigint_display_length = 20,
     double_text_max_significant_digits = 17,
     double_text_capacity = 32,
     rand_double_value_bits = 53,
@@ -1035,6 +1050,8 @@ struct planned_select_join_condition {
 struct planned_select {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
+    char source_alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool source_has_alias;
     struct planned_select_source *sources;
     size_t source_count;
     struct mylite_catalog_column_descriptor *columns;
@@ -1309,6 +1326,13 @@ struct primary_key_info {
     struct mylite_catalog_index_descriptor index;
     struct loaded_index_part *parts;
     size_t part_count;
+};
+
+struct result_column_metadata_context {
+    struct primary_key_info primary_key;
+    struct loaded_index_info *indexes;
+    size_t index_count;
+    bool has_single_source_metadata;
 };
 
 struct load_primary_key_column_context {
@@ -5299,6 +5323,10 @@ static int plan_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_select *out_plan
+);
+static void copy_plan_source_alias_if_present(
+    struct planned_select *plan,
+    const struct select_source_context *context
 );
 static int plan_joined_select(
     struct mylite_db *database,
@@ -9928,11 +9956,76 @@ static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
+static struct result_column_metadata_context result_column_metadata_context_init(void);
+static void result_column_metadata_context_deinit(struct result_column_metadata_context *context);
+static int load_result_column_metadata_context(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    struct result_column_metadata_context *context
+);
 static int append_select_result_column(
     struct mylite_db *database,
     mylite_result *result,
     const struct planned_select *plan,
+    const struct result_column_metadata_context *metadata_context,
     size_t column_index
+);
+static int make_select_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    size_t column_index,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+);
+static int populate_select_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct result_column_metadata_context *metadata_context,
+    struct mylite_result_column_descriptor *descriptor
+);
+static int populate_numeric_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static int populate_string_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static int populate_binary_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static int populate_temporal_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static int populate_bit_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static void apply_result_column_descriptor_flags(
+    const struct mylite_catalog_column_descriptor *column,
+    const struct result_column_metadata_context *metadata_context,
+    struct mylite_result_column_descriptor *descriptor
+);
+static uint32_t result_metadata_utf8mb4_collation_id(struct mylite_db *database);
+static bool table_default_collation_is_binary(const struct mylite_catalog_table_descriptor *table);
+static bool result_metadata_integer_descriptor(
+    const char *logical_type,
+    enum mylite_result_logical_type *out_type,
+    uint64_t *out_display_length,
+    bool *out_unsigned
 );
 static int copy_select_item_alias_text(
     struct mylite_db *database,
@@ -33671,6 +33764,7 @@ static int plan_select(
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
+    copy_plan_source_alias_if_present(out_plan, &source_context);
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -33739,6 +33833,18 @@ static int plan_select(
     }
 
     return rc;
+}
+
+static void copy_plan_source_alias_if_present(
+    struct planned_select *plan,
+    const struct select_source_context *context
+) {
+    if (plan == NULL || context == NULL || !context->has_alias) {
+        return;
+    }
+
+    memcpy(plan->source_alias, context->alias, sizeof(plan->source_alias));
+    plan->source_has_alias = true;
 }
 
 static int plan_joined_select(
@@ -36786,6 +36892,7 @@ static int execute_select_from_plan(
     sqlite3_stmt *statement = NULL;
     mylite_result *result = NULL;
     char *sql = NULL;
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
     int sqlite_rc = SQLITE_OK;
     int rc = mylite_result_create(&result);
 
@@ -36794,9 +36901,10 @@ static int execute_select_from_plan(
         return rc;
     }
 
+    rc = load_result_column_metadata_context(database, plan, &metadata_context);
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
-        rc = append_select_result_column(database, result, plan, column_index);
+        rc = append_select_result_column(database, result, plan, &metadata_context, column_index);
     }
     if (rc == MYLITE_OK) {
         rc = build_select_sql(plan, &sql);
@@ -36826,6 +36934,7 @@ static int execute_select_from_plan(
     }
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
+    result_column_metadata_context_deinit(&metadata_context);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         if (rc == MYLITE_NOMEM) {
@@ -60005,10 +60114,12 @@ static int append_select_result_column(
     struct mylite_db *database,
     mylite_result *result,
     const struct planned_select *plan,
+    const struct result_column_metadata_context *metadata_context,
     size_t column_index
 ) {
     const char *column_name = plan->columns[column_index].name;
     const struct mylite_sql_ast_node *alias = plan->column_aliases[column_index];
+    struct mylite_result_column_descriptor descriptor = {0};
     char *alias_text = NULL;
     int rc = MYLITE_OK;
 
@@ -60020,13 +60131,579 @@ static int append_select_result_column(
         column_name = alias_text;
     }
 
-    rc = mylite_result_append_column(result, column_name);
+    rc = make_select_result_column_descriptor(
+        database,
+        plan,
+        metadata_context,
+        column_index,
+        column_name,
+        &descriptor
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
     if (rc != MYLITE_OK) {
-        set_nomem_error(database);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
     }
     free(alias_text);
 
     return rc;
+}
+
+static struct result_column_metadata_context result_column_metadata_context_init(void) {
+    return (struct result_column_metadata_context){
+        .primary_key = primary_key_info_init(),
+        .indexes = NULL,
+        .index_count = 0U,
+        .has_single_source_metadata = false,
+    };
+}
+
+static void result_column_metadata_context_deinit(struct result_column_metadata_context *context) {
+    if (context == NULL) {
+        return;
+    }
+
+    primary_key_info_deinit(&context->primary_key);
+    loaded_index_infos_deinit(&context->indexes, &context->index_count);
+    *context = result_column_metadata_context_init();
+}
+
+static int load_result_column_metadata_context(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    struct result_column_metadata_context *context
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (context == NULL || plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (plan->source_count != 0U) {
+        return MYLITE_OK;
+    }
+
+    rc = load_table_columns(database, plan->table.table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(
+            database,
+            plan->table.table_id,
+            columns,
+            column_count,
+            &context->primary_key
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            plan->table.table_id,
+            columns,
+            column_count,
+            &context->indexes,
+            &context->index_count
+        );
+    }
+    free(columns);
+    if (rc != MYLITE_OK) {
+        result_column_metadata_context_deinit(context);
+        return rc;
+    }
+
+    context->has_single_source_metadata = true;
+    return MYLITE_OK;
+}
+
+static int make_select_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    const struct result_column_metadata_context *metadata_context,
+    size_t column_index,
+    const char *label,
+    struct mylite_result_column_descriptor *out_descriptor
+) {
+    const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+    const char *table_name = plan->source.table_name;
+
+    if (plan->source_has_alias) {
+        table_name = plan->source_alias;
+    }
+
+    *out_descriptor = (struct mylite_result_column_descriptor){
+        .label = label,
+        .schema_name = "",
+        .table_name = "",
+        .origin_schema_name = "",
+        .origin_table_name = "",
+        .origin_column_name = "",
+        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_UNKNOWN,
+        .flags = 0U,
+        .charset_id = 0U,
+        .collation_id = 0U,
+        .display_length = 0U,
+        .decimals = 0U,
+        .nullable = true,
+    };
+
+    if (metadata_context == NULL || !metadata_context->has_single_source_metadata) {
+        return MYLITE_OK;
+    }
+
+    out_descriptor->schema_name = plan->source.schema.name;
+    out_descriptor->table_name = table_name;
+    out_descriptor->origin_schema_name = plan->source.schema.name;
+    out_descriptor->origin_table_name = plan->table.name;
+    out_descriptor->origin_column_name = column->name;
+    out_descriptor->nullable = column->is_nullable;
+
+    return populate_select_result_column_descriptor(
+        database,
+        &plan->table,
+        column,
+        metadata_context,
+        out_descriptor
+    );
+}
+
+static int populate_select_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct result_column_metadata_context *metadata_context,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    bool matched = false;
+    int rc = populate_numeric_result_column_descriptor(database, column, descriptor, &matched);
+
+    if (rc == MYLITE_OK && !matched) {
+        rc =
+            populate_string_result_column_descriptor(database, table, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_temporal_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
+        rc = populate_bit_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!matched) {
+        set_unsupported_error(
+            database,
+            "result metadata supports only current baseline column descriptors"
+        );
+        return MYLITE_ERROR;
+    }
+
+    apply_result_column_descriptor_flags(column, metadata_context, descriptor);
+    return MYLITE_OK;
+}
+
+static int populate_numeric_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    struct decimal_type_info decimal_info = {0};
+    struct approximate_type_info approximate_info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    uint64_t display_length = 0U;
+    bool is_unsigned = false;
+
+    *out_matched = false;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    if (result_metadata_integer_descriptor(
+            column->logical_type,
+            &descriptor->logical_type,
+            &display_length,
+            &is_unsigned
+        )) {
+        descriptor->display_length = display_length;
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NUM;
+        if (is_unsigned) {
+            descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNSIGNED;
+        }
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_year(column)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_YEAR;
+        descriptor->display_length = year_text_length;
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                             MYLITE_RESULT_COLUMN_FLAG_ZEROFILL | MYLITE_RESULT_COLUMN_FLAG_NUM;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_decimal(column)) {
+        int rc = decimal_type_info_for_logical_type(column->logical_type, &decimal_info);
+
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, "result metadata supports only baseline DECIMAL");
+            return MYLITE_ERROR;
+        }
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL;
+        descriptor->display_length = decimal_info.precision;
+        if (decimal_info.scale != 0U) {
+            ++descriptor->display_length;
+        }
+        if (!decimal_info.is_unsigned) {
+            ++descriptor->display_length;
+        }
+        descriptor->decimals = (uint16_t)decimal_info.scale;
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NUM;
+        if (decimal_info.is_unsigned) {
+            descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNSIGNED;
+        }
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        int rc = approximate_type_info_for_logical_type(column->logical_type, &approximate_info);
+
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(
+                database,
+                "result metadata supports only baseline approximate numeric descriptors"
+            );
+            return MYLITE_ERROR;
+        }
+        if (approximate_info.type_class == APPROXIMATE_TYPE_FLOAT) {
+            descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_FLOAT;
+            descriptor->display_length = mysql_float_display_length;
+        } else {
+            descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE;
+            descriptor->display_length = mysql_double_display_length;
+        }
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NUM;
+        if (approximate_info.is_unsigned) {
+            descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNSIGNED;
+        }
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
+}
+
+static int populate_string_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    const struct text_family_type_info *text_info = NULL;
+    size_t length = 0U;
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    if (!column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+
+    descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+    descriptor->collation_id = descriptor->charset_id;
+    if (table_default_collation_is_binary(table)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "result metadata supports only baseline CHAR",
+            &length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
+        descriptor->display_length = (uint64_t)length * utf8mb4_max_bytes_per_character;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_varchar(column)) {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "result metadata supports only baseline VARCHAR",
+            &length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->display_length = (uint64_t)length * utf8mb4_max_bytes_per_character;
+        *out_matched = true;
+        return MYLITE_OK;
+    }
+
+    text_info = text_family_type_info_for_logical_type(column->logical_type);
+    if (text_info == NULL) {
+        set_unsupported_error(database, "result metadata supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+    descriptor->display_length = text_info->maximum_length * utf8mb4_max_bytes_per_character;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_binary_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    struct binary_string_type_info storage = {0};
+    const struct binary_string_type_info *info = NULL;
+
+    (void)database;
+    *out_matched = false;
+    if (!column_descriptor_is_binary_string_family(column)) {
+        return MYLITE_OK;
+    }
+
+    info = binary_string_type_info_for_logical_type(column->logical_type, &storage);
+    if (info == NULL) {
+        set_unsupported_error(
+            database,
+            "result metadata supports only baseline binary descriptors"
+        );
+        return MYLITE_ERROR;
+    }
+
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = info->maximum_length;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    if (info->blob_family) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
+    } else if (info->fixed_length) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
+    } else {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    }
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_temporal_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    *out_matched = true;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    if (column_descriptor_is_date(column)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DATE;
+        descriptor->display_length = date_text_length;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_time(column)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_TIME;
+        descriptor->display_length = time_text_maximum_length;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_datetime(column)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_DATETIME;
+        descriptor->display_length = datetime_text_length;
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_TIMESTAMP;
+        descriptor->display_length = datetime_text_length;
+        return MYLITE_OK;
+    }
+
+    *out_matched = false;
+    descriptor->flags &= ~MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    return MYLITE_OK;
+}
+
+static int populate_bit_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    uint64_t width = 0U;
+
+    *out_matched = false;
+    if (!column_descriptor_is_bit(column)) {
+        return MYLITE_OK;
+    }
+    if (bit_width_for_logical_type(column->logical_type, &width) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BIT;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = width;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNSIGNED;
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static void apply_result_column_descriptor_flags(
+    const struct mylite_catalog_column_descriptor *column,
+    const struct result_column_metadata_context *metadata_context,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct loaded_index_info_span indexes = {
+        .indexes = metadata_context->indexes,
+        .count = metadata_context->index_count,
+    };
+    bool is_key_part = false;
+
+    if (!column->is_nullable) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
+    }
+    if (column->is_auto_increment) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_AUTO_INCREMENT;
+    }
+    if (!column->is_nullable && !column->is_auto_increment &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT;
+    }
+    if (primary_key_info_contains_column_id(&metadata_context->primary_key, column->column_id)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PRI_KEY;
+        is_key_part = true;
+    } else if (column_has_unique_secondary_index(indexes, column->column_id)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY;
+        is_key_part = true;
+    }
+    if (column_has_nonunique_secondary_index(indexes, column->column_id)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY;
+        is_key_part = true;
+    }
+    if (is_key_part) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PART_KEY;
+    }
+}
+
+static uint32_t result_metadata_utf8mb4_collation_id(struct mylite_db *database) {
+    const struct utf8mb4_collation_descriptor *collation = NULL;
+    struct mylite_sql_source_span id_span = {0};
+    uint64_t id = 0U;
+
+    if (database != NULL) {
+        collation = utf8mb4_collation_by_name(database->session.collation_connection);
+    }
+    if (collation == NULL) {
+        return mysql_collation_utf8mb4_0900_ai_ci_id;
+    }
+
+    id_span = (struct mylite_sql_source_span){
+        .text = collation->id,
+        .length = strlen(collation->id),
+    };
+    if (parse_unsigned_integer_literal(&id_span, &id) != MYLITE_OK || id > UINT32_MAX) {
+        return mysql_collation_utf8mb4_0900_ai_ci_id;
+    }
+    return (uint32_t)id;
+}
+
+static bool table_default_collation_is_binary(const struct mylite_catalog_table_descriptor *table) {
+    if (table == NULL) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(table->default_collation, "utf8mb4_bin");
+}
+
+static bool result_metadata_integer_descriptor(
+    const char *logical_type,
+    enum mylite_result_logical_type *out_type,
+    uint64_t *out_display_length,
+    bool *out_unsigned
+) {
+    if (logical_type == NULL) {
+        return false;
+    }
+    if (strcmp(logical_type, "TINYINT(1)") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_TINY;
+        *out_display_length = mysql_tinyint_bool_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "TINYINT") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_TINY;
+        *out_display_length = mysql_signed_tinyint_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_TINY;
+        *out_display_length = mysql_unsigned_tinyint_display_length;
+        *out_unsigned = true;
+        return true;
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_SHORT;
+        *out_display_length = mysql_signed_smallint_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_SHORT;
+        *out_display_length = mysql_unsigned_smallint_display_length;
+        *out_unsigned = true;
+        return true;
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_INT24;
+        *out_display_length = mysql_signed_mediumint_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_INT24;
+        *out_display_length = mysql_unsigned_mediumint_display_length;
+        *out_unsigned = true;
+        return true;
+    }
+    if (strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INTEGER") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_LONG;
+        *out_display_length = mysql_signed_int_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "INT UNSIGNED") == 0 ||
+        strcmp(logical_type, "INTEGER UNSIGNED") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_LONG;
+        *out_display_length = mysql_unsigned_int_display_length;
+        *out_unsigned = true;
+        return true;
+    }
+    if (strcmp(logical_type, "BIGINT") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+        *out_display_length = mysql_bigint_display_length;
+        *out_unsigned = false;
+        return true;
+    }
+    if (strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        *out_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG;
+        *out_display_length = mysql_bigint_display_length;
+        *out_unsigned = true;
+        return true;
+    }
+
+    return false;
 }
 
 static int copy_select_item_alias_text(

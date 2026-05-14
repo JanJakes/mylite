@@ -69,6 +69,15 @@ int mylite_result_metadata_append(
     return MYLITE_OK;
 }
 
+void mylite_result_metadata_remove_last(struct mylite_result_metadata *metadata) {
+    if (metadata == NULL || metadata->column_count == 0U) {
+        return;
+    }
+
+    --metadata->column_count;
+    deinit_column(&metadata->columns[metadata->column_count]);
+}
+
 size_t mylite_result_metadata_column_count(const struct mylite_result_metadata *metadata) {
     if (metadata == NULL) {
         return 0U;

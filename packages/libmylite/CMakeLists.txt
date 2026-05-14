@@ -2153,6 +2153,15 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_result_metadata_test)
 
+  add_executable(mylite_runtime_result_column_metadata_test
+    tests/runtime_result_column_metadata_test.c
+  )
+  target_link_libraries(mylite_runtime_result_column_metadata_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_runtime_result_column_metadata_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_result_column_metadata_test)
+
   add_executable(mylite_runtime_sqlite_bootstrap_test
     tests/runtime_sqlite_bootstrap_test.c
   )
@@ -2875,6 +2884,10 @@ if(BUILD_TESTING)
   )
   add_test(NAME libmylite.runtime.open_memory COMMAND mylite_runtime_open_memory_test)
   add_test(NAME libmylite.runtime.result_metadata COMMAND mylite_runtime_result_metadata_test)
+  add_test(
+    NAME libmylite.runtime.result_column_metadata
+    COMMAND mylite_runtime_result_column_metadata_test
+  )
   add_test(
     NAME libmylite.runtime.sqlite_bootstrap
     COMMAND mylite_runtime_sqlite_bootstrap_test

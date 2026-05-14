@@ -22,6 +22,7 @@ int mylite_result_create(mylite_result **out_result) {
         return MYLITE_NOMEM;
     }
 
+    mylite_result_metadata_init(&result->metadata);
     *out_result = result;
 
     return MYLITE_OK;
@@ -33,16 +34,41 @@ void mylite_result_free(mylite_result *result) {
     }
 
     free_values(result->column_names, result->column_count);
+    mylite_result_metadata_deinit(&result->metadata);
     free_values(result->values, result->row_count * result->column_count);
     free(result->value_sizes);
     free(result);
 }
 
 int mylite_result_append_column(mylite_result *result, const char *name) {
+    const struct mylite_result_column_descriptor descriptor = {
+        .label = name,
+        .schema_name = "",
+        .table_name = "",
+        .origin_schema_name = "",
+        .origin_table_name = "",
+        .origin_column_name = "",
+        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_UNKNOWN,
+        .flags = 0U,
+        .charset_id = 0U,
+        .collation_id = 0U,
+        .display_length = 0U,
+        .decimals = 0U,
+        .nullable = true,
+    };
+
+    return mylite_result_append_column_descriptor(result, &descriptor);
+}
+
+int mylite_result_append_column_descriptor(
+    mylite_result *result,
+    const struct mylite_result_column_descriptor *descriptor
+) {
     char *owned_name = NULL;
     int rc = MYLITE_OK;
 
-    if (result == NULL || name == NULL || result->row_count != 0U) {
+    if (result == NULL || descriptor == NULL || descriptor->label == NULL ||
+        result->row_count != 0U) {
         return MYLITE_MISUSE;
     }
 
@@ -51,9 +77,15 @@ int mylite_result_append_column(mylite_result *result, const char *name) {
         return rc;
     }
 
-    owned_name = duplicate_text(name);
+    owned_name = duplicate_text(descriptor->label);
     if (owned_name == NULL) {
         return MYLITE_NOMEM;
+    }
+
+    rc = mylite_result_metadata_append(&result->metadata, descriptor);
+    if (rc != MYLITE_OK) {
+        free(owned_name);
+        return rc;
     }
 
     result->column_names[result->column_count] = owned_name;
@@ -188,6 +220,100 @@ const char *mylite_result_column_name(const mylite_result *result, size_t column
     return result->column_names[column_index];
 }
 
+const char *mylite_result_column_schema_name(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? NULL : column->schema_name;
+}
+
+const char *mylite_result_column_table_name(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? NULL : column->table_name;
+}
+
+const char *mylite_result_column_origin_schema_name(
+    const mylite_result *result,
+    size_t column_index
+) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? NULL : column->origin_schema_name;
+}
+
+const char *mylite_result_column_origin_table_name(
+    const mylite_result *result,
+    size_t column_index
+) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? NULL : column->origin_table_name;
+}
+
+const char *mylite_result_column_origin_name(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? NULL : column->origin_column_name;
+}
+
+enum mylite_result_column_type mylite_result_column_type(
+    const mylite_result *result,
+    size_t column_index
+) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? MYLITE_RESULT_COLUMN_TYPE_UNKNOWN
+                          : (enum mylite_result_column_type)column->logical_type;
+}
+
+uint32_t mylite_result_column_flags(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? 0U : column->flags;
+}
+
+uint32_t mylite_result_column_charset_id(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? 0U : column->charset_id;
+}
+
+uint32_t mylite_result_column_collation_id(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? 0U : column->collation_id;
+}
+
+uint64_t mylite_result_column_display_length(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? 0U : column->display_length;
+}
+
+uint16_t mylite_result_column_decimals(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column == NULL ? 0U : column->decimals;
+}
+
+int mylite_result_column_nullable(const mylite_result *result, size_t column_index) {
+    const struct mylite_result_column *column =
+        mylite_result_column_metadata_at(result, column_index);
+
+    return column != NULL && column->nullable ? 1 : 0;
+}
+
 size_t mylite_result_row_count(const mylite_result *result) {
     if (result == NULL) {
         return 0U;
@@ -246,6 +372,18 @@ size_t mylite_result_warning_count(const mylite_result *result) {
     }
 
     return result->warning_count;
+}
+
+const struct mylite_result_column *mylite_result_column_metadata_at(
+    const mylite_result *result,
+    size_t column_index
+) {
+    if (result == NULL || column_index >= result->column_count ||
+        mylite_result_metadata_column_count(&result->metadata) != result->column_count) {
+        return NULL;
+    }
+
+    return mylite_result_metadata_column_at(&result->metadata, column_index);
 }
 
 static int reserve_columns(mylite_result *result, size_t required_capacity) {

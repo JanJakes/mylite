@@ -12,15 +12,15 @@
 - [x] Write independently authored feature specification with ownership
   boundaries, public API shape, descriptor mapping, diagnostics, performance,
   and known exclusions.
-- [ ] Add public result metadata constants and accessors.
-- [ ] Make `mylite_result` own column metadata for its lifetime.
-- [ ] Populate descriptor-backed single-table `SELECT` metadata from catalog
+- [x] Add public result metadata constants and accessors.
+- [x] Make `mylite_result` own column metadata for its lifetime.
+- [x] Populate descriptor-backed single-table `SELECT` metadata from catalog
   descriptors and loaded key metadata.
-- [ ] Add runtime tests under `packages/libmylite/tests/`.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
+- [x] Add runtime tests under `packages/libmylite/tests/`.
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
   support wording.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused runtime/MySQL expectation verification.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused runtime/MySQL expectation verification.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote
   `main`.

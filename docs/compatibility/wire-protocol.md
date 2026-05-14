@@ -16,7 +16,7 @@
 | OK packet | ❌ | Rows, insert id, status, warnings, session state |
 | ERR packet | ❌ | Code, SQLSTATE, message, fatality |
 | EOF packet compatibility | ❌ | Legacy EOF without CLIENT_DEPRECATE_EOF |
-| Result set metadata | ❌ | Column metadata and EOF/OK termination |
+| Result set metadata | ❌ | Column metadata and EOF/OK termination; limited public `mylite_result` metadata accessors are separate from the wire protocol surface |
 | Text result rows | ❌ | Text row encoding, NULLs, charsets |
 | Binary result rows | ❌ | Binary row encoding and null bitmap |
 | LOCAL INFILE request | ❌ | LOCAL INFILE flow and security |

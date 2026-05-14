@@ -1278,6 +1278,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_enum_label(
     struct mylite_sql_ast_node *label_list,
     struct mylite_sql_token label_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    struct mylite_sql_ast_node *member_list,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_member_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token member_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_set_member(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *member_list,
+    struct mylite_sql_token member_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_binary_string_type_tokens tokens

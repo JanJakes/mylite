@@ -721,6 +721,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "enum_type";
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
         return "enum_label_list";
+    case MYLITE_SQL_AST_SET_TYPE:
+        return "set_type";
+    case MYLITE_SQL_AST_SET_MEMBER_LIST:
+        return "set_member_list";
     case MYLITE_SQL_AST_BINARY_STRING_TYPE:
         return "binary_string_type";
     case MYLITE_SQL_AST_BIT_TYPE:

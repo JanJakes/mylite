@@ -6328,6 +6328,9 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
     if (text_has_ascii_case_insensitive_prefix(logical_type, "ENUM(") != 0) {
         return true;
     }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "SET(") != 0) {
+        return true;
+    }
     if (catalog_logical_type_is_bit(logical_type)) {
         return true;
     }
@@ -6377,6 +6380,9 @@ static bool catalog_logical_type_accepts_empty_text_default(const char *logical_
         return true;
     }
     if (text_has_ascii_case_insensitive_prefix(logical_type, "ENUM(") != 0) {
+        return true;
+    }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "SET(") != 0) {
         return true;
     }
 

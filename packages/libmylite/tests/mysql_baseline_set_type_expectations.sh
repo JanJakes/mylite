@@ -111,13 +111,12 @@ run_mysql \
     "CREATE DATABASE ${DATABASE} DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" \
     >/dev/null
 
-show_columns_expected=$(cat <<\EXPECTED
-id	int	NO	PRI	NULL	auto_increment
-flags	set('a','b','c')	NO			
-nullable_flags	set('b','a')	YES		NULL	
-spaced	set('x','y')	YES		y	
-numericish	set('0','1','2')	YES		2	
-EXPECTED
+show_columns_expected=$(printf '%b\n' \
+    "id\tint\tNO\tPRI\tNULL\tauto_increment" \
+    "flags\tset('a','b','c')\tNO\t\t\t" \
+    "nullable_flags\tset('b','a')\tYES\t\tNULL\t" \
+    "spaced\tset('x','y')\tYES\t\ty\t" \
+    "numericish\tset('0','1','2')\tYES\t\t2\t"
 )
 expect_output \
     "set descriptors render normalized columns" \
@@ -249,6 +248,54 @@ expect_error \
 "INSERT INTO set_no_default (id) VALUES (1);" \
     "$DATABASE"
 
+alter_default_expected=$(cat <<\EXPECTED
+0	0	0
+1	a	1
+2	a,b	3
+3	NULL	NULL
+EXPECTED
+)
+expect_output \
+    "set alter column default behavior" \
+    "$alter_default_expected" \
+    "CREATE TABLE set_alter_default (id INT, v SET('a','b') NULL DEFAULT 'a'); "\
+"INSERT INTO set_alter_default (id) VALUES (1); "\
+"ALTER TABLE set_alter_default ALTER COLUMN v SET DEFAULT 'b,a'; "\
+"SELECT @@warning_count, @@error_count, ROW_COUNT(); "\
+"INSERT INTO set_alter_default (id) VALUES (2); "\
+"ALTER TABLE set_alter_default ALTER COLUMN v SET DEFAULT NULL; "\
+"INSERT INTO set_alter_default (id) VALUES (3); "\
+"SELECT id, v, v + 0 FROM set_alter_default ORDER BY id;" \
+    "$DATABASE"
+
+drop_default_expected=$(cat <<\EXPECTED
+0	0	0
+EXPECTED
+)
+expect_output \
+    "set alter column drop default status" \
+    "$drop_default_expected" \
+    "CREATE TABLE set_drop_default (id INT, v SET('a','b') NULL DEFAULT 'a'); "\
+"ALTER TABLE set_drop_default ALTER COLUMN v DROP DEFAULT; "\
+"SELECT @@warning_count, @@error_count, ROW_COUNT();" \
+    "$DATABASE"
+
+expect_error \
+    "set dropped default omitted insert" \
+    1364 \
+    HY000 \
+    "Field 'v' doesn't have a default value" \
+    "INSERT INTO set_drop_default (id) VALUES (1);" \
+    "$DATABASE"
+
+expect_error \
+    "set alter column numeric default" \
+    1067 \
+    42000 \
+    "Invalid default value for 'v'" \
+    "ALTER TABLE set_alter_default ALTER COLUMN v SET DEFAULT 2;" \
+    "$DATABASE"
+
 expect_error \
     "duplicate set member" \
     1291 \
@@ -315,6 +362,21 @@ expect_error \
     "Column 'v' cannot be null" \
     "CREATE TABLE bad_null (v SET('a','b') NOT NULL DEFAULT ''); "\
 "INSERT INTO bad_null VALUES (NULL);" \
+    "$DATABASE"
+
+empty_member_expected=$(cat <<\EXPECTED
+	0
+	1
+a	2
+a	3
+EXPECTED
+)
+expect_output \
+    "upstream empty-string set members are deferred by MyLite" \
+    "$empty_member_expected" \
+    "CREATE TABLE empty_member_upstream (v SET('', 'a')); "\
+"INSERT INTO empty_member_upstream VALUES (0),(1),(2),(3); "\
+"SELECT v, v + 0 FROM empty_member_upstream ORDER BY v + 0;" \
     "$DATABASE"
 
 order_expected=$(cat <<\EXPECTED

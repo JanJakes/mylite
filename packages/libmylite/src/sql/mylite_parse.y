@@ -3060,6 +3060,9 @@ identifier(A) ::= ENGINE(T). {
 identifier(A) ::= ENUM(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= SET(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= ENGINES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3297,6 +3300,9 @@ column_type(A) ::= text_type(T). {
 column_type(A) ::= enum_type(T). {
     A = T;
 }
+column_type(A) ::= set_type(T). {
+    A = T;
+}
 column_type(A) ::= binary_string_type(T). {
     A = T;
 }
@@ -3445,6 +3451,17 @@ enum_label_list(A) ::= STRING(T). {
 }
 enum_label_list(A) ::= enum_label_list(L) COMMA STRING(T). {
     A = mylite_sql_parser_append_enum_label(state, L, T);
+}
+
+set_type(A) ::= SET(T) LPAREN set_member_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_set_type(state, T, L, R);
+}
+
+set_member_list(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_set_member_list(state, T);
+}
+set_member_list(A) ::= set_member_list(L) COMMA STRING(T). {
+    A = mylite_sql_parser_append_set_member(state, L, T);
 }
 
 binary_string_type(A) ::= BINARY(T). {

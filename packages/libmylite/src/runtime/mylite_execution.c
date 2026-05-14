@@ -101,6 +101,8 @@ enum {
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
+    mysql_error_duplicated_value_in_set = 1291,
+    mysql_error_illegal_set_value = 1367,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_values_function_deprecated = 1287,
@@ -293,6 +295,18 @@ enum {
     enum_logical_syntax_overhead = 6,
     enum_label_count_capacity = 255,
     enum_one_byte_label_count_max = 255,
+    set_logical_prefix_length = 4,
+    set_logical_syntax_overhead = 5,
+    set_member_count_capacity = 64,
+    set_one_byte_storage_member_count_max = 8,
+    set_two_byte_storage_member_count_max = 16,
+    set_three_byte_storage_member_count_max = 24,
+    set_four_byte_storage_member_count_max = 32,
+    set_one_byte_storage_size = 1,
+    set_two_byte_storage_size = 2,
+    set_three_byte_storage_size = 3,
+    set_four_byte_storage_size = 4,
+    set_eight_byte_storage_size = 8,
     bit_byte_rounding_offset = CHAR_BIT - 1,
     byte_bit_count = CHAR_BIT,
     byte_all_bits_mask = 0xff,
@@ -1508,6 +1522,24 @@ struct enum_type_info {
     struct enum_label_descriptor labels[enum_label_count_capacity];
     size_t label_count;
     size_t max_label_character_length;
+};
+
+struct set_type_info {
+    char decoded_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
+    size_t decoded_length;
+    struct enum_label_descriptor members[set_member_count_capacity];
+    size_t member_count;
+    size_t max_display_character_length;
+};
+
+struct set_predicate_member_text_request {
+    struct dynamic_string *display;
+    const struct set_type_info *info;
+    char *text;
+    size_t token_start;
+    size_t token_end;
+    size_t member_index;
+    bool found_member;
 };
 
 enum enum_string_trailing_space_policy {
@@ -7353,6 +7385,14 @@ static int format_enum_descriptor_type_text(
     const char *unsupported_message,
     const char **out_type_text
 );
+static int format_set_descriptor_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char *unsupported_message,
+    const char **out_type_text
+);
 static int format_text_family_type_text(const char *logical_type, const char **out_type_text);
 static int format_binary_string_type_text(
     struct mylite_db *database,
@@ -7836,6 +7876,10 @@ static int finalize_planned_column_enum_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_set_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_integer_expression_default(
     struct mylite_db *database,
     struct planned_column *column,
@@ -8023,6 +8067,35 @@ static int append_enum_quoted_label(
     const char *text,
     size_t text_length
 );
+static int map_set_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+);
+static int map_set_member(
+    struct mylite_db *database,
+    const char *column_name,
+    const struct mylite_sql_ast_node *member_node,
+    size_t member_index,
+    struct set_type_info *info,
+    struct dynamic_string *descriptor
+);
+static int check_set_member_unique(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct set_type_info *info,
+    const char *column_name
+);
+static bool set_member_contains_comma(const char *text, size_t text_length);
+static int store_set_member(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    size_t character_length,
+    struct set_type_info *info
+);
 static int map_binary_string_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -8097,6 +8170,7 @@ static bool planned_column_is_char_or_varchar(const struct planned_column *colum
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_enum(const struct planned_column *column);
+static bool planned_column_is_set(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
 static bool planned_column_is_bit(const struct planned_column *column);
 static bool planned_column_is_year(const struct planned_column *column);
@@ -8126,6 +8200,7 @@ static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
@@ -8191,6 +8266,43 @@ static bool enum_text_is_unsigned_integer(
     size_t text_length,
     uint64_t *out_value
 );
+static int set_type_info_for_logical_type(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *unsupported_message,
+    struct set_type_info *out_info
+);
+static int parse_set_descriptor_member(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    struct set_type_info *out_info
+);
+static int finish_parse_set_descriptor_member(
+    struct mylite_db *database,
+    size_t member_start,
+    struct set_type_info *out_info
+);
+static int read_set_descriptor_escaped_byte(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    char *out_byte
+);
+static int set_type_info_append_byte(
+    struct mylite_db *database,
+    struct set_type_info *info,
+    char byte
+);
+static bool set_find_member(
+    const struct set_type_info *info,
+    const char *text,
+    size_t text_length,
+    size_t *out_index
+);
+static bool set_bitmap_is_valid(const struct set_type_info *info, uint64_t bitmap);
 static const struct text_family_type_info *text_family_type_info_for_logical_type(
     const char *logical_type
 );
@@ -8251,6 +8363,12 @@ static int binary_string_row_size_bytes(
     const char *unsupported_message
 );
 static int text_backed_row_size_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t *out_size,
+    const char *unsupported_message
+);
+static int set_row_size_bytes(
     struct mylite_db *database,
     const char *logical_type,
     uint64_t *out_size,
@@ -8802,6 +8920,74 @@ static int make_enum_first_label_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static int convert_set_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_set_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+);
+static int convert_empty_set_string_literal(
+    struct mylite_db *database,
+    const struct set_type_info *info,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+);
+static int convert_set_member_list_literal(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    bool has_comma,
+    const struct set_type_info *info,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+);
+static int append_set_predicate_member_text(struct set_predicate_member_text_request request);
+static int finish_set_member_list_conversion(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    bool has_comma,
+    const struct set_type_info *info,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    bool all_members_known,
+    uint64_t bitmap,
+    struct dynamic_string *display,
+    struct planned_value *out_value
+);
+static int convert_set_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool missing_is_error,
+    struct planned_value *out_value
+);
+static int copy_set_bitmap_value(
+    struct mylite_db *database,
+    const struct set_type_info *info,
+    uint64_t bitmap,
+    struct planned_value *out_value
+);
+static int copy_set_no_match_value(struct mylite_db *database, struct planned_value *out_value);
 static int convert_varchar_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -8872,6 +9058,12 @@ static int convert_timestamp_literal(
     struct planned_value *out_value
 );
 static int convert_predicate_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_predicate_set_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
@@ -10187,6 +10379,13 @@ static int populate_enum_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
     bool *out_matched
 );
+static int populate_set_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
 static int populate_binary_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -11269,6 +11468,17 @@ static void set_duplicated_enum_value_error(
     const char *value,
     size_t value_length
 );
+static void set_duplicated_set_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *value,
+    size_t value_length
+);
+static void set_illegal_set_value_error(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+);
 static void set_multiple_primary_key_error(struct mylite_db *database);
 static void set_wrong_auto_key_error(struct mylite_db *database);
 static void set_column_length_too_big_error(
@@ -11805,6 +12015,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_ENUM_TYPE:
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
+    case MYLITE_SQL_AST_SET_TYPE:
+    case MYLITE_SQL_AST_SET_MEMBER_LIST:
     case MYLITE_SQL_AST_BINARY_STRING_TYPE:
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
@@ -18036,6 +18248,18 @@ static int information_schema_character_metadata_for_descriptor(
         character_length = (uint64_t)info.max_label_character_length;
         character_octet_length = character_length * utf8mb4_max_bytes_per_character;
         has_character_metadata = true;
+    } else if (column_descriptor_is_set(column)) {
+        struct set_type_info info = {0};
+
+        rc = set_type_info_for_logical_type(
+            database,
+            column->logical_type,
+            "INFORMATION_SCHEMA.COLUMNS supports only baseline SET descriptors",
+            &info
+        );
+        character_length = (uint64_t)info.max_display_character_length;
+        character_octet_length = character_length * utf8mb4_max_bytes_per_character;
+        has_character_metadata = true;
     } else if (column_descriptor_is_binary_string_family(column)) {
         struct binary_string_type_info storage = {0};
         const struct binary_string_type_info *info =
@@ -18104,6 +18328,9 @@ static const char *information_schema_data_type_for_descriptor(
     }
     if (column_descriptor_is_enum(column)) {
         return "enum";
+    }
+    if (column_descriptor_is_set(column)) {
+        return "set";
     }
     if (column_descriptor_is_bit(column)) {
         return "bit";
@@ -18208,10 +18435,11 @@ static const char *information_schema_numeric_precision_for_descriptor(
     const char *logical_type = column->logical_type;
 
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
-        column_descriptor_is_enum(column) || column_descriptor_is_binary_string_family(column) ||
-        column_descriptor_is_decimal(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return NULL;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -18252,11 +18480,11 @@ static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
-        column_descriptor_is_enum(column) || column_descriptor_is_binary_string_family(column) ||
-        column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
-        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
-        column_descriptor_is_year(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return NULL;
     }
     return "0";
@@ -20607,6 +20835,16 @@ static int show_descriptor_type_text(
             out_type_text
         );
     }
+    if (strncmp(logical_type, "SET(", set_logical_prefix_length) == 0) {
+        return format_set_descriptor_type_text(
+            database,
+            logical_type,
+            buffer,
+            buffer_size,
+            unsupported_message,
+            out_type_text
+        );
+    }
     if (format_binary_string_type_text(
             database,
             logical_type,
@@ -20834,6 +21072,30 @@ static int format_enum_descriptor_type_text(
     }
     written =
         snprintf(buffer, buffer_size, "enum%s", logical_type + enum_logical_prefix_length - 1U);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format column type");
+        return MYLITE_ERROR;
+    }
+    *out_type_text = buffer;
+    return MYLITE_OK;
+}
+
+static int format_set_descriptor_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char *unsupported_message,
+    const char **out_type_text
+) {
+    struct set_type_info info = {0};
+    int rc = set_type_info_for_logical_type(database, logical_type, unsupported_message, &info);
+    int written = 0;
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    written = snprintf(buffer, buffer_size, "set%s", logical_type + set_logical_prefix_length - 1U);
     if (written < 0 || (size_t)written >= buffer_size) {
         set_runtime_error(database, "failed to format column type");
         return MYLITE_ERROR;
@@ -21070,6 +21332,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TEXT_TYPE:
     case MYLITE_SQL_AST_ENUM_TYPE:
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
+    case MYLITE_SQL_AST_SET_TYPE:
+    case MYLITE_SQL_AST_SET_MEMBER_LIST:
     case MYLITE_SQL_AST_BINARY_STRING_TYPE:
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
@@ -22575,7 +22839,7 @@ static int validate_secondary_index_column(
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column)) {
+        planned_column_is_enum(column) || planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22710,7 +22974,7 @@ static int planned_index_part_key_bytes(
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column)) {
+        planned_column_is_enum(column) || planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22737,7 +23001,7 @@ static int validate_unique_index_column(
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column)) {
+        planned_column_is_enum(column) || planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22950,10 +23214,10 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
     } else if (
         planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
         planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
-        planned_column_is_date(column) || planned_column_is_time(column) ||
-        planned_column_is_datetime(column) || planned_column_is_timestamp(column) ||
-        planned_column_is_year(column)
+        planned_column_is_set(column) || planned_column_is_decimal(column) ||
+        planned_column_is_approximate(column) || planned_column_is_date(column) ||
+        planned_column_is_time(column) || planned_column_is_datetime(column) ||
+        planned_column_is_timestamp(column) || planned_column_is_year(column)
     ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
@@ -23025,9 +23289,10 @@ static int validate_auto_increment_column(
     column = &plan->columns[column_index];
     if (planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
         planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
-        planned_column_is_date(column) || planned_column_is_time(column) ||
-        planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+        planned_column_is_set(column) || planned_column_is_decimal(column) ||
+        planned_column_is_approximate(column) || planned_column_is_date(column) ||
+        planned_column_is_time(column) || planned_column_is_datetime(column) ||
+        planned_column_is_timestamp(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -23225,6 +23490,7 @@ static int validate_create_table_like_source_columns(
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
             column_descriptor_is_enum(&columns[column_index]) ||
+            column_descriptor_is_set(&columns[column_index]) ||
             column_descriptor_is_binary_string_family(&columns[column_index]) ||
             column_descriptor_is_bit(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
@@ -27026,7 +27292,7 @@ static int column_descriptor_index_part_key_bytes(
         return MYLITE_ERROR;
     }
     if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
-        column_descriptor_is_enum(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -28191,7 +28457,7 @@ static int validate_alter_table_add_index_column(
         return MYLITE_ERROR;
     }
     if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
-        column_descriptor_is_enum(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -30395,9 +30661,10 @@ static int complete_alter_table_modify_column_plan(
         column_descriptor_is_timestamp(&out_plan->original_column) ||
         column_descriptor_is_year(&out_plan->original_column) ||
         column_descriptor_is_enum(&out_plan->original_column) ||
+        column_descriptor_is_set(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
         planned_column_is_bit(&out_plan->column) || planned_column_is_enum(&out_plan->column) ||
-        planned_column_is_decimal(&out_plan->column) ||
+        planned_column_is_set(&out_plan->column) || planned_column_is_decimal(&out_plan->column) ||
         planned_column_is_approximate(&out_plan->column) ||
         planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
         planned_column_is_datetime(&out_plan->column) ||
@@ -33074,6 +33341,9 @@ static bool insert_select_source_target_types_are_compatible(
     if (column_descriptor_is_enum(target_column)) {
         return false;
     }
+    if (column_descriptor_is_set(target_column)) {
+        return false;
+    }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return column_descriptor_is_binary_string_family(source_column);
     }
@@ -33116,6 +33386,9 @@ static const char *insert_select_implicit_conversion_message(
     }
     if (column_descriptor_is_enum(target_column)) {
         return "INSERT ... SELECT does not support implicit ENUM conversion";
+    }
+    if (column_descriptor_is_set(target_column)) {
+        return "INSERT ... SELECT does not support implicit SET conversion";
     }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return "INSERT ... SELECT does not support implicit binary string conversion";
@@ -50627,7 +50900,7 @@ static int finalize_planned_column_default(
     }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
         if (planned_column_is_bit(column) || planned_column_is_year(column) ||
-            planned_column_is_enum(column)) {
+            planned_column_is_enum(column) || planned_column_is_set(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -50673,6 +50946,9 @@ static int finalize_planned_column_type_default(
     }
     if (planned_column_is_enum(column)) {
         return finalize_planned_column_enum_default(database, column);
+    }
+    if (planned_column_is_set(column)) {
+        return finalize_planned_column_set_default(database, column);
     }
 
     rc = convert_column_default_value(
@@ -51108,6 +51384,50 @@ static int finalize_planned_column_enum_default(
         false,
         true,
         ENUM_STRING_TRIM_TRAILING_SPACES,
+        &value
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
+}
+
+static int finalize_planned_column_set_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (column->default_node == NULL ||
+        column->default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_set_string_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        true,
+        true,
         &value
     );
     if (rc != MYLITE_OK) {
@@ -51795,6 +52115,9 @@ static int map_column_type(
     if (type_node->kind == MYLITE_SQL_AST_ENUM_TYPE) {
         return map_enum_type(database, type_node, column_name, out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_SET_TYPE) {
+        return map_set_type(database, type_node, column_name, out_column);
+    }
     if (type_node->kind == MYLITE_SQL_AST_BINARY_STRING_TYPE) {
         return map_binary_string_type(database, type_node, column_name, out_column);
     }
@@ -52198,6 +52521,184 @@ static int append_enum_quoted_label(
         rc = dynamic_string_append_char(string, '\'');
     }
     return rc;
+}
+
+static int map_set_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+) {
+    const struct mylite_sql_ast_node *member_list = child_at(type_node, 0U);
+    struct set_type_info info = {0};
+    struct dynamic_string descriptor;
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&descriptor);
+    if (member_list == NULL || member_list->kind != MYLITE_SQL_AST_SET_MEMBER_LIST ||
+        mylite_sql_ast_node_child_count(member_list) == 0U) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&descriptor, "SET(");
+    }
+    for (size_t member_index = 0U;
+         rc == MYLITE_OK && member_index < mylite_sql_ast_node_child_count(member_list);
+         ++member_index) {
+        rc = map_set_member(
+            database,
+            column_name,
+            child_at(member_list, member_index),
+            member_index,
+            &info,
+            &descriptor
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&descriptor, ')');
+    }
+    if (rc == MYLITE_OK && (descriptor.text == NULL ||
+                            descriptor.length >= sizeof(out_column->logical_type_storage))) {
+        set_unsupported_error(database, "SET definition is too large for this MyLite build");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(out_column->logical_type_storage, descriptor.text, descriptor.length + 1U);
+        snprintf(
+            out_column->physical_type_storage,
+            sizeof(out_column->physical_type_storage),
+            "TEXT"
+        );
+        out_column->logical_type = out_column->logical_type_storage;
+        out_column->physical_type = out_column->physical_type_storage;
+    }
+
+    dynamic_string_deinit(&descriptor);
+    return rc;
+}
+
+static int map_set_member(
+    struct mylite_db *database,
+    const char *column_name,
+    const struct mylite_sql_ast_node *member_node,
+    size_t member_index,
+    struct set_type_info *info,
+    struct dynamic_string *descriptor
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t character_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (info->member_count >= set_member_count_capacity) {
+        set_unsupported_error(database, "SET supports at most 64 members in this build");
+        return MYLITE_ERROR;
+    }
+    rc = decode_sql_string_literal(
+        database,
+        member_node,
+        "SET members support only string literals",
+        "SET members do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        trim_trailing_ascii_spaces(text, &text_length);
+    }
+    if (rc == MYLITE_OK && text_length == 0U) {
+        set_unsupported_error(database, "SET empty-string members are not yet supported");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && set_member_contains_comma(text, text_length)) {
+        set_illegal_set_value_error(database, text, text_length);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && validate_utf8_text(text, text_length, &character_length) != MYLITE_OK) {
+        set_unsupported_error(database, "SET members must be valid UTF-8");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_set_member_unique(database, text, text_length, info, column_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = store_set_member(database, text, text_length, character_length, info);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_enum_descriptor_label(descriptor, text, text_length, member_index != 0U);
+    }
+
+    free(text);
+    return rc;
+}
+
+static int check_set_member_unique(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct set_type_info *info,
+    const char *column_name
+) {
+    for (size_t previous = 0U; previous < info->member_count; ++previous) {
+        if (enum_label_equals_ascii_case_insensitive(
+                info->members[previous].text,
+                info->members[previous].text_length,
+                text,
+                text_length
+            )) {
+            set_duplicated_set_value_error(
+                database,
+                column_name,
+                info->members[previous].text,
+                info->members[previous].text_length
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool set_member_contains_comma(const char *text, size_t text_length) {
+    if (text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (text[index] == ',') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int store_set_member(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    size_t character_length,
+    struct set_type_info *info
+) {
+    char *stored = NULL;
+
+    if (info->decoded_length + text_length + 1U > sizeof(info->decoded_storage)) {
+        set_unsupported_error(database, "SET definition is too large for this MyLite build");
+        return MYLITE_ERROR;
+    }
+
+    stored = &info->decoded_storage[info->decoded_length];
+    memcpy(stored, text, text_length);
+    stored[text_length] = '\0';
+    info->members[info->member_count] = (struct enum_label_descriptor){
+        .text = stored,
+        .text_length = text_length,
+        .character_length = character_length,
+    };
+    ++info->member_count;
+    info->decoded_length += text_length + 1U;
+    info->max_display_character_length += character_length;
+    if (info->member_count > 1U) {
+        ++info->max_display_character_length;
+    }
+    return MYLITE_OK;
 }
 
 static int map_binary_string_type(
@@ -52815,6 +53316,14 @@ static bool planned_column_is_enum(const struct planned_column *column) {
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
+static bool planned_column_is_set(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strncmp(column->logical_type, "SET(", set_logical_prefix_length) == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
 static bool planned_column_is_binary_string_family(const struct planned_column *column) {
     struct mylite_catalog_column_descriptor descriptor = {0};
 
@@ -53026,6 +53535,14 @@ static bool column_descriptor_is_enum(const struct mylite_catalog_column_descrip
         return false;
     }
     return (strncmp(column->logical_type, "ENUM(", enum_logical_prefix_length) == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
+static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    return (strncmp(column->logical_type, "SET(", set_logical_prefix_length) == 0 &&
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
@@ -53359,6 +53876,207 @@ static bool enum_text_is_unsigned_integer(
     }
     *out_value = value;
     return true;
+}
+
+static int set_type_info_for_logical_type(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *unsupported_message,
+    struct set_type_info *out_info
+) {
+    size_t logical_length = logical_type == NULL ? 0U : strlen(logical_type);
+    size_t index = set_logical_prefix_length;
+    int rc = MYLITE_OK;
+
+    if (logical_type == NULL || unsupported_message == NULL || out_info == NULL ||
+        logical_length <= set_logical_syntax_overhead ||
+        strncmp(logical_type, "SET(", set_logical_prefix_length) != 0 ||
+        logical_type[logical_length - 1U] != ')') {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    *out_info = (struct set_type_info){0};
+    while (rc == MYLITE_OK && index < logical_length - 1U) {
+        if (out_info->member_count >= set_member_count_capacity) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        rc = parse_set_descriptor_member(
+            database,
+            logical_type,
+            logical_length - 1U,
+            &index,
+            out_info
+        );
+        if (rc == MYLITE_OK && index < logical_length - 1U) {
+            if (logical_type[index] != ',') {
+                set_unsupported_error(database, unsupported_message);
+                return MYLITE_ERROR;
+            }
+            ++index;
+        }
+    }
+    if (rc == MYLITE_OK && out_info->member_count == 0U) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int parse_set_descriptor_member(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    struct set_type_info *out_info
+) {
+    size_t member_start = out_info->decoded_length;
+
+    if (*index >= end_index || logical_type[*index] != '\'') {
+        set_unsupported_error(database, "invalid SET descriptor");
+        return MYLITE_ERROR;
+    }
+    ++*index;
+    while (*index < end_index) {
+        char byte = logical_type[*index];
+
+        ++*index;
+        if (byte == '\'') {
+            if (*index < end_index && logical_type[*index] == '\'') {
+                ++*index;
+                if (set_type_info_append_byte(database, out_info, '\'') != MYLITE_OK) {
+                    return MYLITE_ERROR;
+                }
+                continue;
+            }
+            return finish_parse_set_descriptor_member(database, member_start, out_info);
+        }
+        if (byte == '\\') {
+            if (read_set_descriptor_escaped_byte(database, logical_type, end_index, index, &byte) !=
+                MYLITE_OK) {
+                return MYLITE_ERROR;
+            }
+        }
+        if (set_type_info_append_byte(database, out_info, byte) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+    }
+
+    set_unsupported_error(database, "invalid SET descriptor");
+    return MYLITE_ERROR;
+}
+
+static int finish_parse_set_descriptor_member(
+    struct mylite_db *database,
+    size_t member_start,
+    struct set_type_info *out_info
+) {
+    size_t character_length = 0U;
+    size_t text_length = 0U;
+
+    if (set_type_info_append_byte(database, out_info, '\0') != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    text_length = out_info->decoded_length - member_start - 1U;
+    if (validate_utf8_text(
+            &out_info->decoded_storage[member_start],
+            text_length,
+            &character_length
+        ) != MYLITE_OK) {
+        set_unsupported_error(database, "invalid SET descriptor");
+        return MYLITE_ERROR;
+    }
+    out_info->members[out_info->member_count] = (struct enum_label_descriptor){
+        .text = &out_info->decoded_storage[member_start],
+        .text_length = text_length,
+        .character_length = character_length,
+    };
+    out_info->max_display_character_length += character_length;
+    if (out_info->member_count > 0U) {
+        ++out_info->max_display_character_length;
+    }
+    ++out_info->member_count;
+    return MYLITE_OK;
+}
+
+static int read_set_descriptor_escaped_byte(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    char *out_byte
+) {
+    char byte = '\0';
+
+    if (*index >= end_index) {
+        set_unsupported_error(database, "invalid SET descriptor");
+        return MYLITE_ERROR;
+    }
+    byte = logical_type[*index];
+    ++*index;
+    if (byte == 'n') {
+        byte = '\n';
+    } else if (byte == 'r') {
+        byte = '\r';
+    } else if (byte == 't') {
+        byte = '\t';
+    }
+    *out_byte = byte;
+    return MYLITE_OK;
+}
+
+static int set_type_info_append_byte(
+    struct mylite_db *database,
+    struct set_type_info *info,
+    char byte
+) {
+    if (info->decoded_length >= sizeof(info->decoded_storage)) {
+        set_unsupported_error(database, "SET definition is too large for this MyLite build");
+        return MYLITE_ERROR;
+    }
+    info->decoded_storage[info->decoded_length] = byte;
+    ++info->decoded_length;
+    return MYLITE_OK;
+}
+
+static bool set_find_member(
+    const struct set_type_info *info,
+    const char *text,
+    size_t text_length,
+    size_t *out_index
+) {
+    if (out_index != NULL) {
+        *out_index = 0U;
+    }
+    if (info == NULL || text == NULL) {
+        return false;
+    }
+    for (size_t member_index = 0U; member_index < info->member_count; ++member_index) {
+        if (enum_label_equals_ascii_case_insensitive(
+                info->members[member_index].text,
+                info->members[member_index].text_length,
+                text,
+                text_length
+            )) {
+            if (out_index != NULL) {
+                *out_index = member_index;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool set_bitmap_is_valid(const struct set_type_info *info, uint64_t bitmap) {
+    if (info == NULL || info->member_count == 0U ||
+        info->member_count > set_member_count_capacity) {
+        return false;
+    }
+    if (info->member_count == set_member_count_capacity) {
+        return true;
+    }
+    return (bitmap >> info->member_count) == 0U;
 }
 
 static int decimal_type_info_for_logical_type(
@@ -53878,6 +54596,9 @@ static int text_backed_row_size_bytes(
         *out_size = enum_info.label_count <= enum_one_byte_label_count_max ? 1U : 2U;
         return MYLITE_OK;
     }
+    if (strncmp(logical_type, "SET(", set_logical_prefix_length) == 0) {
+        return set_row_size_bytes(database, logical_type, out_size, unsupported_message);
+    }
     if (strcmp(logical_type, "YEAR") == 0) {
         *out_size = year_row_size_bytes;
         return MYLITE_OK;
@@ -53905,6 +54626,32 @@ static int text_backed_row_size_bytes(
 
     set_unsupported_error(database, unsupported_message);
     return MYLITE_ERROR;
+}
+
+static int set_row_size_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t *out_size,
+    const char *unsupported_message
+) {
+    struct set_type_info info = {0};
+    int rc = set_type_info_for_logical_type(database, logical_type, unsupported_message, &info);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (info.member_count <= set_one_byte_storage_member_count_max) {
+        *out_size = set_one_byte_storage_size;
+    } else if (info.member_count <= set_two_byte_storage_member_count_max) {
+        *out_size = set_two_byte_storage_size;
+    } else if (info.member_count <= set_three_byte_storage_member_count_max) {
+        *out_size = set_three_byte_storage_size;
+    } else if (info.member_count <= set_four_byte_storage_member_count_max) {
+        *out_size = set_four_byte_storage_size;
+    } else {
+        *out_size = set_eight_byte_storage_size;
+    }
+    return MYLITE_OK;
 }
 
 static int integer_row_size_bytes(const char *logical_type, uint64_t *out_size) {
@@ -56189,7 +56936,7 @@ static int make_insert_ignore_implicit_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 ) {
-    if (column_descriptor_is_string_family(column)) {
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
     }
     if (column_descriptor_is_binary_string_family(column)) {
@@ -56290,6 +57037,10 @@ static int convert_insert_value(
     if (column_descriptor_is_enum(column)) {
         (void)ignore_errors;
         return convert_enum_literal(database, value_node, column, row_number, out_value);
+    }
+    if (column_descriptor_is_set(column)) {
+        (void)ignore_errors;
+        return convert_set_literal(database, value_node, column, row_number, out_value);
     }
     if (column_descriptor_is_binary_string_family(column)) {
         return convert_binary_string_literal(
@@ -56447,6 +57198,9 @@ static int convert_null_insert_value(
     if (column_descriptor_is_enum(column)) {
         return make_enum_first_label_value(database, column, out_value);
     }
+    if (column_descriptor_is_set(column)) {
+        return make_empty_text_value(database, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
     }
@@ -56559,7 +57313,7 @@ static int materialize_dml_missing_default_value(
     }
     if (column->is_nullable) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
-    } else if (column_descriptor_is_string_family(column)) {
+    } else if (column_descriptor_is_string_family(column) || column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
     } else if (column_descriptor_is_enum(column)) {
         return make_enum_first_label_value(database, column, out_value);
@@ -56896,6 +57650,361 @@ static int make_enum_first_label_value(
         return rc;
     }
     return copy_enum_label_value(database, &info.labels[0], out_value);
+}
+
+static int convert_set_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_set_string_literal(
+            database,
+            literal,
+            column,
+            row_number,
+            true,
+            true,
+            true,
+            out_value
+        );
+    }
+    return convert_set_integer_literal(database, value_node, column, row_number, true, out_value);
+}
+
+static int convert_set_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+) {
+    struct set_type_info info = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t character_length = 0U;
+    bool has_comma = false;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "SET values support only string or integer literals");
+        return MYLITE_ERROR;
+    }
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "SET values support only string literals",
+        "SET values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && validate_utf8_text(text, text_length, &character_length) != MYLITE_OK) {
+        set_unsupported_error(database, "SET values must be valid UTF-8");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        trim_trailing_ascii_spaces(text, &text_length);
+    }
+    if (rc == MYLITE_OK) {
+        rc = set_type_info_for_logical_type(
+            database,
+            column->logical_type,
+            "statement supports only baseline SET descriptors",
+            &info
+        );
+    }
+    if (rc == MYLITE_OK) {
+        has_comma = memchr(text, ',', text_length) != NULL;
+        if (text_length == 0U) {
+            rc = convert_empty_set_string_literal(
+                database,
+                &info,
+                canonical_definition_order,
+                out_value
+            );
+        } else {
+            rc = convert_set_member_list_literal(
+                database,
+                text,
+                text_length,
+                has_comma,
+                &info,
+                column,
+                row_number,
+                allow_numeric_bitmap_fallback,
+                missing_is_error,
+                canonical_definition_order,
+                out_value
+            );
+        }
+    }
+
+    free(text);
+    (void)character_length;
+    return rc;
+}
+
+static int convert_empty_set_string_literal(
+    struct mylite_db *database,
+    const struct set_type_info *info,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+) {
+    if (canonical_definition_order) {
+        return copy_set_bitmap_value(database, info, 0U, out_value);
+    }
+    return make_empty_text_value(database, out_value);
+}
+
+static int convert_set_member_list_literal(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    bool has_comma,
+    const struct set_type_info *info,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    struct planned_value *out_value
+) {
+    struct dynamic_string display;
+    size_t token_start = 0U;
+    uint64_t bitmap = 0U;
+    bool all_members_known = true;
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&display);
+    while (rc == MYLITE_OK) {
+        size_t token_end = token_start;
+        size_t member_index = 0U;
+        bool found_member = false;
+
+        while (token_end < text_length && text[token_end] != ',') {
+            ++token_end;
+        }
+
+        found_member =
+            set_find_member(info, text + token_start, token_end - token_start, &member_index);
+        if (!found_member) {
+            all_members_known = false;
+        }
+        if (canonical_definition_order) {
+            if (!found_member) {
+                break;
+            }
+            bitmap |= UINT64_C(1) << member_index;
+        } else {
+            rc = append_set_predicate_member_text((struct set_predicate_member_text_request){
+                .display = &display,
+                .info = info,
+                .text = text,
+                .token_start = token_start,
+                .token_end = token_end,
+                .member_index = member_index,
+                .found_member = found_member,
+            });
+        }
+        if (token_end == text_length) {
+            break;
+        }
+        token_start = token_end + 1U;
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_set_member_list_conversion(
+            database,
+            text,
+            text_length,
+            has_comma,
+            info,
+            column,
+            row_number,
+            allow_numeric_bitmap_fallback,
+            missing_is_error,
+            canonical_definition_order,
+            all_members_known,
+            bitmap,
+            &display,
+            out_value
+        );
+    }
+    dynamic_string_deinit(&display);
+    return rc;
+}
+
+static int append_set_predicate_member_text(struct set_predicate_member_text_request request) {
+    int rc = MYLITE_OK;
+
+    if (request.display->length > 0U || request.token_start > 0U) {
+        rc = dynamic_string_append_char(request.display, ',');
+    }
+    if (rc == MYLITE_OK && request.found_member) {
+        rc = dynamic_string_append(
+            request.display,
+            request.info->members[request.member_index].text
+        );
+    } else if (rc == MYLITE_OK) {
+        char saved = request.text[request.token_end];
+
+        request.text[request.token_end] = '\0';
+        rc = dynamic_string_append(request.display, request.text + request.token_start);
+        request.text[request.token_end] = saved;
+    }
+    return rc;
+}
+
+static int finish_set_member_list_conversion(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    bool has_comma,
+    const struct set_type_info *info,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_bitmap_fallback,
+    bool missing_is_error,
+    bool canonical_definition_order,
+    bool all_members_known,
+    uint64_t bitmap,
+    struct dynamic_string *display,
+    struct planned_value *out_value
+) {
+    if (!canonical_definition_order) {
+        char *display_text = dynamic_string_take(display);
+
+        if (display_text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        return assign_text_value(database, display_text, strlen(display_text), out_value);
+    }
+    if (all_members_known) {
+        return copy_set_bitmap_value(database, info, bitmap, out_value);
+    }
+    if (allow_numeric_bitmap_fallback && !has_comma) {
+        uint64_t numeric_bitmap = 0U;
+
+        if (enum_text_is_unsigned_integer(text, text_length, &numeric_bitmap) &&
+            set_bitmap_is_valid(info, numeric_bitmap)) {
+            return copy_set_bitmap_value(database, info, numeric_bitmap, out_value);
+        }
+    }
+    if (missing_is_error) {
+        set_data_truncated_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    return copy_set_no_match_value(database, out_value);
+}
+
+static int convert_set_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool missing_is_error,
+    struct planned_value *out_value
+) {
+    struct set_type_info info = {0};
+    uint64_t bitmap = 0U;
+    bool is_negative = false;
+    int rc = enum_literal_ordinal(value_node, &bitmap, &is_negative);
+
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "SET values support only string or integer literals");
+        return MYLITE_ERROR;
+    }
+    rc = set_type_info_for_logical_type(
+        database,
+        column->logical_type,
+        "statement supports only baseline SET descriptors",
+        &info
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!is_negative && set_bitmap_is_valid(&info, bitmap)) {
+        return copy_set_bitmap_value(database, &info, bitmap, out_value);
+    }
+    if (missing_is_error) {
+        set_data_truncated_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    return copy_set_no_match_value(database, out_value);
+}
+
+static int copy_set_bitmap_value(
+    struct mylite_db *database,
+    const struct set_type_info *info,
+    uint64_t bitmap,
+    struct planned_value *out_value
+) {
+    struct dynamic_string string;
+    bool needs_comma = false;
+    int rc = MYLITE_OK;
+
+    if (info == NULL || out_value == NULL || !set_bitmap_is_valid(info, bitmap)) {
+        return MYLITE_MISUSE;
+    }
+    if (bitmap == 0U) {
+        return make_empty_text_value(database, out_value);
+    }
+
+    dynamic_string_init(&string);
+    for (size_t member_index = 0U; rc == MYLITE_OK && member_index < info->member_count;
+         ++member_index) {
+        if ((bitmap & (UINT64_C(1) << member_index)) == 0U) {
+            continue;
+        }
+        if (needs_comma) {
+            rc = dynamic_string_append_char(&string, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, info->members[member_index].text);
+        }
+        needs_comma = true;
+    }
+    if (rc == MYLITE_OK) {
+        char *text = dynamic_string_take(&string);
+
+        if (text == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        } else {
+            rc = assign_text_value(database, text, strlen(text), out_value);
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int copy_set_no_match_value(struct mylite_db *database, struct planned_value *out_value) {
+    char *copy = malloc(2U);
+
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    copy[0] = '\x01';
+    copy[1] = '\0';
+    return assign_text_value(database, copy, 1U, out_value);
 }
 
 static int convert_char_literal(
@@ -61351,6 +62460,9 @@ static int populate_select_result_column_descriptor(
         rc = populate_enum_result_column_descriptor(database, table, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
+        rc = populate_set_result_column_descriptor(database, table, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
         rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
@@ -61559,6 +62671,43 @@ static int populate_enum_result_column_descriptor(
     descriptor->display_length =
         (uint64_t)info.max_label_character_length * utf8mb4_max_bytes_per_character;
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_ENUM;
+    if (table_default_collation_is_binary(table)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_set_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    struct set_type_info info = {0};
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    if (!column_descriptor_is_set(column)) {
+        return MYLITE_OK;
+    }
+    rc = set_type_info_for_logical_type(
+        database,
+        column->logical_type,
+        "result metadata supports only baseline SET descriptors",
+        &info
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
+    descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length =
+        (uint64_t)info.max_display_character_length * utf8mb4_max_bytes_per_character;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_SET;
     if (table_default_collation_is_binary(table)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
     }
@@ -62442,6 +63591,11 @@ static int plan_comparison_predicate(
             return MYLITE_ERROR;
         }
         if (comparison_operator_is_like(node.operator_kind) &&
+            column_descriptor_is_set(&node.column)) {
+            set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
+            return MYLITE_ERROR;
+        }
+        if (comparison_operator_is_like(node.operator_kind) &&
             !column_descriptor_is_string_family(&node.column)) {
             set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
             return MYLITE_ERROR;
@@ -62460,6 +63614,11 @@ static int plan_comparison_predicate(
                 database,
                 "WHERE enum predicates support only =, <=>, <>, and !="
             );
+            return MYLITE_ERROR;
+        }
+        if (column_descriptor_is_set(&node.column) &&
+            !comparison_operator_is_enum_predicate(node.operator_kind)) {
+            set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
             return MYLITE_ERROR;
         }
         if (comparison_operator_is_like(node.operator_kind)) {
@@ -62625,6 +63784,10 @@ static int plan_between_predicate(
             set_unsupported_error(database, "WHERE enum predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
         }
+        if (column_descriptor_is_set(&node.column)) {
+            set_unsupported_error(database, "WHERE set predicates do not yet support BETWEEN");
+            return MYLITE_ERROR;
+        }
         rc = convert_predicate_value(
             database,
             child_at(predicate_node, 1U),
@@ -62678,6 +63841,10 @@ static int plan_in_predicate(
         }
         if (column_descriptor_is_enum(&node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
+            return MYLITE_ERROR;
+        }
+        if (column_descriptor_is_set(&node.column)) {
+            set_unsupported_error(database, "WHERE set predicates do not yet support IN");
             return MYLITE_ERROR;
         }
         rc = convert_predicate_in_value_list(
@@ -63143,6 +64310,9 @@ static int convert_predicate_value(
     if (column_descriptor_is_enum(column)) {
         return convert_predicate_enum_literal(database, value_node, column, out_value);
     }
+    if (column_descriptor_is_set(column)) {
+        return convert_predicate_set_literal(database, value_node, column, out_value);
+    }
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(database, value_node, column, 1U, false, out_value);
     }
@@ -63194,6 +64364,38 @@ static int convert_predicate_enum_literal(
         );
     }
     return convert_enum_integer_literal(database, value_node, column, 1U, false, out_value);
+}
+
+static int convert_predicate_set_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_set_string_literal(
+            database,
+            literal,
+            column,
+            1U,
+            false,
+            false,
+            false,
+            out_value
+        );
+    }
+    return convert_set_integer_literal(database, value_node, column, 1U, false, out_value);
 }
 
 static int convert_predicate_year_literal(
@@ -63592,6 +64794,10 @@ static int plan_select_order(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (column_descriptor_is_set(&out_order->column)) {
+        set_unsupported_error(database, "ORDER BY does not yet support SET columns");
+        return MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK && !column_descriptor_is_date(&out_order->column) &&
         !column_descriptor_is_time(&out_order->column) &&
         !column_descriptor_is_datetime(&out_order->column) &&
@@ -63985,6 +65191,9 @@ static int convert_update_column_value(
     if (column_descriptor_is_enum(column)) {
         return convert_enum_literal(database, value_node, column, 1U, out_value);
     }
+    if (column_descriptor_is_set(column)) {
+        return convert_set_literal(database, value_node, column, 1U, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return convert_binary_string_literal(database, value_node, column, 1U, false, out_value);
     }
@@ -64356,6 +65565,9 @@ static const char *update_scalar_subquery_implicit_conversion_message(
     }
     if (column_descriptor_is_enum(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit ENUM conversion";
+    }
+    if (column_descriptor_is_set(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit SET conversion";
     }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit binary string "
@@ -66215,6 +67427,9 @@ static int append_alter_table_add_column_default(
     }
     if (planned_column_is_enum(&plan->column)) {
         return append_alter_table_add_column_enum_default(database, string, plan);
+    }
+    if (planned_column_is_set(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT ''");
     }
     if (planned_column_is_year(&plan->column)) {
         return dynamic_string_append(string, " DEFAULT '0000'");
@@ -72518,6 +73733,60 @@ static void set_duplicated_enum_value_error(
         mylite_connection_diagnostics(database),
         mysql_error_duplicated_value_in_enum,
         "HY000",
+        message
+    );
+}
+
+static void set_duplicated_set_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *value,
+    size_t value_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int display_length = value_length > (size_t)INT_MAX ? INT_MAX : (int)value_length;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column '%s' has duplicated value '%.*s' in SET",
+        column_name,
+        display_length,
+        value == NULL ? "" : value
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_duplicated_value_in_set,
+        "HY000",
+        message
+    );
+}
+
+static void set_illegal_set_value_error(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int display_length = value_length > (size_t)INT_MAX ? INT_MAX : (int)value_length;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Illegal set '%.*s' value found during parsing",
+        display_length,
+        value == NULL ? "" : value
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_illegal_set_value,
+        "22007",
         message
     );
 }

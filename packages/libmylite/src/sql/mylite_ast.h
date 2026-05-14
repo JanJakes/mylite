@@ -278,6 +278,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR = 269,
     MYLITE_SQL_AST_ENUM_TYPE = 270,
     MYLITE_SQL_AST_ENUM_LABEL_LIST = 271,
+    MYLITE_SQL_AST_SET_TYPE = 272,
+    MYLITE_SQL_AST_SET_MEMBER_LIST = 273,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -88,6 +88,7 @@ static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
 static int test_enum_type_statements(void);
+static int test_set_type_statements(void);
 static int test_bit_type_statements(void);
 static int test_year_type_statements(void);
 static int test_decimal_type_statements(void);
@@ -317,6 +318,7 @@ int main(void) {
     failures += test_char_type_statements();
     failures += test_text_type_statements();
     failures += test_enum_type_statements();
+    failures += test_set_type_statements();
     failures += test_bit_type_statements();
     failures += test_year_type_statements();
     failures += test_decimal_type_statements();
@@ -8225,6 +8227,78 @@ static int test_enum_type_statements(void) {
 
     failures +=
         parse_sql("CREATE TABLE bad_enum (v ENUM());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_set_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    const struct mylite_sql_ast_node *members = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE set_types (flags SET('active','featured') NOT NULL DEFAULT '', "
+        "set SET('', 'A''B'));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 2U, "set column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    members = child_at(column_type, 0U);
+    failures += expect_node(column_type, MYLITE_SQL_AST_SET_TYPE, "set flags column type");
+    failures += expect_span_text(column_type, "SET('active','featured')", "set flags span");
+    failures += expect_child_count(members, 2U, "set flags member count");
+    failures +=
+        expect_literal(child_at(members, 0U), MYLITE_SQL_AST_LITERAL_STRING, "set active member");
+    failures += expect_span_text(child_at(members, 0U), "'active'", "set active member span");
+    failures +=
+        expect_literal(child_at(members, 1U), MYLITE_SQL_AST_LITERAL_STRING, "set featured member");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "set not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "set string default"
+    );
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    members = child_at(column_type, 0U);
+    failures += expect_span_text(child_at(column, 0U), "set", "set keyword identifier");
+    failures += expect_node(column_type, MYLITE_SQL_AST_SET_TYPE, "set keyword column type");
+    failures += expect_child_count(members, 2U, "set escaped member count");
+    failures += expect_span_text(child_at(members, 0U), "''", "set empty member span");
+    failures += expect_span_text(child_at(members, 1U), "'A''B'", "set escaped member span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE set_types ADD COLUMN next_flags SET('queued','done') NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_node(column_type, MYLITE_SQL_AST_SET_TYPE, "alter add set column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "alter add set nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_set (v SET());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

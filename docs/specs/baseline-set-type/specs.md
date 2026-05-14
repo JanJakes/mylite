@@ -137,10 +137,12 @@ Supported:
 - persistent and shadowing temporary base tables where the existing DDL/DML
   paths already support the statement class;
 - `SET('member'[, ...])` column definitions in `CREATE TABLE`,
-  `CREATE TABLE ... LIKE`, and `ALTER TABLE ... ADD [COLUMN]`;
+  `CREATE TABLE ... LIKE`, and `ALTER TABLE ... ADD [COLUMN]`, plus
+  catalog-only `ALTER TABLE ... ALTER [COLUMN] set_col SET DEFAULT ...` and
+  `DROP DEFAULT` through the existing default lifecycle;
 - one to 64 ordinary single- or double-quoted string literal members, decoded
   through the current MyLite SQL string literal policy;
-- members with valid non-`NUL` UTF-8 bytes, including the empty string;
+- nonempty members with valid non-`NUL` UTF-8 bytes;
 - trailing-space removal from definition members before duplicate checks and
   descriptor serialization;
 - rejection of comma-containing members with MySQL-compatible diagnostics;
@@ -173,6 +175,8 @@ Supported:
 
 Deferred:
 
+- empty-string set members, because the current display-text storage cannot
+  preserve MySQL's distinct empty-member bitmap;
 - MySQL's compact bitmap physical storage;
 - non-strict invalid set insertion, `INSERT IGNORE` invalid set demotion, and
   warning-producing invalid conversion;
@@ -257,9 +261,11 @@ Members are serialized with single-quote escaping. The physical descriptor text
 is `TEXT`. The logical type text must fit MyLite's durable descriptor capacity.
 
 Definition members are decoded with the session string-literal policy active at
-parse time, trimmed for trailing ASCII spaces, rejected when they contain a
-comma or `NUL`, validated as UTF-8, and checked for ASCII case-insensitive
-duplicates. The empty member name is permitted if it passes duplicate checks.
+parse time, trimmed for trailing ASCII spaces, rejected when they become empty
+or contain a comma or `NUL`, validated as UTF-8, and checked for ASCII
+case-insensitive duplicates. MySQL allows an empty-string member, but this
+baseline defers it because display-string storage cannot distinguish MySQL's
+empty-member bitmap from the empty set.
 
 The selected value is stored as a canonical display string:
 
@@ -294,10 +300,14 @@ descriptor's member count. Valid numeric `0` stores the empty set.
 Defaults use the same supported string conversion as row values, except numeric
 default literals and expression defaults are not admitted for set columns in
 this slice because MySQL rejects numeric `SET` defaults under the default
-strict mode. `DEFAULT NULL` is allowed only for nullable columns. `NOT NULL`
-set columns without an explicit default retain the existing no-explicit-default
-descriptor state; omitted and explicit `DEFAULT` DML fail with the current
-`Field '<column>' doesn't have a default value` path.
+strict mode. This applies to `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, and
+catalog-only `ALTER TABLE ... ALTER [COLUMN] set_col SET DEFAULT ...`.
+`DEFAULT NULL` is allowed only for nullable columns. `ALTER ... DROP DEFAULT`
+stores the existing dropped-default descriptor state; later omitted and
+explicit `DEFAULT` DML fail with the current `Field '<column>' doesn't have a
+default value` path, even for nullable set columns. `NOT NULL` set columns
+without an explicit default retain the same no-explicit-default descriptor
+state.
 
 Predicate conversion:
 
@@ -320,11 +330,9 @@ Predicate conversion:
 `INFORMATION_SCHEMA.COLUMNS` render `set('member',...)` from the logical
 descriptor. The `DATA_TYPE` value is `set`.
 
-`CHARACTER_MAXIMUM_LENGTH` is the longest possible display string:
-
-- `0` for a one-member empty-string definition;
-- otherwise the sum of member character lengths plus one comma between every
-  selected nonempty member in definition order.
+`CHARACTER_MAXIMUM_LENGTH` is the longest possible display string: the sum of
+member character lengths plus one comma between every selected nonempty member
+in definition order.
 
 `CHARACTER_OCTET_LENGTH` is that length multiplied by `4` for the current
 `utf8mb4` baseline. The result metadata column type is
@@ -337,6 +345,8 @@ flags include `MYLITE_RESULT_COLUMN_FLAG_SET`.
 Supported diagnostics:
 
 - syntax errors and empty member lists: existing parser `1064 / 42000`;
+- empty-string members: MyLite unsupported `1064 / 42000`,
+  `SET empty-string members are not yet supported`;
 - duplicate member: `1291 / HY000`,
   `Column '<column>' has duplicated value '<member>' in SET`;
 - comma-containing member: `1367 / 22007`,
@@ -379,21 +389,24 @@ MySQL 8.4.9 probes for:
 - descriptor rendering and metadata;
 - member trailing-space normalization, duplicate rejection, and comma-member
   rejection;
-- defaults, no-default `NOT NULL` behavior, explicit empty defaults, and
-  canonical default ordering;
+- defaults, `ALTER COLUMN SET DEFAULT`, `ALTER COLUMN DROP DEFAULT`,
+  no-default `NOT NULL` behavior, explicit empty defaults, and canonical
+  default ordering;
 - `INSERT`, `INSERT ... SET`, `REPLACE`, and `UPDATE` conversion from string
   lists, numeric bitmaps, quoted numeric strings, `''`, `NULL`, and `DEFAULT`;
 - assignment diagnostics for unknown members, negative bitmaps, out-of-range
   bitmaps, invalid defaults, and `NULL` into `NOT NULL`;
 - equality, null-safe equality, inequality, `IS NULL`, and `IS NOT NULL`
   predicates;
-- MySQL-observed but deferred `ORDER BY` and key behavior.
+- MySQL-observed but deferred empty-string member, `ORDER BY`, and key
+  behavior.
 
 Add fast C tests under `packages/libmylite/tests/`, preferably
 `runtime_set_type`, covering:
 
 - parser acceptance and rejection for set type syntax;
-- `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, and `CREATE TABLE ... LIKE`;
+- `CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, `ALTER COLUMN SET DEFAULT`,
+  `ALTER COLUMN DROP DEFAULT`, and `CREATE TABLE ... LIKE`;
 - DML conversion, affected rows, warning counts, absence of row result sets,
   and remaining rows after updates;
 - descriptor-backed predicates over string and numeric right operands;
@@ -402,7 +415,8 @@ Add fast C tests under `packages/libmylite/tests/`, preferably
   independent file-backed handles;
 - deterministic unsupported diagnostics for ordering, keys, scalar subquery
   assignment, `INSERT ... SELECT`, `ALTER MODIFY`/`CHANGE`, expression
-  defaults, non-string member syntax, and unsupported literal forms;
+  defaults, empty-string members, non-string member syntax, and unsupported
+  literal forms;
 - zero-initialized cleanup for new descriptor/conversion helpers.
 
 Verification before completion:

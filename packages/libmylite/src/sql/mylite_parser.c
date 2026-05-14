@@ -4506,6 +4506,59 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_enum_label(
     return label_list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    struct mylite_sql_ast_node *member_list,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&type_token), span_from_token(&end_token));
+    struct mylite_sql_ast_node *type = make_node(state, MYLITE_SQL_AST_SET_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(type, member_list);
+    return type;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_member_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token member_token
+) {
+    struct mylite_sql_ast_node *member =
+        mylite_sql_parser_make_literal(state, member_token, MYLITE_SQL_AST_LITERAL_STRING);
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_SET_MEMBER_LIST, span_from_token(&member_token));
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, member);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_set_member(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *member_list,
+    struct mylite_sql_token member_token
+) {
+    struct mylite_sql_ast_node *member = NULL;
+
+    if (!is_parse_ok(state) || member_list == NULL) {
+        return member_list;
+    }
+
+    member = mylite_sql_parser_make_literal(state, member_token, MYLITE_SQL_AST_LITERAL_STRING);
+    mylite_sql_ast_node_append_child(member_list, member);
+    mylite_sql_ast_node_set_span(
+        member_list,
+        span_join(member_list->span, span_from_token(&member_token))
+    );
+    return member_list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_binary_string_type_tokens tokens

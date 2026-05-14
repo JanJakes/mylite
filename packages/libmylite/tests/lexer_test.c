@@ -96,6 +96,10 @@ static int test_keywords(void) {
     failures += expect_keyword("log2", 0U);
     failures += expect_keyword("pow", 0U);
     failures += expect_keyword("power", 0U);
+    failures += expect_keyword("lcase", 0U);
+    failures += expect_keyword("lower", 0U);
+    failures += expect_keyword("ucase", 0U);
+    failures += expect_keyword("upper", 0U);
     failures += expect_keyword("nullif", 0U);
     failures += expect_keyword("isnull", 0U);
     failures += expect_keyword("sign", 0U);

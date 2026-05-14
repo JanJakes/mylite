@@ -859,6 +859,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "character_length_function";
     case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
         return "character_length_argument_count_error";
+    case MYLITE_SQL_AST_LOWER_FUNCTION:
+        return "lower_function";
+    case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
+        return "lower_argument_count_error";
+    case MYLITE_SQL_AST_LCASE_FUNCTION:
+        return "lcase_function";
+    case MYLITE_SQL_AST_LCASE_ARGUMENT_COUNT_ERROR:
+        return "lcase_argument_count_error";
+    case MYLITE_SQL_AST_UPPER_FUNCTION:
+        return "upper_function";
+    case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
+        return "upper_argument_count_error";
+    case MYLITE_SQL_AST_UCASE_FUNCTION:
+        return "ucase_function";
+    case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+        return "ucase_argument_count_error";
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return "abs_function";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:

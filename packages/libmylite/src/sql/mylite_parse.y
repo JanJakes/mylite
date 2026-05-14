@@ -2353,6 +2353,22 @@ expression(A) ::= CHARACTER_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION, B, R);
 }
+expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);
+}
+expression(A) ::= LCASE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LCASE_FUNCTION, B, R);
+}
+expression(A) ::= UPPER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UPPER_FUNCTION, B, R);
+}
+expression(A) ::= UCASE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UCASE_FUNCTION, B, R);
+}
 expression(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
@@ -2701,6 +2717,42 @@ expression(A) ::=
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= LOWER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LOWER(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= LCASE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LCASE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LCASE(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LCASE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UPPER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= UPPER(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UCASE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= UCASE(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -3224,6 +3276,18 @@ identifier(A) ::= CHAR_LENGTH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHARACTER_LENGTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LOWER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LCASE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UPPER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UCASE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

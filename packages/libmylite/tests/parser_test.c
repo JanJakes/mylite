@@ -61,6 +61,7 @@ static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_string_length_functions(void);
+static int test_string_case_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -305,6 +306,7 @@ int main(void) {
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
     failures += test_string_length_functions();
+    failures += test_string_case_functions();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -3108,6 +3110,134 @@ static int test_string_length_functions(void) {
     select = child_at(result.root, 0U);
     failures +=
         expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "string length identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_case_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LOWER(v), LCASE('A'), UPPER(1), UCASE(NULL) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LOWER_FUNCTION, "lower function");
+    failures += expect_span_text(expression, "LOWER(v)", "lower span");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "lower column");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LCASE_FUNCTION, "lcase function");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "lcase literal");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UPPER_FUNCTION, "upper function");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "upper integer");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UCASE_FUNCTION, "ucase function");
+    failures += expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_NULL, "ucase null");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "string case from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LOWER ('A'), (UPPER('a')), LCASE(+1), UCASE(DATABASE()) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LOWER_FUNCTION, "spaced lower");
+    failures += expect_span_text(expression, "LOWER ('A')", "spaced lower span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized upper");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_UPPER_FUNCTION, "wrapped upper");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LCASE_FUNCTION, "signed lcase");
+    failures += expect_operator(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "lcase signed argument"
+    );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UCASE_FUNCTION, "database ucase");
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_DATABASE_FUNCTION,
+        "ucase database argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LOWER();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR,
+        "empty lower argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LCASE();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_LCASE_ARGUMENT_COUNT_ERROR,
+        "empty lcase argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT UPPER('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR,
+        "two upper argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT UCASE('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR,
+        "two ucase argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO LOWER('A'), LCASE('B'), UPPER('c'), UCASE('d');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "string case do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LOWER_FUNCTION, "do lower");
+    failures +=
+        expect_node(child_at(expression_list, 3U), MYLITE_SQL_AST_UCASE_FUNCTION, "do ucase");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE case_words (lower INT, lcase INT, upper INT, ucase INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "string case identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

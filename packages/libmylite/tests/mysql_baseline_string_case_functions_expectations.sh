@@ -118,6 +118,13 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+expect_output \
+    "system variable string case values" \
+    "no_engine_substitution	NO_ENGINE_SUBSTITUTION" \
+    "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'; "\
+"SELECT LOWER(@@sql_mode), UPPER(@@sql_mode);" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE t ("\
 "id INT, v VARCHAR(20), c CHAR(5), txt TEXT, i INT, d DECIMAL(6,2), y YEAR, dt DATETIME"\
@@ -182,11 +189,27 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "lcase rejects zero arguments" \
+    1582 \
+    42000 \
+    "Incorrect parameter count in the call to native function 'LCASE'" \
+    "SELECT LCASE();" \
+    "$DATABASE"
+
+expect_error \
     "upper rejects too many arguments" \
     1582 \
     42000 \
     "Incorrect parameter count in the call to native function 'UPPER'" \
     "SELECT UPPER('a', 'b');" \
+    "$DATABASE"
+
+expect_error \
+    "ucase rejects too many arguments" \
+    1582 \
+    42000 \
+    "Incorrect parameter count in the call to native function 'UCASE'" \
+    "SELECT UCASE('a', 'b');" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_string_case_functions_expectations: ok"

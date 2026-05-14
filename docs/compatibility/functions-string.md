@@ -22,11 +22,11 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `HEX()` | ❌ | Hexadecimal representation of decimal or string value |
 | `INSERT()` | ❌ | Insert substring by position |
 | `INSTR()` | ❌ | Return index of the first occurrence of substring |
-| `LCASE()` | ❌ | Synonym for LOWER() |
+| `LCASE()` | 🟡 | Synonym for the limited `LOWER()` subset |
 | `LEFT()` | ❌ | Return leftmost number of characters as specified |
 | `LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns byte length, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `LOCATE()` | ❌ | Return position of the first occurrence of substring |
-| `LOWER()` | ❌ | Return argument in lowercase |
+| `LOWER()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over ASCII string/integer/boolean/`NULL` literals, supported session scalar values, system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; converts ASCII letters to lowercase and returns `NULL` for `NULL`. Non-ASCII text and embedded `NUL` values are rejected in this baseline; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `LPAD()` | ❌ | Left-padding behavior |
 | `LTRIM()` | ❌ | Remove leading spaces |
 | `MAKE_SET()` | ❌ | Bitmask-selected string set |
@@ -53,9 +53,9 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `SUBSTRING_INDEX()` | ❌ | Delimiter-count substring |
 | `TO_BASE64()` | ❌ | Return argument converted to a base-64 string |
 | `TRIM()` | ❌ | Remove leading and trailing spaces |
-| `UCASE()` | ❌ | Synonym for UPPER() |
+| `UCASE()` | 🟡 | Synonym for the limited `UPPER()` subset |
 | `UNHEX()` | ❌ | Return a string containing hex representation of a number |
-| `UPPER()` | ❌ | Convert to uppercase |
+| `UPPER()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over ASCII string/integer/boolean/`NULL` literals, supported session scalar values, system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; converts ASCII letters to uppercase and returns `NULL` for `NULL`. Non-ASCII text and embedded `NUL` values are rejected in this baseline; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `WEIGHT_STRING()` | ❌ | Return weight string for a string |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

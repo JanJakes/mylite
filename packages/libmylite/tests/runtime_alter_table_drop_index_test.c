@@ -480,15 +480,6 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP FOREIGN KEY fk",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "ALTER TABLE diag RENAME INDEX k_v TO k_id",
         (struct expected_sql_error){
             .code = mysql_error_parse,

@@ -592,6 +592,12 @@ struct planned_alter_table_add_foreign_key {
     bool create_child_index;
 };
 
+struct planned_alter_table_drop_foreign_key {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct loaded_foreign_key_info foreign_key;
+};
+
 struct planned_drop_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -3467,6 +3473,11 @@ static int execute_alter_table_add_foreign_key_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_drop_foreign_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -4671,6 +4682,24 @@ static int insert_alter_table_foreign_key_catalog_rows(
     int64_t foreign_key_id,
     int64_t child_index_id,
     const struct planned_alter_table_add_foreign_key *plan
+);
+static int plan_alter_table_drop_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_foreign_key *out_plan
+);
+static void planned_alter_table_drop_foreign_key_deinit(
+    struct planned_alter_table_drop_foreign_key *plan
+);
+static int alter_table_drop_foreign_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_foreign_key *plan
+);
+static int find_loaded_foreign_key_by_name(
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count,
+    const char *foreign_key_name,
+    size_t *out_foreign_key
 );
 static int reject_table_referenced_by_foreign_key(struct mylite_db *database, int64_t table_id);
 static int reject_table_with_foreign_keys(struct mylite_db *database, int64_t table_id);
@@ -11270,6 +11299,8 @@ static int execute_parsed_statement(
         return execute_alter_table_add_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
         return execute_alter_table_add_foreign_key_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+        return execute_alter_table_drop_foreign_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return execute_alter_table_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
@@ -11763,6 +11794,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -13747,6 +13779,34 @@ static int execute_alter_table_add_foreign_key_statement(
         return rc;
     }
 
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_drop_foreign_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_drop_foreign_key plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_drop_foreign_key(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_drop_foreign_key_from_plan(database, &plan);
+    }
+    planned_alter_table_drop_foreign_key_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -20474,6 +20534,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
@@ -27240,6 +27301,169 @@ static int insert_alter_table_foreign_key_catalog_rows(
     }
 
     return rc;
+}
+
+static int plan_alter_table_drop_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_foreign_key *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_foreign_key_info *foreign_keys = NULL;
+    char foreign_key_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    size_t column_count = 0U;
+    size_t foreign_key_count = 0U;
+    size_t resolved_foreign_key = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_drop_foreign_key){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            foreign_key_name,
+            sizeof(foreign_key_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE DROP FOREIGN KEY supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &foreign_keys,
+            &foreign_key_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_loaded_foreign_key_by_name(
+            foreign_keys,
+            foreign_key_count,
+            foreign_key_name,
+            &resolved_foreign_key
+        );
+        if (rc != MYLITE_OK) {
+            set_cant_drop_field_or_key_error(database, foreign_key_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && foreign_keys == NULL) {
+        set_runtime_error(database, "invalid foreign-key descriptor lookup");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->foreign_key = foreign_keys[resolved_foreign_key];
+        foreign_keys[resolved_foreign_key] = (struct loaded_foreign_key_info){0};
+    }
+
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    free(columns);
+    if (rc != MYLITE_OK) {
+        planned_alter_table_drop_foreign_key_deinit(out_plan);
+    }
+    return rc;
+}
+
+static void planned_alter_table_drop_foreign_key_deinit(
+    struct planned_alter_table_drop_foreign_key *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    loaded_foreign_key_info_deinit(&plan->foreign_key);
+    *plan = (struct planned_alter_table_drop_foreign_key){0};
+}
+
+static int alter_table_drop_foreign_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_foreign_key *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_delete_foreign_key_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->foreign_key.foreign_key.foreign_key_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to drop foreign key");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int find_loaded_foreign_key_by_name(
+    const struct loaded_foreign_key_info *foreign_keys,
+    size_t foreign_key_count,
+    const char *foreign_key_name,
+    size_t *out_foreign_key
+) {
+    if (out_foreign_key == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_foreign_key = 0U;
+
+    for (size_t index = 0U; index < foreign_key_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                foreign_keys[index].foreign_key.name,
+                foreign_key_name
+            )) {
+            *out_foreign_key = index;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
 }
 
 static int reject_table_referenced_by_foreign_key(struct mylite_db *database, int64_t table_id) {

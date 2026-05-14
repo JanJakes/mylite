@@ -316,6 +316,12 @@ int mylite_catalog_delete_foreign_keys_for_child_table_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t child_table_id
 );
+int mylite_catalog_delete_foreign_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t child_table_id,
+    int64_t foreign_key_id
+);
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

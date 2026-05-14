@@ -695,15 +695,6 @@ static int test_drop_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers DROP FOREIGN KEY fk",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error",
-        }
-    );
-    failures += execute_error(
-        database,
         "ALTER TABLE numbers DROP COLUMN IF EXISTS n",
         (struct expected_sql_error){
             .code = mysql_error_parse,

@@ -1699,6 +1699,73 @@ int mylite_catalog_delete_foreign_keys_for_child_table_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_delete_foreign_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t child_table_id,
+    int64_t foreign_key_id
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(child_table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(foreign_key_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_foreign_key_columns "
+        "WHERE child_table_id = ?1 AND foreign_key_id = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, child_table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, foreign_key_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    statement = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_foreign_keys "
+            "WHERE child_table_id = ?1 AND foreign_key_id = ?2",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, child_table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, foreign_key_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

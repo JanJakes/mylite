@@ -200,6 +200,9 @@ statement(A) ::= alter_table_add_index_statement(B). {
 statement(A) ::= alter_table_add_foreign_key_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_drop_foreign_key_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_index_statement(B). {
     A = B;
 }
@@ -844,6 +847,11 @@ alter_table_add_foreign_key_statement(A) ::=
         A1,
         T,
         mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R));
+}
+
+alter_table_drop_foreign_key_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DROP FOREIGN KEY identifier(I). {
+    A = mylite_sql_parser_make_alter_table_drop_foreign_key_statement(state, A1, T, I);
 }
 
 alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP INDEX identifier(I). {

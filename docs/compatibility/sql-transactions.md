@@ -17,10 +17,13 @@ Transaction control and savepoint compatibility.
 Current supported DML participates in explicit user transactions with
 statement-level rollback. User-visible savepoints can roll back or release work
 inside those explicit transactions and are cleared by `COMMIT`, full
-`ROLLBACK`, nested `START TRANSACTION`, supported DDL implicit commits, and
-`mylite_close()`. Current supported DDL/object lifecycle statements implicitly
-commit an active user transaction before they run, matching the baseline MySQL
-behavior for permanent objects. `mylite_close()` rolls back an active
+`ROLLBACK`, nested `START TRANSACTION`, supported `LOCK TABLES` transaction
+effects, supported DDL implicit commits, and `mylite_close()`. Current
+supported DDL/object lifecycle statements and limited `LOCK TABLES` implicitly
+commit an active user transaction before they run; for `LOCK TABLES`, verified
+runtime target-acquisition failures also keep that commit effect and release
+previous lock intent. This matches the baseline MySQL behavior for permanent
+objects and explicit table locks. `mylite_close()` rolls back an active
 uncommitted transaction.
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

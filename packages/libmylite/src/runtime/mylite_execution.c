@@ -229,6 +229,9 @@ enum {
     information_schema_engines_column_count = 6,
     information_schema_events_column_count = 24,
     information_schema_parameters_column_count = 16,
+    information_schema_processlist_column_count = 8,
+    information_schema_processlist_db_column = 3,
+    information_schema_processlist_info_column = 7,
     information_schema_routines_column_count = 31,
     information_schema_table_constraints_column_count = 7,
     information_schema_key_column_usage_column_count = 12,
@@ -1495,13 +1498,14 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_ENGINES = 5,
     INFORMATION_SCHEMA_TABLE_EVENTS = 6,
     INFORMATION_SCHEMA_TABLE_PARAMETERS = 7,
-    INFORMATION_SCHEMA_TABLE_ROUTINES = 8,
-    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 9,
-    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 10,
-    INFORMATION_SCHEMA_TABLE_STATISTICS = 11,
-    INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 12,
-    INFORMATION_SCHEMA_TABLE_TRIGGERS = 13,
-    INFORMATION_SCHEMA_TABLE_VIEWS = 14,
+    INFORMATION_SCHEMA_TABLE_PROCESSLIST = 8,
+    INFORMATION_SCHEMA_TABLE_ROUTINES = 9,
+    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 10,
+    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 11,
+    INFORMATION_SCHEMA_TABLE_STATISTICS = 12,
+    INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 13,
+    INFORMATION_SCHEMA_TABLE_TRIGGERS = 14,
+    INFORMATION_SCHEMA_TABLE_VIEWS = 15,
 };
 
 struct information_schema_column_definition {
@@ -3285,6 +3289,84 @@ static const struct information_schema_column_definition information_schema_para
      information_schema_parameters_routine_type_column_type},
 };
 
+static const struct information_schema_column_definition information_schema_processlist_columns[] =
+    {
+        {"ID", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint unsigned"},
+        {"USER",
+         "",
+         "NO",
+         "varchar",
+         "10",
+         "32",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(32)"},
+        {"HOST",
+         "",
+         "NO",
+         "varchar",
+         "87",
+         "261",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(261)"},
+        {"DB",
+         "",
+         "YES",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"COMMAND",
+         "",
+         "NO",
+         "varchar",
+         "5",
+         "16",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(16)"},
+        {"TIME", "", "NO", "int", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "int"},
+        {"STATE",
+         "",
+         "YES",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"INFO",
+         "",
+         "YES",
+         "varchar",
+         "21845",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(65535)"},
+};
+
 static const char information_schema_routines_type_column_type[] = "enum('FUNCTION','PROCEDURE')";
 
 static const char information_schema_routines_sql_data_access_column_type[] =
@@ -4025,6 +4107,10 @@ static const struct information_schema_table_definition information_schema_table
      "PARAMETERS",
      information_schema_parameters_columns,
      information_schema_parameters_column_count},
+    {INFORMATION_SCHEMA_TABLE_PROCESSLIST,
+     "PROCESSLIST",
+     information_schema_processlist_columns,
+     information_schema_processlist_column_count},
     {INFORMATION_SCHEMA_TABLE_ROUTINES,
      "ROUTINES",
      information_schema_routines_columns,
@@ -4892,6 +4978,7 @@ static int execute_do_statement(
 );
 static int execute_select_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
@@ -4907,6 +4994,7 @@ static int reject_select_modifier_usage_if_needed(
 );
 static int execute_information_schema_select_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
@@ -4923,12 +5011,14 @@ static int resolve_information_schema_query(
 static void information_schema_query_deinit(struct information_schema_query *query);
 static int execute_information_schema_query(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     mylite_result **out_result
 );
 static int build_information_schema_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct information_schema_table_definition *definition,
     struct information_schema_row_set *out_rows
 );
@@ -4974,6 +5064,16 @@ static int append_information_schema_collations_system_row(
 static int append_information_schema_engines_system_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows
+);
+static int append_information_schema_processlist_system_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+);
+static int copy_information_schema_processlist_info(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    char **out_info
 );
 static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
@@ -5106,14 +5206,16 @@ static int information_schema_append_result_rows(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    mylite_result *result
+    mylite_result *result,
+    size_t *out_read_row_count
 );
 static int information_schema_append_count_result(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    mylite_result *result
+    mylite_result *result,
+    size_t *out_read_row_count
 );
 static int information_schema_matching_row_indexes(
     struct mylite_db *database,
@@ -13363,7 +13465,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DO_STATEMENT:
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT:
-        return execute_select_statement(database, statement, out_result);
+        return execute_select_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
@@ -16656,6 +16758,7 @@ static int execute_do_statement(
 
 static int execute_select_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
@@ -16686,7 +16789,12 @@ static int execute_select_statement(
         return rc;
     }
     if (is_information_schema_query) {
-        return execute_information_schema_select_statement(database, statement, out_result);
+        return execute_information_schema_select_statement(
+            database,
+            context,
+            statement,
+            out_result
+        );
     }
     rc = execute_scalar_or_row_scalar_select_if_needed(
         database,
@@ -16824,6 +16932,7 @@ static int reject_select_modifier_usage_if_needed(
 
 static int execute_information_schema_select_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
@@ -16831,7 +16940,7 @@ static int execute_information_schema_select_statement(
     int rc = resolve_information_schema_query(database, statement, &query);
 
     if (rc == MYLITE_OK) {
-        rc = execute_information_schema_query(database, statement, &query, out_result);
+        rc = execute_information_schema_query(database, context, statement, &query, out_result);
     }
     information_schema_query_deinit(&query);
     return rc;
@@ -16960,13 +17069,15 @@ static void information_schema_query_deinit(struct information_schema_query *que
 
 static int execute_information_schema_query(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     mylite_result **out_result
 ) {
     struct information_schema_row_set rows = {0};
     mylite_result *result = NULL;
-    int rc = build_information_schema_rows(database, query->definition, &rows);
+    size_t read_row_count = 0U;
+    int rc = build_information_schema_rows(database, context, query->definition, &rows);
 
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -16978,9 +17089,27 @@ static int execute_information_schema_query(
         rc = information_schema_append_result_columns(database, result, query);
     }
     if (rc == MYLITE_OK && query->is_count_star) {
-        rc = information_schema_append_count_result(database, statement, query, &rows, result);
+        rc = information_schema_append_count_result(
+            database,
+            statement,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
     } else if (rc == MYLITE_OK) {
-        rc = information_schema_append_result_rows(database, statement, query, &rows, result);
+        rc = information_schema_append_result_rows(
+            database,
+            statement,
+            query,
+            &rows,
+            result,
+            &read_row_count
+        );
+    }
+    if (rc == MYLITE_OK && query->definition->kind == INFORMATION_SCHEMA_TABLE_PROCESSLIST &&
+        read_row_count > 0U) {
+        rc = append_show_processlist_warning(database);
     }
     information_schema_row_set_deinit(&rows);
     if (rc != MYLITE_OK) {
@@ -16994,13 +17123,18 @@ static int execute_information_schema_query(
 
 static int build_information_schema_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct information_schema_table_definition *definition,
     struct information_schema_row_set *out_rows
 ) {
     int rc = MYLITE_OK;
 
     *out_rows = (struct information_schema_row_set){.definition = definition};
-    rc = append_information_schema_system_rows(database, out_rows);
+    if (definition->kind == INFORMATION_SCHEMA_TABLE_PROCESSLIST) {
+        rc = append_information_schema_processlist_system_row(database, context, out_rows);
+    } else {
+        rc = append_information_schema_system_rows(database, out_rows);
+    }
     if (rc == MYLITE_OK) {
         rc = append_information_schema_catalog_rows(database, out_rows);
     }
@@ -17044,6 +17178,7 @@ static int append_information_schema_system_rows(
         return append_information_schema_engines_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
+    case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
@@ -17074,6 +17209,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_ENGINES:
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
+    case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
@@ -17317,6 +17453,101 @@ static int append_information_schema_engines_system_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_processlist_system_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+) {
+    char connection_id_text[integer_text_capacity];
+    char user[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char host[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char *info = NULL;
+    const char *selected_schema = NULL;
+    const char *values[information_schema_processlist_column_count] = {
+        connection_id_text,
+        user,
+        host,
+        NULL,
+        "Query",
+        "0",
+        "executing",
+        NULL,
+    };
+    int written = snprintf(
+        connection_id_text,
+        sizeof(connection_id_text),
+        "%" PRIu64,
+        database->session.connection_id
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0 || (size_t)written >= sizeof(connection_id_text)) {
+        set_runtime_error(database, "failed to format INFORMATION_SCHEMA.PROCESSLIST ID");
+        return MYLITE_ERROR;
+    }
+    if (database->session.has_selected_schema) {
+        selected_schema = database->session.selected_schema;
+    }
+    values[information_schema_processlist_db_column] = selected_schema;
+
+    rc = format_show_processlist_user_host(database, user, sizeof(user), host, sizeof(host));
+    if (rc == MYLITE_OK) {
+        rc = copy_information_schema_processlist_info(database, context, &info);
+    }
+    if (rc == MYLITE_OK) {
+        values[information_schema_processlist_info_column] = info;
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    free(info);
+    return rc;
+}
+
+static int copy_information_schema_processlist_info(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    char **out_info
+) {
+    const char *sql = NULL;
+    size_t sql_size = 0U;
+    size_t length = 0U;
+    char *info = NULL;
+
+    if (out_info == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_info = NULL;
+    if (context == NULL) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA.PROCESSLIST statement text");
+        return MYLITE_ERROR;
+    }
+
+    sql = mylite_statement_context_sql(context);
+    sql_size = mylite_statement_context_sql_size(context);
+    if (sql == NULL) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA.PROCESSLIST statement text");
+        return MYLITE_ERROR;
+    }
+
+    length = statement_info_length_without_terminator(sql, sql_size);
+    if (length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    info = malloc(length + 1U);
+    if (info == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (length > 0U) {
+        memcpy(info, sql, length);
+    }
+    info[length] = '\0';
+    *out_info = info;
+    return MYLITE_OK;
 }
 
 static int append_information_schema_tables_system_rows(
@@ -18305,7 +18536,8 @@ static int information_schema_append_result_rows(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    mylite_result *result
+    mylite_result *result,
+    size_t *out_read_row_count
 ) {
     size_t *indexes = NULL;
     size_t index_count = 0U;
@@ -18321,6 +18553,9 @@ static int information_schema_append_result_rows(
 
     if (rc == MYLITE_OK) {
         rc = information_schema_sort_row_indexes(query, rows, indexes, index_count);
+    }
+    if (out_read_row_count != NULL) {
+        *out_read_row_count = 0U;
     }
     for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
         const char *values[information_schema_columns_column_count];
@@ -18338,6 +18573,9 @@ static int information_schema_append_result_rows(
         }
         ++visible_count;
     }
+    if (rc == MYLITE_OK && out_read_row_count != NULL) {
+        *out_read_row_count = visible_count;
+    }
     free(indexes);
     return rc;
 }
@@ -18347,12 +18585,14 @@ static int information_schema_append_count_result(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    mylite_result *result
+    mylite_result *result,
+    size_t *out_read_row_count
 ) {
     char count_text[integer_text_capacity];
     const char *values[1] = {count_text};
     size_t *indexes = NULL;
     size_t index_count = 0U;
+    bool emits_count_row = true;
     int rc = information_schema_matching_row_indexes(
         database,
         statement,
@@ -18362,6 +18602,12 @@ static int information_schema_append_count_result(
         &index_count
     );
 
+    if (out_read_row_count != NULL) {
+        *out_read_row_count = 0U;
+    }
+    if (query->limit.has_limit && query->limit.row_count == 0) {
+        emits_count_row = false;
+    }
     if (rc == MYLITE_OK) {
         rc = information_schema_format_i64(
             database,
@@ -18370,11 +18616,14 @@ static int information_schema_append_count_result(
             sizeof(count_text)
         );
     }
-    if (rc == MYLITE_OK && (!query->limit.has_limit || query->limit.row_count != 0)) {
+    if (rc == MYLITE_OK && emits_count_row) {
         rc = mylite_result_append_text_row(result, values);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
+    }
+    if (rc == MYLITE_OK && emits_count_row && out_read_row_count != NULL) {
+        *out_read_row_count = index_count;
     }
     free(indexes);
     return rc;

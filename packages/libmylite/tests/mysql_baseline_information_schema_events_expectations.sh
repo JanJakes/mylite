@@ -34,6 +34,29 @@ expect_value() {
     fi
 }
 
+expect_error() {
+    label=$1
+    code=$2
+    state=$3
+    message=$4
+    sql=$5
+    shift 5
+
+    set +e
+    output=$(run_mysql "$sql" "$@" 2>&1)
+    status_code=$?
+    set -e
+
+    if [ "$status_code" -eq 0 ]; then
+        fail "$label: expected error $code/$state, command succeeded with [$output]"
+    fi
+
+    case "$output" in
+        *"ERROR $code ($state)"*"$message"*) ;;
+        *) fail "$label: expected error $code/$state containing [$message], got [$output]" ;;
+    esac
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
 }
@@ -62,6 +85,13 @@ status=$(run_mysql \
     "SELECT * FROM INFORMATION_SCHEMA.EVENTS WHERE EVENT_SCHEMA = '${DATABASE}'; "\
 "SELECT @@warning_count, ROW_COUNT();" | tail -n 1)
 expect_value "events status" "0	-1" "$status"
+
+expect_error \
+    "unknown events where column" \
+    1054 \
+    "42S22" \
+    "Unknown column 'nope' in 'where clause'" \
+    "SELECT EVENT_NAME FROM INFORMATION_SCHEMA.EVENTS WHERE nope = 'x';"
 
 run_mysql \
     "CREATE EVENT ${DATABASE}.daily_event ON SCHEDULE EVERY 1 DAY DO SET @event_probe = 1;" \

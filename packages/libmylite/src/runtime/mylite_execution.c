@@ -227,6 +227,7 @@ enum {
     information_schema_character_sets_column_count = 4,
     information_schema_collations_column_count = 7,
     information_schema_engines_column_count = 6,
+    information_schema_events_column_count = 24,
     information_schema_table_constraints_column_count = 7,
     information_schema_key_column_usage_column_count = 12,
     information_schema_statistics_column_count = 18,
@@ -1490,12 +1491,13 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_CHARACTER_SETS = 3,
     INFORMATION_SCHEMA_TABLE_COLLATIONS = 4,
     INFORMATION_SCHEMA_TABLE_ENGINES = 5,
-    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 6,
-    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 7,
-    INFORMATION_SCHEMA_TABLE_STATISTICS = 8,
-    INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 9,
-    INFORMATION_SCHEMA_TABLE_TRIGGERS = 10,
-    INFORMATION_SCHEMA_TABLE_VIEWS = 11,
+    INFORMATION_SCHEMA_TABLE_EVENTS = 6,
+    INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 7,
+    INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 8,
+    INFORMATION_SCHEMA_TABLE_STATISTICS = 9,
+    INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 10,
+    INFORMATION_SCHEMA_TABLE_TRIGGERS = 11,
+    INFORMATION_SCHEMA_TABLE_VIEWS = 12,
 };
 
 struct information_schema_column_definition {
@@ -2872,6 +2874,226 @@ static const char information_schema_sql_mode_set_column_type[] =
     "'NOT_USED_29','HIGH_NOT_PRECEDENCE','NO_ENGINE_SUBSTITUTION','PAD_CHAR_TO_FULL_LENGTH',"
     "'TIME_TRUNCATE_FRACTIONAL')";
 
+static const char information_schema_events_interval_field_column_type[] =
+    "enum('YEAR','QUARTER','MONTH','DAY','HOUR','MINUTE','WEEK','SECOND','MICROSECOND',"
+    "'YEAR_MONTH','DAY_HOUR','DAY_MINUTE','DAY_SECOND','HOUR_MINUTE','HOUR_SECOND',"
+    "'MINUTE_SECOND','DAY_MICROSECOND','HOUR_MICROSECOND','MINUTE_MICROSECOND',"
+    "'SECOND_MICROSECOND')";
+
+static const struct information_schema_column_definition information_schema_events_columns[] = {
+    {"EVENT_CATALOG",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"EVENT_SCHEMA",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"EVENT_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"DEFINER",
+     NULL,
+     "NO",
+     "varchar",
+     "288",
+     "864",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(288)"},
+    {"TIME_ZONE",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(64)"},
+    {"EVENT_BODY",
+     "",
+     "NO",
+     "varchar",
+     "3",
+     "9",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(3)"},
+    {"EVENT_DEFINITION",
+     NULL,
+     "NO",
+     "longtext",
+     "4294967295",
+     "4294967295",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "longtext"},
+    {"EVENT_TYPE",
+     "",
+     "NO",
+     "varchar",
+     "9",
+     "27",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(9)"},
+    {"EXECUTE_AT", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"INTERVAL_VALUE",
+     NULL,
+     "YES",
+     "varchar",
+     "256",
+     "768",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(256)"},
+    {"INTERVAL_FIELD",
+     NULL,
+     "YES",
+     "enum",
+     "18",
+     "54",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     information_schema_events_interval_field_column_type},
+    {"SQL_MODE",
+     NULL,
+     "NO",
+     "set",
+     "520",
+     "1560",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     information_schema_sql_mode_set_column_type},
+    {"STARTS", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"ENDS", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"STATUS",
+     "",
+     "NO",
+     "varchar",
+     "21",
+     "63",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(21)"},
+    {"ON_COMPLETION",
+     "",
+     "NO",
+     "varchar",
+     "12",
+     "36",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(12)"},
+    {"CREATED", NULL, "NO", "timestamp", NULL, NULL, NULL, NULL, "0", NULL, NULL, "timestamp"},
+    {"LAST_ALTERED", NULL, "NO", "timestamp", NULL, NULL, NULL, NULL, "0", NULL, NULL, "timestamp"},
+    {"LAST_EXECUTED", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"EVENT_COMMENT",
+     NULL,
+     "NO",
+     "varchar",
+     "2048",
+     "6144",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(2048)"},
+    {"ORIGINATOR", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+    {"CHARACTER_SET_CLIENT",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"COLLATION_CONNECTION",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+    {"DATABASE_COLLATION",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(64)"},
+};
+
 static const struct information_schema_column_definition information_schema_triggers_columns[] = {
     {"TRIGGER_CATALOG",
      NULL,
@@ -3265,6 +3487,10 @@ static const struct information_schema_table_definition information_schema_table
      "ENGINES",
      information_schema_engines_columns,
      information_schema_engines_column_count},
+    {INFORMATION_SCHEMA_TABLE_EVENTS,
+     "EVENTS",
+     information_schema_events_columns,
+     information_schema_events_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS,
      "TABLE_CONSTRAINTS",
      information_schema_table_constraints_columns,
@@ -4369,6 +4595,26 @@ static int information_schema_compare_rows(
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     struct information_schema_row_order_pair pair
+);
+static int information_schema_plan_where(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct information_schema_query *query
+);
+static int information_schema_validate_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_validate_comparison_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_validate_is_null_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
 );
 static int information_schema_predicate_matches(
     struct mylite_db *database,
@@ -16140,6 +16386,9 @@ static int resolve_information_schema_query(
         rc = information_schema_plan_projection(database, select_list, out_query);
     }
     if (rc == MYLITE_OK) {
+        rc = information_schema_plan_where(database, where_clause, out_query);
+    }
+    if (rc == MYLITE_OK) {
         out_query->limit = (struct planned_select_limit){
             .has_limit = false,
             .row_count = 0,
@@ -16152,7 +16401,6 @@ static int resolve_information_schema_query(
         rc = information_schema_plan_limit(database, limit_clause, out_query);
     }
     if (rc == MYLITE_OK) {
-        (void)where_clause;
         return MYLITE_OK;
     }
 
@@ -16256,6 +16504,7 @@ static int append_information_schema_system_rows(
         return append_information_schema_collations_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_ENGINES:
         return append_information_schema_engines_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
@@ -16283,6 +16532,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_CHARACTER_SETS:
     case INFORMATION_SCHEMA_TABLE_COLLATIONS:
     case INFORMATION_SCHEMA_TABLE_ENGINES:
+    case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
         return MYLITE_OK;
@@ -17612,6 +17862,9 @@ static int information_schema_matching_row_indexes(
         optional_clause = optional_clause->next_sibling;
     }
 
+    if (rows->row_count == 0U) {
+        return MYLITE_OK;
+    }
     if (rows->row_count > SIZE_MAX / sizeof(*indexes)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -17712,6 +17965,142 @@ static int information_schema_compare_rows(
         comparison = -comparison;
     }
     return comparison;
+}
+
+static int information_schema_plan_where(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct information_schema_query *query
+) {
+    if (where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT supports metadata predicates");
+        return MYLITE_ERROR;
+    }
+    return information_schema_validate_predicate(database, query, child_at(where_clause, 0U));
+}
+
+static int information_schema_validate_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    struct information_schema_predicate_frame_stack frame_stack = {0};
+    struct information_schema_predicate_eval_frame frame = {
+        .node = predicate_node,
+        .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+    };
+    int rc = information_schema_predicate_frame_stack_push(database, &frame_stack, frame);
+
+    while (rc == MYLITE_OK && information_schema_predicate_frame_stack_pop(&frame_stack, &frame)) {
+        const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(frame.node);
+
+        if (current == NULL) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE supports metadata predicates"
+            );
+            rc = MYLITE_ERROR;
+            continue;
+        }
+
+        switch (current->kind) {
+        case MYLITE_SQL_AST_NOT_PREDICATE:
+            rc = information_schema_predicate_frame_stack_push(
+                database,
+                &frame_stack,
+                (struct information_schema_predicate_eval_frame){
+                    .node = child_at(current, 0U),
+                    .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+                }
+            );
+            break;
+        case MYLITE_SQL_AST_AND_PREDICATE:
+        case MYLITE_SQL_AST_OR_PREDICATE:
+        case MYLITE_SQL_AST_XOR_PREDICATE:
+            rc = information_schema_predicate_frame_stack_push(
+                database,
+                &frame_stack,
+                (struct information_schema_predicate_eval_frame){
+                    .node = child_at(current, 1U),
+                    .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+                }
+            );
+            if (rc == MYLITE_OK) {
+                rc = information_schema_predicate_frame_stack_push(
+                    database,
+                    &frame_stack,
+                    (struct information_schema_predicate_eval_frame){
+                        .node = child_at(current, 0U),
+                        .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
+                    }
+                );
+            }
+            break;
+        case MYLITE_SQL_AST_COMPARISON_PREDICATE:
+            rc = information_schema_validate_comparison_predicate(database, query, current);
+            break;
+        case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+            rc = information_schema_validate_is_null_predicate(database, query, current);
+            break;
+        default:
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA WHERE supports metadata predicates"
+            );
+            rc = MYLITE_ERROR;
+            break;
+        }
+    }
+
+    information_schema_predicate_frame_stack_deinit(&frame_stack);
+    return rc;
+}
+
+static int information_schema_validate_comparison_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    struct information_schema_predicate_value right = {
+        .text = NULL,
+        .is_null = false,
+        .is_numeric = false,
+    };
+    size_t column_index = 0U;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    (void)column_index;
+    if (rc == MYLITE_OK) {
+        rc =
+            information_schema_predicate_value_text(database, child_at(predicate_node, 1U), &right);
+    }
+    free(right.text);
+    return rc;
+}
+
+static int information_schema_validate_is_null_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    size_t column_index = 0U;
+
+    return information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
 }
 
 static int information_schema_predicate_matches(

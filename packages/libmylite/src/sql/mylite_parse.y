@@ -1534,8 +1534,25 @@ update_value(A) ::= current_timestamp_value(T). {
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
+update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
 update_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+
+arithmetic_update_source_column(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+arithmetic_update_source_column(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)

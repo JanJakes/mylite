@@ -965,6 +965,29 @@ struct integer_column_range {
     uint64_t negative_abs_max;
 };
 
+enum planned_update_assignment_value_kind {
+    PLANNED_UPDATE_ASSIGNMENT_VALUE = 0,
+    PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC = 1,
+};
+
+enum update_arithmetic_range_condition {
+    UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL = 0,
+    UPDATE_ARITHMETIC_RANGE_GREATER_THAN = 1,
+    UPDATE_ARITHMETIC_RANGE_LESS_THAN = 2,
+};
+
+enum update_arithmetic_range_error_kind {
+    UPDATE_ARITHMETIC_RANGE_ERROR_COLUMN = 0,
+    UPDATE_ARITHMETIC_RANGE_ERROR_SIGNED_BIGINT = 1,
+    UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT = 2,
+};
+
+struct update_arithmetic_range_check {
+    enum update_arithmetic_range_condition condition;
+    int64_t threshold;
+    enum update_arithmetic_range_error_kind error_kind;
+};
+
 struct mapped_integer_type {
     enum mylite_sql_ast_integer_type type;
     int is_unsigned;
@@ -1387,6 +1410,11 @@ struct planned_update {
     struct loaded_index_info *indexes;
     size_t index_count;
     const struct mylite_sql_ast_node *assignment_value_node;
+    enum planned_update_assignment_value_kind assignment_value_kind;
+    enum mylite_sql_ast_operator arithmetic_operator;
+    const struct mylite_sql_ast_node *arithmetic_delta_node;
+    uint64_t arithmetic_delta_magnitude;
+    int64_t arithmetic_delta;
     bool assignment_value_is_scalar_subquery;
     struct planned_select assignment_subquery;
     struct planned_value assignment_value;
@@ -9125,6 +9153,68 @@ static int prepare_executable_update_plan(
     bool matches_any_row,
     struct planned_update *executable_plan
 );
+static int prepare_update_arithmetic_assignment(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_update *executable_plan
+);
+static int parse_update_arithmetic_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_delta
+);
+static int validate_update_arithmetic_range(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t delta
+);
+static int validate_update_arithmetic_threshold_range(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check
+);
+static int update_arithmetic_condition_matches_row(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check,
+    bool *out_matches
+);
+static int build_update_arithmetic_condition_sql(
+    const struct planned_update *plan,
+    enum update_arithmetic_range_condition condition,
+    char **out_sql
+);
+static int bind_update_arithmetic_condition_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check
+);
+static uint64_t update_arithmetic_domain_width(const struct integer_column_range *range);
+static int64_t update_arithmetic_addition_threshold(
+    const struct integer_column_range *range,
+    uint64_t delta
+);
+static int64_t update_arithmetic_subtraction_threshold(
+    const struct integer_column_range *range,
+    uint64_t delta
+);
+static int64_t int64_from_negative_abs(uint64_t negative_abs);
+static bool update_arithmetic_column_is_unsigned(
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool update_arithmetic_column_is_signed_bigint(
+    const struct mylite_catalog_column_descriptor *column
+);
+static enum update_arithmetic_range_error_kind update_arithmetic_range_error_kind_for_plan(
+    const struct planned_update *plan
+);
+static void set_update_arithmetic_unsupported_error(struct mylite_db *database);
+static void set_update_arithmetic_delta_out_of_range_error(struct mylite_db *database);
+static void set_update_arithmetic_range_error(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    enum update_arithmetic_range_error_kind error_kind
+);
 static int execute_matching_update_statement(
     struct mylite_db *database,
     const struct planned_update *executable_plan,
@@ -11777,6 +11867,17 @@ static int plan_update_scalar_subquery_assignment(
     struct mylite_db *database,
     struct planned_update *out_plan
 );
+static int plan_update_arithmetic_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static int validate_update_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static bool update_assignment_column_is_keyed(const struct planned_update *plan);
 static int validate_update_scalar_subquery_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -12788,6 +12889,10 @@ static int append_delete_rowid_limited_sql(
     size_t *next_parameter
 );
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
+static int append_update_assignment_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
 static int append_update_auto_update_columns_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
@@ -12805,6 +12910,11 @@ static int append_update_rowid_limited_sql(
     size_t *next_parameter
 );
 static int append_update_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_arithmetic_changed_condition_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
@@ -13117,6 +13227,16 @@ static int bind_grouped_aggregate_parameters(
 );
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
+static int bind_update_assignment_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_update *plan
+);
+static int bind_update_changed_condition_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_update *plan
+);
 static int bind_update_matched_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan
@@ -38025,14 +38145,355 @@ static int prepare_executable_update_plan(
         return MYLITE_OK;
     }
 
-    rc = convert_update_value(database, plan, &executable_plan->assignment_value);
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
+    } else {
+        rc = convert_update_value(database, plan, &executable_plan->assignment_value);
+    }
     if (rc == MYLITE_OK && planned_update_auto_update_column_count(plan) > 0U) {
         rc = make_current_timestamp_value(database, &executable_plan->auto_update_value);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK &&
+        plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = validate_update_string_key_value(database, executable_plan);
     }
     return rc;
+}
+
+static int prepare_update_arithmetic_assignment(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_update *executable_plan
+) {
+    const uint64_t int64_positive_max = 9223372036854775807ULL;
+    uint64_t delta = 0U;
+    bool has_non_null_row = false;
+    const struct update_arithmetic_range_check any_non_null_check = {
+        .condition = UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL,
+        .threshold = 0,
+        .error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_COLUMN,
+    };
+    int rc = parse_update_arithmetic_delta(database, plan->arithmetic_delta_node, &delta);
+
+    if (rc != MYLITE_OK || delta > int64_positive_max) {
+        rc = update_arithmetic_condition_matches_row(
+            database,
+            plan,
+            &any_non_null_check,
+            &has_non_null_row
+        );
+        if (rc == MYLITE_OK && has_non_null_row) {
+            set_update_arithmetic_delta_out_of_range_error(database);
+            return MYLITE_ERROR;
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        delta = 0U;
+    }
+
+    executable_plan->arithmetic_delta_magnitude = delta;
+    executable_plan->arithmetic_delta = (int64_t)delta;
+    if (delta == 0U) {
+        return MYLITE_OK;
+    }
+
+    return validate_update_arithmetic_range(database, plan, delta);
+}
+
+static int parse_update_arithmetic_delta(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_delta
+) {
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_update_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return parse_unsigned_integer_literal(&literal->span, out_delta);
+}
+
+static int validate_update_arithmetic_range(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t delta
+) {
+    struct integer_column_range range = {0};
+    struct update_arithmetic_range_check check = {
+        .condition = UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL,
+        .threshold = 0,
+        .error_kind = update_arithmetic_range_error_kind_for_plan(plan),
+    };
+    int rc = integer_range_for_column(
+        database,
+        &plan->assignment_column,
+        "UPDATE arithmetic assignment supports only integer columns",
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (delta > update_arithmetic_domain_width(&range)) {
+        return validate_update_arithmetic_threshold_range(database, plan, &check);
+    }
+
+    if (plan->arithmetic_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+        check.condition = UPDATE_ARITHMETIC_RANGE_GREATER_THAN;
+        check.threshold = update_arithmetic_addition_threshold(&range, delta);
+    } else {
+        check.condition = UPDATE_ARITHMETIC_RANGE_LESS_THAN;
+        check.threshold = update_arithmetic_subtraction_threshold(&range, delta);
+        if (update_arithmetic_column_is_unsigned(&plan->assignment_column)) {
+            check.error_kind = UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT;
+        }
+    }
+
+    return validate_update_arithmetic_threshold_range(database, plan, &check);
+}
+
+static int validate_update_arithmetic_threshold_range(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check
+) {
+    bool has_out_of_range_row = false;
+    int rc = update_arithmetic_condition_matches_row(database, plan, check, &has_out_of_range_row);
+
+    if (rc == MYLITE_OK && has_out_of_range_row) {
+        set_update_arithmetic_range_error(database, plan, check->error_kind);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int update_arithmetic_condition_matches_row(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check,
+    bool *out_matches
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    rc = build_update_arithmetic_condition_sql(plan, check->condition, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_arithmetic_condition_parameters(statement, plan, check);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_matches = true;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_update_arithmetic_condition_sql(
+    const struct planned_update *plan,
+    enum update_arithmetic_range_condition condition,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
+    } else if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK &&
+        (plan->limit.has_limit || planned_select_predicate_has_expression(&plan->predicate))) {
+        rc = dynamic_string_append(&string, " AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " IS NOT NULL");
+    }
+    if (rc == MYLITE_OK && condition != UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL) {
+        rc = dynamic_string_append(&string, " AND ");
+    }
+    if (rc == MYLITE_OK && condition != UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK && condition == UPDATE_ARITHMETIC_RANGE_GREATER_THAN) {
+        rc = dynamic_string_append(&string, " > ");
+    } else if (rc == MYLITE_OK && condition == UPDATE_ARITHMETIC_RANGE_LESS_THAN) {
+        rc = dynamic_string_append(&string, " < ");
+    }
+    if (rc == MYLITE_OK && condition != UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL) {
+        rc = append_numbered_parameter(&string, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int bind_update_arithmetic_condition_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan,
+    const struct update_arithmetic_range_check *check
+) {
+    int parameter_index = 1;
+    int rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && check->condition != UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL) {
+        rc = bind_int64_parameter(statement, parameter_index, check->threshold);
+    }
+
+    return rc;
+}
+
+static uint64_t update_arithmetic_domain_width(const struct integer_column_range *range) {
+    return range->positive_max + range->negative_abs_max;
+}
+
+static int64_t update_arithmetic_addition_threshold(
+    const struct integer_column_range *range,
+    uint64_t delta
+) {
+    if (delta <= range->positive_max) {
+        return (int64_t)(range->positive_max - delta);
+    }
+
+    return int64_from_negative_abs(delta - range->positive_max);
+}
+
+static int64_t update_arithmetic_subtraction_threshold(
+    const struct integer_column_range *range,
+    uint64_t delta
+) {
+    if (delta <= range->negative_abs_max) {
+        return int64_from_negative_abs(range->negative_abs_max - delta);
+    }
+
+    return (int64_t)(delta - range->negative_abs_max);
+}
+
+static int64_t int64_from_negative_abs(uint64_t negative_abs) {
+    const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+
+    if (negative_abs == 0U) {
+        return 0;
+    }
+    if (negative_abs == int64_negative_abs_max) {
+        return INT64_MIN;
+    }
+    return -(int64_t)negative_abs;
+}
+
+static bool update_arithmetic_column_is_unsigned(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    return strstr(column->logical_type, "UNSIGNED") != NULL;
+}
+
+static bool update_arithmetic_column_is_signed_bigint(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    return strcmp(column->logical_type, "BIGINT") == 0;
+}
+
+static enum update_arithmetic_range_error_kind update_arithmetic_range_error_kind_for_plan(
+    const struct planned_update *plan
+) {
+    if (plan->arithmetic_operator == MYLITE_SQL_AST_OPERATOR_SUBTRACT &&
+        update_arithmetic_column_is_unsigned(&plan->assignment_column)) {
+        return UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT;
+    }
+    if (update_arithmetic_column_is_signed_bigint(&plan->assignment_column)) {
+        return UPDATE_ARITHMETIC_RANGE_ERROR_SIGNED_BIGINT;
+    }
+    return UPDATE_ARITHMETIC_RANGE_ERROR_COLUMN;
+}
+
+static void set_update_arithmetic_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE arithmetic assignment supports only same-column integer + or - unsigned integer "
+        "literals on non-key columns"
+    );
+}
+
+static void set_update_arithmetic_delta_out_of_range_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE arithmetic assignment supports only unsigned integer deltas in signed 64-bit range"
+    );
+}
+
+static void set_update_arithmetic_range_error(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    enum update_arithmetic_range_error_kind error_kind
+) {
+    if (error_kind == UPDATE_ARITHMETIC_RANGE_ERROR_SIGNED_BIGINT) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_bigint_out_of_range,
+            "22003",
+            "BIGINT value is out of range in UPDATE arithmetic assignment"
+        );
+        return;
+    }
+    if (error_kind == UPDATE_ARITHMETIC_RANGE_ERROR_UNSIGNED_BIGINT) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_bigint_out_of_range,
+            "22003",
+            "BIGINT UNSIGNED value is out of range in UPDATE arithmetic assignment"
+        );
+        return;
+    }
+
+    set_out_of_range_error(database, plan->assignment_column.name, 1U);
 }
 
 static int execute_matching_update_statement(
@@ -70685,8 +71146,110 @@ static int plan_update_assignment(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    rc = plan_update_arithmetic_assignment(database, table_columns, table_column_count, out_plan);
+    if (rc != MYLITE_OK ||
+        out_plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        return rc;
+    }
 
     return plan_update_scalar_subquery_assignment(database, out_plan);
+}
+
+static int plan_update_arithmetic_assignment(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const struct mylite_sql_ast_node *source = NULL;
+    const struct mylite_sql_ast_node *delta = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    char source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return MYLITE_OK;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
+        set_update_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    source = child_at(value_node, 0U);
+    delta = child_at(value_node, 1U);
+    if (source == NULL || source->kind != MYLITE_SQL_AST_IDENTIFIER || delta == NULL ||
+        delta->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(delta) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_update_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(source, source_name, sizeof(source_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, source_name, &source_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, source_name);
+        return MYLITE_ERROR;
+    }
+    if (table_columns[source_index].column_id != out_plan->assignment_column.column_id) {
+        set_update_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignment_value_kind = PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC;
+    out_plan->arithmetic_operator = operator_kind;
+    out_plan->arithmetic_delta_node = delta;
+
+    return validate_update_arithmetic_assignment_target(database, out_plan);
+}
+
+static int validate_update_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        &plan->assignment_column,
+        "UPDATE arithmetic assignment supports only integer columns",
+        &range
+    );
+
+    (void)range;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_auto_increment(&plan->assignment_column) ||
+        update_assignment_column_is_keyed(plan)) {
+        set_update_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool update_assignment_column_is_keyed(const struct planned_update *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if ((key->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY || key->index.is_unique) &&
+            loaded_index_contains_column_id(key, plan->assignment_column.column_id)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int plan_update_scalar_subquery_assignment(
@@ -76378,10 +76941,7 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
         rc = dynamic_string_append(&string, " SET ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->assignment_column.name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " = ?1");
+        rc = append_update_assignment_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = append_update_auto_update_columns_sql(&string, plan, &next_parameter);
@@ -76408,6 +76968,32 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     }
 
     dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_update_assignment_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " = ");
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        return dynamic_string_append(string, "?1");
+    }
+
+    rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    if (rc == MYLITE_OK && plan->arithmetic_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+        rc = dynamic_string_append(string, " + ?1");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " - ?1");
+    }
 
     return rc;
 }
@@ -76543,6 +77129,9 @@ static int append_update_changed_condition_sql(
 ) {
     int rc = MYLITE_OK;
 
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        return append_update_arithmetic_changed_condition_sql(string, plan, next_parameter);
+    }
     if (plan->assignment_value.is_null) {
         rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
         if (rc == MYLITE_OK) {
@@ -76572,6 +77161,46 @@ static int append_update_changed_condition_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_update_arithmetic_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NOT NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <> (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK && plan->arithmetic_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+        rc = dynamic_string_append(string, " + ");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " - ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "))");
     }
 
     return rc;
@@ -78707,7 +79336,7 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
 
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan) {
     int parameter_index = 1;
-    int rc = bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
+    int rc = bind_update_assignment_parameter(statement, parameter_index, plan);
 
     if (rc == MYLITE_OK) {
         ++parameter_index;
@@ -78731,11 +79360,37 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK && !plan->assignment_value.is_null) {
-        rc = bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
+    if (rc == MYLITE_OK &&
+        (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
+         !plan->assignment_value.is_null)) {
+        rc = bind_update_changed_condition_parameter(statement, parameter_index, plan);
     }
 
     return rc;
+}
+
+static int bind_update_assignment_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_update *plan
+) {
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        return bind_int64_parameter(statement, parameter_index, plan->arithmetic_delta);
+    }
+
+    return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
+}
+
+static int bind_update_changed_condition_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_update *plan
+) {
+    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+        return bind_int64_parameter(statement, parameter_index, plan->arithmetic_delta);
+    }
+
+    return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
 }
 
 static int bind_update_matched_parameters(

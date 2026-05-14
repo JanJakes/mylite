@@ -15398,6 +15398,35 @@ static int test_update_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("UPDATE counters SET n = n + 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment_list = child_at(statement, 1U);
+    assignment = child_at(assignment_list, 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "update arithmetic add assignment"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(assignment, 1U), 0U), "n", "update arithmetic source");
+    failures += expect_literal(
+        child_at(child_at(assignment, 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "update arithmetic literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE counters SET n = n - 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment_list = child_at(statement, 1U);
+    assignment = child_at(assignment_list, 0U);
+    failures += expect_operator(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        "update arithmetic subtract assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "UPDATE simple_lifecycle SET amount = NULL WHERE id = +1 ORDER BY nn DESC LIMIT 2;",
         MYLITE_SQL_PARSE_OK,

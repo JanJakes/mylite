@@ -88,6 +88,6 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.USER_PRIVILEGES` | ❌ | Privileges defined globally per user |
 | `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` | ❌ | Stored functions used in views |
 | `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` | ❌ | Tables and views used in views |
-| `INFORMATION_SCHEMA.VIEWS` | ❌ | View information |
+| `INFORMATION_SCHEMA.VIEWS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real view descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE VIEW`, view execution, stored definitions, dependencies, privileges, or complete MySQL system catalogs |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

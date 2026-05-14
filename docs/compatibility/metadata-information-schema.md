@@ -56,7 +56,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.MYSQL_FIREWALL_WHITELIST` | ❌ | Deprecated table shape |
 | `INFORMATION_SCHEMA.ndb_transid_mysql_connection_map` | ❌ | Conditional NDB transaction map |
 | `INFORMATION_SCHEMA.OPTIMIZER_TRACE` | ❌ | Optimizer trace output |
-| `INFORMATION_SCHEMA.PARAMETERS` | ❌ | Stored routine parameters and stored function return values |
+| `INFORMATION_SCHEMA.PARAMETERS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine and parameter descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameter descriptors, function return rows, stored definitions, definers, or privileges |
 | `INFORMATION_SCHEMA.PARTITIONS` | ❌ | Table partition information |
 | `INFORMATION_SCHEMA.PLUGINS` | ❌ | Plugin information |
 | `INFORMATION_SCHEMA.PROCESSLIST` | ❌ | Executing thread metadata |
@@ -66,7 +66,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ROLE_COLUMN_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROLE_ROUTINE_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROLE_TABLE_GRANTS` | ❌ | Table shape and diagnostics |
-| `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameters, stored definitions, definers, privileges, or `INFORMATION_SCHEMA.PARAMETERS` rows |
+| `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameter descriptors, stored definitions, definers, or privileges |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | ❌ | Privileges on schemas |
 | `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema` and MyLite catalog schemas with fixed charset/collation/default-encryption metadata; no `mysql`, `performance_schema`, `sys`, privileges, or schema options |
 | `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | Schema options |
@@ -77,7 +77,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | 🟡 | Limited queryable synthetic rows for descriptor-owned primary-key, supported unique-index, and supported integer-family foreign-key constraints on MyLite persistent base tables, including current composite primary-key, composite unique-index, and composite FK descriptors plus fixed `ENFORCED='YES'`; no check constraints, non-integer foreign keys, views, temporary tables, privileges, or complete MySQL system catalogs |
 | `INFORMATION_SCHEMA.TABLE_CONSTRAINTS_EXTENSIONS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.TABLE_PRIVILEGES` | ❌ | Privileges on tables |
-| `INFORMATION_SCHEMA.TABLES` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite base-table descriptors, with fixed InnoDB/table-status placeholders, descriptor-owned table collation, and descriptor-owned auto-increment metadata; no views, temporary tables, system schemas beyond the supported views, privileges, timestamps, or full storage-engine statistics |
+| `INFORMATION_SCHEMA.TABLES` | 🟡 | Limited queryable synthetic rows for supported `information_schema` system views and MyLite base-table descriptors, with fixed InnoDB/table-status placeholders, descriptor-owned table collation, and descriptor-owned auto-increment metadata; includes system-view rows for current empty metadata views such as `EVENTS`, `PARAMETERS`, `ROUTINES`, `TRIGGERS`, and `VIEWS`, but no stored event/routine/trigger/view rows, temporary tables, system schemas beyond the supported views, privileges, timestamps, or full storage-engine statistics |
 | `INFORMATION_SCHEMA.TABLES_EXTENSIONS` | ❌ | Table attributes for primary and secondary storage engines |
 | `INFORMATION_SCHEMA.TABLESPACES_EXTENSIONS` | ❌ | Tablespace attributes for primary storage engines |
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATE` | ❌ | Thread pool thread group states |

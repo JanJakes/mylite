@@ -15268,7 +15268,7 @@ static int resolve_joined_descriptor_column_reference(
 );
 static bool column_reference_source_matches_parts(
     const struct planned_select_source *source,
-    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count
 );
 static int collect_column_reference_parts(

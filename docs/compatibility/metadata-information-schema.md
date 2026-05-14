@@ -83,7 +83,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATE` | ❌ | Thread pool thread group states |
 | `INFORMATION_SCHEMA.TP_THREAD_GROUP_STATS` | ❌ | Thread pool thread group statistics |
 | `INFORMATION_SCHEMA.TP_THREAD_STATE` | ❌ | Thread pool thread information |
-| `INFORMATION_SCHEMA.TRIGGERS` | ❌ | Trigger information |
+| `INFORMATION_SCHEMA.TRIGGERS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real trigger descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE TRIGGER`, `DROP TRIGGER`, trigger execution, stored trigger definitions, definers, privileges, or SQLite trigger reflection |
 | `INFORMATION_SCHEMA.USER_ATTRIBUTES` | ❌ | User comments and attributes |
 | `INFORMATION_SCHEMA.USER_PRIVILEGES` | ❌ | Privileges defined globally per user |
 | `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` | ❌ | Stored functions used in views |

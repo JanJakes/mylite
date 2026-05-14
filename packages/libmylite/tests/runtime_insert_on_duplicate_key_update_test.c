@@ -86,6 +86,7 @@ int main(void) {
 
 static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const primary_rows[] = {"1", "30", NULL, "2", "40", "5"};
+    static const char *const multi_rows[] = {"1", "20", "33"};
     static const char *const warning_row[] = {
         "Warning",
         "1287",
@@ -93,9 +94,24 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         "an alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
         "DUPLICATE KEY UPDATE clause with alias.col instead",
     };
+    static const char *const multi_warning_rows[] = {
+        "Warning",
+        "1287",
+        "'VALUES function' is deprecated and will be removed in a future release. Please use "
+        "an alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
+        "DUPLICATE KEY UPDATE clause with alias.col instead",
+        "Warning",
+        "1287",
+        "'VALUES function' is deprecated and will be removed in a future release. Please use "
+        "an alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
+        "DUPLICATE KEY UPDATE clause with alias.col instead",
+    };
     static const char *const no_key_rows[] = {"1", "10", "1", "20"};
+    static const char *const multi_no_key_rows[] = {"1", "10", "20"};
     static const char *const unique_rows[] = {"1", "10", "200"};
+    static const char *const unique_multi_rows[] = {"1", "10", "200", "300"};
     static const char *const default_rows[] = {"1", "7", NULL};
+    static const char *const multi_default_rows[] = {"1", "7", NULL};
     static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
     static const char *const last_insert_id_one[] = {"1"};
     static const char *const last_insert_id_three[] = {"3"};
@@ -166,6 +182,48 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         }
     );
 
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE multi_t(id INT PRIMARY KEY, a INT, b INT)");
+    failures += expect_statement_ok(database, "INSERT INTO multi_t VALUES (1, 10, 20)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO multi_t VALUES (1, 20, 30) "
+        "ON DUPLICATE KEY UPDATE a = VALUES(a), b = VALUES(b)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = multi_warning_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "multiple values function warnings",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO multi_t VALUES (1, 20, 30) "
+        "ON DUPLICATE KEY UPDATE a = VALUES(a), b = VALUES(b)",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO multi_t VALUES (1, 20, 99) "
+        "ON DUPLICATE KEY UPDATE a = VALUES(a), b = 33",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM multi_t",
+            .values = multi_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "multiple duplicate assignment row",
+        }
+    );
+
     failures += expect_statement_ok(database, "CREATE TABLE nk(id INT, v INT)");
     failures += expect_statement_ok(database, "INSERT INTO nk VALUES (1, 10)");
     failures += expect_dml_ok(
@@ -181,6 +239,24 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "no-key duplicate tail inserts",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE nk_multi(id INT, a INT, b INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO nk_multi VALUES (1, 10, 20) "
+        "ON DUPLICATE KEY UPDATE a = VALUES(a), b = VALUES(b)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM nk_multi",
+            .values = multi_no_key_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "no-key multiple duplicate tail inserts",
         }
     );
 
@@ -200,6 +276,28 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "unique duplicate row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE unique_multi_t(id INT, email INT UNIQUE, v INT, n INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO unique_multi_t VALUES (1, 10, 100, 50)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO unique_multi_t VALUES (2, 10, 200, 300) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v), n = VALUES(n)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, email, v, n FROM unique_multi_t ORDER BY id",
+            .values = unique_multi_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "unique duplicate multiple row",
         }
     );
 
@@ -226,6 +324,28 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "set duplicate default and null",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE set_multi_t(id INT PRIMARY KEY, v INT NOT NULL DEFAULT 7, n INT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO set_multi_t SET id = 1, v = 10, n = 20");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO set_multi_t SET id = 1, v = 99, n = 3 "
+        "ON DUPLICATE KEY UPDATE v = DEFAULT, n = NULL",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM set_multi_t",
+            .values = multi_default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "multiple duplicate default and null",
         }
     );
 
@@ -438,6 +558,15 @@ static int test_duplicate_update_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = 20, v2 = VALUES(missing)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'v2'",
+        }
+    );
+    failures += execute_error(
+        database,
         "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(id)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -478,7 +607,16 @@ static int test_duplicate_update_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports exactly one assignment",
+            .message_part = "does not support duplicate assignment targets",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = 20, missing = 30",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing'",
         }
     );
     failures += execute_error(
@@ -502,6 +640,15 @@ static int test_duplicate_update_diagnostics(void) {
     failures += execute_error(
         database,
         "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE id = VALUES(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "does not support key-column assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = 20, id = 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -544,7 +691,7 @@ static int test_duplicate_update_diagnostics(void) {
     failures += execute_error(
         database,
         "INSERT INTO rollback_t VALUES (2, 2, 20), (1, 3, 30) "
-        "ON DUPLICATE KEY UPDATE ti = 128",
+        "ON DUPLICATE KEY UPDATE v = 20, ti = 128",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
@@ -572,8 +719,8 @@ static int test_duplicate_update_diagnostics(void) {
 }
 
 static int test_duplicate_update_independent_handles(void) {
-    static const char *const first_rows[] = {"1", "20"};
-    static const char *const second_rows[] = {"1", "30"};
+    static const char *const first_rows[] = {"1", "20", "21"};
+    static const char *const second_rows[] = {"1", "30", "31"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -593,26 +740,28 @@ static int test_duplicate_update_independent_handles(void) {
     failures += expect_statement_ok(first, "USE app");
     failures += expect_statement_ok(second, "CREATE DATABASE app");
     failures += expect_statement_ok(second, "USE app");
-    failures += expect_statement_ok(first, "CREATE TABLE t(id INT PRIMARY KEY, v INT)");
-    failures += expect_statement_ok(second, "CREATE TABLE t(id INT PRIMARY KEY, v INT)");
-    failures += expect_statement_ok(first, "INSERT INTO t VALUES (1, 10)");
-    failures += expect_statement_ok(second, "INSERT INTO t VALUES (1, 10)");
+    failures += expect_statement_ok(first, "CREATE TABLE t(id INT PRIMARY KEY, v INT, n INT)");
+    failures += expect_statement_ok(second, "CREATE TABLE t(id INT PRIMARY KEY, v INT, n INT)");
+    failures += expect_statement_ok(first, "INSERT INTO t VALUES (1, 10, 11)");
+    failures += expect_statement_ok(second, "INSERT INTO t VALUES (1, 10, 11)");
     failures += expect_dml_ok(
         first,
-        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(v)",
-        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+        "INSERT INTO t VALUES (1, 20, 21) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v), n = VALUES(n)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
     );
     failures += expect_dml_ok(
         second,
-        "INSERT INTO t VALUES (1, 30) ON DUPLICATE KEY UPDATE v = VALUES(v)",
-        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+        "INSERT INTO t VALUES (1, 30, 31) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v), n = VALUES(n)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
     );
     failures += expect_query_values(
         first,
         (struct expected_query){
-            .sql = "SELECT id, v FROM t",
+            .sql = "SELECT id, v, n FROM t",
             .values = first_rows,
-            .column_count = 2U,
+            .column_count = 3U,
             .row_count = 1U,
             .context = "first handle row",
         }
@@ -620,9 +769,9 @@ static int test_duplicate_update_independent_handles(void) {
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT id, v FROM t",
+            .sql = "SELECT id, v, n FROM t",
             .values = second_rows,
-            .column_count = 2U,
+            .column_count = 3U,
             .row_count = 1U,
             .context = "second handle row",
         }

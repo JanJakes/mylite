@@ -663,14 +663,9 @@ static int test_alter_add_unique_diagnostics(void) {
     failures += expect_alter_unique_ok(database, "ALTER TABLE diag ADD UNIQUE u_multi (id, v)");
     failures +=
         expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");
-    failures += execute_error(
+    failures += expect_alter_unique_ok(
         database,
-        "ALTER TABLE prefix_diag ADD UNIQUE u_prefix (a(2), b(2))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Composite unique prefix indexes are not supported",
-        }
+        "ALTER TABLE prefix_diag ADD UNIQUE u_prefix (a(2), b(2))"
     );
     failures += execute_error(
         database,

@@ -598,14 +598,9 @@ static int test_create_index_diagnostics(void) {
     failures += expect_create_index_ok(database, "CREATE INDEX k_multi ON diag (id, v)");
     failures +=
         expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");
-    failures += execute_error(
+    failures += expect_create_index_ok(
         database,
-        "CREATE UNIQUE INDEX u_prefix ON prefix_diag (a(2), b(2))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Composite unique prefix indexes are not supported",
-        }
+        "CREATE UNIQUE INDEX u_prefix ON prefix_diag (a(2), b(2))"
     );
     failures += expect_statement_ok(database, "CREATE TABLE zero_chars (c CHAR(0), v VARCHAR(0))");
     failures += execute_error(

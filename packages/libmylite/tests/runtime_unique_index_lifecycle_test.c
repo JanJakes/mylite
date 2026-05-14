@@ -839,15 +839,10 @@ static int test_unique_index_diagnostics(void) {
             .message_part = "Incorrect prefix key",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
         "CREATE TABLE composite_unique_prefix (a VARCHAR(10), b VARCHAR(10), "
-        "UNIQUE KEY u (a(2), b(2)))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Composite unique prefix indexes are not supported",
-        }
+        "UNIQUE KEY u (a(2), b(2)))"
     );
     failures += expect_statement_ok(
         database,

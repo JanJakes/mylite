@@ -6213,10 +6213,6 @@ static int validate_loaded_unique_index_part_list(
     const struct loaded_index_part *parts,
     size_t part_count
 );
-static bool loaded_index_part_list_has_prefix(
-    const struct loaded_index_part *parts,
-    size_t part_count
-);
 static int validate_create_unique_index_existing_rows(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
@@ -9123,7 +9119,6 @@ static int validate_planned_unique_index_part_list(
     struct mylite_db *database,
     const struct planned_secondary_index *index
 );
-static bool planned_secondary_index_has_prefix(const struct planned_secondary_index *index);
 static int reserve_planned_secondary_index_parts(
     struct mylite_db *database,
     struct planned_secondary_index *index,
@@ -24869,25 +24864,8 @@ static int validate_planned_unique_index_part_list(
         set_runtime_error(database, "invalid unique-index key parts");
         return MYLITE_ERROR;
     }
-    if (index->part_count > 1U && planned_secondary_index_has_prefix(index)) {
-        set_unsupported_error(database, "Composite unique prefix indexes are not supported");
-        return MYLITE_ERROR;
-    }
 
     return MYLITE_OK;
-}
-
-static bool planned_secondary_index_has_prefix(const struct planned_secondary_index *index) {
-    if (index == NULL) {
-        return false;
-    }
-    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
-        if (index->parts[part_index].has_prefix_length) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 static int reserve_planned_secondary_index_parts(
@@ -29640,28 +29618,8 @@ static int validate_loaded_unique_index_part_list(
         set_runtime_error(database, "invalid unique-index key parts");
         return MYLITE_ERROR;
     }
-    if (part_count > 1U && loaded_index_part_list_has_prefix(parts, part_count)) {
-        set_unsupported_error(database, "Composite unique prefix indexes are not supported");
-        return MYLITE_ERROR;
-    }
 
     return MYLITE_OK;
-}
-
-static bool loaded_index_part_list_has_prefix(
-    const struct loaded_index_part *parts,
-    size_t part_count
-) {
-    if (parts == NULL) {
-        return false;
-    }
-    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
-        if (parts[part_index].index_column.has_prefix_length) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 static int validate_create_table_primary_key_key_length(

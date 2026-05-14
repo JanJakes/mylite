@@ -7,14 +7,14 @@
 - [x] Specify the supported grammar, descriptor ownership, validation,
   duplicate semantics, physical SQLite shape, result behavior, diagnostics, and
   compatibility documentation updates.
-- [ ] Remove the deliberate composite unique prefix rejection while preserving
+- [x] Remove the deliberate composite unique prefix rejection while preserving
   all existing prefix and composite unique validation.
-- [ ] Cover create-time, alter-time, standalone create-index, metadata, DML
+- [x] Cover create-time, alter-time, standalone create-index, metadata, DML
   duplicate enforcement, `NULL` tuple, persistence, and diagnostics in fast C
   tests.
-- [ ] Add and run the MySQL 8.4.9 expectation script for this feature.
-- [ ] Update compatibility documentation for the exact admitted subset.
-- [ ] Run targeted parser/index/update tests, the MySQL expectation script,
+- [x] Add and run the MySQL 8.4.9 expectation script for this feature.
+- [x] Update compatibility documentation for the exact admitted subset.
+- [x] Run targeted parser/index/update tests, the MySQL expectation script,
   and `cmake --workflow --preset check`.
-- [ ] Review the final diff, commit atomically, push `main`, and run a
+- [x] Review the final diff, commit atomically, push `main`, and run a
   subagent release-gate review.

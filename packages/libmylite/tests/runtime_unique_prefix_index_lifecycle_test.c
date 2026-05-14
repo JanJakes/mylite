@@ -27,8 +27,12 @@ enum {
     long_prefix_sql_capacity = 1536,
     show_columns_field_count = 6,
     show_index_field_count = 15,
+    show_warnings_field_count = 3,
     statistics_probe_field_count = 6,
     unique_prefix_dml_row_count = 6,
+    composite_unique_prefix_index_part_count = 8,
+    composite_unique_prefix_insert_row_count = 6,
+    composite_unique_prefix_dml_row_count = 8,
     mysql_error_parse = 1064,
     mysql_error_duplicate_key = 1062,
     mysql_error_key_too_long = 1071,
@@ -65,6 +69,7 @@ struct repeated_text_request {
 };
 
 static int test_unique_prefix_metadata_dml_and_persistence(void);
+static int test_composite_unique_prefix_metadata_dml_and_persistence(void);
 static int test_long_unique_prefix_dml(void);
 static int test_unique_prefix_diagnostics(void);
 static int test_unique_prefix_independent_handles(void);
@@ -114,6 +119,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_unique_prefix_metadata_dml_and_persistence();
+    failures += test_composite_unique_prefix_metadata_dml_and_persistence();
     failures += test_long_unique_prefix_dml();
     failures += test_unique_prefix_diagnostics();
     failures += test_unique_prefix_independent_handles();
@@ -467,6 +473,295 @@ static int test_unique_prefix_metadata_dml_and_persistence(void) {
     return failures;
 }
 
+static int test_composite_unique_prefix_metadata_dml_and_persistence(void) {
+    static const char *const show_index_rows[] = {
+        "cup", "0",     "u_ab",
+        "1",   "a",     "A",
+        "0",   "3",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_ab",
+        "2",   "b",     "A",
+        "0",   "2",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_full_prefix",
+        "1",   "a",     "A",
+        "0",   NULL,    NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_full_prefix",
+        "2",   "c",     "A",
+        "0",   "2",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_alt",
+        "1",   "b",     "A",
+        "0",   "2",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_alt",
+        "2",   "c",     "A",
+        "0",   "3",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_created",
+        "1",   "a",     "A",
+        "0",   "4",     NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+        "cup", "0",     "u_created",
+        "2",   "b",     "A",
+        "0",   NULL,    NULL,
+        "YES", "BTREE", "",
+        "",    "YES",   NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "cup",
+        "CREATE TABLE `cup` (\n"
+        "  `a` varchar(10) DEFAULT NULL,\n"
+        "  `b` varchar(10) DEFAULT NULL,\n"
+        "  `c` varchar(10) DEFAULT NULL,\n"
+        "  `n` int DEFAULT NULL,\n"
+        "  UNIQUE KEY `u_ab` (`a`(3),`b`(2)),\n"
+        "  UNIQUE KEY `u_full_prefix` (`a`,`c`(2)),\n"
+        "  UNIQUE KEY `u_alt` (`b`(2),`c`(3)),\n"
+        "  UNIQUE KEY `u_created` (`a`(4),`b`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const statistics_rows[] = {
+        "u_ab",          "0", "1", "a", "3",  "YES", "u_ab",          "0", "2", "b", "2",  "YES",
+        "u_alt",         "0", "1", "b", "2",  "YES", "u_alt",         "0", "2", "c", "3",  "YES",
+        "u_created",     "0", "1", "a", "4",  "YES", "u_created",     "0", "2", "b", NULL, "YES",
+        "u_full_prefix", "0", "1", "a", NULL, "YES", "u_full_prefix", "0", "2", "c", "2",  "YES",
+    };
+    static const char *const null_ignore_rows[] = {
+        "abcdef", "xyzz", "keep", "1", "abc123", "zzzz", "keep", "2", NULL,     "xyqq", "keep", "3",
+        "abcdef", NULL,   "keep", "4", NULL,     "xyqq", "keep", "5", "abcdef", NULL,   "keep", "6",
+        "def000", "xy11", "keep", "8", NULL,     "xy11", "keep", "9",
+    };
+    static const char *const null_ignore_warnings[] = {
+        "Warning",
+        "1062",
+        "Duplicate entry 'abc-xy' for key 'null_ignore.u_ab'",
+        "Warning",
+        "1062",
+        "Duplicate entry 'def-xy' for key 'null_ignore.u_ab'",
+    };
+    static const char *const persisted_rows[] = {
+        "abcdef",
+        "xyzz",
+        "1",
+        "abc123",
+        "zzzz",
+        "2",
+        "def000",
+        "xy11",
+        "8",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "composite_metadata") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open composite unique prefix file");
+    failures += create_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cup ("
+        "a VARCHAR(10), b VARCHAR(10), c VARCHAR(10), n INT, "
+        "UNIQUE KEY u_ab (a(3), b(2)), UNIQUE KEY u_full_prefix (a, c(2)))"
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE cup ADD UNIQUE KEY u_alt (b(2), c(3))");
+    failures += expect_statement_ok(database, "CREATE UNIQUE INDEX u_created ON cup (a(4), b)");
+    failures +=
+        expect_physical_index_count(database, 4, "composite unique prefix physical indexes");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cup",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = composite_unique_prefix_index_part_count,
+            .context = "composite unique prefix SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE cup",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite unique prefix SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, "
+                   "NULLABLE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'cup' ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = statistics_probe_field_count,
+            .row_count = composite_unique_prefix_index_part_count,
+            .context = "composite unique prefix INFORMATION_SCHEMA.STATISTICS",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE null_ignore ("
+        "a VARCHAR(10), b VARCHAR(10), c VARCHAR(10), n INT, "
+        "UNIQUE KEY u_ab (a(3), b(2)))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO null_ignore VALUES "
+        "('abcdef','xyzz','keep',1),('abc123','zzzz','keep',2),"
+        "(NULL,'xyqq','keep',3),('abcdef',NULL,'keep',4),"
+        "(NULL,'xyqq','keep',5),('abcdef',NULL,'keep',6)",
+        composite_unique_prefix_insert_row_count
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO null_ignore VALUES "
+        "('abc999','xy11','keep',7),('def000','xy11','keep',8),"
+        "(NULL,'xy11','keep',9),('def000','xy22','keep',10)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = null_ignore_warnings,
+            .column_count = show_warnings_field_count,
+            .row_count = 2U,
+            .context = "composite unique prefix INSERT IGNORE warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c, n FROM null_ignore ORDER BY n",
+            .values = null_ignore_rows,
+            .column_count = 4U,
+            .row_count = composite_unique_prefix_dml_row_count,
+            .context = "composite unique prefix NULL and INSERT IGNORE state",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO null_ignore VALUES ('abc999','xy11','keep',11)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc-xy' for key 'null_ignore.u_ab'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE null_ignore SET a = 'abc999' WHERE n = 8",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc-xy' for key 'null_ignore.u_ab'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE update_internal (a VARCHAR(10), b VARCHAR(10), n INT, "
+        "UNIQUE KEY u_ab (a(3), b(2)))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO update_internal VALUES ('def111','uv11',1),('ghi222','uv22',2)",
+        2
+    );
+    failures += execute_error(
+        database,
+        "UPDATE update_internal SET a = 'qqq999'",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'qqq-uv' for key 'update_internal.u_ab'",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE alter_dup (a VARCHAR(10), b VARCHAR(10))");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO alter_dup VALUES ('abcdef','xyzz'),('abc999','xy11')",
+        2
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_dup ADD UNIQUE KEY u_ab (a(3), b(2))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc-xy' for key 'alter_dup.u_ab'",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE create_dup (a VARCHAR(10), b VARCHAR(10))");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO create_dup VALUES ('abcdef','xyzz'),('abc999','xy11')",
+        2
+    );
+    failures += execute_error(
+        database,
+        "CREATE UNIQUE INDEX u_ab ON create_dup (a(3), b(2))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc-xy' for key 'create_dup.u_ab'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE clone_composite_unique_prefix LIKE null_ignore"
+    );
+    failures += expect_statement_ok(database, "DROP INDEX u_ab ON clone_composite_unique_prefix");
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after composite unique prefix lifecycle"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen composite unique prefix file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, n FROM null_ignore WHERE n IN (1,2,8) ORDER BY n",
+            .values = persisted_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite unique prefix rows persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_long_unique_prefix_dml(void) {
     static const char *const count_rows[] = {"1"};
     static const char *const odku_rows[] = {"2"};
@@ -727,15 +1022,6 @@ static int test_unique_prefix_diagnostics(void) {
             .sqlstate = "42000",
             .message_part =
                 "BLOB/TEXT column 'body' used in key specification without a key length",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE composite_prefix (a VARCHAR(10), b VARCHAR(10), UNIQUE KEY u (a(3), b(2)))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Composite unique prefix indexes are not supported",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE dup_alter (v VARCHAR(20))");

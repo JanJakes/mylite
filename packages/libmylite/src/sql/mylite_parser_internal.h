@@ -1263,6 +1263,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_text_type_tokens tokens
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    struct mylite_sql_ast_node *label_list,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_enum_label_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token label_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_enum_label(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *label_list,
+    struct mylite_sql_token label_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_binary_string_type_tokens tokens

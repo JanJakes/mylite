@@ -100,6 +100,7 @@ enum {
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_incorrect_timestamp_value = 1525,
+    mysql_error_duplicated_value_in_enum = 1291,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_values_function_deprecated = 1287,
@@ -288,6 +289,10 @@ enum {
     bit_logical_prefix_length = 4,
     bit_logical_syntax_overhead = 5,
     bit_literal_default_capacity = sizeof("b'") + bit_max_length + sizeof("'"),
+    enum_logical_prefix_length = 5,
+    enum_logical_syntax_overhead = 6,
+    enum_label_count_capacity = 255,
+    enum_one_byte_label_count_max = 255,
     bit_byte_rounding_offset = CHAR_BIT - 1,
     byte_bit_count = CHAR_BIT,
     byte_all_bits_mask = 0xff,
@@ -1489,6 +1494,25 @@ struct information_schema_predicate_value {
     char *text;
     bool is_null;
     bool is_numeric;
+};
+
+struct enum_label_descriptor {
+    const char *text;
+    size_t text_length;
+    size_t character_length;
+};
+
+struct enum_type_info {
+    char decoded_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
+    size_t decoded_length;
+    struct enum_label_descriptor labels[enum_label_count_capacity];
+    size_t label_count;
+    size_t max_label_character_length;
+};
+
+enum enum_string_trailing_space_policy {
+    ENUM_STRING_PRESERVE_TRAILING_SPACES,
+    ENUM_STRING_TRIM_TRAILING_SPACES,
 };
 
 enum information_schema_predicate_eval_action {
@@ -7321,6 +7345,14 @@ static int format_char_type_text(
     const char *unsupported_message,
     const char **out_type_text
 );
+static int format_enum_descriptor_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char *unsupported_message,
+    const char **out_type_text
+);
 static int format_text_family_type_text(const char *logical_type, const char **out_type_text);
 static int format_binary_string_type_text(
     struct mylite_db *database,
@@ -7760,6 +7792,10 @@ static int finalize_planned_column_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_type_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_string_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -7793,6 +7829,10 @@ static int finalize_planned_column_datetime_default(
     struct planned_column *column
 );
 static int finalize_planned_column_timestamp_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
+static int finalize_planned_column_enum_default(
     struct mylite_db *database,
     struct planned_column *column
 );
@@ -7902,6 +7942,12 @@ static int check_duplicate_column_names(
 );
 static bool text_equals_ascii_case_insensitive(const char *left, const char *right);
 static char ascii_lower(unsigned char byte);
+static bool enum_label_equals_ascii_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+);
 static int map_integer_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -7937,6 +7983,45 @@ static int map_text_family_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
     struct planned_column *out_column
+);
+static int map_enum_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+);
+static int map_enum_label(
+    struct mylite_db *database,
+    const char *column_name,
+    const struct mylite_sql_ast_node *label_node,
+    size_t label_index,
+    struct enum_type_info *info,
+    struct dynamic_string *descriptor
+);
+static int check_enum_label_unique(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct enum_type_info *info,
+    const char *column_name
+);
+static int store_enum_label(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    size_t character_length,
+    struct enum_type_info *info
+);
+static int append_enum_descriptor_label(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length,
+    bool needs_comma
+);
+static int append_enum_quoted_label(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length
 );
 static int map_binary_string_type(
     struct mylite_db *database,
@@ -8011,6 +8096,7 @@ static bool planned_column_is_char(const struct planned_column *column);
 static bool planned_column_is_char_or_varchar(const struct planned_column *column);
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
+static bool planned_column_is_enum(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
 static bool planned_column_is_bit(const struct planned_column *column);
 static bool planned_column_is_year(const struct planned_column *column);
@@ -8039,6 +8125,7 @@ static bool column_descriptor_is_text_family(const struct mylite_catalog_column_
 static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
+static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
@@ -8057,6 +8144,52 @@ static int decimal_type_info_for_logical_type(
 static int approximate_type_info_for_logical_type(
     const char *logical_type,
     struct approximate_type_info *out_info
+);
+static int enum_type_info_for_logical_type(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *unsupported_message,
+    struct enum_type_info *out_info
+);
+static int parse_enum_descriptor_label(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    struct enum_type_info *out_info
+);
+static int finish_parse_enum_descriptor_label(
+    struct mylite_db *database,
+    size_t label_start,
+    struct enum_type_info *out_info
+);
+static int read_enum_descriptor_escaped_byte(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    char *out_byte
+);
+static int enum_type_info_append_byte(
+    struct mylite_db *database,
+    struct enum_type_info *info,
+    char byte
+);
+static bool enum_find_label(
+    const struct enum_type_info *info,
+    const char *text,
+    size_t text_length,
+    const struct enum_label_descriptor **out_label
+);
+static bool enum_find_ordinal(
+    const struct enum_type_info *info,
+    uint64_t ordinal,
+    const struct enum_label_descriptor **out_label
+);
+static bool enum_text_is_unsigned_integer(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_value
 );
 static const struct text_family_type_info *text_family_type_info_for_logical_type(
     const char *logical_type
@@ -8627,6 +8760,48 @@ static int convert_integer_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_enum_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_ordinal_fallback,
+    bool missing_is_error,
+    enum enum_string_trailing_space_policy trailing_space_policy,
+    struct planned_value *out_value
+);
+static void trim_trailing_ascii_spaces(char *text, size_t *text_length);
+static int convert_enum_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool missing_is_error,
+    struct planned_value *out_value
+);
+static int enum_literal_ordinal(
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_ordinal,
+    bool *out_is_negative
+);
+static int copy_enum_label_value(
+    struct mylite_db *database,
+    const struct enum_label_descriptor *label,
+    struct planned_value *out_value
+);
+static int copy_enum_no_match_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_enum_first_label_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
 static int convert_varchar_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -8694,6 +8869,12 @@ static int convert_timestamp_literal(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_predicate_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
 static int convert_year_literal(
@@ -9404,6 +9585,7 @@ static int plan_comparison_predicate(
     size_t *out_node_index
 );
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
+static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind);
 static int plan_is_null_predicate(
     struct mylite_db *database,
@@ -9998,6 +10180,13 @@ static int populate_string_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
     bool *out_matched
 );
+static int populate_enum_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
 static int populate_binary_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -10171,6 +10360,11 @@ static int append_alter_table_add_column_default(
     const struct planned_alter_table_add_column *plan
 );
 static int append_alter_table_add_column_explicit_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_enum_default(
     struct mylite_db *database,
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
@@ -11069,6 +11263,12 @@ static void set_table_does_not_exist_error(
     const char *table_name
 );
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
+static void set_duplicated_enum_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *value,
+    size_t value_length
+);
 static void set_multiple_primary_key_error(struct mylite_db *database);
 static void set_wrong_auto_key_error(struct mylite_db *database);
 static void set_column_length_too_big_error(
@@ -11603,6 +11803,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_ENUM_TYPE:
+    case MYLITE_SQL_AST_ENUM_LABEL_LIST:
     case MYLITE_SQL_AST_BINARY_STRING_TYPE:
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
@@ -17822,6 +18024,18 @@ static int information_schema_character_metadata_for_descriptor(
         character_length = info->maximum_length;
         character_octet_length = info->maximum_length;
         has_character_metadata = true;
+    } else if (column_descriptor_is_enum(column)) {
+        struct enum_type_info info = {0};
+
+        rc = enum_type_info_for_logical_type(
+            database,
+            column->logical_type,
+            "INFORMATION_SCHEMA.COLUMNS supports only baseline ENUM descriptors",
+            &info
+        );
+        character_length = (uint64_t)info.max_label_character_length;
+        character_octet_length = character_length * utf8mb4_max_bytes_per_character;
+        has_character_metadata = true;
     } else if (column_descriptor_is_binary_string_family(column)) {
         struct binary_string_type_info storage = {0};
         const struct binary_string_type_info *info =
@@ -17887,6 +18101,9 @@ static const char *information_schema_data_type_for_descriptor(
     }
     if (column_descriptor_is_text_family(column)) {
         return information_schema_text_data_type_for_descriptor(column);
+    }
+    if (column_descriptor_is_enum(column)) {
+        return "enum";
     }
     if (column_descriptor_is_bit(column)) {
         return "bit";
@@ -17991,10 +18208,10 @@ static const char *information_schema_numeric_precision_for_descriptor(
     const char *logical_type = column->logical_type;
 
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
-        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
-        column_descriptor_is_year(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_binary_string_family(column) ||
+        column_descriptor_is_decimal(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return NULL;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -18035,10 +18252,11 @@ static const char *information_schema_numeric_scale_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
-        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        column_descriptor_is_enum(column) || column_descriptor_is_binary_string_family(column) ||
+        column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return NULL;
     }
     return "0";
@@ -20379,6 +20597,16 @@ static int show_descriptor_type_text(
     if (format_text_family_type_text(logical_type, out_type_text) == MYLITE_OK) {
         return MYLITE_OK;
     }
+    if (strncmp(logical_type, "ENUM(", enum_logical_prefix_length) == 0) {
+        return format_enum_descriptor_type_text(
+            database,
+            logical_type,
+            buffer,
+            buffer_size,
+            unsupported_message,
+            out_type_text
+        );
+    }
     if (format_binary_string_type_text(
             database,
             logical_type,
@@ -20581,6 +20809,31 @@ static int format_char_type_text(
     }
 
     written = snprintf(buffer, buffer_size, "char(%zu)", length);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format column type");
+        return MYLITE_ERROR;
+    }
+    *out_type_text = buffer;
+    return MYLITE_OK;
+}
+
+static int format_enum_descriptor_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    char *buffer,
+    size_t buffer_size,
+    const char *unsupported_message,
+    const char **out_type_text
+) {
+    struct enum_type_info info = {0};
+    int rc = enum_type_info_for_logical_type(database, logical_type, unsupported_message, &info);
+    int written = 0;
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    written =
+        snprintf(buffer, buffer_size, "enum%s", logical_type + enum_logical_prefix_length - 1U);
     if (written < 0 || (size_t)written >= buffer_size) {
         set_runtime_error(database, "failed to format column type");
         return MYLITE_ERROR;
@@ -20815,6 +21068,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_ENUM_TYPE:
+    case MYLITE_SQL_AST_ENUM_LABEL_LIST:
     case MYLITE_SQL_AST_BINARY_STRING_TYPE:
     case MYLITE_SQL_AST_BIT_TYPE:
     case MYLITE_SQL_AST_DECIMAL_TYPE:
@@ -22319,7 +22574,8 @@ static int validate_secondary_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column)) {
+    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
+        planned_column_is_enum(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22453,7 +22709,8 @@ static int planned_index_part_key_bytes(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column)) {
+    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
+        planned_column_is_enum(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22479,7 +22736,8 @@ static int validate_unique_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column)) {
+    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
+        planned_column_is_enum(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -22691,10 +22949,11 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         }
     } else if (
         planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
-        planned_column_is_bit(column) || planned_column_is_decimal(column) ||
-        planned_column_is_approximate(column) || planned_column_is_date(column) ||
-        planned_column_is_time(column) || planned_column_is_datetime(column) ||
-        planned_column_is_timestamp(column) || planned_column_is_year(column)
+        planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
+        planned_column_is_date(column) || planned_column_is_time(column) ||
+        planned_column_is_datetime(column) || planned_column_is_timestamp(column) ||
+        planned_column_is_year(column)
     ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;
@@ -22765,10 +23024,10 @@ static int validate_auto_increment_column(
 
     column = &plan->columns[column_index];
     if (planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
-        planned_column_is_bit(column) || planned_column_is_decimal(column) ||
-        planned_column_is_approximate(column) || planned_column_is_date(column) ||
-        planned_column_is_time(column) || planned_column_is_datetime(column) ||
-        planned_column_is_timestamp(column)) {
+        planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
+        planned_column_is_date(column) || planned_column_is_time(column) ||
+        planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
         set_incorrect_column_specifier_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -22965,6 +23224,7 @@ static int validate_create_table_like_source_columns(
         int rc = MYLITE_OK;
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
+            column_descriptor_is_enum(&columns[column_index]) ||
             column_descriptor_is_binary_string_family(&columns[column_index]) ||
             column_descriptor_is_bit(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
@@ -26765,7 +27025,8 @@ static int column_descriptor_index_part_key_bytes(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_enum(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -27929,7 +28190,8 @@ static int validate_alter_table_add_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_enum(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -30132,8 +30394,10 @@ static int complete_alter_table_modify_column_plan(
         column_descriptor_is_datetime(&out_plan->original_column) ||
         column_descriptor_is_timestamp(&out_plan->original_column) ||
         column_descriptor_is_year(&out_plan->original_column) ||
+        column_descriptor_is_enum(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
-        planned_column_is_bit(&out_plan->column) || planned_column_is_decimal(&out_plan->column) ||
+        planned_column_is_bit(&out_plan->column) || planned_column_is_enum(&out_plan->column) ||
+        planned_column_is_decimal(&out_plan->column) ||
         planned_column_is_approximate(&out_plan->column) ||
         planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
         planned_column_is_datetime(&out_plan->column) ||
@@ -32807,6 +33071,9 @@ static bool insert_select_source_target_types_are_compatible(
     if (column_descriptor_is_string_family(target_column)) {
         return column_descriptor_is_string_family(source_column);
     }
+    if (column_descriptor_is_enum(target_column)) {
+        return false;
+    }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return column_descriptor_is_binary_string_family(source_column);
     }
@@ -32846,6 +33113,9 @@ static const char *insert_select_implicit_conversion_message(
 ) {
     if (column_descriptor_is_string_family(target_column)) {
         return "INSERT ... SELECT does not support implicit string conversion";
+    }
+    if (column_descriptor_is_enum(target_column)) {
+        return "INSERT ... SELECT does not support implicit ENUM conversion";
     }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return "INSERT ... SELECT does not support implicit binary string conversion";
@@ -50328,9 +50598,7 @@ static int finalize_planned_column_default(
     struct mylite_db *database,
     struct planned_column *column
 ) {
-    int64_t default_integer = 0;
     const struct mylite_sql_ast_node *value_node = NULL;
-    int rc = MYLITE_OK;
 
     column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NONE;
     column->default_integer = 0;
@@ -50358,12 +50626,23 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
-        if (planned_column_is_bit(column) || planned_column_is_year(column)) {
+        if (planned_column_is_bit(column) || planned_column_is_year(column) ||
+            planned_column_is_enum(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
         return finalize_planned_column_integer_expression_default(database, column, value_node);
     }
+
+    return finalize_planned_column_type_default(database, column);
+}
+
+static int finalize_planned_column_type_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    int64_t default_integer = 0;
+    int rc = MYLITE_OK;
 
     if (planned_column_is_char(column) || planned_column_is_varchar(column)) {
         return finalize_planned_column_string_default(database, column);
@@ -50391,6 +50670,9 @@ static int finalize_planned_column_default(
     }
     if (planned_column_is_timestamp(column)) {
         return finalize_planned_column_timestamp_default(database, column);
+    }
+    if (planned_column_is_enum(column)) {
+        return finalize_planned_column_enum_default(database, column);
     }
 
     rc = convert_column_default_value(
@@ -50782,6 +51064,50 @@ static int finalize_planned_column_timestamp_default(
         &descriptor,
         1U,
         false,
+        &value
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
+}
+
+static int finalize_planned_column_enum_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (column->default_node == NULL ||
+        column->default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_enum_string_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        true,
+        ENUM_STRING_TRIM_TRAILING_SPACES,
         &value
     );
     if (rc != MYLITE_OK) {
@@ -51419,6 +51745,23 @@ static char ascii_lower(unsigned char byte) {
     return (char)byte;
 }
 
+static bool enum_label_equals_ascii_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+) {
+    if (left == NULL || right == NULL || left_length != right_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < left_length; ++index) {
+        if (ascii_lower((unsigned char)left[index]) != ascii_lower((unsigned char)right[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static int map_column_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -51448,6 +51791,9 @@ static int map_column_type(
     if (type_node->kind == MYLITE_SQL_AST_TEXT_TYPE) {
         (void)column_name;
         return map_text_family_type(database, type_node, out_column);
+    }
+    if (type_node->kind == MYLITE_SQL_AST_ENUM_TYPE) {
+        return map_enum_type(database, type_node, column_name, out_column);
     }
     if (type_node->kind == MYLITE_SQL_AST_BINARY_STRING_TYPE) {
         return map_binary_string_type(database, type_node, column_name, out_column);
@@ -51648,6 +51994,210 @@ static int map_text_family_type(
     out_column->logical_type = out_column->logical_type_storage;
     out_column->physical_type = out_column->physical_type_storage;
     return MYLITE_OK;
+}
+
+static int map_enum_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    struct planned_column *out_column
+) {
+    const struct mylite_sql_ast_node *label_list = child_at(type_node, 0U);
+    struct enum_type_info info = {0};
+    struct dynamic_string descriptor;
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&descriptor);
+    if (label_list == NULL || label_list->kind != MYLITE_SQL_AST_ENUM_LABEL_LIST ||
+        mylite_sql_ast_node_child_count(label_list) == 0U) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&descriptor, "ENUM(");
+    }
+    for (size_t label_index = 0U;
+         rc == MYLITE_OK && label_index < mylite_sql_ast_node_child_count(label_list);
+         ++label_index) {
+        rc = map_enum_label(
+            database,
+            column_name,
+            child_at(label_list, label_index),
+            label_index,
+            &info,
+            &descriptor
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&descriptor, ')');
+    }
+    if (rc == MYLITE_OK && (descriptor.text == NULL ||
+                            descriptor.length >= sizeof(out_column->logical_type_storage))) {
+        set_unsupported_error(database, "ENUM definition is too large for this MyLite build");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(out_column->logical_type_storage, descriptor.text, descriptor.length + 1U);
+        snprintf(
+            out_column->physical_type_storage,
+            sizeof(out_column->physical_type_storage),
+            "TEXT"
+        );
+        out_column->logical_type = out_column->logical_type_storage;
+        out_column->physical_type = out_column->physical_type_storage;
+    }
+
+    dynamic_string_deinit(&descriptor);
+    return rc;
+}
+
+static int map_enum_label(
+    struct mylite_db *database,
+    const char *column_name,
+    const struct mylite_sql_ast_node *label_node,
+    size_t label_index,
+    struct enum_type_info *info,
+    struct dynamic_string *descriptor
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t character_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (info->label_count >= enum_label_count_capacity) {
+        set_unsupported_error(database, "ENUM supports at most 255 labels in this build");
+        return MYLITE_ERROR;
+    }
+    rc = decode_sql_string_literal(
+        database,
+        label_node,
+        "ENUM labels support only string literals",
+        "ENUM labels do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        trim_trailing_ascii_spaces(text, &text_length);
+    }
+    if (rc == MYLITE_OK && validate_utf8_text(text, text_length, &character_length) != MYLITE_OK) {
+        set_unsupported_error(database, "ENUM labels must be valid UTF-8");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_enum_label_unique(database, text, text_length, info, column_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = store_enum_label(database, text, text_length, character_length, info);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_enum_descriptor_label(descriptor, text, text_length, label_index != 0U);
+    }
+
+    free(text);
+    return rc;
+}
+
+static int check_enum_label_unique(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    const struct enum_type_info *info,
+    const char *column_name
+) {
+    for (size_t previous = 0U; previous < info->label_count; ++previous) {
+        if (enum_label_equals_ascii_case_insensitive(
+                info->labels[previous].text,
+                info->labels[previous].text_length,
+                text,
+                text_length
+            )) {
+            set_duplicated_enum_value_error(
+                database,
+                column_name,
+                info->labels[previous].text,
+                info->labels[previous].text_length
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int store_enum_label(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    size_t character_length,
+    struct enum_type_info *info
+) {
+    char *stored = NULL;
+
+    if (info->decoded_length + text_length + 1U > sizeof(info->decoded_storage)) {
+        set_unsupported_error(database, "ENUM definition is too large for this MyLite build");
+        return MYLITE_ERROR;
+    }
+
+    stored = &info->decoded_storage[info->decoded_length];
+    memcpy(stored, text, text_length);
+    stored[text_length] = '\0';
+    info->labels[info->label_count] = (struct enum_label_descriptor){
+        .text = stored,
+        .text_length = text_length,
+        .character_length = character_length,
+    };
+    ++info->label_count;
+    info->decoded_length += text_length + 1U;
+    if (info->max_label_character_length < character_length) {
+        info->max_label_character_length = character_length;
+    }
+    return MYLITE_OK;
+}
+
+static int append_enum_descriptor_label(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length,
+    bool needs_comma
+) {
+    int rc = MYLITE_OK;
+
+    if (needs_comma) {
+        rc = dynamic_string_append_char(string, ',');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_enum_quoted_label(string, text, text_length);
+    }
+    return rc;
+}
+
+static int append_enum_quoted_label(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length
+) {
+    int rc = dynamic_string_append_char(string, '\'');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == '\'') {
+            rc = dynamic_string_append(string, "''");
+        } else if (byte == '\\') {
+            rc = dynamic_string_append(string, "\\\\");
+        } else if (byte == '\n') {
+            rc = dynamic_string_append(string, "\\n");
+        } else if (byte == '\r') {
+            rc = dynamic_string_append(string, "\\r");
+        } else if (byte == '\t') {
+            rc = dynamic_string_append(string, "\\t");
+        } else {
+            rc = dynamic_string_append_char(string, (char)byte);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '\'');
+    }
+    return rc;
 }
 
 static int map_binary_string_type(
@@ -52257,6 +52807,14 @@ static bool planned_column_is_string_family(const struct planned_column *column)
             planned_column_is_text_family(column)) != 0;
 }
 
+static bool planned_column_is_enum(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strncmp(column->logical_type, "ENUM(", enum_logical_prefix_length) == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
 static bool planned_column_is_binary_string_family(const struct planned_column *column) {
     struct mylite_catalog_column_descriptor descriptor = {0};
 
@@ -52463,6 +53021,14 @@ static bool column_descriptor_is_string_family(
             column_descriptor_is_text_family(column)) != 0;
 }
 
+static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    return (strncmp(column->logical_type, "ENUM(", enum_logical_prefix_length) == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
 static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
 ) {
@@ -52556,6 +53122,243 @@ static bool column_descriptor_is_timestamp(const struct mylite_catalog_column_de
     }
     return (strcmp(column->logical_type, "TIMESTAMP") == 0 &&
             strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
+static int enum_type_info_for_logical_type(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char *unsupported_message,
+    struct enum_type_info *out_info
+) {
+    size_t logical_length = logical_type == NULL ? 0U : strlen(logical_type);
+    size_t index = enum_logical_prefix_length;
+    int rc = MYLITE_OK;
+
+    if (logical_type == NULL || unsupported_message == NULL || out_info == NULL ||
+        logical_length <= enum_logical_syntax_overhead ||
+        strncmp(logical_type, "ENUM(", enum_logical_prefix_length) != 0 ||
+        logical_type[logical_length - 1U] != ')') {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    *out_info = (struct enum_type_info){0};
+    while (rc == MYLITE_OK && index < logical_length - 1U) {
+        if (out_info->label_count >= enum_label_count_capacity) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        rc = parse_enum_descriptor_label(
+            database,
+            logical_type,
+            logical_length - 1U,
+            &index,
+            out_info
+        );
+        if (rc == MYLITE_OK && index < logical_length - 1U) {
+            if (logical_type[index] != ',') {
+                set_unsupported_error(database, unsupported_message);
+                return MYLITE_ERROR;
+            }
+            ++index;
+        }
+    }
+    if (rc == MYLITE_OK && out_info->label_count == 0U) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int parse_enum_descriptor_label(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    struct enum_type_info *out_info
+) {
+    size_t label_start = out_info->decoded_length;
+
+    if (*index >= end_index || logical_type[*index] != '\'') {
+        set_unsupported_error(database, "invalid ENUM descriptor");
+        return MYLITE_ERROR;
+    }
+    ++*index;
+    while (*index < end_index) {
+        char byte = logical_type[*index];
+
+        ++*index;
+        if (byte == '\'') {
+            if (*index < end_index && logical_type[*index] == '\'') {
+                ++*index;
+                if (enum_type_info_append_byte(database, out_info, '\'') != MYLITE_OK) {
+                    return MYLITE_ERROR;
+                }
+                continue;
+            }
+            return finish_parse_enum_descriptor_label(database, label_start, out_info);
+        }
+        if (byte == '\\') {
+            if (read_enum_descriptor_escaped_byte(
+                    database,
+                    logical_type,
+                    end_index,
+                    index,
+                    &byte
+                ) != MYLITE_OK) {
+                return MYLITE_ERROR;
+            }
+        }
+        if (enum_type_info_append_byte(database, out_info, byte) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+    }
+
+    set_unsupported_error(database, "invalid ENUM descriptor");
+    return MYLITE_ERROR;
+}
+
+static int finish_parse_enum_descriptor_label(
+    struct mylite_db *database,
+    size_t label_start,
+    struct enum_type_info *out_info
+) {
+    size_t character_length = 0U;
+    size_t text_length = 0U;
+
+    if (enum_type_info_append_byte(database, out_info, '\0') != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    text_length = out_info->decoded_length - label_start - 1U;
+    if (validate_utf8_text(
+            &out_info->decoded_storage[label_start],
+            text_length,
+            &character_length
+        ) != MYLITE_OK) {
+        set_unsupported_error(database, "invalid ENUM descriptor");
+        return MYLITE_ERROR;
+    }
+    out_info->labels[out_info->label_count] = (struct enum_label_descriptor){
+        .text = &out_info->decoded_storage[label_start],
+        .text_length = text_length,
+        .character_length = character_length,
+    };
+    if (out_info->max_label_character_length < character_length) {
+        out_info->max_label_character_length = character_length;
+    }
+    ++out_info->label_count;
+    return MYLITE_OK;
+}
+
+static int read_enum_descriptor_escaped_byte(
+    struct mylite_db *database,
+    const char *logical_type,
+    size_t end_index,
+    size_t *index,
+    char *out_byte
+) {
+    char byte = '\0';
+
+    if (*index >= end_index) {
+        set_unsupported_error(database, "invalid ENUM descriptor");
+        return MYLITE_ERROR;
+    }
+    byte = logical_type[*index];
+    ++*index;
+    if (byte == 'n') {
+        byte = '\n';
+    } else if (byte == 'r') {
+        byte = '\r';
+    } else if (byte == 't') {
+        byte = '\t';
+    }
+    *out_byte = byte;
+    return MYLITE_OK;
+}
+
+static int enum_type_info_append_byte(
+    struct mylite_db *database,
+    struct enum_type_info *info,
+    char byte
+) {
+    if (info->decoded_length >= sizeof(info->decoded_storage)) {
+        set_unsupported_error(database, "ENUM definition is too large for this MyLite build");
+        return MYLITE_ERROR;
+    }
+    info->decoded_storage[info->decoded_length] = byte;
+    ++info->decoded_length;
+    return MYLITE_OK;
+}
+
+static bool enum_find_label(
+    const struct enum_type_info *info,
+    const char *text,
+    size_t text_length,
+    const struct enum_label_descriptor **out_label
+) {
+    if (out_label != NULL) {
+        *out_label = NULL;
+    }
+    if (info == NULL || text == NULL) {
+        return false;
+    }
+    for (size_t label_index = 0U; label_index < info->label_count; ++label_index) {
+        if (enum_label_equals_ascii_case_insensitive(
+                info->labels[label_index].text,
+                info->labels[label_index].text_length,
+                text,
+                text_length
+            )) {
+            if (out_label != NULL) {
+                *out_label = &info->labels[label_index];
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool enum_find_ordinal(
+    const struct enum_type_info *info,
+    uint64_t ordinal,
+    const struct enum_label_descriptor **out_label
+) {
+    if (out_label != NULL) {
+        *out_label = NULL;
+    }
+    if (info == NULL || ordinal == 0U || ordinal > info->label_count) {
+        return false;
+    }
+    if (out_label != NULL) {
+        *out_label = &info->labels[(size_t)ordinal - 1U];
+    }
+    return true;
+}
+
+static bool enum_text_is_unsigned_integer(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_value
+) {
+    uint64_t value = 0U;
+
+    if (text == NULL || text_length == 0U || out_value == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        uint64_t digit = 0U;
+
+        if (text[index] < '0' || text[index] > '9') {
+            return false;
+        }
+        digit = (uint64_t)(text[index] - '0');
+        if (value > (UINT64_MAX - digit) / decimal_base) {
+            return false;
+        }
+        value = (value * decimal_base) + digit;
+    }
+    *out_value = value;
+    return true;
 }
 
 static int decimal_type_info_for_logical_type(
@@ -53059,6 +53862,21 @@ static int text_backed_row_size_bytes(
     }
     if (decimal_type_info_for_logical_type(logical_type, &decimal_info) == MYLITE_OK) {
         return decimal_row_size_bytes(&decimal_info, out_size);
+    }
+    if (strncmp(logical_type, "ENUM(", enum_logical_prefix_length) == 0) {
+        struct enum_type_info enum_info = {0};
+
+        rc = enum_type_info_for_logical_type(
+            database,
+            logical_type,
+            unsupported_message,
+            &enum_info
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_size = enum_info.label_count <= enum_one_byte_label_count_max ? 1U : 2U;
+        return MYLITE_OK;
     }
     if (strcmp(logical_type, "YEAR") == 0) {
         *out_size = year_row_size_bytes;
@@ -55469,6 +56287,10 @@ static int convert_insert_value(
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, row_number, out_value);
     }
+    if (column_descriptor_is_enum(column)) {
+        (void)ignore_errors;
+        return convert_enum_literal(database, value_node, column, row_number, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return convert_binary_string_literal(
             database,
@@ -55622,6 +56444,9 @@ static int convert_null_insert_value(
     if (column_descriptor_is_string_family(column)) {
         return make_empty_text_value(database, out_value);
     }
+    if (column_descriptor_is_enum(column)) {
+        return make_enum_first_label_value(database, column, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
     }
@@ -55701,6 +56526,10 @@ static int materialize_dml_default_value(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }
+    if (column_descriptor_is_enum(column) &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && !column->is_nullable) {
+        return make_enum_first_label_value(database, column, out_value);
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
         return make_current_timestamp_value(database, out_value);
     }
@@ -55732,6 +56561,8 @@ static int materialize_dml_missing_default_value(
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     } else if (column_descriptor_is_string_family(column)) {
         return make_empty_text_value(database, out_value);
+    } else if (column_descriptor_is_enum(column)) {
+        return make_enum_first_label_value(database, column, out_value);
     } else if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
     } else if (column_descriptor_is_bit(column)) {
@@ -55831,6 +56662,240 @@ static int convert_integer_literal(
     }
 
     return MYLITE_OK;
+}
+
+static int convert_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_enum_string_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            true,
+            true,
+            ENUM_STRING_TRIM_TRAILING_SPACES,
+            out_value
+        );
+    }
+    return convert_enum_integer_literal(database, value_node, column, row_number, true, out_value);
+}
+
+static int convert_enum_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool allow_numeric_ordinal_fallback,
+    bool missing_is_error,
+    enum enum_string_trailing_space_policy trailing_space_policy,
+    struct planned_value *out_value
+) {
+    struct enum_type_info info = {0};
+    const struct enum_label_descriptor *label = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t character_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "ENUM values support only string or integer literals");
+        return MYLITE_ERROR;
+    }
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "ENUM values support only string literals",
+        "ENUM values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && validate_utf8_text(text, text_length, &character_length) != MYLITE_OK) {
+        set_unsupported_error(database, "ENUM values must be valid UTF-8");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && trailing_space_policy == ENUM_STRING_TRIM_TRAILING_SPACES) {
+        trim_trailing_ascii_spaces(text, &text_length);
+    }
+    if (rc == MYLITE_OK) {
+        rc = enum_type_info_for_logical_type(
+            database,
+            column->logical_type,
+            "statement supports only baseline ENUM descriptors",
+            &info
+        );
+    }
+    if (rc == MYLITE_OK && enum_find_label(&info, text, text_length, &label)) {
+        rc = copy_enum_label_value(database, label, out_value);
+    } else if (rc == MYLITE_OK && allow_numeric_ordinal_fallback) {
+        uint64_t ordinal = 0U;
+
+        if (enum_text_is_unsigned_integer(text, text_length, &ordinal) &&
+            enum_find_ordinal(&info, ordinal, &label)) {
+            rc = copy_enum_label_value(database, label, out_value);
+        } else if (missing_is_error) {
+            set_data_truncated_error(database, column->name, row_number);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = assign_text_value(database, text, text_length, out_value);
+            text = NULL;
+        }
+    } else if (rc == MYLITE_OK && missing_is_error) {
+        set_data_truncated_error(database, column->name, row_number);
+        rc = MYLITE_ERROR;
+    } else if (rc == MYLITE_OK) {
+        rc = assign_text_value(database, text, text_length, out_value);
+        text = NULL;
+    }
+
+    free(text);
+    (void)character_length;
+    return rc;
+}
+
+static void trim_trailing_ascii_spaces(char *text, size_t *text_length) {
+    if (text == NULL || text_length == NULL) {
+        return;
+    }
+    while (*text_length > 0U && text[*text_length - 1U] == ' ') {
+        *text_length -= 1U;
+    }
+    text[*text_length] = '\0';
+}
+
+static int convert_enum_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool missing_is_error,
+    struct planned_value *out_value
+) {
+    struct enum_type_info info = {0};
+    const struct enum_label_descriptor *label = NULL;
+    uint64_t ordinal = 0U;
+    bool is_negative = false;
+    int rc = enum_literal_ordinal(value_node, &ordinal, &is_negative);
+
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "ENUM values support only string or integer literals");
+        return MYLITE_ERROR;
+    }
+    rc = enum_type_info_for_logical_type(
+        database,
+        column->logical_type,
+        "statement supports only baseline ENUM descriptors",
+        &info
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!is_negative && enum_find_ordinal(&info, ordinal, &label)) {
+        return copy_enum_label_value(database, label, out_value);
+    }
+    if (missing_is_error) {
+        set_data_truncated_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    return copy_enum_no_match_value(database, out_value);
+}
+
+static int enum_literal_ordinal(
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_ordinal,
+    bool *out_is_negative
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+
+    if (value_node == NULL || out_ordinal == NULL || out_is_negative == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, out_ordinal) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    *out_is_negative = is_negative;
+    return MYLITE_OK;
+}
+
+static int copy_enum_label_value(
+    struct mylite_db *database,
+    const struct enum_label_descriptor *label,
+    struct planned_value *out_value
+) {
+    char *copy = NULL;
+
+    if (label == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    copy = malloc(label->text_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (label->text_length != 0U) {
+        memcpy(copy, label->text, label->text_length);
+    }
+    copy[label->text_length] = '\0';
+    return assign_text_value(database, copy, label->text_length, out_value);
+}
+
+static int copy_enum_no_match_value(struct mylite_db *database, struct planned_value *out_value) {
+    char *copy = malloc(1U);
+
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    copy[0] = '\0';
+    return assign_text_value(database, copy, 1U, out_value);
+}
+
+static int make_enum_first_label_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    struct enum_type_info info = {0};
+    int rc = enum_type_info_for_logical_type(
+        database,
+        column->logical_type,
+        "statement supports only baseline ENUM descriptors",
+        &info
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return copy_enum_label_value(database, &info.labels[0], out_value);
 }
 
 static int convert_char_literal(
@@ -60283,6 +61348,9 @@ static int populate_select_result_column_descriptor(
             populate_string_result_column_descriptor(database, table, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
+        rc = populate_enum_result_column_descriptor(database, table, column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
         rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
@@ -60457,6 +61525,43 @@ static int populate_string_result_column_descriptor(
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
     descriptor->display_length = text_info->maximum_length * utf8mb4_max_bytes_per_character;
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB;
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_enum_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    struct enum_type_info info = {0};
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    if (!column_descriptor_is_enum(column)) {
+        return MYLITE_OK;
+    }
+    rc = enum_type_info_for_logical_type(
+        database,
+        column->logical_type,
+        "result metadata supports only baseline ENUM descriptors",
+        &info
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
+    descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length =
+        (uint64_t)info.max_label_character_length * utf8mb4_max_bytes_per_character;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_ENUM;
+    if (table_default_collation_is_binary(table)) {
+        descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    }
     *out_matched = true;
     return MYLITE_OK;
 }
@@ -61329,6 +62434,14 @@ static int plan_comparison_predicate(
 
     if (rc == MYLITE_OK) {
         if (comparison_operator_is_like(node.operator_kind) &&
+            column_descriptor_is_enum(&node.column)) {
+            set_unsupported_error(
+                database,
+                "WHERE enum predicates support only =, <=>, <>, and !="
+            );
+            return MYLITE_ERROR;
+        }
+        if (comparison_operator_is_like(node.operator_kind) &&
             !column_descriptor_is_string_family(&node.column)) {
             set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
             return MYLITE_ERROR;
@@ -61338,6 +62451,14 @@ static int plan_comparison_predicate(
             set_unsupported_error(
                 database,
                 "WHERE string predicates support only =, <=>, <>, !=, and LIKE"
+            );
+            return MYLITE_ERROR;
+        }
+        if (column_descriptor_is_enum(&node.column) &&
+            !comparison_operator_is_enum_predicate(node.operator_kind)) {
+            set_unsupported_error(
+                database,
+                "WHERE enum predicates support only =, <=>, <>, and !="
             );
             return MYLITE_ERROR;
         }
@@ -61373,6 +62494,17 @@ static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
         return true;
     default:
         return false;
@@ -61489,6 +62621,10 @@ static int plan_between_predicate(
             set_unsupported_error(database, "WHERE string predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
         }
+        if (column_descriptor_is_enum(&node.column)) {
+            set_unsupported_error(database, "WHERE enum predicates do not yet support BETWEEN");
+            return MYLITE_ERROR;
+        }
         rc = convert_predicate_value(
             database,
             child_at(predicate_node, 1U),
@@ -61538,6 +62674,10 @@ static int plan_in_predicate(
     if (rc == MYLITE_OK) {
         if (column_descriptor_is_string_family(&node.column)) {
             set_unsupported_error(database, "WHERE string predicates do not yet support IN");
+            return MYLITE_ERROR;
+        }
+        if (column_descriptor_is_enum(&node.column)) {
+            set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
             return MYLITE_ERROR;
         }
         rc = convert_predicate_in_value_list(
@@ -62000,6 +63140,9 @@ static int convert_predicate_value(
     if (column_descriptor_is_string_family(column)) {
         return convert_predicate_string_literal(database, value_node, out_value);
     }
+    if (column_descriptor_is_enum(column)) {
+        return convert_predicate_enum_literal(database, value_node, column, out_value);
+    }
     if (column_descriptor_is_bit(column)) {
         return convert_bit_literal(database, value_node, column, 1U, false, out_value);
     }
@@ -62019,6 +63162,38 @@ static int convert_predicate_value(
         return convert_predicate_timestamp_literal(database, value_node, column, out_value);
     }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_enum_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = child_at(value_node, 0U);
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_enum_string_literal(
+            database,
+            value_node,
+            column,
+            1U,
+            false,
+            false,
+            ENUM_STRING_PRESERVE_TRAILING_SPACES,
+            out_value
+        );
+    }
+    return convert_enum_integer_literal(database, value_node, column, 1U, false, out_value);
 }
 
 static int convert_predicate_year_literal(
@@ -62807,6 +63982,9 @@ static int convert_update_column_value(
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, 1U, out_value);
     }
+    if (column_descriptor_is_enum(column)) {
+        return convert_enum_literal(database, value_node, column, 1U, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return convert_binary_string_literal(database, value_node, column, 1U, false, out_value);
     }
@@ -63175,6 +64353,9 @@ static const char *update_scalar_subquery_implicit_conversion_message(
 ) {
     if (column_descriptor_is_string_family(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit string conversion";
+    }
+    if (column_descriptor_is_enum(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit ENUM conversion";
     }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit binary string "
@@ -65032,6 +66213,9 @@ static int append_alter_table_add_column_default(
     if (planned_column_is_bit(&plan->column)) {
         return append_alter_table_add_column_bit_zero(string, plan);
     }
+    if (planned_column_is_enum(&plan->column)) {
+        return append_alter_table_add_column_enum_default(database, string, plan);
+    }
     if (planned_column_is_year(&plan->column)) {
         return dynamic_string_append(string, " DEFAULT '0000'");
     }
@@ -65107,6 +66291,30 @@ static int append_alter_table_add_column_explicit_default(
     }
 
     return MYLITE_OK;
+}
+
+static int append_alter_table_add_column_enum_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct enum_type_info info = {0};
+    int rc = enum_type_info_for_logical_type(
+        database,
+        plan->column.logical_type,
+        "invalid ENUM descriptor",
+        &info
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (info.label_count == 0U) {
+        set_unsupported_error(database, "ENUM requires at least one label");
+        return MYLITE_ERROR;
+    }
+
+    return append_quoted_sql_text(string, info.labels[0].text);
 }
 
 static int append_alter_table_add_column_bit_default(
@@ -71282,6 +72490,34 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
         mylite_connection_diagnostics(database),
         mysql_error_duplicate_column,
         "42S21",
+        message
+    );
+}
+
+static void set_duplicated_enum_value_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *value,
+    size_t value_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int display_length = value_length > (size_t)INT_MAX ? INT_MAX : (int)value_length;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column '%s' has duplicated value '%.*s' in ENUM",
+        column_name,
+        display_length,
+        value == NULL ? "" : value
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_duplicated_value_in_enum,
+        "HY000",
         message
     );
 }

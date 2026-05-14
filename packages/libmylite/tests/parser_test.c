@@ -87,6 +87,7 @@ static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
+static int test_enum_type_statements(void);
 static int test_bit_type_statements(void);
 static int test_year_type_statements(void);
 static int test_decimal_type_statements(void);
@@ -315,6 +316,7 @@ int main(void) {
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
     failures += test_text_type_statements();
+    failures += test_enum_type_statements();
     failures += test_bit_type_statements();
     failures += test_year_type_statements();
     failures += test_decimal_type_statements();
@@ -8156,6 +8158,78 @@ static int test_text_type_statements(void) {
     return failures;
 }
 
+static int test_enum_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    const struct mylite_sql_ast_node *labels = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE enum_types (status ENUM('draft','published') NOT NULL DEFAULT 'draft', "
+        "enum ENUM('', 'A''B'));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 2U, "enum column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    labels = child_at(column_type, 0U);
+    failures += expect_node(column_type, MYLITE_SQL_AST_ENUM_TYPE, "enum status column type");
+    failures += expect_span_text(column_type, "ENUM('draft','published')", "enum status span");
+    failures += expect_child_count(labels, 2U, "enum status label count");
+    failures +=
+        expect_literal(child_at(labels, 0U), MYLITE_SQL_AST_LITERAL_STRING, "enum draft label");
+    failures += expect_span_text(child_at(labels, 0U), "'draft'", "enum draft label span");
+    failures +=
+        expect_literal(child_at(labels, 1U), MYLITE_SQL_AST_LITERAL_STRING, "enum published label");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "enum not null"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "enum string default"
+    );
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    labels = child_at(column_type, 0U);
+    failures += expect_span_text(child_at(column, 0U), "enum", "enum keyword identifier");
+    failures += expect_node(column_type, MYLITE_SQL_AST_ENUM_TYPE, "enum keyword column type");
+    failures += expect_child_count(labels, 2U, "enum escaped label count");
+    failures += expect_span_text(child_at(labels, 0U), "''", "enum empty label span");
+    failures += expect_span_text(child_at(labels, 1U), "'A''B'", "enum escaped label span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE enum_types ADD COLUMN next_status ENUM('queued','done') NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_node(column_type, MYLITE_SQL_AST_ENUM_TYPE, "alter add enum column type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "alter add enum nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_enum (v ENUM());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_bit_type_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -11800,6 +11874,11 @@ static int test_select_where_predicates(void) {
         },
         {
             "SELECT id FROM simple_lifecycle WHERE id <=> false;",
+            MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id <=> NULL;",
             MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },

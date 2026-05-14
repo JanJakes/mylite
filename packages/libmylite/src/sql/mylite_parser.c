@@ -4453,6 +4453,59 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    struct mylite_sql_ast_node *label_list,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&type_token), span_from_token(&end_token));
+    struct mylite_sql_ast_node *type = make_node(state, MYLITE_SQL_AST_ENUM_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(type, label_list);
+    return type;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_enum_label_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token label_token
+) {
+    struct mylite_sql_ast_node *label =
+        mylite_sql_parser_make_literal(state, label_token, MYLITE_SQL_AST_LITERAL_STRING);
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_ENUM_LABEL_LIST, span_from_token(&label_token));
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, label);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_enum_label(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *label_list,
+    struct mylite_sql_token label_token
+) {
+    struct mylite_sql_ast_node *label = NULL;
+
+    if (!is_parse_ok(state) || label_list == NULL) {
+        return label_list;
+    }
+
+    label = mylite_sql_parser_make_literal(state, label_token, MYLITE_SQL_AST_LITERAL_STRING);
+    mylite_sql_ast_node_append_child(label_list, label);
+    mylite_sql_ast_node_set_span(
+        label_list,
+        span_join(label_list->span, span_from_token(&label_token))
+    );
+    return label_list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_binary_string_type_tokens tokens
@@ -4966,6 +5019,7 @@ static bool map_keyword_token(
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
+        {"ENUM", MYLITE_SQL_PARSE_ENUM},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},

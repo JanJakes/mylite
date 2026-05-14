@@ -1724,6 +1724,11 @@ predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_compa
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
 }
+predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) NULL(T). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL));
+}
 predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
@@ -3052,6 +3057,9 @@ identifier(A) ::= ERRORS(T). {
 identifier(A) ::= ENGINE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= ENUM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= ENGINES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3286,6 +3294,9 @@ column_type(A) ::= char_type(T). {
 column_type(A) ::= text_type(T). {
     A = T;
 }
+column_type(A) ::= enum_type(T). {
+    A = T;
+}
 column_type(A) ::= binary_string_type(T). {
     A = T;
 }
@@ -3423,6 +3434,17 @@ text_type_name(A) ::= LONGTEXT(T). {
         .type_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
     };
+}
+
+enum_type(A) ::= ENUM(T) LPAREN enum_label_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_enum_type(state, T, L, R);
+}
+
+enum_label_list(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_enum_label_list(state, T);
+}
+enum_label_list(A) ::= enum_label_list(L) COMMA STRING(T). {
+    A = mylite_sql_parser_append_enum_label(state, L, T);
 }
 
 binary_string_type(A) ::= BINARY(T). {

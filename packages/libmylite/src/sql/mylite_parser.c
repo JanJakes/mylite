@@ -4453,6 +4453,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     return type;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token
+) {
+    return make_node(state, MYLITE_SQL_AST_JSON_TYPE, span_from_token(&type_token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,
@@ -5172,6 +5179,7 @@ static bool map_keyword_token(
         {"TEXT", MYLITE_SQL_PARSE_TEXT},
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
+        {"JSON", MYLITE_SQL_PARSE_JSON},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},

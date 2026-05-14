@@ -293,6 +293,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR = 284,
     MYLITE_SQL_AST_POWER_FUNCTION = 285,
     MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR = 286,
+    MYLITE_SQL_AST_JSON_TYPE = 287,
 };
 
 enum mylite_sql_ast_literal_kind {

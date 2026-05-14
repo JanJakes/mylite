@@ -717,6 +717,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "char_type";
     case MYLITE_SQL_AST_TEXT_TYPE:
         return "text_type";
+    case MYLITE_SQL_AST_JSON_TYPE:
+        return "json_type";
     case MYLITE_SQL_AST_ENUM_TYPE:
         return "enum_type";
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:

@@ -92,6 +92,7 @@ static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
 static int test_char_type_statements(void);
 static int test_text_type_statements(void);
+static int test_json_type_statements(void);
 static int test_enum_type_statements(void);
 static int test_set_type_statements(void);
 static int test_bit_type_statements(void);
@@ -323,6 +324,7 @@ int main(void) {
     failures += test_varchar_type_statements();
     failures += test_char_type_statements();
     failures += test_text_type_statements();
+    failures += test_json_type_statements();
     failures += test_enum_type_statements();
     failures += test_set_type_statements();
     failures += test_bit_type_statements();
@@ -8301,6 +8303,69 @@ static int test_text_type_statements(void) {
         "CREATE TABLE invalid_text_length (body TEXT(10));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_type_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE json_types (id INT, payload JSON, required JSON NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "json column list");
+
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "payload", "json column name");
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_JSON_TYPE, "json column type");
+    failures += expect_span_text(child_at(column, 1U), "JSON", "json type span");
+
+    column = child_at(columns, 2U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_JSON_TYPE, "json not null type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "json not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE json (json INT, payload JSON);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "json", "nonreserved json table name");
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "json", "nonreserved json column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "nonreserved json column integer type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE json_types ADD COLUMN metadata JSON NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_node(child_at(column, 1U), MYLITE_SQL_AST_JSON_TYPE, "alter add json type");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "alter add json null"
     );
     mylite_sql_parse_result_deinit(&result);
 

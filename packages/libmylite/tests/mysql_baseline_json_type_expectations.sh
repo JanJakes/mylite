@@ -144,6 +144,18 @@ expect_output \
 "SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
+json_escape_expected=$(cat <<\EXPECTED
+{"q": "a\"b", "u": "A", "nl": "line\n"}
+EXPECTED
+)
+expect_output \
+    "JSON string escapes normalize like MySQL" \
+    "$json_escape_expected" \
+    "CREATE TABLE escape_json (j JSON); "\
+"INSERT INTO escape_json VALUES ('{\"q\":\"a\\\\\"b\",\"nl\":\"line\\\\n\",\"u\":\"\\\\u0041\"}'); "\
+"SELECT j FROM escape_json;" \
+    "$DATABASE"
+
 update_expected=$(cat <<\EXPECTED
 1	0
 0	0

@@ -1263,6 +1263,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_text_type_tokens tokens
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,

@@ -3143,6 +3143,9 @@ identifier(A) ::= TEMPORARY(T). {
 identifier(A) ::= TEXT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= JSON(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= FIXED(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3416,6 +3419,9 @@ column_type(A) ::= char_type(T). {
 column_type(A) ::= text_type(T). {
     A = T;
 }
+column_type(A) ::= json_type(T). {
+    A = T;
+}
 column_type(A) ::= enum_type(T). {
     A = T;
 }
@@ -3559,6 +3565,10 @@ text_type_name(A) ::= LONGTEXT(T). {
         .type_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
     };
+}
+
+json_type(A) ::= JSON(T). {
+    A = mylite_sql_parser_make_json_type(state, T);
 }
 
 enum_type(A) ::= ENUM(T) LPAREN enum_label_list(L) RPAREN(R). {

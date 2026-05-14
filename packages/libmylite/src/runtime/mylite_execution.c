@@ -5,6 +5,7 @@
 #include "mylite_connection.h"
 #include "mylite_date_format.h"
 #include "mylite_diagnostics.h"
+#include "mylite_json.h"
 #include "mylite_parser.h"
 #include "mylite_result.h"
 #include "mylite_sqlite_registration.h"
@@ -50,6 +51,7 @@ enum {
     mysql_error_cant_drop_field_or_key = 1091,
     mysql_error_update_table_used = 1093,
     mysql_error_no_tables_used = 1096,
+    mysql_error_blob_text_cant_have_default = 1101,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown_table_in_schema = 1109,
@@ -67,6 +69,7 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
+    mysql_error_json_used_as_key = 3152,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
@@ -97,6 +100,7 @@ enum {
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
     mysql_error_invalid_column_size = 3013,
+    mysql_error_invalid_json_text = 3140,
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_incorrect_timestamp_value = 1525,
@@ -5308,6 +5312,12 @@ static int validate_insert_select_string_value(
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number
 );
+static int validate_insert_select_json_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column
+);
 static int validate_insert_select_binary_string_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -8076,6 +8086,7 @@ static int map_text_family_type(
     const struct mylite_sql_ast_node *type_node,
     struct planned_column *out_column
 );
+static int map_json_type(struct planned_column *out_column);
 static int map_enum_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -8217,6 +8228,7 @@ static bool planned_column_is_char(const struct planned_column *column);
 static bool planned_column_is_char_or_varchar(const struct planned_column *column);
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
+static bool planned_column_is_json(const struct planned_column *column);
 static bool planned_column_is_enum(const struct planned_column *column);
 static bool planned_column_is_set(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
@@ -8247,6 +8259,7 @@ static bool column_descriptor_is_text_family(const struct mylite_catalog_column_
 static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
+static bool column_descriptor_is_json(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
@@ -8893,6 +8906,14 @@ static int convert_insert_value(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_insert_value_by_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int convert_auto_increment_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -9328,6 +9349,20 @@ static int assign_text_value(
     struct mylite_db *database,
     char *text,
     size_t text_length,
+    struct planned_value *out_value
+);
+static int make_json_null_value(struct mylite_db *database, struct planned_value *out_value);
+static int convert_json_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int normalize_json_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
     struct planned_value *out_value
 );
 static int assign_blob_value(
@@ -10430,6 +10465,11 @@ static int populate_enum_result_column_descriptor(
 static int populate_set_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
+static int populate_json_result_column_descriptor(
     const struct mylite_catalog_column_descriptor *column,
     struct mylite_result_column_descriptor *descriptor,
     bool *out_matched
@@ -11549,6 +11589,7 @@ static void set_storage_engine_cant_index_column_error(
     const char *column_name
 );
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
+static void set_json_key_error(struct mylite_db *database, const char *column_name);
 static void set_incorrect_prefix_key_error(struct mylite_db *database);
 static void set_key_part_length_cannot_be_zero_error(
     struct mylite_db *database,
@@ -11600,6 +11641,12 @@ static void set_data_too_long_error(
     size_t row_number
 );
 static void set_invalid_default_error(struct mylite_db *database, const char *column_name);
+static void set_json_cant_have_default_error(struct mylite_db *database, const char *column_name);
+static void set_invalid_json_text_error(
+    struct mylite_db *database,
+    size_t position,
+    const char *column_name
+);
 static void set_no_default_error(struct mylite_db *database, const char *column_name);
 static void set_out_of_range_error(
     struct mylite_db *database,
@@ -12061,6 +12108,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_JSON_TYPE:
     case MYLITE_SQL_AST_ENUM_TYPE:
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
     case MYLITE_SQL_AST_SET_TYPE:
@@ -18395,6 +18443,9 @@ static const char *information_schema_data_type_for_descriptor(
     if (column_descriptor_is_set(column)) {
         return "set";
     }
+    if (column_descriptor_is_json(column)) {
+        return "json";
+    }
     if (column_descriptor_is_bit(column)) {
         return "bit";
     }
@@ -18499,10 +18550,10 @@ static const char *information_schema_numeric_precision_for_descriptor(
 
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
-        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
-        column_descriptor_is_year(column)) {
+        column_descriptor_is_json(column) || column_descriptor_is_binary_string_family(column) ||
+        column_descriptor_is_decimal(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return NULL;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -18544,10 +18595,11 @@ static const char *information_schema_numeric_scale_for_descriptor(
 ) {
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
-        column_descriptor_is_binary_string_family(column) || column_descriptor_is_decimal(column) ||
-        column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        column_descriptor_is_json(column) || column_descriptor_is_binary_string_family(column) ||
+        column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return NULL;
     }
     return "0";
@@ -20888,6 +20940,10 @@ static int show_descriptor_type_text(
     if (format_text_family_type_text(logical_type, out_type_text) == MYLITE_OK) {
         return MYLITE_OK;
     }
+    if (strcmp(logical_type, "JSON") == 0) {
+        *out_type_text = "json";
+        return MYLITE_OK;
+    }
     if (strncmp(logical_type, "ENUM(", enum_logical_prefix_length) == 0) {
         return format_enum_descriptor_type_text(
             database,
@@ -21393,6 +21449,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
     case MYLITE_SQL_AST_TEXT_TYPE:
+    case MYLITE_SQL_AST_JSON_TYPE:
     case MYLITE_SQL_AST_ENUM_TYPE:
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
     case MYLITE_SQL_AST_SET_TYPE:
@@ -22914,6 +22971,10 @@ static int validate_secondary_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
         planned_column_is_enum(column) || planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
@@ -22961,6 +23022,9 @@ static int validate_secondary_index_prefix_for_planned_column(
         );
     } else if (planned_column_is_text_family(column)) {
         return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
     } else {
         set_incorrect_prefix_key_error(database);
         return MYLITE_ERROR;
@@ -23049,6 +23113,10 @@ static int planned_index_part_key_bytes(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
         planned_column_is_enum(column) || planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
@@ -23074,6 +23142,10 @@ static int validate_unique_index_column(
     }
     if (planned_column_is_text_family(column)) {
         set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
@@ -23287,6 +23359,9 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         if (rc != MYLITE_OK) {
             return rc;
         }
+    } else if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
     } else if (
         planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
         planned_column_is_bit(column) || planned_column_is_enum(column) ||
@@ -23881,6 +23956,7 @@ static int validate_create_table_select_source_columns(
         int rc = MYLITE_OK;
 
         if (column_descriptor_is_string_family(&columns[column_index]) ||
+            column_descriptor_is_json(&columns[column_index]) ||
             column_descriptor_is_binary_string_family(&columns[column_index]) ||
             column_descriptor_is_bit(&columns[column_index]) ||
             column_descriptor_is_decimal(&columns[column_index]) ||
@@ -23896,7 +23972,8 @@ static int validate_create_table_select_source_columns(
             strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
             set_unsupported_error(
                 database,
-                "CREATE TABLE SELECT supports only integer, BIT, string, binary string, decimal, "
+                "CREATE TABLE SELECT supports only integer, BIT, string, JSON, binary string, "
+                "decimal, "
                 "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
             );
             return MYLITE_ERROR;
@@ -23904,7 +23981,7 @@ static int validate_create_table_select_source_columns(
         rc = integer_range_for_column(
             database,
             &columns[column_index],
-            "CREATE TABLE SELECT supports only integer, BIT, string, binary string, decimal, "
+            "CREATE TABLE SELECT supports only integer, BIT, string, JSON, binary string, decimal, "
             "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
             &range
         );
@@ -26444,6 +26521,9 @@ static int append_alter_table_primary_key_part(
 
     if (column_descriptor_is_char_or_varchar(&columns[column_index])) {
         rc = validate_descriptor_string_key_column(database, &columns[column_index]);
+    } else if (column_descriptor_is_json(&columns[column_index])) {
+        set_json_key_error(database, columns[column_index].name);
+        rc = MYLITE_ERROR;
     } else {
         struct integer_column_range range = {0};
 
@@ -27317,6 +27397,9 @@ static int validate_secondary_index_prefix_for_column_descriptor(
         rc = varchar_length_for_column(database, column, &column_length);
     } else if (column_descriptor_is_text_family(column)) {
         return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else if (column_descriptor_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
     } else {
         set_incorrect_prefix_key_error(database);
         return MYLITE_ERROR;
@@ -27365,6 +27448,10 @@ static int column_descriptor_index_part_key_bytes(
     }
     if (column_descriptor_is_text_family(column)) {
         set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_json(column)) {
+        set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
     if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
@@ -27504,6 +27591,10 @@ static int planned_primary_key_part_key_bytes(
             *out_key_bytes = (uint64_t)column_length * utf8mb4_max_bytes_per_character;
         }
         return rc;
+    }
+    if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
     }
 
     return row_size_for_column_descriptor(
@@ -28530,6 +28621,10 @@ static int validate_alter_table_add_index_column(
     }
     if (column_descriptor_is_text_family(column)) {
         set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_json(column)) {
+        set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
     if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
@@ -30728,6 +30823,7 @@ static int complete_alter_table_modify_column_plan(
     int rc = MYLITE_OK;
 
     if (column_descriptor_is_string_family(&out_plan->original_column) ||
+        column_descriptor_is_json(&out_plan->original_column) ||
         column_descriptor_is_bit(&out_plan->original_column) ||
         column_descriptor_is_decimal(&out_plan->original_column) ||
         column_descriptor_is_approximate(&out_plan->original_column) ||
@@ -30739,8 +30835,9 @@ static int complete_alter_table_modify_column_plan(
         column_descriptor_is_enum(&out_plan->original_column) ||
         column_descriptor_is_set(&out_plan->original_column) ||
         planned_column_is_string_family(&out_plan->column) ||
-        planned_column_is_bit(&out_plan->column) || planned_column_is_enum(&out_plan->column) ||
-        planned_column_is_set(&out_plan->column) || planned_column_is_decimal(&out_plan->column) ||
+        planned_column_is_json(&out_plan->column) || planned_column_is_bit(&out_plan->column) ||
+        planned_column_is_enum(&out_plan->column) || planned_column_is_set(&out_plan->column) ||
+        planned_column_is_decimal(&out_plan->column) ||
         planned_column_is_approximate(&out_plan->column) ||
         planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
         planned_column_is_datetime(&out_plan->column) ||
@@ -33313,6 +33410,15 @@ static int validate_insert_select_value(
             row_number
         );
     }
+    if (column_descriptor_is_json(target_column)) {
+        (void)row_number;
+        return validate_insert_select_json_value(
+            database,
+            statement,
+            selected_column_index,
+            target_column
+        );
+    }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return validate_insert_select_binary_string_value(
             database,
@@ -33414,6 +33520,9 @@ static bool insert_select_source_target_types_are_compatible(
     if (column_descriptor_is_string_family(target_column)) {
         return column_descriptor_is_string_family(source_column);
     }
+    if (column_descriptor_is_json(target_column)) {
+        return column_descriptor_is_json(source_column);
+    }
     if (column_descriptor_is_enum(target_column)) {
         return false;
     }
@@ -33459,6 +33568,9 @@ static const char *insert_select_implicit_conversion_message(
 ) {
     if (column_descriptor_is_string_family(target_column)) {
         return "INSERT ... SELECT does not support implicit string conversion";
+    }
+    if (column_descriptor_is_json(target_column)) {
+        return "INSERT ... SELECT does not support implicit JSON conversion";
     }
     if (column_descriptor_is_enum(target_column)) {
         return "INSERT ... SELECT does not support implicit ENUM conversion";
@@ -33551,6 +33663,56 @@ static int validate_insert_select_string_value(
             .row_number = row_number,
         }
     );
+}
+
+static int validate_insert_select_json_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    const unsigned char *text = NULL;
+    int byte_count = 0;
+    char *normalized = NULL;
+    size_t normalized_length = 0U;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (sqlite3_column_type(statement, selected_column_index) != SQLITE_TEXT) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT does not support implicit JSON conversion"
+        );
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_column_text(statement, selected_column_index);
+    byte_count = sqlite3_column_bytes(statement, selected_column_index);
+    if (text == NULL || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = mylite_json_normalize(
+        (const char *)text,
+        (size_t)byte_count,
+        &normalized,
+        &normalized_length,
+        &result
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        if (result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            set_unsupported_error(database, "INSERT ... SELECT does not support this JSON value");
+        } else {
+            set_invalid_json_text_error(database, result.position, target_column->name);
+        }
+        return MYLITE_ERROR;
+    }
+    free(normalized);
+    (void)normalized_length;
+    return MYLITE_OK;
 }
 
 static int validate_insert_select_binary_string_value(
@@ -51428,6 +51590,14 @@ static int validate_column_default(
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
+        if (planned_column_is_json(column)) {
+            if (column_default_value_is_parenthesized_expression(default_node)) {
+                set_unsupported_error(database, "JSON expression defaults are not yet supported");
+                return MYLITE_ERROR;
+            }
+            set_json_cant_have_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
         return MYLITE_OK;
     }
     if (default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
@@ -51491,7 +51661,8 @@ static int finalize_planned_column_default(
     }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
         if (planned_column_is_bit(column) || planned_column_is_year(column) ||
-            planned_column_is_enum(column) || planned_column_is_set(column)) {
+            planned_column_is_enum(column) || planned_column_is_set(column) ||
+            planned_column_is_json(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -52703,6 +52874,11 @@ static int map_column_type(
         (void)column_name;
         return map_text_family_type(database, type_node, out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_JSON_TYPE) {
+        (void)database;
+        (void)column_name;
+        return map_json_type(out_column);
+    }
     if (type_node->kind == MYLITE_SQL_AST_ENUM_TYPE) {
         return map_enum_type(database, type_node, column_name, out_column);
     }
@@ -52898,6 +53074,24 @@ static int map_text_family_type(
         sizeof(out_column->logical_type_storage),
         "%s",
         logical_type
+    );
+    snprintf(
+        out_column->physical_type_storage,
+        sizeof(out_column->physical_type_storage),
+        "%s",
+        "TEXT"
+    );
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
+    return MYLITE_OK;
+}
+
+static int map_json_type(struct planned_column *out_column) {
+    snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "%s",
+        "JSON"
     );
     snprintf(
         out_column->physical_type_storage,
@@ -53899,6 +54093,14 @@ static bool planned_column_is_string_family(const struct planned_column *column)
             planned_column_is_text_family(column)) != 0;
 }
 
+static bool planned_column_is_json(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    return (strcmp(column->logical_type, "JSON") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
 static bool planned_column_is_enum(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
@@ -54119,6 +54321,14 @@ static bool column_descriptor_is_string_family(
 ) {
     return (column_descriptor_is_char(column) || column_descriptor_is_varchar(column) ||
             column_descriptor_is_text_family(column)) != 0;
+}
+
+static bool column_descriptor_is_json(const struct mylite_catalog_column_descriptor *column) {
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    return (strcmp(column->logical_type, "JSON") == 0 &&
+            strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column) {
@@ -55208,6 +55418,10 @@ static int text_backed_row_size_bytes(
     }
     if (strcmp(logical_type, "TIMESTAMP") == 0) {
         *out_size = timestamp_row_size_bytes;
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "JSON") == 0) {
+        *out_size = text_family_row_size_contribution;
         return MYLITE_OK;
     }
     if (text_family_type_info_for_logical_type(logical_type) != NULL) {
@@ -57530,6 +57744,9 @@ static int make_insert_ignore_implicit_value(
     if (column_descriptor_is_string_family(column) || column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
     }
+    if (column_descriptor_is_json(column)) {
+        return make_json_null_value(database, out_value);
+    }
     if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
     }
@@ -57616,6 +57833,25 @@ static int convert_insert_value(
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         return convert_null_insert_value(database, column, ignore_errors, out_value);
     }
+
+    return convert_insert_value_by_descriptor(
+        database,
+        value_node,
+        column,
+        row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_insert_value_by_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
     if (column_descriptor_is_char(column)) {
         return convert_char_literal(database, value_node, column, row_number, out_value);
     }
@@ -57624,6 +57860,11 @@ static int convert_insert_value(
     }
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, row_number, out_value);
+    }
+    if (column_descriptor_is_json(column)) {
+        (void)row_number;
+        (void)ignore_errors;
+        return convert_json_literal(database, value_node, column, out_value);
     }
     if (column_descriptor_is_enum(column)) {
         (void)ignore_errors;
@@ -57786,6 +58027,9 @@ static int convert_null_insert_value(
     if (column_descriptor_is_string_family(column)) {
         return make_empty_text_value(database, out_value);
     }
+    if (column_descriptor_is_json(column)) {
+        return make_json_null_value(database, out_value);
+    }
     if (column_descriptor_is_enum(column)) {
         return make_enum_first_label_value(database, column, out_value);
     }
@@ -57906,6 +58150,8 @@ static int materialize_dml_missing_default_value(
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     } else if (column_descriptor_is_string_family(column) || column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
+    } else if (column_descriptor_is_json(column)) {
+        return make_json_null_value(database, out_value);
     } else if (column_descriptor_is_enum(column)) {
         return make_enum_first_label_value(database, column, out_value);
     } else if (column_descriptor_is_binary_string_family(column)) {
@@ -58442,6 +58688,17 @@ static int convert_set_member_list_literal(
 
 static int append_set_predicate_member_text(struct set_predicate_member_text_request request) {
     int rc = MYLITE_OK;
+
+    if (request.display == NULL || request.token_start > request.token_end) {
+        return MYLITE_ERROR;
+    }
+    if (request.found_member) {
+        if (request.info == NULL || request.member_index >= request.info->member_count) {
+            return MYLITE_ERROR;
+        }
+    } else if (request.text == NULL) {
+        return MYLITE_ERROR;
+    }
 
     if (request.display->length > 0U || request.token_start > 0U) {
         rc = dynamic_string_append_char(request.display, ',');
@@ -60081,6 +60338,77 @@ static int assign_text_value(
     };
     (void)database;
     return MYLITE_OK;
+}
+
+static int make_json_null_value(struct mylite_db *database, struct planned_value *out_value) {
+    return copy_text_value(database, "null", out_value);
+}
+
+static int convert_json_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "JSON values support only string, NULL, and DEFAULT values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "JSON values support only string literals",
+        "JSON values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return normalize_json_value(database, text, text_length, column->name, out_value);
+}
+
+static int normalize_json_value(
+    struct mylite_db *database,
+    char *text,
+    size_t text_length,
+    const char *column_name,
+    struct planned_value *out_value
+) {
+    char *normalized = NULL;
+    size_t normalized_length = 0U;
+    struct mylite_json_normalize_result result = {0};
+    int rc = mylite_json_normalize(text, text_length, &normalized, &normalized_length, &result);
+
+    free(text);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        if (result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            set_unsupported_error(
+                database,
+                "JSON values support only objects, arrays, strings, signed integer numbers, "
+                "booleans, and null in this baseline"
+            );
+        } else {
+            set_invalid_json_text_error(database, result.position, column_name);
+        }
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, normalized, normalized_length, out_value);
 }
 
 static int assign_blob_value(
@@ -63054,6 +63382,9 @@ static int populate_select_result_column_descriptor(
         rc = populate_set_result_column_descriptor(database, table, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
+        rc = populate_json_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
         rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
@@ -63302,6 +63633,25 @@ static int populate_set_result_column_descriptor(
     if (table_default_collation_is_binary(table)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
     }
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_json_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    *out_matched = false;
+    if (!column_descriptor_is_json(column)) {
+        return MYLITE_OK;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_JSON;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = longtext_max_length;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY;
     *out_matched = true;
     return MYLITE_OK;
 }
@@ -65779,6 +66129,9 @@ static int convert_update_column_value(
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, 1U, out_value);
     }
+    if (column_descriptor_is_json(column)) {
+        return convert_json_literal(database, value_node, column, out_value);
+    }
     if (column_descriptor_is_enum(column)) {
         return convert_enum_literal(database, value_node, column, 1U, out_value);
     }
@@ -65984,6 +66337,9 @@ static bool update_scalar_subquery_target_uses_text_storage(
     if (column_descriptor_is_string_family(target_column)) {
         return true;
     }
+    if (column_descriptor_is_json(target_column)) {
+        return true;
+    }
     if (column_descriptor_is_decimal(target_column)) {
         return true;
     }
@@ -66052,6 +66408,9 @@ static int validate_update_scalar_subquery_text_storage_value(
 ) {
     if (column_descriptor_is_string_family(target_column)) {
         return validate_insert_select_string_value(database, statement, 0, target_column, 1U);
+    }
+    if (column_descriptor_is_json(target_column)) {
+        return validate_insert_select_json_value(database, statement, 0, target_column);
     }
     if (column_descriptor_is_decimal(target_column)) {
         return validate_insert_select_decimal_value(database, statement, 0, target_column, 1U);
@@ -66153,6 +66512,9 @@ static const char *update_scalar_subquery_implicit_conversion_message(
 ) {
     if (column_descriptor_is_string_family(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit string conversion";
+    }
+    if (column_descriptor_is_json(target_column)) {
+        return "UPDATE scalar subquery assignment does not support implicit JSON conversion";
     }
     if (column_descriptor_is_enum(target_column)) {
         return "UPDATE scalar subquery assignment does not support implicit ENUM conversion";
@@ -68009,6 +68371,9 @@ static int append_alter_table_add_column_default(
     }
     if (planned_column_is_string_family(&plan->column)) {
         return dynamic_string_append(string, " DEFAULT ''");
+    }
+    if (planned_column_is_json(&plan->column)) {
+        return dynamic_string_append(string, " DEFAULT 'null'");
     }
     if (planned_column_is_binary_string_family(&plan->column)) {
         return append_alter_table_add_column_binary_zero(string, plan);
@@ -74567,6 +74932,26 @@ static void set_blob_key_without_length_error(struct mylite_db *database, const 
     );
 }
 
+static void set_json_key_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "JSON column '%s' supports indexing only via generated columns on a specified JSON path.",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_json_used_as_key,
+        "42000",
+        message
+    );
+}
+
 static void set_incorrect_prefix_key_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -75147,6 +75532,51 @@ static void set_invalid_default_error(struct mylite_db *database, const char *co
         mylite_connection_diagnostics(database),
         mysql_error_invalid_default,
         "42000",
+        message
+    );
+}
+
+static void set_json_cant_have_default_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "BLOB, TEXT, GEOMETRY or JSON column '%s' can't have a default value",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_blob_text_cant_have_default,
+        "42000",
+        message
+    );
+}
+
+static void set_invalid_json_text_error(
+    struct mylite_db *database,
+    size_t position,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON text: \"Invalid value.\" at position %zu in value for column '%s'.",
+        position,
+        column_name == NULL ? "" : column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_json_text,
+        "22032",
         message
     );
 }

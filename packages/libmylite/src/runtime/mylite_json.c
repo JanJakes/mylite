@@ -1,0 +1,1363 @@
+#include <mylite/mylite.h>
+
+#include "mylite_json.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+enum json_value_kind {
+    JSON_VALUE_NULL,
+    JSON_VALUE_BOOL,
+    JSON_VALUE_NUMBER,
+    JSON_VALUE_STRING,
+    JSON_VALUE_ARRAY,
+    JSON_VALUE_OBJECT,
+};
+
+enum {
+    json_initial_container_capacity = 4,
+    json_writer_initial_capacity = 32,
+    json_unicode_escape_digit_count = 4,
+    json_signed_int64_digit_count = 19,
+    json_max_nesting_depth = 100,
+    json_true_literal_length = 4,
+    json_false_literal_length = 5,
+    json_null_literal_length = 4,
+    json_member_separator_length = 2,
+    json_unicode_escape_prefix_length = 4,
+    json_hex_nibble_bits = 4,
+    json_decimal_base = 10,
+    json_control_byte_limit = 0x20,
+    json_ascii_byte_limit = 0x7f,
+    json_hex_low_nibble = 0x0f,
+};
+
+struct json_text {
+    char *text;
+    size_t length;
+};
+
+struct json_value;
+
+struct json_array {
+    struct json_value *values;
+    size_t count;
+    size_t capacity;
+};
+
+struct json_member {
+    char *key;
+    size_t key_length;
+    struct json_value *value;
+};
+
+struct json_object {
+    struct json_member *members;
+    size_t count;
+    size_t capacity;
+};
+
+struct json_value {
+    enum json_value_kind kind;
+
+    union {
+        bool boolean;
+        struct json_text text;
+        struct json_array array;
+        struct json_object object;
+    } payload;
+};
+
+struct json_parser {
+    const char *text;
+    size_t length;
+    size_t position;
+    struct mylite_json_normalize_result result;
+};
+
+struct json_writer {
+    char *text;
+    size_t length;
+    size_t capacity;
+};
+
+struct json_parsed_value {
+    struct json_value value;
+    bool opens_container;
+};
+
+struct json_parse_frame {
+    struct json_value *container;
+};
+
+struct json_parse_stack {
+    struct json_parse_frame frames[json_max_nesting_depth];
+    size_t count;
+};
+
+struct json_emit_frame {
+    const struct json_value *container;
+    size_t index;
+};
+
+struct json_emit_stack {
+    struct json_emit_frame frames[json_max_nesting_depth];
+    size_t count;
+};
+
+struct json_deinit_frame {
+    struct json_value *value;
+    size_t index;
+    bool free_value;
+};
+
+struct json_deinit_stack {
+    struct json_deinit_frame frames[json_max_nesting_depth + 1U];
+    size_t count;
+};
+
+struct json_number_integer_part {
+    size_t start;
+    size_t end;
+    bool is_negative;
+};
+
+static int parse_document(struct json_parser *parser, struct json_value *out_value);
+static int parse_next_value(struct json_parser *parser, struct json_parsed_value *out_value);
+static int parse_next_object_member(struct json_parser *parser, struct json_parse_stack *stack);
+static int parse_next_array_value(struct json_parser *parser, struct json_parse_stack *stack);
+static int finish_completed_value(struct json_parser *parser, struct json_parse_stack *stack);
+static void close_completed_container(struct json_parse_stack *stack);
+static struct json_parse_frame *parse_stack_top(struct json_parse_stack *stack);
+static int parse_stack_push(
+    struct json_parser *parser,
+    struct json_parse_stack *stack,
+    struct json_value *container
+);
+static int object_append_member(
+    struct json_object *object,
+    char *key,
+    size_t key_length,
+    struct json_value *value,
+    struct json_value **out_stored_value
+);
+static int object_reserve_members(struct json_object *object, size_t required_capacity);
+static void sort_object_members_by_mysql_display_order(struct json_object *object);
+static bool object_member_is_after(const struct json_member *left, const struct json_member *right);
+static int compare_object_member_keys(
+    const struct json_member *left,
+    const struct json_member *right
+);
+static int array_append_value(
+    struct json_array *array,
+    struct json_value *value,
+    struct json_value **out_stored_value
+);
+static int array_reserve_values(struct json_array *array, size_t required_capacity);
+static int parse_string_value(struct json_parser *parser, struct json_value *out_value);
+static int parse_string(struct json_parser *parser, char **out_text, size_t *out_text_length);
+static int append_string_byte(
+    struct json_parser *parser,
+    struct json_writer *string,
+    unsigned char byte
+);
+static int append_string_escape(
+    struct json_parser *parser,
+    struct json_writer *string,
+    size_t escape_position
+);
+static int parse_hex_digit(struct json_parser *parser, size_t position, unsigned int *out_digit);
+static int append_ascii_codepoint(
+    struct json_parser *parser,
+    size_t position,
+    struct json_writer *string,
+    unsigned int codepoint
+);
+static int parse_number(struct json_parser *parser, struct json_value *out_value);
+static int parse_number_integer_part(
+    struct json_parser *parser,
+    size_t start,
+    struct json_number_integer_part *out_part
+);
+static int parse_number_fraction_part(struct json_parser *parser, bool *out_has_fraction);
+static int parse_number_exponent_part(struct json_parser *parser, bool *out_has_exponent);
+static int parse_integer_number(
+    struct json_parser *parser,
+    size_t start,
+    bool is_negative,
+    size_t integer_start,
+    size_t integer_end,
+    struct json_value *out_value
+);
+static bool integer_number_is_in_signed_range(
+    const char *digits,
+    size_t digit_count,
+    bool is_negative
+);
+static int copy_number_text(
+    const char *text,
+    size_t length,
+    bool negative_zero,
+    struct json_value *out_value
+);
+static int parse_literal(
+    struct json_parser *parser,
+    const char *literal,
+    enum json_value_kind kind,
+    bool boolean,
+    struct json_value *out_value
+);
+static int emit_value(struct json_writer *writer, const struct json_value *value);
+static int emit_value_start(
+    struct json_writer *writer,
+    const struct json_value *value,
+    struct json_emit_stack *stack
+);
+static int emit_array_next_value(
+    struct json_writer *writer,
+    struct json_emit_stack *stack,
+    const struct json_value **out_child
+);
+static int emit_object_next_member(
+    struct json_writer *writer,
+    struct json_emit_stack *stack,
+    const struct json_value **out_child
+);
+static int emit_bool_value(struct json_writer *writer, bool boolean);
+static int emit_stack_push(struct json_emit_stack *stack, const struct json_value *container);
+static int emit_string(struct json_writer *writer, const char *text, size_t text_length);
+static int writer_append_json_escape(struct json_writer *writer, unsigned char byte);
+static int writer_append_ascii_hex_digit(struct json_writer *writer, unsigned char value);
+static int writer_append_char(struct json_writer *writer, char byte);
+static int writer_append_text(struct json_writer *writer, const char *text, size_t text_length);
+static int writer_reserve(struct json_writer *writer, size_t required_capacity);
+static char *writer_take(struct json_writer *writer);
+static void writer_deinit(struct json_writer *writer);
+static void value_deinit(struct json_value *value);
+static bool deinit_stack_push(
+    struct json_deinit_stack *stack,
+    struct json_value *value,
+    bool free_value
+);
+static void deinit_stack_pop(struct json_deinit_stack *stack);
+static void skip_whitespace(struct json_parser *parser);
+static bool parser_at_end(const struct json_parser *parser);
+static char parser_peek(const struct json_parser *parser);
+static bool parser_match(struct json_parser *parser, char expected);
+static bool is_decimal_digit(char byte);
+static int parser_invalid(struct json_parser *parser, size_t position);
+static int parser_unsupported(struct json_parser *parser, size_t position);
+
+int mylite_json_normalize(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value value = {0};
+    struct json_writer writer = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&parser, &value);
+    if (rc == MYLITE_OK) {
+        rc = emit_value(&writer, &value);
+    }
+    if (rc == MYLITE_OK) {
+        *out_text_length = writer.length;
+        *out_text = writer_take(&writer);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    *out_result = parser.result;
+    value_deinit(&value);
+    writer_deinit(&writer);
+    return rc;
+}
+
+static int parse_document(struct json_parser *parser, struct json_value *out_value) {
+    struct json_parse_stack stack = {0};
+    struct json_parsed_value parsed = {0};
+    int rc = MYLITE_OK;
+
+    skip_whitespace(parser);
+    rc = parse_next_value(parser, &parsed);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    *out_value = parsed.value;
+    parsed.value = (struct json_value){0};
+
+    if (parsed.opens_container) {
+        rc = parse_stack_push(parser, &stack, out_value);
+    } else {
+        rc = finish_completed_value(parser, &stack);
+    }
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        struct json_parse_frame *frame = parse_stack_top(&stack);
+
+        if (frame->container->kind == JSON_VALUE_OBJECT) {
+            rc = parse_next_object_member(parser, &stack);
+        } else {
+            rc = parse_next_array_value(parser, &stack);
+        }
+    }
+
+    return rc;
+}
+
+static int parse_next_value(struct json_parser *parser, struct json_parsed_value *out_value) {
+    char byte = parser_peek(parser);
+
+    *out_value = (struct json_parsed_value){0};
+    if (byte == '{') {
+        parser_match(parser, '{');
+        out_value->value.kind = JSON_VALUE_OBJECT;
+        skip_whitespace(parser);
+        if (!parser_match(parser, '}')) {
+            out_value->opens_container = true;
+        }
+        return MYLITE_OK;
+    }
+    if (byte == '[') {
+        parser_match(parser, '[');
+        out_value->value.kind = JSON_VALUE_ARRAY;
+        skip_whitespace(parser);
+        if (!parser_match(parser, ']')) {
+            out_value->opens_container = true;
+        }
+        return MYLITE_OK;
+    }
+    if (byte == '"') {
+        return parse_string_value(parser, &out_value->value);
+    }
+    if (byte == '-' || (byte >= '0' && byte <= '9')) {
+        return parse_number(parser, &out_value->value);
+    }
+    if (byte == 'n') {
+        return parse_literal(parser, "null", JSON_VALUE_NULL, false, &out_value->value);
+    }
+    if (byte == 't') {
+        return parse_literal(parser, "true", JSON_VALUE_BOOL, true, &out_value->value);
+    }
+    if (byte == 'f') {
+        return parse_literal(parser, "false", JSON_VALUE_BOOL, false, &out_value->value);
+    }
+
+    return parser_invalid(parser, parser->position);
+}
+
+static int parse_next_object_member(struct json_parser *parser, struct json_parse_stack *stack) {
+    struct json_parse_frame *frame = parse_stack_top(stack);
+    struct json_object *object = &frame->container->payload.object;
+    struct json_parsed_value parsed = {0};
+    struct json_value *stored_value = NULL;
+    char *key = NULL;
+    size_t key_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (parser_peek(parser) != '"') {
+        return parser_invalid(parser, parser->position);
+    }
+    rc = parse_string(parser, &key, &key_length);
+    if (rc == MYLITE_OK) {
+        skip_whitespace(parser);
+        if (!parser_match(parser, ':')) {
+            rc = parser_invalid(parser, parser->position);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        skip_whitespace(parser);
+        rc = parse_next_value(parser, &parsed);
+    }
+    if (rc == MYLITE_OK) {
+        rc = object_append_member(object, key, key_length, &parsed.value, &stored_value);
+        key = NULL;
+    }
+    if (rc == MYLITE_OK) {
+        if (parsed.opens_container) {
+            rc = parse_stack_push(parser, stack, stored_value);
+        } else {
+            rc = finish_completed_value(parser, stack);
+        }
+    }
+
+    free(key);
+    if (rc != MYLITE_OK) {
+        value_deinit(&parsed.value);
+    }
+    return rc;
+}
+
+static int parse_next_array_value(struct json_parser *parser, struct json_parse_stack *stack) {
+    struct json_parse_frame *frame = parse_stack_top(stack);
+    struct json_array *array = &frame->container->payload.array;
+    struct json_parsed_value parsed = {0};
+    struct json_value *stored_value = NULL;
+    int rc = parse_next_value(parser, &parsed);
+
+    if (rc == MYLITE_OK) {
+        rc = array_append_value(array, &parsed.value, &stored_value);
+    }
+    if (rc == MYLITE_OK) {
+        if (parsed.opens_container) {
+            rc = parse_stack_push(parser, stack, stored_value);
+        } else {
+            rc = finish_completed_value(parser, stack);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        value_deinit(&parsed.value);
+    }
+    return rc;
+}
+
+static int finish_completed_value(struct json_parser *parser, struct json_parse_stack *stack) {
+    while (true) {
+        struct json_parse_frame *frame = NULL;
+
+        skip_whitespace(parser);
+        frame = parse_stack_top(stack);
+        if (frame == NULL) {
+            if (parser_at_end(parser)) {
+                return MYLITE_OK;
+            }
+            return parser_invalid(parser, parser->position);
+        }
+        if (frame->container->kind == JSON_VALUE_OBJECT && parser_match(parser, '}')) {
+            close_completed_container(stack);
+            continue;
+        }
+        if (frame->container->kind == JSON_VALUE_ARRAY && parser_match(parser, ']')) {
+            close_completed_container(stack);
+            continue;
+        }
+        if (!parser_match(parser, ',')) {
+            return parser_invalid(parser, parser->position);
+        }
+        skip_whitespace(parser);
+        return MYLITE_OK;
+    }
+}
+
+static void close_completed_container(struct json_parse_stack *stack) {
+    struct json_parse_frame *frame = parse_stack_top(stack);
+
+    if (frame == NULL) {
+        return;
+    }
+    if (frame->container->kind == JSON_VALUE_OBJECT) {
+        sort_object_members_by_mysql_display_order(&frame->container->payload.object);
+    }
+    --stack->count;
+}
+
+static struct json_parse_frame *parse_stack_top(struct json_parse_stack *stack) {
+    if (stack->count == 0U) {
+        return NULL;
+    }
+    return &stack->frames[stack->count - 1U];
+}
+
+static int parse_stack_push(
+    struct json_parser *parser,
+    struct json_parse_stack *stack,
+    struct json_value *container
+) {
+    if (stack->count >= json_max_nesting_depth) {
+        return parser_unsupported(parser, parser->position);
+    }
+    stack->frames[stack->count] = (struct json_parse_frame){.container = container};
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static int object_append_member(
+    struct json_object *object,
+    char *key,
+    size_t key_length,
+    struct json_value *value,
+    struct json_value **out_stored_value
+) {
+    struct json_value *owned_value = NULL;
+
+    for (size_t index = 0U; index < object->count; ++index) {
+        struct json_member *member = &object->members[index];
+
+        if (member->key_length == key_length && memcmp(member->key, key, key_length) == 0) {
+            value_deinit(member->value);
+            *member->value = *value;
+            *value = (struct json_value){0};
+            *out_stored_value = member->value;
+            free(key);
+            return MYLITE_OK;
+        }
+    }
+
+    int rc = object_reserve_members(object, object->count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    owned_value = malloc(sizeof(*owned_value));
+    if (owned_value == NULL) {
+        return MYLITE_NOMEM;
+    }
+    *owned_value = *value;
+    object->members[object->count] = (struct json_member){
+        .key = key,
+        .key_length = key_length,
+        .value = owned_value,
+    };
+    *value = (struct json_value){0};
+    *out_stored_value = owned_value;
+    ++object->count;
+    return MYLITE_OK;
+}
+
+static int object_reserve_members(struct json_object *object, size_t required_capacity) {
+    struct json_member *members = NULL;
+    size_t capacity = object->capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = json_initial_container_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*members)) {
+        return MYLITE_NOMEM;
+    }
+
+    members = realloc(object->members, capacity * sizeof(*members));
+    if (members == NULL) {
+        return MYLITE_NOMEM;
+    }
+    object->members = members;
+    object->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static void sort_object_members_by_mysql_display_order(struct json_object *object) {
+    for (size_t index = 1U; index < object->count; ++index) {
+        struct json_member member = object->members[index];
+        size_t insert = index;
+
+        while (insert > 0U && object_member_is_after(&object->members[insert - 1U], &member)) {
+            object->members[insert] = object->members[insert - 1U];
+            --insert;
+        }
+        object->members[insert] = member;
+    }
+}
+
+static bool object_member_is_after(
+    const struct json_member *left,
+    const struct json_member *right
+) {
+    return compare_object_member_keys(left, right) > 0;
+}
+
+static int compare_object_member_keys(
+    const struct json_member *left,
+    const struct json_member *right
+) {
+    int cmp = 0;
+
+    if (left->key_length != right->key_length) {
+        return left->key_length < right->key_length ? -1 : 1;
+    }
+    cmp = memcmp(left->key, right->key, left->key_length);
+    if (cmp < 0) {
+        return -1;
+    }
+    if (cmp > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int array_append_value(
+    struct json_array *array,
+    struct json_value *value,
+    struct json_value **out_stored_value
+) {
+    int rc = array_reserve_values(array, array->count + 1U);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    array->values[array->count] = *value;
+    *value = (struct json_value){0};
+    *out_stored_value = &array->values[array->count];
+    ++array->count;
+    return MYLITE_OK;
+}
+
+static int array_reserve_values(struct json_array *array, size_t required_capacity) {
+    struct json_value *values = NULL;
+    size_t capacity = array->capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = json_initial_container_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*values)) {
+        return MYLITE_NOMEM;
+    }
+
+    values = realloc(array->values, capacity * sizeof(*values));
+    if (values == NULL) {
+        return MYLITE_NOMEM;
+    }
+    array->values = values;
+    array->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static int parse_string_value(struct json_parser *parser, struct json_value *out_value) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = parse_string(parser, &text, &text_length);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_value->kind = JSON_VALUE_STRING;
+    out_value->payload.text = (struct json_text){
+        .text = text,
+        .length = text_length,
+    };
+    return MYLITE_OK;
+}
+
+static int parse_string(struct json_parser *parser, char **out_text, size_t *out_text_length) {
+    struct json_writer string = {0};
+    int rc = MYLITE_OK;
+
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (!parser_match(parser, '"')) {
+        return parser_invalid(parser, parser->position);
+    }
+
+    while (rc == MYLITE_OK && !parser_at_end(parser)) {
+        size_t position = parser->position;
+        unsigned char byte = (unsigned char)parser->text[parser->position++];
+
+        if (byte == '"') {
+            if (string.text == NULL) {
+                rc = writer_append_text(&string, "", 0U);
+            }
+            if (rc == MYLITE_OK) {
+                *out_text_length = string.length;
+                *out_text = writer_take(&string);
+                if (*out_text == NULL) {
+                    rc = MYLITE_NOMEM;
+                }
+            }
+            writer_deinit(&string);
+            return rc;
+        }
+        if (byte == '\\') {
+            rc = append_string_escape(parser, &string, position);
+        } else {
+            rc = append_string_byte(parser, &string, byte);
+        }
+    }
+
+    writer_deinit(&string);
+    return rc == MYLITE_OK ? parser_invalid(parser, parser->position) : rc;
+}
+
+static int append_string_byte(
+    struct json_parser *parser,
+    struct json_writer *string,
+    unsigned char byte
+) {
+    if (byte == '\0') {
+        return parser_unsupported(parser, parser->position - 1U);
+    }
+    if (byte < json_control_byte_limit) {
+        return parser_invalid(parser, parser->position - 1U);
+    }
+    return writer_append_char(string, (char)byte);
+}
+
+static int append_string_escape(
+    struct json_parser *parser,
+    struct json_writer *string,
+    size_t escape_position
+) {
+    unsigned char escaped = 0U;
+    unsigned int codepoint = 0U;
+
+    if (parser_at_end(parser)) {
+        return parser_invalid(parser, escape_position);
+    }
+    escaped = (unsigned char)parser->text[parser->position++];
+    switch (escaped) {
+    case '"':
+    case '\\':
+    case '/':
+        return writer_append_char(string, (char)escaped);
+    case 'b':
+        return writer_append_char(string, '\b');
+    case 'f':
+        return writer_append_char(string, '\f');
+    case 'n':
+        return writer_append_char(string, '\n');
+    case 'r':
+        return writer_append_char(string, '\r');
+    case 't':
+        return writer_append_char(string, '\t');
+    case 'u':
+        for (size_t index = 0U; index < json_unicode_escape_digit_count; ++index) {
+            unsigned int digit = 0U;
+            int rc = parse_hex_digit(parser, parser->position + index, &digit);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            codepoint = (codepoint << json_hex_nibble_bits) | digit;
+        }
+        parser->position += json_unicode_escape_digit_count;
+        return append_ascii_codepoint(parser, escape_position, string, codepoint);
+    default:
+        return parser_invalid(parser, parser->position - 1U);
+    }
+}
+
+static int parse_hex_digit(struct json_parser *parser, size_t position, unsigned int *out_digit) {
+    unsigned char byte = 0U;
+
+    if (position >= parser->length) {
+        return parser_invalid(parser, position);
+    }
+    byte = (unsigned char)parser->text[position];
+    if (byte >= '0' && byte <= '9') {
+        *out_digit = (unsigned int)(byte - '0');
+        return MYLITE_OK;
+    }
+    if (byte >= 'a' && byte <= 'f') {
+        *out_digit = (unsigned int)(byte - 'a') + json_decimal_base;
+        return MYLITE_OK;
+    }
+    if (byte >= 'A' && byte <= 'F') {
+        *out_digit = (unsigned int)(byte - 'A') + json_decimal_base;
+        return MYLITE_OK;
+    }
+    return parser_invalid(parser, position);
+}
+
+static int append_ascii_codepoint(
+    struct json_parser *parser,
+    size_t position,
+    struct json_writer *string,
+    unsigned int codepoint
+) {
+    if (codepoint == 0U || codepoint > json_ascii_byte_limit) {
+        return parser_unsupported(parser, position);
+    }
+    return writer_append_char(string, (char)codepoint);
+}
+
+static int parse_number(struct json_parser *parser, struct json_value *out_value) {
+    struct json_number_integer_part integer = {0};
+    size_t start = parser->position;
+    bool has_fraction = false;
+    bool has_exponent = false;
+    int rc = parse_number_integer_part(parser, start, &integer);
+
+    if (rc == MYLITE_OK) {
+        rc = parse_number_fraction_part(parser, &has_fraction);
+    }
+    if (rc == MYLITE_OK) {
+        rc = parse_number_exponent_part(parser, &has_exponent);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (has_fraction || has_exponent) {
+        return parser_unsupported(parser, start);
+    }
+
+    return parse_integer_number(
+        parser,
+        start,
+        integer.is_negative,
+        integer.start,
+        integer.end,
+        out_value
+    );
+}
+
+static int parse_number_integer_part(
+    struct json_parser *parser,
+    size_t start,
+    struct json_number_integer_part *out_part
+) {
+    out_part->is_negative = parser_match(parser, '-');
+    out_part->start = parser->position;
+    if (parser_at_end(parser)) {
+        return parser_invalid(parser, start);
+    }
+    if (parser_peek(parser) == '0') {
+        ++parser->position;
+        if (!parser_at_end(parser) && is_decimal_digit(parser_peek(parser))) {
+            return parser_invalid(parser, parser->position);
+        }
+    } else if (parser_peek(parser) >= '1' && parser_peek(parser) <= '9') {
+        while (!parser_at_end(parser) && is_decimal_digit(parser_peek(parser))) {
+            ++parser->position;
+        }
+    } else {
+        return parser_invalid(parser, parser->position);
+    }
+    out_part->end = parser->position;
+    return MYLITE_OK;
+}
+
+static int parse_number_fraction_part(struct json_parser *parser, bool *out_has_fraction) {
+    *out_has_fraction = false;
+    if (parser_at_end(parser) || parser_peek(parser) != '.') {
+        return MYLITE_OK;
+    }
+    *out_has_fraction = true;
+    ++parser->position;
+    if (parser_at_end(parser) || !is_decimal_digit(parser_peek(parser))) {
+        return parser_invalid(parser, parser->position);
+    }
+    while (!parser_at_end(parser) && is_decimal_digit(parser_peek(parser))) {
+        ++parser->position;
+    }
+    return MYLITE_OK;
+}
+
+static int parse_number_exponent_part(struct json_parser *parser, bool *out_has_exponent) {
+    *out_has_exponent = false;
+    if (parser_at_end(parser) || (parser_peek(parser) != 'e' && parser_peek(parser) != 'E')) {
+        return MYLITE_OK;
+    }
+    *out_has_exponent = true;
+    ++parser->position;
+    if (!parser_at_end(parser) && (parser_peek(parser) == '+' || parser_peek(parser) == '-')) {
+        ++parser->position;
+    }
+    if (parser_at_end(parser) || !is_decimal_digit(parser_peek(parser))) {
+        return parser_invalid(parser, parser->position);
+    }
+    while (!parser_at_end(parser) && is_decimal_digit(parser_peek(parser))) {
+        ++parser->position;
+    }
+    return MYLITE_OK;
+}
+
+static int parse_integer_number(
+    struct json_parser *parser,
+    size_t start,
+    bool is_negative,
+    size_t integer_start,
+    size_t integer_end,
+    struct json_value *out_value
+) {
+    const char *digits = parser->text + integer_start;
+    size_t digit_count = integer_end - integer_start;
+    bool negative_zero = false;
+
+    if (!integer_number_is_in_signed_range(digits, digit_count, is_negative)) {
+        return parser_unsupported(parser, start);
+    }
+    if (is_negative && digit_count == 1U && digits[0] == '0') {
+        negative_zero = true;
+    }
+
+    return copy_number_text(
+        parser->text + start,
+        parser->position - start,
+        negative_zero,
+        out_value
+    );
+}
+
+static bool integer_number_is_in_signed_range(
+    const char *digits,
+    size_t digit_count,
+    bool is_negative
+) {
+    const char *maximum = "9223372036854775807";
+
+    if (is_negative) {
+        maximum = "9223372036854775808";
+    }
+
+    if (digits == NULL || digit_count == 0U) {
+        return false;
+    }
+    if (digit_count < json_signed_int64_digit_count) {
+        return true;
+    }
+    if (digit_count > json_signed_int64_digit_count) {
+        return false;
+    }
+    return memcmp(digits, maximum, json_signed_int64_digit_count) <= 0;
+}
+
+static int copy_number_text(
+    const char *text,
+    size_t length,
+    bool negative_zero,
+    struct json_value *out_value
+) {
+    char *copy = NULL;
+
+    if (negative_zero) {
+        text = "0";
+        length = 1U;
+    }
+    if (length == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    copy = malloc(length + 1U);
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, text, length);
+    copy[length] = '\0';
+
+    out_value->kind = JSON_VALUE_NUMBER;
+    out_value->payload.text = (struct json_text){
+        .text = copy,
+        .length = length,
+    };
+    return MYLITE_OK;
+}
+
+static int parse_literal(
+    struct json_parser *parser,
+    const char *literal,
+    enum json_value_kind kind,
+    bool boolean,
+    struct json_value *out_value
+) {
+    size_t length = strlen(literal);
+
+    if (parser->position > parser->length || length > parser->length - parser->position ||
+        memcmp(parser->text + parser->position, literal, length) != 0) {
+        return parser_invalid(parser, parser->position);
+    }
+    parser->position += length;
+    out_value->kind = kind;
+    if (kind == JSON_VALUE_BOOL) {
+        out_value->payload.boolean = boolean;
+    }
+    return MYLITE_OK;
+}
+
+static int emit_value(struct json_writer *writer, const struct json_value *value) {
+    struct json_emit_stack stack = {0};
+    int rc = emit_value_start(writer, value, &stack);
+
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        struct json_emit_frame *frame = &stack.frames[stack.count - 1U];
+        const struct json_value *child = NULL;
+
+        if (frame->container->kind == JSON_VALUE_ARRAY) {
+            rc = emit_array_next_value(writer, &stack, &child);
+        } else {
+            rc = emit_object_next_member(writer, &stack, &child);
+        }
+        if (rc == MYLITE_OK && child != NULL) {
+            rc = emit_value_start(writer, child, &stack);
+        }
+    }
+    return rc;
+}
+
+static int emit_value_start(
+    struct json_writer *writer,
+    const struct json_value *value,
+    struct json_emit_stack *stack
+) {
+    switch (value->kind) {
+    case JSON_VALUE_NULL:
+        return writer_append_text(writer, "null", json_null_literal_length);
+    case JSON_VALUE_BOOL:
+        return emit_bool_value(writer, value->payload.boolean);
+    case JSON_VALUE_NUMBER:
+        return writer_append_text(writer, value->payload.text.text, value->payload.text.length);
+    case JSON_VALUE_STRING:
+        return emit_string(writer, value->payload.text.text, value->payload.text.length);
+    case JSON_VALUE_ARRAY:
+        if (writer_append_char(writer, '[') != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        if (value->payload.array.count == 0U) {
+            return writer_append_char(writer, ']');
+        }
+        return emit_stack_push(stack, value);
+    case JSON_VALUE_OBJECT:
+        if (writer_append_char(writer, '{') != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        if (value->payload.object.count == 0U) {
+            return writer_append_char(writer, '}');
+        }
+        return emit_stack_push(stack, value);
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int emit_array_next_value(
+    struct json_writer *writer,
+    struct json_emit_stack *stack,
+    const struct json_value **out_child
+) {
+    struct json_emit_frame *frame = &stack->frames[stack->count - 1U];
+
+    *out_child = NULL;
+    if (frame->index >= frame->container->payload.array.count) {
+        --stack->count;
+        return writer_append_char(writer, ']');
+    }
+    if (frame->index > 0U &&
+        writer_append_text(writer, ", ", json_member_separator_length) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
+    *out_child = &frame->container->payload.array.values[frame->index];
+    ++frame->index;
+    return MYLITE_OK;
+}
+
+static int emit_object_next_member(
+    struct json_writer *writer,
+    struct json_emit_stack *stack,
+    const struct json_value **out_child
+) {
+    struct json_emit_frame *frame = &stack->frames[stack->count - 1U];
+    const struct json_member *member = NULL;
+    int rc = MYLITE_OK;
+
+    *out_child = NULL;
+    if (frame->index >= frame->container->payload.object.count) {
+        --stack->count;
+        return writer_append_char(writer, '}');
+    }
+    if (frame->index > 0U) {
+        rc = writer_append_text(writer, ", ", json_member_separator_length);
+    }
+    member = &frame->container->payload.object.members[frame->index];
+    if (rc == MYLITE_OK) {
+        rc = emit_string(writer, member->key, member->key_length);
+    }
+    if (rc == MYLITE_OK) {
+        rc = writer_append_text(writer, ": ", json_member_separator_length);
+    }
+    if (rc == MYLITE_OK) {
+        *out_child = member->value;
+        ++frame->index;
+    }
+    return rc;
+}
+
+static int emit_bool_value(struct json_writer *writer, bool boolean) {
+    if (boolean) {
+        return writer_append_text(writer, "true", json_true_literal_length);
+    }
+    return writer_append_text(writer, "false", json_false_literal_length);
+}
+
+static int emit_stack_push(struct json_emit_stack *stack, const struct json_value *container) {
+    if (stack->count >= json_max_nesting_depth) {
+        return MYLITE_ERROR;
+    }
+    stack->frames[stack->count] = (struct json_emit_frame){.container = container, .index = 0U};
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static int emit_string(struct json_writer *writer, const char *text, size_t text_length) {
+    int rc = writer_append_char(writer, '"');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == '"' || byte == '\\' || byte < json_control_byte_limit) {
+            rc = writer_append_json_escape(writer, byte);
+        } else {
+            rc = writer_append_char(writer, (char)byte);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = writer_append_char(writer, '"');
+    }
+    return rc;
+}
+
+static int writer_append_json_escape(struct json_writer *writer, unsigned char byte) {
+    switch (byte) {
+    case '"':
+        return writer_append_text(writer, "\\\"", 2U);
+    case '\\':
+        return writer_append_text(writer, "\\\\", 2U);
+    case '\b':
+        return writer_append_text(writer, "\\b", 2U);
+    case '\f':
+        return writer_append_text(writer, "\\f", 2U);
+    case '\n':
+        return writer_append_text(writer, "\\n", 2U);
+    case '\r':
+        return writer_append_text(writer, "\\r", 2U);
+    case '\t':
+        return writer_append_text(writer, "\\t", 2U);
+    default:
+        if (writer_append_text(writer, "\\u00", json_unicode_escape_prefix_length) != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        if (writer_append_ascii_hex_digit(writer, (unsigned char)(byte >> json_hex_nibble_bits)) !=
+            MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return writer_append_ascii_hex_digit(writer, (unsigned char)(byte & json_hex_low_nibble));
+    }
+}
+
+static int writer_append_ascii_hex_digit(struct json_writer *writer, unsigned char value) {
+    static const char digits[] = "0123456789abcdef";
+
+    return writer_append_char(writer, digits[value & json_hex_low_nibble]);
+}
+
+static int writer_append_char(struct json_writer *writer, char byte) {
+    return writer_append_text(writer, &byte, 1U);
+}
+
+static int writer_append_text(struct json_writer *writer, const char *text, size_t text_length) {
+    int rc = MYLITE_OK;
+
+    if (writer->length > SIZE_MAX - 1U || text_length > SIZE_MAX - writer->length - 1U) {
+        return MYLITE_NOMEM;
+    }
+    rc = writer_reserve(writer, writer->length + text_length + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_length != 0U) {
+        memcpy(writer->text + writer->length, text, text_length);
+    }
+    writer->length += text_length;
+    writer->text[writer->length] = '\0';
+    return MYLITE_OK;
+}
+
+static int writer_reserve(struct json_writer *writer, size_t required_capacity) {
+    char *text = NULL;
+    size_t capacity = writer->capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = json_writer_initial_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+
+    text = realloc(writer->text, capacity);
+    if (text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (writer->capacity == 0U) {
+        text[0] = '\0';
+    }
+    writer->text = text;
+    writer->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static char *writer_take(struct json_writer *writer) {
+    char *text = writer->text;
+
+    writer->text = NULL;
+    writer->length = 0U;
+    writer->capacity = 0U;
+    return text;
+}
+
+static void writer_deinit(struct json_writer *writer) {
+    free(writer->text);
+    *writer = (struct json_writer){0};
+}
+
+static void value_deinit(struct json_value *value) {
+    struct json_deinit_stack stack = {0};
+
+    if (value == NULL) {
+        return;
+    }
+    if (!deinit_stack_push(&stack, value, false)) {
+        return;
+    }
+    while (stack.count > 0U) {
+        struct json_deinit_frame *frame = &stack.frames[stack.count - 1U];
+        struct json_value *current = frame->value;
+
+        switch (current->kind) {
+        case JSON_VALUE_STRING:
+        case JSON_VALUE_NUMBER:
+            free(current->payload.text.text);
+            *current = (struct json_value){0};
+            deinit_stack_pop(&stack);
+            break;
+        case JSON_VALUE_ARRAY:
+            if (frame->index < current->payload.array.count) {
+                deinit_stack_push(&stack, &current->payload.array.values[frame->index], false);
+                ++frame->index;
+            } else {
+                free(current->payload.array.values);
+                *current = (struct json_value){0};
+                deinit_stack_pop(&stack);
+            }
+            break;
+        case JSON_VALUE_OBJECT:
+            if (frame->index < current->payload.object.count) {
+                struct json_member *member = &current->payload.object.members[frame->index];
+
+                free(member->key);
+                deinit_stack_push(&stack, member->value, true);
+                ++frame->index;
+            } else {
+                free(current->payload.object.members);
+                *current = (struct json_value){0};
+                deinit_stack_pop(&stack);
+            }
+            break;
+        case JSON_VALUE_NULL:
+        case JSON_VALUE_BOOL:
+            *current = (struct json_value){0};
+            deinit_stack_pop(&stack);
+            break;
+        }
+    }
+}
+
+static bool deinit_stack_push(
+    struct json_deinit_stack *stack,
+    struct json_value *value,
+    bool free_value
+) {
+    if (stack->count >= json_max_nesting_depth + 1U) {
+        return false;
+    }
+    stack->frames[stack->count] = (struct json_deinit_frame){
+        .value = value,
+        .index = 0U,
+        .free_value = free_value,
+    };
+    ++stack->count;
+    return true;
+}
+
+static void deinit_stack_pop(struct json_deinit_stack *stack) {
+    struct json_deinit_frame frame = stack->frames[stack->count - 1U];
+
+    --stack->count;
+    if (frame.free_value) {
+        free(frame.value);
+    }
+}
+
+static void skip_whitespace(struct json_parser *parser) {
+    while (!parser_at_end(parser)) {
+        char byte = parser_peek(parser);
+
+        if (byte != ' ' && byte != '\t' && byte != '\n' && byte != '\r') {
+            return;
+        }
+        ++parser->position;
+    }
+}
+
+static bool parser_at_end(const struct json_parser *parser) {
+    return parser->position >= parser->length;
+}
+
+static char parser_peek(const struct json_parser *parser) {
+    if (parser_at_end(parser)) {
+        return '\0';
+    }
+    return parser->text[parser->position];
+}
+
+static bool parser_match(struct json_parser *parser, char expected) {
+    if (parser_at_end(parser) || parser->text[parser->position] != expected) {
+        return false;
+    }
+    ++parser->position;
+    return true;
+}
+
+static bool is_decimal_digit(char byte) {
+    if (byte < '0') {
+        return false;
+    }
+    return byte <= '9';
+}
+
+static int parser_invalid(struct json_parser *parser, size_t position) {
+    parser->result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = position,
+    };
+    return MYLITE_ERROR;
+}
+
+static int parser_unsupported(struct json_parser *parser, size_t position) {
+    parser->result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_UNSUPPORTED,
+        .position = position,
+    };
+    return MYLITE_ERROR;
+}

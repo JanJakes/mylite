@@ -347,7 +347,22 @@ static int test_alter_add_unique_success_metadata_and_persistence(void) {
 
 static int test_alter_add_unique_validation_dml_and_drop(void) {
     static const char *const preserved_rows[] = {"1", "10", "2", "10"};
+    static const char *const composite_preserved_rows[] = {"1", "2", "10", "1", "2", "20"};
     static const char *const duplicate_null_rows[] = {"1", NULL, "2", NULL, "3", "10", "4", "20"};
+    static const char *const composite_rows[] = {
+        "1",
+        "2",
+        "10",
+        "1",
+        NULL,
+        "11",
+        "1",
+        NULL,
+        "12",
+        NULL,
+        "2",
+        "13",
+    };
     static const char *const after_drop_rows[] = {"1", "a", "2", "A"};
     static const char *const suffix_show_create_rows[] = {
         "suffix",
@@ -390,6 +405,56 @@ static int test_alter_add_unique_validation_dml_and_drop(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "rows preserved after failed ADD UNIQUE",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE duplicate_tuple (a INT, b INT, c INT)");
+    failures += expect_dml_ok(database, "INSERT INTO duplicate_tuple VALUES (1,2,10),(1,2,20)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_tuple ADD UNIQUE u_ab (a,b)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'duplicate_tuple.u_ab'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM duplicate_tuple ORDER BY c",
+            .values = composite_preserved_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows preserved after failed composite ADD UNIQUE",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE composite_null (a INT, b INT, c INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_null VALUES (1,2,10),(1,NULL,11),(1,NULL,12),(NULL,2,13)",
+        4
+    );
+    failures +=
+        expect_alter_unique_ok(database, "ALTER TABLE composite_null ADD UNIQUE u_ab (a,b)");
+    failures += execute_error(
+        database,
+        "INSERT INTO composite_null VALUES (1,2,20)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'composite_null.u_ab'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM composite_null ORDER BY c",
+            .values = composite_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "composite ADD UNIQUE allows duplicate NULL tuples",
         }
     );
 
@@ -595,13 +660,16 @@ static int test_alter_add_unique_diagnostics(void) {
             .message_part = "BLOB/TEXT column 'txt' used in key specification without a key length",
         }
     );
+    failures += expect_alter_unique_ok(database, "ALTER TABLE diag ADD UNIQUE u_multi (id, v)");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");
     failures += execute_error(
         database,
-        "ALTER TABLE diag ADD UNIQUE u_multi (id, v)",
+        "ALTER TABLE prefix_diag ADD UNIQUE u_prefix (a(2), b(2))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "Unique indexes support exactly one key column",
+            .message_part = "Composite unique prefix indexes are not supported",
         }
     );
     failures += execute_error(

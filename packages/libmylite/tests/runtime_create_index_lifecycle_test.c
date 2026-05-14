@@ -317,7 +317,22 @@ static int test_create_index_success_metadata_and_persistence(void) {
 
 static int test_create_unique_index_validation_and_dml(void) {
     static const char *const preserved_rows[] = {"1", "10", "2", "10"};
+    static const char *const composite_preserved_rows[] = {"1", "2", "10", "1", "2", "20"};
     static const char *const duplicate_null_rows[] = {"1", NULL, "2", NULL, "3", "10", "4", "20"};
+    static const char *const composite_rows[] = {
+        "1",
+        "2",
+        "10",
+        "1",
+        NULL,
+        "11",
+        "1",
+        NULL,
+        "12",
+        NULL,
+        "2",
+        "13",
+    };
     static const char *const after_drop_rows[] = {"1", "a", "2", "A"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -351,6 +366,56 @@ static int test_create_unique_index_validation_and_dml(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "rows preserved after failed CREATE UNIQUE INDEX",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE duplicate_tuple (a INT, b INT, c INT)");
+    failures += expect_dml_ok(database, "INSERT INTO duplicate_tuple VALUES (1,2,10),(1,2,20)", 2);
+    failures += execute_error(
+        database,
+        "CREATE UNIQUE INDEX u_ab ON duplicate_tuple (a,b)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'duplicate_tuple.u_ab'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM duplicate_tuple ORDER BY c",
+            .values = composite_preserved_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows preserved after failed composite CREATE UNIQUE INDEX",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE composite_null (a INT, b INT, c INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_null VALUES (1,2,10),(1,NULL,11),(1,NULL,12),(NULL,2,13)",
+        4
+    );
+    failures +=
+        expect_create_index_ok(database, "CREATE UNIQUE INDEX u_ab ON composite_null (a,b)");
+    failures += execute_error(
+        database,
+        "INSERT INTO composite_null VALUES (1,2,20)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'composite_null.u_ab'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM composite_null ORDER BY c",
+            .values = composite_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "composite CREATE UNIQUE INDEX allows duplicate NULL tuples",
         }
     );
 
@@ -531,6 +596,17 @@ static int test_create_index_diagnostics(void) {
         }
     );
     failures += expect_create_index_ok(database, "CREATE INDEX k_multi ON diag (id, v)");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE prefix_diag (a VARCHAR(10), b VARCHAR(10))");
+    failures += execute_error(
+        database,
+        "CREATE UNIQUE INDEX u_prefix ON prefix_diag (a(2), b(2))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Composite unique prefix indexes are not supported",
+        }
+    );
     failures += expect_statement_ok(database, "CREATE TABLE zero_chars (c CHAR(0), v VARCHAR(0))");
     failures += execute_error(
         database,

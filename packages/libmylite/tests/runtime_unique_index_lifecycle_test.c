@@ -25,6 +25,12 @@ enum {
     unique_table_column_row_count = 5,
     unique_table_index_row_count = 6,
     unique_table_physical_index_count = 6,
+    composite_unique_table_column_row_count = 5,
+    composite_unique_table_index_row_count = 6,
+    composite_unique_metadata_part_row_count = 6,
+    composite_unique_constraint_row_count = 3,
+    composite_unique_initial_insert_count = 7,
+    composite_unique_nullable_row_count = 8,
     mysql_error_parse = 1064,
     mysql_error_duplicate_key = 1062,
     mysql_error_duplicate_key_name = 1061,
@@ -55,6 +61,7 @@ struct expected_dml_result {
 };
 
 static int test_unique_index_metadata_dml_and_persistence(void);
+static int test_composite_unique_index_metadata_dml_and_persistence(void);
 static int test_unique_index_diagnostics(void);
 static int test_unique_index_independent_handles(void);
 static int create_unique_index_schema(mylite_db *database);
@@ -101,6 +108,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_unique_index_metadata_dml_and_persistence();
+    failures += test_composite_unique_index_metadata_dml_and_persistence();
     failures += test_unique_index_diagnostics();
     failures += test_unique_index_independent_handles();
 
@@ -469,6 +477,301 @@ static int test_unique_index_metadata_dml_and_persistence(void) {
     return failures;
 }
 
+static int test_composite_unique_index_metadata_dml_and_persistence(void) {
+    static const char *const show_columns_rows[] = {
+        "a",  "int", "YES", "MUL", NULL,  "",    "b",  "int", "YES", "MUL",
+        NULL, "",    "c",   "int", "YES", "",    NULL, "",    "d",   "int",
+        "NO", "PRI", NULL,  "",    "e",   "int", "NO", "PRI", NULL,  "",
+    };
+    static const char *const statistics_rows[] = {
+        "u_ab", "0", "1", "a", "YES", "u_ab", "0", "2", "b", "YES", "u_ba", "0", "1", "b", "YES",
+        "u_ba", "0", "2", "a", "YES", "u_de", "0", "1", "d", "",    "u_de", "0", "2", "e", "",
+    };
+    static const char *const show_index_rows[] = {
+        "cu", "0", "u_de", "1", "d", "A", "0", NULL, NULL, "",    "BTREE", "", "", "YES", NULL,
+        "cu", "0", "u_de", "2", "e", "A", "0", NULL, NULL, "",    "BTREE", "", "", "YES", NULL,
+        "cu", "0", "u_ab", "1", "a", "A", "0", NULL, NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "cu", "0", "u_ab", "2", "b", "A", "0", NULL, NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "cu", "0", "u_ba", "1", "b", "A", "0", NULL, NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "cu", "0", "u_ba", "2", "a", "A", "0", NULL, NULL, "YES", "BTREE", "", "", "YES", NULL,
+    };
+    static const char *const table_constraints_rows[] = {
+        "u_ab",
+        "UNIQUE",
+        "YES",
+        "u_ba",
+        "UNIQUE",
+        "YES",
+        "u_de",
+        "UNIQUE",
+        "YES",
+    };
+    static const char *const key_usage_rows[] = {
+        "u_ab",
+        "a",
+        "1",
+        "u_ab",
+        "b",
+        "2",
+        "u_ba",
+        "b",
+        "1",
+        "u_ba",
+        "a",
+        "2",
+        "u_de",
+        "d",
+        "1",
+        "u_de",
+        "e",
+        "2",
+    };
+    static const char *const show_create_rows[] = {
+        "cu",
+        "CREATE TABLE `cu` (\n"
+        "  `a` int DEFAULT NULL,\n"
+        "  `b` int DEFAULT NULL,\n"
+        "  `c` int DEFAULT NULL,\n"
+        "  `d` int NOT NULL,\n"
+        "  `e` int NOT NULL,\n"
+        "  UNIQUE KEY `u_de` (`d`,`e`),\n"
+        "  UNIQUE KEY `u_ab` (`a`,`b`),\n"
+        "  UNIQUE KEY `u_ba` (`b`,`a`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const nullable_rows[] = {
+        "1",  "2", "10", "1",  NULL, "11", "1",  NULL, "12", NULL, "2", "13",
+        NULL, "2", "14", NULL, NULL, "15", NULL, NULL, "16", "3",  "4", "17",
+    };
+    static const char *const update_null_rows[] = {
+        "1",
+        "2",
+        "10",
+        NULL,
+        "2",
+        "13",
+        NULL,
+        "4",
+        "17",
+    };
+    static const char *const string_count_rows[] = {"2"};
+    static const char *const clone_count_rows[] = {"6"};
+    static const char *const persisted_rows[] = {"1", "2", "10", NULL, "4", "17"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "composite") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open composite unique file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cu ("
+        "a INT, b INT, c INT, d INT NOT NULL, e INT NOT NULL, "
+        "UNIQUE KEY u_ab (a,b), UNIQUE KEY u_ba (b,a), UNIQUE KEY u_de (d,e))"
+    );
+    failures += expect_physical_index_count(database, 3, "composite unique physical indexes");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM cu",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = composite_unique_table_column_row_count,
+            .context = "composite unique SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM cu",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = composite_unique_table_index_row_count,
+            .context = "composite unique SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE cu",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite unique SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, NULLABLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'cu' ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = composite_unique_table_column_row_count,
+            .row_count = composite_unique_metadata_part_row_count,
+            .context = "composite unique INFORMATION_SCHEMA.STATISTICS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, ENFORCED "
+                   "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'cu' ORDER BY CONSTRAINT_NAME",
+            .values = table_constraints_rows,
+            .column_count = 3U,
+            .row_count = composite_unique_constraint_row_count,
+            .context = "composite unique INFORMATION_SCHEMA.TABLE_CONSTRAINTS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION "
+                   "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'cu' ORDER BY CONSTRAINT_NAME",
+            .values = key_usage_rows,
+            .column_count = 3U,
+            .row_count = composite_unique_metadata_part_row_count,
+            .context = "composite unique INFORMATION_SCHEMA.KEY_COLUMN_USAGE",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO cu VALUES "
+        "(1,2,10,100,200),(1,NULL,11,101,201),(1,NULL,12,102,202),"
+        "(NULL,2,13,103,203),(NULL,2,14,104,204),(NULL,NULL,15,105,205),"
+        "(NULL,NULL,16,106,206)",
+        composite_unique_initial_insert_count
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO cu VALUES (1,2,20,107,207)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'cu.u_ab'",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO cu VALUES (1,2,20,107,207),(3,4,17,108,208)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM cu ORDER BY c",
+            .values = nullable_rows,
+            .column_count = 3U,
+            .row_count = composite_unique_nullable_row_count,
+            .context = "composite unique nullable tuples and INSERT IGNORE",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE cu SET a = NULL WHERE c IN (13,17)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM cu WHERE c IN (10,13,17) ORDER BY c",
+            .values = update_null_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite unique UPDATE allows NULL key part duplicates",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE dup_update (a INT, b INT, c INT, UNIQUE KEY u_ab (a,b))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO dup_update VALUES (1,2,10),(3,2,20)", 2);
+    failures += execute_error(
+        database,
+        "UPDATE dup_update SET a = 1 WHERE c = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1-2' for key 'dup_update.u_ab'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE dup_update SET a = 9",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '9-2' for key 'dup_update.u_ab'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE string_tuple (a VARCHAR(10), b CHAR(10), UNIQUE KEY u_ab (a,b))"
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO string_tuple VALUES ('abc','x'),('ABC','x'),('abc','y')",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM string_tuple",
+            .values = string_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "composite string unique collation",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone LIKE cu");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone'",
+            .values = clone_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE clones composite unique indexes",
+        }
+    );
+    failures +=
+        expect_int(read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)), 0, "preamble");
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after composite unique lifecycle"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen composite unique file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c FROM cu WHERE c IN (10,17) ORDER BY c",
+            .values = persisted_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite unique rows persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_unique_index_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
@@ -523,14 +826,9 @@ static int test_unique_index_diagnostics(void) {
             .message_part = "The used storage engine can't index column 'name'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE composite_unique (id INT, v INT, UNIQUE KEY u (id, v))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Unique indexes support exactly one key column",
-        }
+        "CREATE TABLE composite_unique (id INT, v INT, UNIQUE KEY u (id, v))"
     );
     failures += execute_error(
         database,
@@ -539,6 +837,16 @@ static int test_unique_index_diagnostics(void) {
             .code = mysql_error_incorrect_prefix_key,
             .sqlstate = "HY000",
             .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE composite_unique_prefix (a VARCHAR(10), b VARCHAR(10), "
+        "UNIQUE KEY u (a(2), b(2)))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Composite unique prefix indexes are not supported",
         }
     );
     failures += expect_statement_ok(

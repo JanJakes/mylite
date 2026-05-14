@@ -271,18 +271,18 @@ expect_error \
     23000 \
     "Duplicate entry '1-2' for key 'dup_update.u_ab'" \
     "CREATE TABLE dup_update (a INT, b INT, c INT, UNIQUE KEY u_ab (a,b)); "\
-"INSERT INTO dup_update VALUES (1,2,10),(3,4,20); "\
-"UPDATE dup_update SET a = 1, b = 2 WHERE c = 20;" \
+"INSERT INTO dup_update VALUES (1,2,10),(3,2,20); "\
+"UPDATE dup_update SET a = 1 WHERE c = 20;" \
     "$DATABASE"
 
 expect_error \
     "multi-row update creating internal duplicate fails" \
     1062 \
     23000 \
-    "Duplicate entry '9-9' for key 'dup_update_all.u_ab'" \
+    "Duplicate entry '9-2' for key 'dup_update_all.u_ab'" \
     "CREATE TABLE dup_update_all (a INT, b INT, c INT, UNIQUE KEY u_ab (a,b)); "\
-"INSERT INTO dup_update_all VALUES (1,2,10),(3,4,20); "\
-"UPDATE dup_update_all SET a = 9, b = 9;" \
+"INSERT INTO dup_update_all VALUES (1,2,10),(3,2,20); "\
+"UPDATE dup_update_all SET a = 9;" \
     "$DATABASE"
 
 expect_error \

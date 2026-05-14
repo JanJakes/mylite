@@ -735,7 +735,7 @@ static int test_unique_prefix_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "Unique indexes support exactly one key column",
+            .message_part = "Composite unique prefix indexes are not supported",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE dup_alter (v VARCHAR(20))");

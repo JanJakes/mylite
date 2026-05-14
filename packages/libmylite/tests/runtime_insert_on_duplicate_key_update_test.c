@@ -522,6 +522,19 @@ static int test_duplicate_update_diagnostics(void) {
             .message_part = "supports only one enforced key",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_key(a INT, b INT, v INT, UNIQUE KEY u_ab (a,b))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO composite_key VALUES (1, 2, 1) ON DUPLICATE KEY UPDATE v = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only single-column keys",
+        }
+    );
 
     failures += expect_statement_ok(
         database,

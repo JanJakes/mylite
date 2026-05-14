@@ -133,6 +133,7 @@ enum {
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
     select_source_alias_capacity = sizeof("_mylite_s") + integer_text_capacity,
+    update_unique_internal_key_alias_capacity = sizeof("_mylite_key_") + integer_text_capacity,
     duplicate_key_value_display_length = 64,
     literal_projection_max_significant_digits = 81,
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
@@ -4885,6 +4886,15 @@ static int validate_loaded_index_part_list(
     size_t part_count,
     bool is_unique
 );
+static int validate_loaded_unique_index_part_list(
+    struct mylite_db *database,
+    const struct loaded_index_part *parts,
+    size_t part_count
+);
+static bool loaded_index_part_list_has_prefix(
+    const struct loaded_index_part *parts,
+    size_t part_count
+);
 static int validate_create_unique_index_existing_rows(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
@@ -4892,6 +4902,14 @@ static int validate_create_unique_index_existing_rows(
 static int validate_create_unique_index_string_values(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
+);
+static size_t count_create_unique_index_string_validation_parts(
+    const struct planned_alter_table_add_index *plan
+);
+static int validate_create_unique_index_string_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t string_part_count
 );
 static int validate_create_unique_index_duplicates(
     struct mylite_db *database,
@@ -7746,6 +7764,11 @@ static int append_planned_secondary_index_part(
     struct planned_secondary_index *index,
     const struct mylite_sql_ast_node *part
 );
+static int validate_planned_unique_index_part_list(
+    struct mylite_db *database,
+    const struct planned_secondary_index *index
+);
+static bool planned_secondary_index_has_prefix(const struct planned_secondary_index *index);
 static int reserve_planned_secondary_index_parts(
     struct mylite_db *database,
     struct planned_secondary_index *index,
@@ -8561,6 +8584,10 @@ static bool primary_key_info_contains_column_id(
     int64_t column_id
 );
 static bool column_has_unique_secondary_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+);
+static bool column_has_composite_unique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
@@ -10628,9 +10655,27 @@ static int build_create_unique_index_string_validation_sql(
     const struct planned_alter_table_add_index *plan,
     char **out_sql
 );
+static int append_create_unique_index_string_validation_select_list_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_index *plan
+);
+static int append_create_unique_index_string_validation_where_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_index *plan
+);
 static int build_create_unique_index_duplicate_validation_sql(
     const struct planned_alter_table_add_index *plan,
     char **out_sql
+);
+static int append_loaded_key_part_list_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *parts,
+    size_t part_count
+);
+static int append_loaded_key_part_not_null_filter_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *parts,
+    size_t part_count
 );
 static int build_drop_index_sql(const char *physical_name, char **out_sql);
 static int append_alter_table_primary_key_expression_list_sql(
@@ -11214,6 +11259,25 @@ static int build_update_unique_key_conflict_sql(
     const struct loaded_index_info *index,
     char **out_sql
 );
+static int build_update_unique_key_internal_conflict_sql(
+    const struct planned_update *plan,
+    const struct loaded_index_info *index,
+    char **out_sql
+);
+static int append_update_unique_key_internal_conflict_alias_list(
+    struct dynamic_string *string,
+    size_t part_count
+);
+static int append_update_unique_key_internal_conflict_select_list(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    const struct loaded_index_info *index,
+    size_t *next_parameter
+);
+static int append_update_unique_key_internal_conflict_not_null_filter(
+    struct dynamic_string *string,
+    size_t part_count
+);
 static int append_update_unique_key_conflict_select_list(
     struct dynamic_string *string,
     const struct planned_update *plan,
@@ -11243,6 +11307,10 @@ static int append_update_unique_key_conflict_expression(
     size_t *next_parameter
 );
 static int bind_update_unique_key_conflict_parameters(
+    sqlite3_stmt *statement,
+    const struct update_unique_key_conflict_bind_request *request
+);
+static int bind_update_unique_key_internal_conflict_parameters(
     sqlite3_stmt *statement,
     const struct update_unique_key_conflict_bind_request *request
 );
@@ -22124,11 +22192,6 @@ static int apply_create_table_secondary_index_definition(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (is_unique && part_count != 1U) {
-        set_unsupported_error(database, "Unique indexes support exactly one key column");
-        return MYLITE_ERROR;
-    }
-
     first_part = child_at(part_list, 0U);
     first_column = secondary_index_part_column_node(first_part);
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -22175,6 +22238,9 @@ static int apply_create_table_secondary_index_definition(
             &planned_index,
             child_at(part_list, index)
         );
+    }
+    if (rc == MYLITE_OK && is_unique) {
+        rc = validate_planned_unique_index_part_list(database, &planned_index);
     }
     if (rc == MYLITE_OK) {
         rc = validate_planned_secondary_index_key_length(database, plan, &planned_index);
@@ -22786,6 +22852,35 @@ static int append_planned_secondary_index_part(
     }
 
     return rc;
+}
+
+static int validate_planned_unique_index_part_list(
+    struct mylite_db *database,
+    const struct planned_secondary_index *index
+) {
+    if (index == NULL || index->part_count == 0U) {
+        set_runtime_error(database, "invalid unique-index key parts");
+        return MYLITE_ERROR;
+    }
+    if (index->part_count > 1U && planned_secondary_index_has_prefix(index)) {
+        set_unsupported_error(database, "Composite unique prefix indexes are not supported");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool planned_secondary_index_has_prefix(const struct planned_secondary_index *index) {
+    if (index == NULL) {
+        return false;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        if (index->parts[part_index].has_prefix_length) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int reserve_planned_secondary_index_parts(
@@ -26987,10 +27082,6 @@ static int plan_alter_table_add_index(
             rc = MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK && out_plan->is_unique && part_count != 1U) {
-        set_unsupported_error(database, "Unique indexes support exactly one key column");
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK) {
         rc = plan_alter_table_add_index_name_from_parts(
             database,
@@ -27134,10 +27225,6 @@ static int plan_create_index(
             set_parse_error(database, NULL);
             rc = MYLITE_ERROR;
         }
-    }
-    if (rc == MYLITE_OK && out_plan->is_unique && part_count != 1U) {
-        set_unsupported_error(database, "CREATE INDEX supports exactly one key column");
-        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = plan_alter_table_add_index_name(
@@ -27481,9 +27568,12 @@ static int validate_loaded_index_part_list(
         set_runtime_error(database, "invalid secondary-index key parts");
         return MYLITE_ERROR;
     }
-    if (is_unique && part_count != 1U) {
-        set_unsupported_error(database, "Unique indexes support exactly one key column");
-        return MYLITE_ERROR;
+    if (is_unique) {
+        int rc = validate_loaded_unique_index_part_list(database, parts, part_count);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
     for (size_t part_index = 0U; part_index < part_count; ++part_index) {
         const struct loaded_index_part *part = &parts[part_index];
@@ -27515,6 +27605,39 @@ static int validate_loaded_index_part_list(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_loaded_unique_index_part_list(
+    struct mylite_db *database,
+    const struct loaded_index_part *parts,
+    size_t part_count
+) {
+    if (parts == NULL || part_count == 0U) {
+        set_runtime_error(database, "invalid unique-index key parts");
+        return MYLITE_ERROR;
+    }
+    if (part_count > 1U && loaded_index_part_list_has_prefix(parts, part_count)) {
+        set_unsupported_error(database, "Composite unique prefix indexes are not supported");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool loaded_index_part_list_has_prefix(
+    const struct loaded_index_part *parts,
+    size_t part_count
+) {
+    if (parts == NULL) {
+        return false;
+    }
+    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
+        if (parts[part_index].index_column.has_prefix_length) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int validate_create_table_primary_key_key_length(
@@ -28667,14 +28790,16 @@ static int validate_create_unique_index_string_values(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    size_t string_part_count = 0U;
     int sqlite_rc = SQLITE_OK;
     int rc = MYLITE_OK;
 
-    if (plan == NULL || plan->part_count != 1U) {
+    if (plan == NULL || plan->part_count == 0U) {
         set_runtime_error(database, "invalid unique-index plan");
         return MYLITE_ERROR;
     }
-    if (!loaded_index_part_requires_string_key_validation(&plan->parts[0])) {
+    string_part_count = count_create_unique_index_string_validation_parts(plan);
+    if (string_part_count == 0U) {
         return MYLITE_OK;
     }
 
@@ -28683,14 +28808,7 @@ static int validate_create_unique_index_string_values(
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
     while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
-        const unsigned char *text = sqlite3_column_text(statement, 0);
-        int text_length = sqlite3_column_bytes(statement, 0);
-
-        if (text_length < 0 ||
-            !text_value_is_supported_string_key((const char *)text, (size_t)text_length)) {
-            set_non_ascii_string_key_error(database);
-            rc = MYLITE_ERROR;
-        }
+        rc = validate_create_unique_index_string_row(database, statement, string_part_count);
     }
     if (rc == MYLITE_OK && sqlite_rc != SQLITE_DONE) {
         rc = mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -28711,6 +28829,49 @@ static int validate_create_unique_index_string_values(
     return rc;
 }
 
+static size_t count_create_unique_index_string_validation_parts(
+    const struct planned_alter_table_add_index *plan
+) {
+    size_t string_part_count = 0U;
+
+    for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
+        if (loaded_index_part_requires_string_key_validation(&plan->parts[part_index])) {
+            ++string_part_count;
+        }
+    }
+
+    return string_part_count;
+}
+
+static int validate_create_unique_index_string_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t string_part_count
+) {
+    for (size_t column_index = 0U; column_index < string_part_count; ++column_index) {
+        const unsigned char *text = NULL;
+        int text_length = 0;
+
+        if (column_index >= (size_t)INT_MAX) {
+            set_runtime_error(database, "invalid string key validation column");
+            return MYLITE_ERROR;
+        }
+        if (sqlite3_column_type(statement, (int)column_index) == SQLITE_NULL) {
+            continue;
+        }
+
+        text = sqlite3_column_text(statement, (int)column_index);
+        text_length = sqlite3_column_bytes(statement, (int)column_index);
+        if (text_length < 0 ||
+            !text_value_is_supported_string_key((const char *)text, (size_t)text_length)) {
+            set_non_ascii_string_key_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_create_unique_index_duplicates(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
@@ -28727,7 +28888,12 @@ static int validate_create_unique_index_duplicates(
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
-            rc = format_sqlite_key_tuple(statement, 1U, duplicate_value, sizeof(duplicate_value));
+            rc = format_sqlite_key_tuple(
+                statement,
+                plan->part_count,
+                duplicate_value,
+                sizeof(duplicate_value)
+            );
             if (rc == MYLITE_OK) {
                 set_duplicate_key_error(
                     database,
@@ -56520,6 +56686,9 @@ static const char *column_key_text(
     if (column_has_unique_secondary_index(indexes, column->column_id)) {
         return "UNI";
     }
+    if (column_has_composite_unique_secondary_index(indexes, column->column_id)) {
+        return "MUL";
+    }
     if (column_has_nonunique_secondary_index(indexes, column->column_id)) {
         return "MUL";
     }
@@ -56549,7 +56718,26 @@ static bool column_has_unique_secondary_index(
 ) {
     for (size_t index = 0U; index < indexes.count; ++index) {
         if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-            indexes.indexes[index].index.is_unique) {
+            indexes.indexes[index].index.is_unique && indexes.indexes[index].part_count == 1U) {
+            for (size_t part_index = 0U; part_index < indexes.indexes[index].part_count;
+                 ++part_index) {
+                if (indexes.indexes[index].parts[part_index].index_column.column_id == column_id) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool column_has_composite_unique_secondary_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+) {
+    for (size_t index = 0U; index < indexes.count; ++index) {
+        if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+            indexes.indexes[index].index.is_unique && indexes.indexes[index].part_count > 1U) {
             for (size_t part_index = 0U; part_index < indexes.indexes[index].part_count;
                  ++part_index) {
                 if (indexes.indexes[index].parts[part_index].index_column.column_id == column_id) {
@@ -56586,16 +56774,29 @@ static bool column_is_first_not_null_unique_secondary_index(
     int64_t column_id
 ) {
     for (size_t index = 0U; index < indexes.count; ++index) {
+        bool has_nullable_or_prefix_part = false;
+
         if (indexes.indexes[index].index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
-            !indexes.indexes[index].index.is_unique || indexes.indexes[index].part_count == 0U ||
-            indexes.indexes[index].parts[0].index_column.has_prefix_length ||
-            indexes.indexes[index].parts[0].column.is_nullable) {
+            !indexes.indexes[index].index.is_unique || indexes.indexes[index].part_count == 0U) {
             continue;
         }
 
-        if (indexes.indexes[index].parts[0].index_column.column_id == column_id) {
-            return true;
+        for (size_t part_index = 0U; part_index < indexes.indexes[index].part_count; ++part_index) {
+            if (indexes.indexes[index].parts[part_index].index_column.has_prefix_length ||
+                indexes.indexes[index].parts[part_index].column.is_nullable) {
+                has_nullable_or_prefix_part = true;
+                break;
+            }
         }
+        if (has_nullable_or_prefix_part) {
+            continue;
+        }
+        for (size_t part_index = 0U; part_index < indexes.indexes[index].part_count; ++part_index) {
+            if (indexes.indexes[index].parts[part_index].index_column.column_id == column_id) {
+                return true;
+            }
+        }
+        return false;
     }
 
     return false;
@@ -68192,7 +68393,6 @@ static int build_create_unique_index_string_validation_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    const struct mylite_catalog_column_descriptor *column = &plan->parts[0].column;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -68200,7 +68400,7 @@ static int build_create_unique_index_string_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, column->name);
+        rc = append_create_unique_index_string_validation_select_list_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -68212,10 +68412,7 @@ static int build_create_unique_index_string_validation_sql(
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, column->name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " IS NOT NULL");
+        rc = append_create_unique_index_string_validation_where_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -68228,12 +68425,70 @@ static int build_create_unique_index_string_validation_sql(
     return rc;
 }
 
+static int append_create_unique_index_string_validation_select_list_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_index *plan
+) {
+    bool has_string_part = false;
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+
+        if (!loaded_index_part_requires_string_key_validation(part)) {
+            continue;
+        }
+        if (has_string_part) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+        }
+        has_string_part = true;
+    }
+
+    if (rc == MYLITE_OK && !has_string_part) {
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int append_create_unique_index_string_validation_where_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_index *plan
+) {
+    bool has_string_part = false;
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        const struct loaded_index_part *part = &plan->parts[part_index];
+
+        if (!loaded_index_part_requires_string_key_validation(part)) {
+            continue;
+        }
+        if (has_string_part) {
+            rc = dynamic_string_append(string, " OR ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, part->column.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+        has_string_part = true;
+    }
+
+    if (rc == MYLITE_OK && !has_string_part) {
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
 static int build_create_unique_index_duplicate_validation_sql(
     const struct planned_alter_table_add_index *plan,
     char **out_sql
 ) {
     struct dynamic_string string;
-    const struct loaded_index_part *part = &plan->parts[0];
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -68241,7 +68496,7 @@ static int build_create_unique_index_duplicate_validation_sql(
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_sql(&string, part, NULL);
+        rc = append_loaded_key_part_list_sql(&string, plan->parts, plan->part_count);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");
@@ -68271,13 +68526,13 @@ static int build_create_unique_index_duplicate_validation_sql(
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, part->column.name);
+        rc = append_loaded_key_part_not_null_filter_sql(&string, plan->parts, plan->part_count);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " IS NOT NULL GROUP BY ");
+        rc = dynamic_string_append(&string, " GROUP BY ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_sql(&string, part, NULL);
+        rc = append_loaded_key_part_list_sql(&string, plan->parts, plan->part_count);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " HAVING COUNT(*) > 1 ORDER BY MIN(");
@@ -68296,6 +68551,47 @@ static int build_create_unique_index_duplicate_validation_sql(
     }
 
     dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_loaded_key_part_list_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *parts,
+    size_t part_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(string, &parts[part_index], NULL);
+        }
+    }
+
+    return rc;
+}
+
+static int append_loaded_key_part_not_null_filter_sql(
+    struct dynamic_string *string,
+    const struct loaded_index_part *parts,
+    size_t part_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(string, &parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+    }
+
     return rc;
 }
 
@@ -72539,6 +72835,40 @@ static int find_update_unique_key_conflict_tuple(
     }
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
+    statement = NULL;
+    sql = NULL;
+    if (rc == MYLITE_OK && !*out_found) {
+        rc = build_update_unique_key_internal_conflict_sql(executable_plan, index, &sql);
+        if (rc == MYLITE_OK) {
+            rc = prepare_sqlite_statement(database, sql, &statement);
+        }
+        if (rc == MYLITE_OK) {
+            const struct update_unique_key_conflict_bind_request request = {
+                .executable_plan = executable_plan,
+                .plan = plan,
+                .index = index,
+            };
+            rc = bind_update_unique_key_internal_conflict_parameters(statement, &request);
+        }
+        if (rc == MYLITE_OK) {
+            sqlite_rc = sqlite3_step(statement);
+            if (sqlite_rc == SQLITE_ROW) {
+                rc = format_sqlite_key_tuple(
+                    statement,
+                    index->part_count,
+                    destination,
+                    destination_size
+                );
+                if (rc == MYLITE_OK) {
+                    *out_found = true;
+                }
+            } else if (sqlite_rc != SQLITE_DONE) {
+                rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            }
+        }
+        rc = finalize_sqlite_statement(statement, rc);
+        free(sql);
+    }
 
     return rc;
 }
@@ -72586,6 +72916,160 @@ static int build_update_unique_key_conflict_sql(
     }
 
     dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_update_unique_key_internal_conflict_sql(
+    const struct planned_update *plan,
+    const struct loaded_index_info *index,
+    char **out_sql
+) {
+    static const char projected_alias[] = "_mylite_projected";
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_internal_conflict_alias_list(&string, index->part_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM (SELECT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_internal_conflict_select_list(
+            &string,
+            plan,
+            index,
+            &next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_conflict_candidate_source(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_conflict_target_filter(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, projected_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_internal_conflict_not_null_filter(&string, index->part_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " GROUP BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_unique_key_internal_conflict_alias_list(&string, index->part_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " HAVING COUNT(*) > 1 LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_update_unique_key_internal_conflict_alias_list(
+    struct dynamic_string *string,
+    size_t part_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        char alias[update_unique_internal_key_alias_capacity];
+        int written = snprintf(alias, sizeof(alias), "_mylite_key_%zu", part_index);
+
+        if (written < 0 || (size_t)written >= sizeof(alias)) {
+            return MYLITE_NOMEM;
+        }
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, alias);
+        }
+    }
+
+    return rc;
+}
+
+static int append_update_unique_key_internal_conflict_select_list(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    const struct loaded_index_info *index,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        char alias[update_unique_internal_key_alias_capacity];
+        int written = snprintf(alias, sizeof(alias), "_mylite_key_%zu", part_index);
+
+        if (written < 0 || (size_t)written >= sizeof(alias)) {
+            return MYLITE_NOMEM;
+        }
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_update_unique_key_conflict_expression(
+                string,
+                plan,
+                &index->parts[part_index],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, alias);
+        }
+    }
+
+    return rc;
+}
+
+static int append_update_unique_key_internal_conflict_not_null_filter(
+    struct dynamic_string *string,
+    size_t part_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
+        char alias[update_unique_internal_key_alias_capacity];
+        int written = snprintf(alias, sizeof(alias), "_mylite_key_%zu", part_index);
+
+        if (written < 0 || (size_t)written >= sizeof(alias)) {
+            return MYLITE_NOMEM;
+        }
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, alias);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+    }
+
     return rc;
 }
 
@@ -72754,6 +73238,37 @@ static int bind_update_unique_key_conflict_parameters(
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_unique_key_assignment_parameters(statement, request, &parameter_index);
+    }
+
+    return rc;
+}
+
+static int bind_update_unique_key_internal_conflict_parameters(
+    sqlite3_stmt *statement,
+    const struct update_unique_key_conflict_bind_request *request
+) {
+    int parameter_index = 1;
+    int rc = bind_update_unique_key_assignment_parameters(statement, request, &parameter_index);
+
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(
+            statement,
+            &request->plan->predicate,
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && request->plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, request->plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && !request->executable_plan->assignment_value.is_null) {
+        rc = bind_planned_value_parameter(
+            statement,
+            parameter_index,
+            &request->executable_plan->assignment_value
+        );
     }
 
     return rc;

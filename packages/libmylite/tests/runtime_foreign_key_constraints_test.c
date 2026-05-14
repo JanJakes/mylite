@@ -17,14 +17,17 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_duplicate_column = 1060,
     mysql_error_duplicate_key_name = 1061,
     mysql_error_key_column_does_not_exist = 1072,
     mysql_error_cant_drop_field_or_key = 1091,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_incorrect_foreign_key_definition = 1239,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
     mysql_error_failed_to_open_referenced_table = 1824,
+    mysql_error_duplicate_foreign_key = 1826,
     mysql_error_foreign_key_column_incompatible = 3780,
     mysql_error_foreign_key_missing_unique = 6125,
 };
@@ -49,6 +52,7 @@ struct expected_dml_status {
 };
 
 static int test_create_table_foreign_key_lifecycle(void);
+static int test_composite_foreign_key_lifecycle(void);
 static int test_alter_table_add_foreign_key_lifecycle(void);
 static int test_alter_table_drop_foreign_key_lifecycle(void);
 static int test_foreign_key_diagnostics(void);
@@ -97,6 +101,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_table_foreign_key_lifecycle();
+    failures += test_composite_foreign_key_lifecycle();
     failures += test_alter_table_add_foreign_key_lifecycle();
     failures += test_alter_table_drop_foreign_key_lifecycle();
     failures += test_foreign_key_diagnostics();
@@ -280,6 +285,315 @@ static int test_create_table_foreign_key_lifecycle(void) {
             mysql_error_parse,
             "42000",
             "foreign-key child tables",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_composite_foreign_key_lifecycle(void) {
+    enum {
+        composite_key_usage_column_count = 6,
+    };
+
+    static const char *const child_values[] = {
+        "1",
+        "1",
+        "2",
+        "2",
+        NULL,
+        "2",
+        "3",
+        "1",
+        NULL,
+        "4",
+        NULL,
+        NULL,
+    };
+    static const char *const key_usage_values[] = {
+        "fk_child_parent",
+        "a",
+        "1",
+        "1",
+        "parent_pk",
+        "a",
+        "fk_child_parent",
+        "b",
+        "2",
+        "2",
+        "parent_pk",
+        "b",
+    };
+    static const char *const statistic_values[] = {
+        "fk_child_parent",
+        "1",
+        "a",
+        "fk_child_parent",
+        "2",
+        "b",
+    };
+    static const char *const missing_count[] = {"0"};
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE parent_pk (a INT NOT NULL, b INT NOT NULL, c INT, "
+        "PRIMARY KEY (a,b), UNIQUE KEY u_ba (b,a))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_fk (id INT NOT NULL, a INT NULL, b INT NULL, PRIMARY KEY (id), "
+        "CONSTRAINT fk_child_parent FOREIGN KEY (a,b) REFERENCES parent_pk (a,b))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_fk", &show_create_result);
+    if (failures == 0) {
+        const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
+
+        failures += expect_contains(
+            create_sql,
+            "KEY `fk_child_parent` (`a`,`b`)",
+            "composite FK child index in SHOW CREATE"
+        );
+        failures += expect_contains(
+            create_sql,
+            "CONSTRAINT `fk_child_parent` FOREIGN KEY (`a`, `b`) REFERENCES `parent_pk` (`a`, `b`)",
+            "composite FK constraint in SHOW CREATE"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_fk' AND "
+            "INDEX_NAME = 'fk_child_parent' ORDER BY SEQ_IN_INDEX",
+            statistic_values,
+            2U,
+            3U,
+            "composite FK child index statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION, "
+            "POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
+            "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_fk' AND "
+            "CONSTRAINT_NAME = 'fk_child_parent' ORDER BY ORDINAL_POSITION",
+            key_usage_values,
+            2U,
+            composite_key_usage_column_count,
+            "composite FK key-column metadata",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_existing (id INT, a INT, b INT, c INT, KEY existing_ab (a,b,c), "
+        "CONSTRAINT fk_existing FOREIGN KEY (a,b) REFERENCES parent_pk (a,b))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_existing", &show_create_result);
+    if (failures == 0) {
+        const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
+
+        failures += expect_contains(
+            create_sql,
+            "KEY `existing_ab` (`a`,`b`,`c`)",
+            "composite FK reuses existing child index"
+        );
+        failures += expect_not_contains(
+            create_sql,
+            "KEY `fk_existing`",
+            "composite FK does not duplicate reused child index"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_unnamed (id INT, a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_pk (a,b))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_unnamed", &show_create_result);
+    if (failures == 0) {
+        const char *create_sql = mylite_result_value_text(show_create_result, 0U, 1U);
+
+        failures +=
+            expect_contains(create_sql, "KEY `a` (`a`,`b`)", "unnamed composite FK child index");
+        failures += expect_contains(
+            create_sql,
+            "CONSTRAINT `child_unnamed_ibfk_1` FOREIGN KEY",
+            "unnamed composite FK constraint name"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_ref_ba (id INT, a INT, b INT, "
+        "CONSTRAINT fk_ba FOREIGN KEY (b,a) REFERENCES parent_pk (b,a))"
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO parent_pk VALUES (1,2,10), (3,4,20)", 2);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO child_fk VALUES (1,1,2), (2,NULL,2), (3,1,NULL), (4,NULL,NULL)",
+        4
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, a, b FROM child_fk ORDER BY id",
+            child_values,
+            4U,
+            3U,
+            "composite FK MATCH SIMPLE rows",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO child_ref_ba VALUES (1,1,2)", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO child_ref_ba VALUES (2,1,4)",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO child_fk VALUES (5,1,99)",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += expect_dml_warning(
+        database,
+        "INSERT IGNORE INTO child_fk VALUES (5,1,99)",
+        (struct expected_dml_status){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT COUNT(*) FROM child_fk WHERE id = 5",
+            missing_count,
+            1U,
+            1U,
+            "composite FK INSERT IGNORE skips missing parent",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE child_fk SET b = 99 WHERE id = 1",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM parent_pk WHERE a = 1 AND b = 2",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+    failures += execute_error(
+        database,
+        "UPDATE parent_pk SET a = 9 WHERE a = 1 AND b = 2",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE parent_alter (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a,b))"
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE child_alter (id INT, a INT, b INT)");
+    failures += expect_dml_ok(database, "INSERT INTO parent_alter VALUES (7,8)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO child_alter VALUES (1,7,8), (2,7,9)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE child_alter ADD CONSTRAINT fk_alter_composite FOREIGN KEY (a,b) "
+        "REFERENCES parent_alter (a,b)",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += expect_dml_ok(database, "DELETE FROM child_alter WHERE id = 2", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE child_alter ADD CONSTRAINT fk_alter_composite FOREIGN KEY (a,b) "
+        "REFERENCES parent_alter (a,b)"
+    );
+    failures += execute_error(
+        database,
+        "DROP INDEX fk_alter_composite ON child_alter",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE child_alter ADD CONSTRAINT fk_alter_dup_child FOREIGN KEY (a,a) "
+        "REFERENCES parent_alter (a,b)",
+        (struct expected_sql_error){
+            mysql_error_duplicate_column,
+            "42S21",
+            "Duplicate column name 'a'",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_mismatch (a INT, b INT, FOREIGN KEY (a,b) REFERENCES parent_pk (a))",
+        (struct expected_sql_error){
+            mysql_error_incorrect_foreign_key_definition,
+            "42000",
+            "Key reference",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE parent_no_unique (a INT, b INT)");
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_missing_unique (a INT, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_no_unique (a,b))",
+        (struct expected_sql_error){
+            mysql_error_foreign_key_missing_unique,
+            "HY000",
+            "Missing unique key",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE parent_unsigned (a INT UNSIGNED NOT NULL, b INT UNSIGNED NOT NULL, "
+        "PRIMARY KEY (a,b))"
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_incompatible_composite (a INT UNSIGNED, b INT, "
+        "FOREIGN KEY (a,b) REFERENCES parent_unsigned (a,b))",
+        (struct expected_sql_error){
+            mysql_error_foreign_key_column_incompatible,
+            "HY000",
+            "incompatible",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_duplicate_composite (a INT, b INT, "
+        "CONSTRAINT fk_dup FOREIGN KEY (a,b) REFERENCES parent_pk (a,b), "
+        "CONSTRAINT fk_dup FOREIGN KEY (b,a) REFERENCES parent_pk (b,a))",
+        (struct expected_sql_error){mysql_error_duplicate_foreign_key, "HY000", "Duplicate"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_duplicate_child_part (a INT, b INT, "
+        "CONSTRAINT fk_dup_child_part FOREIGN KEY (a,a) REFERENCES parent_pk (a,b))",
+        (struct expected_sql_error){
+            mysql_error_duplicate_column,
+            "42S21",
+            "Duplicate column name 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_duplicate_parent_part (a INT, b INT, "
+        "CONSTRAINT fk_dup_parent_part FOREIGN KEY (a,b) REFERENCES parent_pk (a,a))",
+        (struct expected_sql_error){
+            mysql_error_foreign_key_missing_unique,
+            "HY000",
+            "Missing unique key",
         }
     );
 
@@ -597,7 +911,7 @@ static int test_foreign_key_diagnostics(void) {
         database,
         "ALTER TABLE child_duplicate_fk ADD CONSTRAINT fk_dup FOREIGN KEY (parent_id) "
         "REFERENCES parent_signed (id)",
-        (struct expected_sql_error){mysql_error_duplicate_key_name, "42000", "Duplicate key name"}
+        (struct expected_sql_error){mysql_error_duplicate_foreign_key, "HY000", "Duplicate"}
     );
 
     mylite_close(database);
@@ -662,6 +976,7 @@ static int test_drop_foreign_key_diagnostics(void) {
 
 static int test_foreign_key_persistence(void) {
     static const char *const values[] = {"10", "2", "11", "2"};
+    static const char *const composite_values[] = {"20", "1", "2", "21", "3", "4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -683,12 +998,24 @@ static int test_foreign_key_persistence(void) {
     failures += expect_dml_ok(database, "INSERT INTO parent VALUES (1), (2)", 2);
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (10, 1)", 1);
     failures += expect_dml_ok(database, "UPDATE child SET parent_id = 2 WHERE id = 10", 1);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE parent_pair (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a,b))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_pair (id INT PRIMARY KEY, a INT, b INT, "
+        "CONSTRAINT fk_pair FOREIGN KEY (a,b) REFERENCES parent_pair (a,b))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO parent_pair VALUES (1,2), (3,4)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (20,1,2)", 1);
     mylite_close(database);
     database = NULL;
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen persistence file");
     failures += expect_statement_ok(database, "USE app");
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (11, 2)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (21,3,4)", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -697,6 +1024,16 @@ static int test_foreign_key_persistence(void) {
             2U,
             2U,
             "foreign key rows after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, a, b FROM child_pair ORDER BY id",
+            composite_values,
+            2U,
+            3U,
+            "composite foreign key rows after reopen",
         }
     );
 

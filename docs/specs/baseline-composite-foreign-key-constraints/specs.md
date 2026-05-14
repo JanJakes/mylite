@@ -226,8 +226,10 @@ Column and key validation:
 - child and parent list lengths must match; mismatches use
   `1239 / 42000`;
 - child and parent columns must exist in MyLite descriptors;
-- duplicate child columns or duplicate parent columns are rejected
-  deterministically before mutation;
+- duplicate child columns are rejected before mutation with `1060 / 42S21`;
+- duplicate parent columns cannot match the required complete ordered primary
+  or unique descriptor and are rejected before mutation through the same
+  `6125 / HY000` missing-parent-key path as MySQL 8.4.9;
 - every child/parent pair must have exactly compatible integer-family
   descriptors and signedness; incompatibilities use `3780 / HY000`;
 - the referenced parent key must be a primary or unique descriptor, must have

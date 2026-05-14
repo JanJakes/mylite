@@ -376,6 +376,33 @@ expect_error \
        CONSTRAINT fk_dup FOREIGN KEY(a,b) REFERENCES p(a,b),
        CONSTRAINT fk_dup FOREIGN KEY(a,b) REFERENCES p(a,b)) ENGINE=InnoDB;"
 expect_error \
+    "duplicate composite FK child part create" \
+    1060 \
+    "42S21" \
+    "Duplicate column name 'a'" \
+    "USE ${BAD_DATABASE};
+     DROP TABLE IF EXISTS c;
+     CREATE TABLE c(a INT, b INT,
+       CONSTRAINT fk_dup_child_part FOREIGN KEY(a,a) REFERENCES p(a,b)) ENGINE=InnoDB;"
+expect_error \
+    "duplicate composite FK parent part create" \
+    6125 \
+    "HY000" \
+    "Missing unique key" \
+    "USE ${BAD_DATABASE};
+     DROP TABLE IF EXISTS c;
+     CREATE TABLE c(a INT, b INT,
+       CONSTRAINT fk_dup_parent_part FOREIGN KEY(a,b) REFERENCES p(a,a)) ENGINE=InnoDB;"
+expect_error \
+    "duplicate composite FK child part alter" \
+    1060 \
+    "42S21" \
+    "Duplicate column name 'a'" \
+    "USE ${BAD_DATABASE};
+     DROP TABLE IF EXISTS c;
+     CREATE TABLE c(a INT, b INT) ENGINE=InnoDB;
+     ALTER TABLE c ADD CONSTRAINT fk_alter_dup_child FOREIGN KEY(a,a) REFERENCES p(a,b);"
+expect_error \
     "missing composite parent table" \
     1824 \
     "HY000" \

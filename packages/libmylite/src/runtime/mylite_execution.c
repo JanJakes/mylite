@@ -111,6 +111,7 @@ enum {
     mysql_error_incorrect_time_value = 1292,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_legacy_syntax_converted = 3005,
+    mysql_warning_invalid_argument_for_logarithm = 3020,
     mysql_warning_sql_mode_should_be_used_with_strict = 3135,
     mysql_warning_sql_mode_pad_char_deprecated = 3090,
     mysql_warning_integer_display_width_deprecated = 1681,
@@ -375,6 +376,8 @@ enum {
 static const char scalar_pi_text[] = "3.141593";
 static const double angle_conversion_half_turn_degrees = 180.0;
 static const double double_scientific_integer_threshold = 1.0e15;
+static const double logarithm_base_two = 2.0;
+static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const unsigned char ascii_max_byte = 0x7fU;
 static const char string_key_collation_name[] = "utf8mb4_0900_ai_ci";
@@ -2890,6 +2893,7 @@ struct session_scalar_cell {
     char double_text[double_text_capacity];
     char datetime_text[datetime_text_length + 1U];
     size_t staged_division_by_zero_warning_count;
+    size_t staged_invalid_logarithm_warning_count;
     bool has_staged_truncated_decimal_warning;
     char staged_truncated_decimal_text[integer_text_capacity];
 };
@@ -5933,7 +5937,13 @@ static int accumulate_staged_division_by_zero_warnings(
     size_t cell_warning_count,
     size_t *total_warning_count
 );
+static int accumulate_staged_warning_count(
+    struct mylite_db *database,
+    size_t cell_warning_count,
+    size_t *total_warning_count
+);
 static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count);
+static int append_invalid_logarithm_warnings(struct mylite_db *database, size_t warning_count);
 static int append_truncated_incorrect_decimal_warning(
     struct mylite_db *database,
     const char *value_text
@@ -6604,6 +6614,42 @@ static int finish_atan_function_value(
     size_t warning_count,
     struct session_scalar_cell *out_cell
 );
+static int exp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int logarithm_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int one_argument_logarithm_function_value(
+    struct mylite_db *database,
+    const struct approximate_numeric_input_value *value,
+    const char *function_name,
+    double log_base,
+    struct session_scalar_cell *out_cell
+);
+static int two_argument_logarithm_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct approximate_numeric_input_value *base,
+    struct session_scalar_cell *out_cell
+);
+static int power_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int finish_exp_log_power_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t division_warning_count,
+    struct session_scalar_cell *out_cell
+);
+static int set_double_out_of_range_error(struct mylite_db *database, const char *function_name);
 static double approximate_numeric_input_to_double(
     const struct approximate_numeric_input_value *value
 );
@@ -6774,6 +6820,7 @@ static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_angle_conversion_unsupported_error(struct mylite_db *database);
 static void set_inverse_trig_unsupported_error(struct mylite_db *database);
 static void set_atan_unsupported_error(struct mylite_db *database);
+static void set_exp_log_power_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
 static void set_bit_count_unsupported_error(struct mylite_db *database);
 static void set_scalar_logical_unsupported_error(struct mylite_db *database);
@@ -7076,6 +7123,7 @@ static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expr
 static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_exp_log_power_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -12143,6 +12191,19 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+    case MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+    case MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LENGTH_FUNCTION:
@@ -15170,7 +15231,8 @@ static int execute_do_statement(
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
             "predicates, limited numeric "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
-            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2() "
+            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/EXP()/LN()/LOG()/LOG10()/LOG2()/"
+            "POW()/POWER() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited FIELD(), and "
             "limited string length functions, and top-level CASE expressions"
@@ -15308,7 +15370,8 @@ static int execute_select_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
-            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
+            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/EXP()/LN()/LOG()/LOG10()/LOG2()/"
+            "POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
             "CAST(value AS BINARY), DATE_ADD(... INTERVAL ... SECOND), and DATE_FORMAT()"
         );
         return MYLITE_ERROR;
@@ -21460,6 +21523,19 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+    case MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+    case MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LENGTH_FUNCTION:
@@ -39446,7 +39522,14 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         !text_equals_ascii_case_insensitive(column_name, "acos") &&
         !text_equals_ascii_case_insensitive(column_name, "asin") &&
         !text_equals_ascii_case_insensitive(column_name, "atan") &&
-        !text_equals_ascii_case_insensitive(column_name, "atan2")) {
+        !text_equals_ascii_case_insensitive(column_name, "atan2") &&
+        !text_equals_ascii_case_insensitive(column_name, "exp") &&
+        !text_equals_ascii_case_insensitive(column_name, "ln") &&
+        !text_equals_ascii_case_insensitive(column_name, "log") &&
+        !text_equals_ascii_case_insensitive(column_name, "log10") &&
+        !text_equals_ascii_case_insensitive(column_name, "log2") &&
+        !text_equals_ascii_case_insensitive(column_name, "pow") &&
+        !text_equals_ascii_case_insensitive(column_name, "power")) {
         return MYLITE_OK;
     }
 
@@ -39797,6 +39880,14 @@ static int accumulate_staged_division_by_zero_warnings(
     size_t cell_warning_count,
     size_t *total_warning_count
 ) {
+    return accumulate_staged_warning_count(database, cell_warning_count, total_warning_count);
+}
+
+static int accumulate_staged_warning_count(
+    struct mylite_db *database,
+    size_t cell_warning_count,
+    size_t *total_warning_count
+) {
     if (total_warning_count == NULL) {
         return MYLITE_MISUSE;
     }
@@ -39828,6 +39919,12 @@ static int append_session_scalar_cell_warnings(
         rc =
             append_division_by_zero_warnings(database, cell->staged_division_by_zero_warning_count);
     }
+    if (rc == MYLITE_OK) {
+        rc = append_invalid_logarithm_warnings(
+            database,
+            cell->staged_invalid_logarithm_warning_count
+        );
+    }
     return rc;
 }
 
@@ -39856,6 +39953,24 @@ static int append_division_by_zero_warnings(struct mylite_db *database, size_t w
             mysql_warning_division_by_zero,
             "22012",
             "Division by 0"
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static int append_invalid_logarithm_warnings(struct mylite_db *database, size_t warning_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < warning_count; ++index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_invalid_argument_for_logarithm,
+            "HY000",
+            "Invalid argument for logarithm"
         );
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
@@ -40006,6 +40121,18 @@ static const char *argument_count_error_node_function_name(
         return "ATAN";
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
         return "ATAN2";
+    case MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR:
+        return "EXP";
+    case MYLITE_SQL_AST_LN_ARGUMENT_COUNT_ERROR:
+        return "LN";
+    case MYLITE_SQL_AST_LOG10_ARGUMENT_COUNT_ERROR:
+        return "LOG10";
+    case MYLITE_SQL_AST_LOG2_ARGUMENT_COUNT_ERROR:
+        return "LOG2";
+    case MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR:
+        return "POW";
+    case MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR:
+        return "POWER";
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
@@ -40198,6 +40325,16 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
         return atan_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+        return exp_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+        return logarithm_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+        return power_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
         return base_conversion_function_value(database, expression, out_cell);
@@ -42243,6 +42380,386 @@ static int finish_atan_function_value(
     out_cell->value = out_cell->double_text;
     out_cell->staged_division_by_zero_warning_count = warning_count;
     return MYLITE_OK;
+}
+
+static int exp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_EXP_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_exp_log_power_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_exp_log_power_unsupported_error
+    );
+    if (rc != MYLITE_OK || value.is_null) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
+        return rc;
+    }
+
+    output = exp(approximate_numeric_input_to_double(&value));
+    if (!isfinite(output)) {
+        return set_double_out_of_range_error(database, "exp");
+    }
+    return finish_exp_log_power_function_value(
+        database,
+        output,
+        "EXP",
+        value.division_by_zero_warning_count,
+        out_cell
+    );
+}
+
+static int logarithm_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    const char *function_name = NULL;
+    double log_base = 0.0;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL) {
+        set_exp_log_power_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_LN_FUNCTION && child_count == 1U) {
+        function_name = "LN";
+        log_base = 0.0;
+    } else if (
+        expression->kind == MYLITE_SQL_AST_LOG_FUNCTION && (child_count == 1U || child_count == 2U)
+    ) {
+        function_name = "LOG";
+        log_base = 0.0;
+    } else if (expression->kind == MYLITE_SQL_AST_LOG10_FUNCTION && child_count == 1U) {
+        function_name = "LOG10";
+        log_base = logarithm_base_ten;
+    } else if (expression->kind == MYLITE_SQL_AST_LOG2_FUNCTION && child_count == 1U) {
+        function_name = "LOG2";
+        log_base = logarithm_base_two;
+    } else {
+        set_exp_log_power_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_exp_log_power_unsupported_error
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (child_count == 2U) {
+        return two_argument_logarithm_function_value(database, expression, &value, out_cell);
+    }
+    return one_argument_logarithm_function_value(
+        database,
+        &value,
+        function_name,
+        log_base,
+        out_cell
+    );
+}
+
+static int one_argument_logarithm_function_value(
+    struct mylite_db *database,
+    const struct approximate_numeric_input_value *value,
+    const char *function_name,
+    double log_base,
+    struct session_scalar_cell *out_cell
+) {
+    size_t division_warning_count = 0U;
+    double input = 0.0;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (value == NULL || function_name == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = accumulate_staged_warning_count(
+        database,
+        value->division_by_zero_warning_count,
+        &division_warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value->is_null) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        return MYLITE_OK;
+    }
+
+    input = approximate_numeric_input_to_double(value);
+    if (input <= 0.0) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        out_cell->staged_invalid_logarithm_warning_count = 1U;
+        return MYLITE_OK;
+    }
+    if (log_base == 0.0) {
+        output = log(input);
+    } else {
+        output = log(input) / log(log_base);
+    }
+    return finish_exp_log_power_function_value(
+        database,
+        output,
+        function_name,
+        division_warning_count,
+        out_cell
+    );
+}
+
+static int two_argument_logarithm_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct approximate_numeric_input_value *base,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    size_t division_warning_count = 0U;
+    double base_input = 0.0;
+    double value_input = 0.0;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || base == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = accumulate_staged_warning_count(
+        database,
+        base->division_by_zero_warning_count,
+        &division_warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (base->is_null) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        return MYLITE_OK;
+    }
+
+    base_input = approximate_numeric_input_to_double(base);
+    if (base_input <= 0.0 || base_input == 1.0) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        out_cell->staged_invalid_logarithm_warning_count = 1U;
+        return MYLITE_OK;
+    }
+
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 1U),
+        &value,
+        set_exp_log_power_unsupported_error
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = accumulate_staged_warning_count(
+        database,
+        value.division_by_zero_warning_count,
+        &division_warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.is_null) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        return MYLITE_OK;
+    }
+
+    value_input = approximate_numeric_input_to_double(&value);
+    if (value_input <= 0.0) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        out_cell->staged_invalid_logarithm_warning_count = 1U;
+        return MYLITE_OK;
+    }
+
+    output = log(value_input) / log(base_input);
+    return finish_exp_log_power_function_value(
+        database,
+        output,
+        "LOG",
+        division_warning_count,
+        out_cell
+    );
+}
+
+static int power_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    struct approximate_numeric_input_value exponent = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    const char *function_name = NULL;
+    size_t division_warning_count = 0U;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_POW_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_POWER_FUNCTION) ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_exp_log_power_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    function_name = expression->kind == MYLITE_SQL_AST_POW_FUNCTION ? "POW" : "POWER";
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_exp_log_power_unsupported_error
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_approximate_numeric_operand(
+            database,
+            child_at(expression, 1U),
+            &exponent,
+            set_exp_log_power_unsupported_error
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_warning_count(
+            database,
+            value.division_by_zero_warning_count,
+            &division_warning_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = accumulate_staged_warning_count(
+            database,
+            exponent.division_by_zero_warning_count,
+            &division_warning_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.is_null || exponent.is_null) {
+        out_cell->staged_division_by_zero_warning_count = division_warning_count;
+        return MYLITE_OK;
+    }
+
+    output =
+        pow(approximate_numeric_input_to_double(&value),
+            approximate_numeric_input_to_double(&exponent));
+    if (!isfinite(output)) {
+        return set_double_out_of_range_error(database, function_name);
+    }
+    return finish_exp_log_power_function_value(
+        database,
+        output,
+        function_name,
+        division_warning_count,
+        out_cell
+    );
+}
+
+static int finish_exp_log_power_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t division_warning_count,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = format_double_text(
+        database,
+        output,
+        function_name,
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_cell->value = out_cell->double_text;
+    out_cell->staged_division_by_zero_warning_count = division_warning_count;
+    return MYLITE_OK;
+}
+
+static int set_double_out_of_range_error(struct mylite_db *database, const char *function_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "DOUBLE value is out of range in '%s()'",
+        function_name == NULL ? "math" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "DOUBLE value is out of range");
+        return MYLITE_ERROR;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_bigint_out_of_range,
+        "22003",
+        message
+    );
+    return MYLITE_ERROR;
 }
 
 static double approximate_numeric_input_to_double(
@@ -46920,6 +47437,15 @@ static void set_atan_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_exp_log_power_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "EXP()/LN()/LOG()/LOG10()/LOG2()/POW()/POWER() support only top-level no-source "
+        "SELECT, FROM DUAL SELECT, and DO use over integer, boolean, NULL, signed 64-bit "
+        "scalar arithmetic, and limited numeric bitwise operands"
+    );
+}
+
 static void set_base_conversion_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -47633,11 +48159,15 @@ static void copy_session_scalar_cell(
         if (source != NULL) {
             destination->staged_division_by_zero_warning_count =
                 source->staged_division_by_zero_warning_count;
+            destination->staged_invalid_logarithm_warning_count =
+                source->staged_invalid_logarithm_warning_count;
         }
         return;
     }
     destination->staged_division_by_zero_warning_count =
         source->staged_division_by_zero_warning_count;
+    destination->staged_invalid_logarithm_warning_count =
+        source->staged_invalid_logarithm_warning_count;
     if (source->value == source->integer_text) {
         memcpy(destination->integer_text, source->integer_text, sizeof(destination->integer_text));
         destination->value = destination->integer_text;
@@ -49157,6 +49687,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_atan_projection_expression(expression)) {
         return true;
     }
+    if (is_exp_log_power_projection_expression(expression)) {
+        return true;
+    }
     if (is_base_conversion_projection_expression(expression)) {
         return true;
     }
@@ -49328,6 +49861,57 @@ static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expr
         return child_at(expression, 1U) != NULL;
     }
     return true;
+}
+
+static bool is_exp_log_power_projection_expression(const struct mylite_sql_ast_node *expression) {
+    bool has_first_child = false;
+    bool has_required_children = false;
+    bool has_second_child = false;
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+        has_first_child = child_at(expression, 0U) != NULL;
+        if (child_count != 1U) {
+            return false;
+        }
+        return has_first_child;
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+        if (child_count != 1U && child_count != 2U) {
+            return false;
+        }
+        if (child_at(expression, 0U) == NULL) {
+            return false;
+        }
+        has_second_child = child_at(expression, 1U) != NULL;
+        if (child_count == 1U) {
+            return true;
+        }
+        return has_second_child;
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+        has_first_child = child_at(expression, 0U) != NULL;
+        has_second_child = child_at(expression, 1U) != NULL;
+        if (child_count != 2U) {
+            return false;
+        }
+        has_required_children = has_first_child;
+        if (has_required_children) {
+            has_required_children = has_second_child;
+        }
+        return has_required_children;
+    default:
+        return false;
+    }
 }
 
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -49979,6 +50563,13 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
     case MYLITE_SQL_AST_CONV_FUNCTION:

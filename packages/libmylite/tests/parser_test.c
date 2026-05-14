@@ -32,6 +32,10 @@ enum {
     mediumint_unsigned_column_index = 5,
     signed_integer_column_index = 4,
     signed_bigint_column_index = 5,
+    exp_log_power_pow_index = 5,
+    exp_log_power_power_index = 6,
+    exp_log_power_wrong_arity_power_index = 7,
+    exp_log_power_identifier_count = 7,
 };
 
 static int test_empty_script(void);
@@ -63,6 +67,7 @@ static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
 static int test_atan_functions(void);
+static int test_exp_log_power_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
@@ -293,6 +298,7 @@ int main(void) {
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
     failures += test_atan_functions();
+    failures += test_exp_log_power_functions();
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
@@ -3645,6 +3651,147 @@ static int test_atan_functions(void) {
     failures += expect_span_text(first_expression, "ATAN", "bare atan span");
     failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare atan2");
     failures += expect_span_text(second_expression, "ATAN2", "bare atan2 span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_exp_log_power_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT EXP(1), Ln(2), log(10, 100), LOG10(100), LOG2(8), pow(2,3), "
+        "POWER(3,2) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_EXP_FUNCTION, "exp function");
+    failures += expect_span_text(first_expression, "EXP(1)", "exp span");
+    failures += expect_child_count(first_expression, 1U, "exp child count");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_LN_FUNCTION, "mixed ln function");
+    failures += expect_span_text(second_expression, "Ln(2)", "mixed ln span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_LOG_FUNCTION, "two-argument log");
+    failures += expect_child_count(third_expression, 2U, "two-argument log child count");
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_LOG10_FUNCTION, "log10 function");
+    failures += expect_node(
+        child_at(child_at(select_list, 4U), 0U),
+        MYLITE_SQL_AST_LOG2_FUNCTION,
+        "log2 function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, exp_log_power_pow_index), 0U),
+        MYLITE_SQL_AST_POW_FUNCTION,
+        "pow function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, exp_log_power_power_index), 0U),
+        MYLITE_SQL_AST_POWER_FUNCTION,
+        "power function"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "log power dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT EXP (1), (POWER(NULL, 2));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_EXP_FUNCTION, "spaced exp");
+    failures += expect_span_text(first_expression, "EXP (1)", "spaced exp span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped power");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_POWER_FUNCTION, "power child");
+    failures += expect_span_text(parenthesized, "(POWER(NULL, 2))", "wrapped power span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT EXP(), EXP(1, 2), LN(), LOG10(1, 2), LOG2(), POW(), POW(2), "
+        "POWER(2, 3, 4);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR,
+        "exp empty argument error"
+    );
+    failures += expect_child_count(first_expression, 0U, "exp empty child count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR,
+        "exp multiple argument error"
+    );
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "exp extra arguments");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_LN_ARGUMENT_COUNT_ERROR,
+        "ln empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_LOG10_ARGUMENT_COUNT_ERROR,
+        "log10 multiple argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 4U), 0U),
+        MYLITE_SQL_AST_LOG2_ARGUMENT_COUNT_ERROR,
+        "log2 empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, exp_log_power_pow_index), 0U),
+        MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR,
+        "pow empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, exp_log_power_power_index), 0U),
+        MYLITE_SQL_AST_POW_ARGUMENT_COUNT_ERROR,
+        "pow missing argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, exp_log_power_wrong_arity_power_index), 0U),
+        MYLITE_SQL_AST_POWER_ARGUMENT_COUNT_ERROR,
+        "power multiple argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LOG(), LOG(1,2,3);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE exp (log INT, pow INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "math identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT EXP, LN, LOG, LOG10, LOG2, POW, POWER;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    for (size_t index = 0U; index < exp_log_power_identifier_count; ++index) {
+        failures += expect_node(
+            child_at(child_at(select_list, index), 0U),
+            MYLITE_SQL_AST_IDENTIFIER,
+            "bare exp log power identifier"
+        );
+    }
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

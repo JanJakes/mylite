@@ -714,6 +714,42 @@ show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) FROM identifier(D)
 show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
 }
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+}
 
 show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T). {
     A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL);

@@ -11325,6 +11325,28 @@ static int test_show_columns_introspection_statements(void) {
     failures += expect_span_text(child_at(statement, 1U), "'i%'", "show columns like pattern");
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SHOW FULL COLUMNS FROM numbers LIKE 'i%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT, "show full columns");
+    failures += expect_child_count(statement, 2U, "show full columns like child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show full columns table");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "full columns like");
+    failures += expect_span_text(child_at(statement, 1U), "'i%'", "full columns like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW FULL FIELDS IN app.numbers FROM other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT, "show full fields");
+    failures += expect_child_count(statement, 2U, "show full fields child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "full fields table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "full fields schema");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "SHOW FIELDS FROM app.numbers FROM other LIKE 'i\\_1';",
         MYLITE_SQL_PARSE_OK,
@@ -15271,7 +15293,8 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SHOW ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SHOW FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("SHOW EXTENDED FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW CREATE TABLE t LIKE 't';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

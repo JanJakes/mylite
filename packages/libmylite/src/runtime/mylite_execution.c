@@ -197,7 +197,12 @@ enum {
     date_add_unix_epoch_day_offset = 719468,
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
+    show_full_columns_result_column_count = 9,
     show_columns_extra_column = 5,
+    show_full_columns_default_column = 5,
+    show_full_columns_extra_column = 6,
+    show_full_columns_privileges_column = 7,
+    show_full_columns_comment_column = 8,
     show_index_result_column_count = 15,
     show_index_null_column = 9,
     show_create_table_result_column_count = 2,
@@ -1464,9 +1469,11 @@ struct show_columns_context {
     struct mylite_db *database;
     mylite_result *result;
     const struct show_like_filter *filter;
+    const struct mylite_catalog_table_descriptor *table;
     const struct primary_key_info *primary_key;
     const struct loaded_index_info *indexes;
     size_t index_count;
+    bool full;
 };
 
 struct show_columns_target_nodes {
@@ -4246,6 +4253,11 @@ static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int append_show_columns_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    bool full
 );
 static int execute_show_index_statement(
     struct mylite_db *database,
@@ -10611,6 +10623,10 @@ static int show_column_type_text(
     size_t buffer_size,
     const char **out_type_text
 );
+static const char *show_column_collation_text(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int append_show_database(
     const struct mylite_catalog_schema_descriptor *schema,
     void *user_data
@@ -12205,6 +12221,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
         return execute_show_count_errors_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
         return execute_show_index_statement(database, statement, out_result);
@@ -20068,8 +20085,6 @@ static int execute_show_columns_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    static const char *const result_columns[] =
-        {"Field", "Type", "Null", "Key", "Default", "Extra"};
     struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
@@ -20087,6 +20102,7 @@ static int execute_show_columns_statement(
     };
     struct show_columns_context context = {0};
     mylite_result *result = NULL;
+    bool full = statement->kind == MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT;
     int rc = MYLITE_OK;
 
     if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_LITERAL) {
@@ -20136,20 +20152,17 @@ static int execute_show_columns_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t column_index = 0U;
-         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
-         ++column_index) {
-        rc = mylite_result_append_column(result, result_columns[column_index]);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_show_columns_result_columns(database, result, full);
     }
     if (rc == MYLITE_OK) {
         context.database = database;
         context.result = result;
         context.filter = &filter;
+        context.table = &table;
         context.primary_key = &primary_key;
         context.indexes = indexes;
+        context.full = full;
         for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count;
              ++column_index) {
             rc = append_show_column(&columns[column_index], &context);
@@ -20177,6 +20190,43 @@ static int execute_show_columns_statement(
     loaded_index_infos_deinit(&indexes, &context.index_count);
     free(columns);
     return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_columns_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    bool full
+) {
+    static const char *const result_columns[show_columns_result_column_count] =
+        {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const full_result_columns[show_full_columns_result_column_count] = {
+        "Field",
+        "Type",
+        "Collation",
+        "Null",
+        "Key",
+        "Default",
+        "Extra",
+        "Privileges",
+        "Comment",
+    };
+    const char *const *selected_result_columns = result_columns;
+    size_t selected_result_column_count = show_columns_result_column_count;
+    int rc = MYLITE_OK;
+
+    if (full) {
+        selected_result_columns = full_result_columns;
+        selected_result_column_count = show_full_columns_result_column_count;
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < selected_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, selected_result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
 }
 
 static int execute_show_index_statement(
@@ -21567,6 +21617,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
@@ -67550,7 +67601,7 @@ static int append_show_column(
     const char *type_text = NULL;
     char type_text_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     char default_text[integer_text_capacity];
-    const char *values[show_columns_result_column_count] = {NULL, NULL, NULL, "", NULL, ""};
+    const char *values[show_full_columns_result_column_count] = {0};
     int rc = MYLITE_OK;
 
     if (column == NULL || context == NULL || context->result == NULL) {
@@ -67574,6 +67625,37 @@ static int append_show_column(
 
     values[0] = column->name;
     values[1] = type_text;
+    if (context->full) {
+        values[2] = show_column_collation_text(context->table, column);
+        values[3] = "NO";
+        if (column->is_nullable) {
+            values[3] = "YES";
+        }
+        values[4] = column_key_text(
+            (struct loaded_index_info_span){
+                .indexes = context->indexes,
+                .count = context->index_count,
+            },
+            context->primary_key,
+            column
+        );
+        rc = column_default_display_text(
+            context->database,
+            column,
+            default_text,
+            sizeof(default_text),
+            &values[show_full_columns_default_column]
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        values[show_full_columns_extra_column] = column_extra_text(column);
+        values[show_full_columns_privileges_column] = "select,insert,update,references";
+        values[show_full_columns_comment_column] = "";
+
+        return mylite_result_append_text_row(context->result, values);
+    }
+
     values[2] = "NO";
     if (column->is_nullable) {
         values[2] = "YES";
@@ -67690,6 +67772,21 @@ static int show_column_type_text(
         "TIME, DATETIME, and TIMESTAMP column descriptors",
         out_type_text
     );
+}
+
+static const char *show_column_collation_text(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_string_family(column) || column_descriptor_is_enum(column) ||
+        column_descriptor_is_set(column)) {
+        if (table != NULL && table->default_collation[0] != '\0') {
+            return table->default_collation;
+        }
+        return MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+    }
+
+    return NULL;
 }
 
 static int append_show_database(

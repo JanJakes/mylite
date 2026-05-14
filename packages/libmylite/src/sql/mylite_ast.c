@@ -1141,6 +1141,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "count_star_function";
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return "show_columns_statement";
+    case MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT:
+        return "show_full_columns_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return "show_create_table_statement";
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:

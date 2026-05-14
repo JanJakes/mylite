@@ -1491,6 +1491,35 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_full_columns_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *like_pattern
+) {
+    struct mylite_sql_source_span span = span_from_token(&start_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (like_pattern != NULL) {
+        span = span_join(span, like_pattern->span);
+    } else if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    mylite_sql_ast_node_append_child(statement, like_pattern);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

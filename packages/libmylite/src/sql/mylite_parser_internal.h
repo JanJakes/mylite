@@ -221,6 +221,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_maintenance_statement(
     struct mylite_sql_token first_token,
     struct mylite_sql_ast_node *table_names
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token lock_token,
+    struct mylite_sql_ast_node *targets
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_unlock_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unlock_token,
+    struct mylite_sql_token table_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_target_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_lock_table_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *target
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias,
+    struct mylite_sql_ast_node *lock_type
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_type(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,

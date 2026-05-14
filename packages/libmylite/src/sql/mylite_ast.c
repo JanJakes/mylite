@@ -1167,6 +1167,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_xor_aggregate_function";
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
         return "group_concat_aggregate_function";
+    case MYLITE_SQL_AST_LOCK_TABLES_STATEMENT:
+        return "lock_tables_statement";
+    case MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT:
+        return "unlock_tables_statement";
+    case MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST:
+        return "lock_table_target_list";
+    case MYLITE_SQL_AST_LOCK_TABLE_TARGET:
+        return "lock_table_target";
+    case MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK:
+        return "lock_table_read_lock";
+    case MYLITE_SQL_AST_LOCK_TABLE_READ_LOCAL_LOCK:
+        return "lock_table_read_local_lock";
+    case MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK:
+        return "lock_table_write_lock";
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
         return "group_by_clause";
     case MYLITE_SQL_AST_HAVING_CLAUSE:

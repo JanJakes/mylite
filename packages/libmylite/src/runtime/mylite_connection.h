@@ -66,6 +66,22 @@ struct mylite_session_savepoint {
     char sqlite_name[MYLITE_SESSION_SAVEPOINT_INTERNAL_NAME_CAPACITY];
 };
 
+enum mylite_session_table_lock_mode {
+    MYLITE_SESSION_TABLE_LOCK_READ = 1,
+    MYLITE_SESSION_TABLE_LOCK_READ_LOCAL = 2,
+    MYLITE_SESSION_TABLE_LOCK_WRITE = 3,
+};
+
+struct mylite_session_table_lock {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char effective_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_alias;
+    bool is_temporary;
+    enum mylite_session_table_lock_mode mode;
+};
+
 struct mylite_session_state {
     bool has_selected_schema;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
@@ -94,6 +110,9 @@ struct mylite_session_state {
     size_t savepoint_count;
     size_t savepoint_capacity;
     uint64_t next_savepoint_id;
+    struct mylite_session_table_lock *table_locks;
+    size_t table_lock_count;
+    size_t table_lock_capacity;
     bool has_timestamp_override;
     int64_t timestamp_override;
     int64_t active_statement_time;

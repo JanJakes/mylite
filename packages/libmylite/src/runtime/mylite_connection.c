@@ -251,6 +251,10 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.savepoints = NULL;
     database->session.savepoint_count = 0U;
     database->session.savepoint_capacity = 0U;
+    free(database->session.table_locks);
+    database->session.table_locks = NULL;
+    database->session.table_lock_count = 0U;
+    database->session.table_lock_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
@@ -333,6 +337,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->savepoint_count = 0U;
     session->savepoint_capacity = 0U;
     session->next_savepoint_id = 1U;
+    session->table_locks = NULL;
+    session->table_lock_count = 0U;
+    session->table_lock_capacity = 0U;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;

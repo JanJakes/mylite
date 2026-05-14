@@ -585,6 +585,110 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_maintenance_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token lock_token,
+    struct mylite_sql_ast_node *targets
+) {
+    struct mylite_sql_source_span span = span_from_token(&lock_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (targets != NULL) {
+        span = span_join(span, targets->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_LOCK_TABLES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, targets);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_unlock_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token unlock_token,
+    struct mylite_sql_token table_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&unlock_token), span_from_token(&table_token));
+
+    return make_node(state, MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT, span);
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_target_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target
+) {
+    struct mylite_sql_source_span span =
+        target == NULL ? (struct mylite_sql_source_span){0} : target->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, target);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_lock_table_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *target
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, target);
+    if (target != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, target->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias,
+    struct mylite_sql_ast_node *lock_type
+) {
+    struct mylite_sql_source_span span =
+        table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
+    struct mylite_sql_ast_node *target = NULL;
+
+    if (lock_type != NULL) {
+        span = span_join(span, lock_type->span);
+    } else if (alias != NULL) {
+        span = span_join(span, alias->span);
+    }
+
+    target = make_node(state, MYLITE_SQL_AST_LOCK_TABLE_TARGET, span);
+    if (target == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(target, table_name);
+    mylite_sql_ast_node_append_child(target, alias);
+    mylite_sql_ast_node_append_child(target, lock_type);
+    return target;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_lock_table_type(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+) {
+    const struct mylite_sql_source_span span =
+        span_join(span_from_token(&first_token), span_from_token(&last_token));
+
+    return make_node(state, kind, span);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,
@@ -5253,6 +5357,7 @@ static bool map_keyword_token(
         {"INTO", MYLITE_SQL_PARSE_INTO},
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"MODE", MYLITE_SQL_PARSE_MODE},
+        {"READ", MYLITE_SQL_PARSE_READ},
         {"ROW", MYLITE_SQL_PARSE_ROW},
         {"VALUE", MYLITE_SQL_PARSE_VALUE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
@@ -5269,6 +5374,8 @@ static bool map_keyword_token(
         {"ROLLBACK", MYLITE_SQL_PARSE_ROLLBACK},
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
+        {"UNLOCK", MYLITE_SQL_PARSE_UNLOCK},
+        {"WRITE", MYLITE_SQL_PARSE_WRITE},
         {"ANALYZE", MYLITE_SQL_PARSE_ANALYZE},
         {"CHECK", MYLITE_SQL_PARSE_CHECK},
         {"OPTIMIZE", MYLITE_SQL_PARSE_OPTIMIZE},

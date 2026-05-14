@@ -152,6 +152,7 @@ static int test_replace_modifier_statements(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_transaction_control_statements(void);
+static int test_table_lock_statements(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -399,6 +400,7 @@ int main(void) {
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_transaction_control_statements();
+    failures += test_table_lock_statements();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -15654,6 +15656,97 @@ static int test_transaction_control_statements(void) {
     failures += parse_sql("ROLLBACK TO 'sp';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("RELEASE sp;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_table_lock_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *targets = NULL;
+    const struct mylite_sql_ast_node *target = NULL;
+    int failures = 0;
+
+    failures += parse_sql("LOCK TABLES t READ;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    targets = child_at(statement, 0U);
+    target = child_at(targets, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_LOCK_TABLES_STATEMENT, "lock read");
+    failures += expect_span_text(statement, "LOCK TABLES t READ", "lock read span");
+    failures += expect_node(targets, MYLITE_SQL_AST_LOCK_TABLE_TARGET_LIST, "lock target list");
+    failures += expect_child_count(targets, 1U, "lock read target count");
+    failures += expect_node(target, MYLITE_SQL_AST_LOCK_TABLE_TARGET, "lock read target");
+    failures += expect_child_count(target, 2U, "lock read target children");
+    failures += expect_span_text(child_at(target, 0U), "t", "lock read table");
+    failures +=
+        expect_node(child_at(target, 1U), MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK, "lock read mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("LOCK TABLE t WRITE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    targets = child_at(statement, 0U);
+    target = child_at(targets, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_LOCK_TABLES_STATEMENT, "lock write");
+    failures += expect_span_text(statement, "LOCK TABLE t WRITE", "lock write span");
+    failures += expect_child_count(target, 2U, "lock write target children");
+    failures +=
+        expect_node(child_at(target, 1U), MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK, "lock write mode");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "LOCK TABLES app.t AS reader READ LOCAL, u writer WRITE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    targets = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_LOCK_TABLES_STATEMENT, "multi lock");
+    failures += expect_child_count(targets, 2U, "multi lock target count");
+    target = child_at(targets, 0U);
+    failures += expect_child_count(target, 3U, "first multi lock target children");
+    failures += expect_span_text(child_at(target, 0U), "app.t", "first multi lock table");
+    failures += expect_span_text(child_at(target, 1U), "reader", "first multi lock alias");
+    failures += expect_node(
+        child_at(target, 2U),
+        MYLITE_SQL_AST_LOCK_TABLE_READ_LOCAL_LOCK,
+        "first multi lock mode"
+    );
+    target = child_at(targets, 1U);
+    failures += expect_child_count(target, 3U, "second multi lock target children");
+    failures += expect_span_text(child_at(target, 0U), "u", "second multi lock table");
+    failures += expect_span_text(child_at(target, 1U), "writer", "second multi lock alias");
+    failures += expect_node(
+        child_at(target, 2U),
+        MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK,
+        "second multi lock mode"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UNLOCK TABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT, "unlock tables");
+    failures += expect_child_count(statement, 0U, "unlock tables children");
+    failures += expect_span_text(statement, "UNLOCK TABLES", "unlock tables span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UNLOCK TABLE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT, "unlock table");
+    failures += expect_span_text(statement, "UNLOCK TABLE", "unlock table span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("LOCK TABLES t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("LOCK TABLES t READ LOCAL LOCAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("LOCK TABLES t LOW_PRIORITY WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("UNLOCK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("LOCK INSTANCE FOR BACKUP;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

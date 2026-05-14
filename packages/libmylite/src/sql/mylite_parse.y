@@ -60,6 +60,7 @@
 %type select_sql_calc_found_rows_opt { int }
 %type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
 %type join_operator { enum mylite_sql_ast_join_kind }
+%type table_or_tables { struct mylite_sql_token }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -274,6 +275,9 @@ statement(A) ::= update_statement(B). {
 statement(A) ::= transaction_control_statement(B). {
     A = B;
 }
+statement(A) ::= table_lock_statement(B). {
+    A = B;
+}
 statement(A) ::= table_maintenance_statement(B). {
     A = B;
 }
@@ -327,6 +331,54 @@ rollback_work_opt ::= WORK.
 
 rollback_savepoint_opt ::= .
 rollback_savepoint_opt ::= SAVEPOINT.
+
+table_lock_statement(A) ::= LOCK(L) table_or_tables lock_table_target_list(T). {
+    A = mylite_sql_parser_make_lock_tables_statement(state, L, T);
+}
+table_lock_statement(A) ::= UNLOCK(U) table_or_tables(T). {
+    A = mylite_sql_parser_make_unlock_tables_statement(state, U, T);
+}
+
+table_or_tables(A) ::= TABLE(T). {
+    A = T;
+}
+table_or_tables(A) ::= TABLES(T). {
+    A = T;
+}
+
+lock_table_target_list(A) ::= lock_table_target(T). {
+    A = mylite_sql_parser_make_lock_table_target_list(state, T);
+}
+lock_table_target_list(A) ::= lock_table_target_list(L) COMMA lock_table_target(T). {
+    A = mylite_sql_parser_append_lock_table_target(state, L, T);
+}
+
+lock_table_target(A) ::= table_name(T) lock_table_alias_opt(B) lock_table_type(M). {
+    A = mylite_sql_parser_make_lock_table_target(state, T, B, M);
+}
+
+lock_table_alias_opt(A) ::= . {
+    A = NULL;
+}
+lock_table_alias_opt(A) ::= AS identifier(I). {
+    A = I;
+}
+lock_table_alias_opt(A) ::= identifier(I). {
+    A = I;
+}
+
+lock_table_type(A) ::= READ(R). {
+    A = mylite_sql_parser_make_lock_table_type(
+        state, MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK, R, R);
+}
+lock_table_type(A) ::= READ(R) LOCAL(L). {
+    A = mylite_sql_parser_make_lock_table_type(
+        state, MYLITE_SQL_AST_LOCK_TABLE_READ_LOCAL_LOCK, R, L);
+}
+lock_table_type(A) ::= WRITE(W). {
+    A = mylite_sql_parser_make_lock_table_type(
+        state, MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK, W, W);
+}
 
 table_maintenance_statement(A) ::=
     ANALYZE(T) maintenance_binlog_opt TABLE table_name_list(N). {

@@ -651,11 +651,11 @@ static int test_update_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "UPDATE numbers SET i = 1, nn = 2",
+        "UPDATE numbers SET i = 1, i = 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "UPDATE supports exactly one assignment",
+            .message_part = "UPDATE multiple assignments do not support duplicate targets",
         }
     );
     failures += execute_error(

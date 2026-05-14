@@ -1403,10 +1403,18 @@ struct planned_delete {
     const char *rowid_alias;
 };
 
+struct planned_update_assignment {
+    struct mylite_catalog_column_descriptor column;
+    const struct mylite_sql_ast_node *value_node;
+    struct planned_value value;
+};
+
 struct planned_update {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor assignment_column;
+    struct planned_update_assignment *assignments;
+    size_t assignment_count;
     struct loaded_index_info *indexes;
     size_t index_count;
     const struct mylite_sql_ast_node *assignment_value_node;
@@ -9142,6 +9150,13 @@ static int plan_update(
     struct planned_update *out_plan
 );
 static void planned_update_deinit(struct planned_update *plan);
+static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
+static int copy_update_assignments_for_execution(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_update *executable_plan
+);
+static void executable_update_deinit(struct planned_update *plan);
 static int execute_update_from_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -9151,6 +9166,11 @@ static int prepare_executable_update_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
     bool matches_any_row,
+    struct planned_update *executable_plan
+);
+static int prepare_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct planned_update *plan,
     struct planned_update *executable_plan
 );
 static int prepare_update_arithmetic_assignment(
@@ -11863,6 +11883,21 @@ static int plan_update_assignment(
     size_t table_column_count,
     struct planned_update *out_plan
 );
+static int plan_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static int plan_update_multiple_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan,
+    size_t assignment_index
+);
 static int plan_update_scalar_subquery_assignment(
     struct mylite_db *database,
     struct planned_update *out_plan
@@ -11878,6 +11913,21 @@ static int validate_update_arithmetic_assignment_target(
     const struct planned_update *plan
 );
 static bool update_assignment_column_is_keyed(const struct planned_update *plan);
+static bool update_column_id_is_keyed(const struct planned_update *plan, int64_t column_id);
+static bool update_assignment_value_is_multi_constant_supported(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool update_assignment_unary_value_is_multi_constant_supported(
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_update_multiple_auto_update_columns(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static void set_update_multiple_assignment_unsupported_error(struct mylite_db *database);
+static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *database);
 static int validate_update_scalar_subquery_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -11885,6 +11935,12 @@ static int validate_update_scalar_subquery_select(
 static int convert_update_value(
     struct mylite_db *database,
     const struct planned_update *plan,
+    struct planned_value *out_value
+);
+static int convert_update_value_for_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
 static int convert_update_column_value(
@@ -12889,7 +12945,12 @@ static int append_delete_rowid_limited_sql(
     size_t *next_parameter
 );
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
+static size_t update_assignment_parameter_count(const struct planned_update *plan);
 static int append_update_assignment_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
+static int append_update_multiple_assignments_sql(
     struct dynamic_string *string,
     const struct planned_update *plan
 );
@@ -12912,6 +12973,17 @@ static int append_update_rowid_limited_sql(
 static int append_update_changed_condition_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_multiple_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_assignment_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_value *value,
     size_t *next_parameter
 );
 static int append_update_arithmetic_changed_condition_sql(
@@ -13227,9 +13299,24 @@ static int bind_grouped_aggregate_parameters(
 );
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
+static int bind_update_multiple_assignment_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+);
 static int bind_update_assignment_parameter(
     sqlite3_stmt *statement,
     int parameter_index,
+    const struct planned_update *plan
+);
+static int bind_update_auto_update_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+);
+static int bind_update_multiple_changed_condition_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
     const struct planned_update *plan
 );
 static int bind_update_changed_condition_parameter(
@@ -38076,9 +38163,60 @@ static void planned_update_deinit(struct planned_update *plan) {
     planned_select_deinit(&plan->assignment_subquery);
     planned_value_deinit(&plan->assignment_value);
     planned_value_deinit(&plan->auto_update_value);
+    if (plan->assignments != NULL) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            planned_value_deinit(&plan->assignments[index].value);
+        }
+    }
+    free(plan->assignments);
     free(plan->columns);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};
+}
+
+static bool planned_update_has_multiple_assignments(const struct planned_update *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    return plan->assignment_count > 1U;
+}
+
+static int copy_update_assignments_for_execution(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_update *executable_plan
+) {
+    if (!planned_update_has_multiple_assignments(plan)) {
+        return MYLITE_OK;
+    }
+
+    executable_plan->assignments = calloc(plan->assignment_count, sizeof(*plan->assignments));
+    if (executable_plan->assignments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < plan->assignment_count; ++index) {
+        executable_plan->assignments[index].column = plan->assignments[index].column;
+        executable_plan->assignments[index].value_node = plan->assignments[index].value_node;
+    }
+
+    return MYLITE_OK;
+}
+
+static void executable_update_deinit(struct planned_update *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_value_deinit(&plan->assignment_value);
+    planned_value_deinit(&plan->auto_update_value);
+    if (planned_update_has_multiple_assignments(plan) && plan->assignments != NULL) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            planned_value_deinit(&plan->assignments[index].value);
+        }
+        free(plan->assignments);
+        plan->assignments = NULL;
+    }
 }
 
 static int execute_update_from_plan(
@@ -38090,8 +38228,11 @@ static int execute_update_from_plan(
     struct mylite_statement_transaction transaction = {0};
     bool matches_any_row = false;
     int64_t affected_rows = 0;
-    int rc = begin_statement_transaction(database, &transaction);
+    int rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
+    if (rc == MYLITE_OK) {
+        rc = begin_statement_transaction(database, &transaction);
+    }
     if (rc == MYLITE_OK) {
         rc = update_matches_any_row(database, plan, &matches_any_row);
     }
@@ -38121,8 +38262,7 @@ static int execute_update_from_plan(
     if (rc != MYLITE_OK) {
         rollback_statement_transaction(database, &transaction);
     }
-    planned_value_deinit(&executable_plan.assignment_value);
-    planned_value_deinit(&executable_plan.auto_update_value);
+    executable_update_deinit(&executable_plan);
 
     if (rc != MYLITE_OK) {
         return report_update_execution_error(database, rc);
@@ -38145,7 +38285,9 @@ static int prepare_executable_update_plan(
         return MYLITE_OK;
     }
 
-    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
+    if (planned_update_has_multiple_assignments(plan)) {
+        rc = prepare_update_multiple_assignments(database, plan, executable_plan);
+    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
     } else {
         rc = convert_update_value(database, plan, &executable_plan->assignment_value);
@@ -38153,10 +38295,33 @@ static int prepare_executable_update_plan(
     if (rc == MYLITE_OK && planned_update_auto_update_column_count(plan) > 0U) {
         rc = make_current_timestamp_value(database, &executable_plan->auto_update_value);
     }
-    if (rc == MYLITE_OK &&
+    if (rc == MYLITE_OK && !planned_update_has_multiple_assignments(plan) &&
         plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = validate_update_string_key_value(database, executable_plan);
     }
+    return rc;
+}
+
+static int prepare_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    struct planned_update *executable_plan
+) {
+    int rc = MYLITE_OK;
+
+    if (executable_plan->assignments == NULL) {
+        set_runtime_error(database, "invalid UPDATE assignment plan");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        rc = convert_update_value_for_column(
+            database,
+            plan->assignments[index].value_node,
+            &plan->assignments[index].column,
+            &executable_plan->assignments[index].value
+        );
+    }
+
     return rc;
 }
 
@@ -38566,7 +38731,8 @@ static int advance_auto_increment_after_update(
     int64_t next_value = plan->table.auto_increment_next;
     int rc = MYLITE_OK;
 
-    if (affected_rows <= 0 || !column_descriptor_is_auto_increment(&plan->assignment_column) ||
+    if (planned_update_has_multiple_assignments(plan) || affected_rows <= 0 ||
+        !column_descriptor_is_auto_increment(&plan->assignment_column) ||
         assignment_value->is_null || assignment_value->is_text || assignment_value->integer <= 0) {
         return MYLITE_OK;
     }
@@ -71116,9 +71282,27 @@ static int plan_update_assignment(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
-        set_unsupported_error(database, "UPDATE supports exactly one assignment");
+    if (mylite_sql_ast_node_child_count(assignment_list) == 0U) {
+        set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        rc = plan_update_multiple_assignments(
+            database,
+            assignment_list,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+        if (rc == MYLITE_OK) {
+            rc = validate_update_multiple_auto_update_columns(
+                database,
+                out_plan,
+                table_columns,
+                table_column_count
+            );
+        }
+        return rc;
     }
     if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
         set_parse_error(database, NULL);
@@ -71153,6 +71337,96 @@ static int plan_update_assignment(
     }
 
     return plan_update_scalar_subquery_assignment(database, out_plan);
+}
+
+static int plan_update_multiple_assignments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    size_t assignment_count = mylite_sql_ast_node_child_count(assignment_list);
+    int rc = MYLITE_OK;
+
+    out_plan->assignments = calloc(assignment_count, sizeof(*out_plan->assignments));
+    if (out_plan->assignments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->assignment_count = assignment_count;
+
+    for (size_t assignment_index = 0U; rc == MYLITE_OK && assignment_index < assignment_count;
+         ++assignment_index) {
+        rc = plan_update_multiple_assignment(
+            database,
+            child_at(assignment_list, assignment_index),
+            table_columns,
+            table_column_count,
+            out_plan,
+            assignment_index
+        );
+    }
+
+    return rc;
+}
+
+static int plan_update_multiple_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan,
+    size_t assignment_index
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    if (target == NULL || target->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_update_multiple_assignment_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(target, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < assignment_index; ++index) {
+        if (out_plan->assignments[index].column.column_id ==
+            table_columns[column_index].column_id) {
+            set_update_duplicate_assignment_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+    if (column_descriptor_is_auto_increment(&table_columns[column_index]) ||
+        update_column_id_is_keyed(out_plan, table_columns[column_index].column_id)) {
+        set_update_multiple_assignment_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    value_node = child_at(assignment, 1U);
+    if (!update_assignment_value_is_multi_constant_supported(value_node)) {
+        set_update_multiple_assignment_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignments[assignment_index].column = table_columns[column_index];
+    out_plan->assignments[assignment_index].value_node = value_node;
+
+    return MYLITE_OK;
 }
 
 static int plan_update_arithmetic_assignment(
@@ -71240,16 +71514,102 @@ static bool update_assignment_column_is_keyed(const struct planned_update *plan)
     if (plan == NULL) {
         return false;
     }
+    return update_column_id_is_keyed(plan, plan->assignment_column.column_id);
+}
+
+static bool update_column_id_is_keyed(const struct planned_update *plan, int64_t column_id) {
+    if (plan == NULL) {
+        return false;
+    }
     for (size_t index = 0U; index < plan->index_count; ++index) {
         const struct loaded_index_info *key = &plan->indexes[index];
 
         if ((key->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY || key->index.is_unique) &&
-            loaded_index_contains_column_id(key, plan->assignment_column.column_id)) {
+            loaded_index_contains_column_id(key, column_id)) {
             return true;
         }
     }
 
     return false;
+}
+
+static bool update_assignment_value_is_multi_constant_supported(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL) {
+        return false;
+    }
+
+    switch (value_node->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        return true;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return update_assignment_unary_value_is_multi_constant_supported(value_node);
+    default:
+        return false;
+    }
+}
+
+static bool update_assignment_unary_value_is_multi_constant_supported(
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *operand = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NULL;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return false;
+    }
+    operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        return false;
+    }
+
+    operand = child_at(value_node, 0U);
+    if (operand == NULL || operand->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(operand);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+        return true;
+    }
+    return false;
+}
+
+static int validate_update_multiple_auto_update_columns(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    for (size_t column_index = 0U; column_index < table_column_count; ++column_index) {
+        if (planned_update_column_has_auto_update(plan, &table_columns[column_index]) &&
+            update_column_id_is_keyed(plan, table_columns[column_index].column_id)) {
+            set_update_multiple_assignment_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static void set_update_multiple_assignment_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "UPDATE multiple assignments support only distinct unqualified non-key constant "
+        "assignments"
+    );
+}
+
+static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(database, "UPDATE multiple assignments do not support duplicate targets");
 }
 
 static int plan_update_scalar_subquery_assignment(
@@ -71364,11 +71724,29 @@ static int convert_update_value(
         return MYLITE_ERROR;
     }
 
-    planned_value_deinit(out_value);
-    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     if (value_node->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        planned_value_deinit(out_value);
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return materialize_update_scalar_subquery_value(database, plan, out_value);
     }
+
+    return convert_update_value_for_column(database, value_node, column, out_value);
+}
+
+static int convert_update_value_for_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, false, out_value);
     }
@@ -76927,7 +77305,7 @@ static int append_delete_rowid_limited_sql(
 
 static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     struct dynamic_string string;
-    size_t next_parameter = 2U;
+    size_t next_parameter = update_assignment_parameter_count(plan) + 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -76972,12 +77350,24 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     return rc;
 }
 
+static size_t update_assignment_parameter_count(const struct planned_update *plan) {
+    if (planned_update_has_multiple_assignments(plan)) {
+        return plan->assignment_count;
+    }
+    return 1U;
+}
+
 static int append_update_assignment_sql(
     struct dynamic_string *string,
     const struct planned_update *plan
 ) {
-    int rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    int rc = MYLITE_OK;
 
+    if (planned_update_has_multiple_assignments(plan)) {
+        return append_update_multiple_assignments_sql(string, plan);
+    }
+
+    rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " = ");
     }
@@ -76993,6 +77383,33 @@ static int append_update_assignment_sql(
         rc = dynamic_string_append(string, " + ?1");
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " - ?1");
+    }
+
+    return rc;
+}
+
+static int append_update_multiple_assignments_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        if (index > 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(
+                string,
+                plan->assignments[index].column.name
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, index + 1U);
+        }
     }
 
     return rc;
@@ -77036,6 +77453,14 @@ static bool planned_update_column_has_auto_update(
 ) {
     if (plan == NULL || column == NULL || !column->on_update_current_timestamp) {
         return false;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; index < plan->assignment_count; ++index) {
+            if (plan->assignments[index].column.column_id == column->column_id) {
+                return false;
+            }
+        }
+        return true;
     }
     return column->column_id != plan->assignment_column.column_id;
 }
@@ -77129,6 +77554,9 @@ static int append_update_changed_condition_sql(
 ) {
     int rc = MYLITE_OK;
 
+    if (planned_update_has_multiple_assignments(plan)) {
+        return append_update_multiple_changed_condition_sql(string, plan, next_parameter);
+    }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         return append_update_arithmetic_changed_condition_sql(string, plan, next_parameter);
     }
@@ -77149,6 +77577,75 @@ static int append_update_changed_condition_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <> ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_update_multiple_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        if (index > 0U) {
+            rc = dynamic_string_append(string, " OR ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_update_assignment_changed_condition_sql(
+                string,
+                &plan->assignments[index].column,
+                &plan->assignments[index].value,
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_update_assignment_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    const struct planned_value *value,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (value->is_null) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+        return rc;
+    }
+
+    rc = dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, column->name);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " <> ");
@@ -79336,20 +79833,18 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
 
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan) {
     int parameter_index = 1;
-    int rc = bind_update_assignment_parameter(statement, parameter_index, plan);
+    int rc = MYLITE_OK;
 
-    if (rc == MYLITE_OK) {
-        ++parameter_index;
-    }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
-         ++column_index) {
-        if (!planned_update_column_has_auto_update(plan, &plan->columns[column_index])) {
-            continue;
-        }
-        rc = bind_planned_value_parameter(statement, parameter_index, &plan->auto_update_value);
+    if (planned_update_has_multiple_assignments(plan)) {
+        rc = bind_update_multiple_assignment_parameters(statement, &parameter_index, plan);
+    } else {
+        rc = bind_update_assignment_parameter(statement, parameter_index, plan);
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_auto_update_parameters(statement, &parameter_index, plan);
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
@@ -79360,10 +79855,80 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
             ++parameter_index;
         }
     }
-    if (rc == MYLITE_OK &&
+    if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
+        rc = bind_update_multiple_changed_condition_parameters(statement, &parameter_index, plan);
+    } else if (
+        rc == MYLITE_OK &&
         (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
-         !plan->assignment_value.is_null)) {
+         !plan->assignment_value.is_null)
+    ) {
         rc = bind_update_changed_condition_parameter(statement, parameter_index, plan);
+    }
+
+    return rc;
+}
+
+static int bind_update_multiple_assignment_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        rc = bind_planned_value_parameter(
+            statement,
+            *parameter_index,
+            &plan->assignments[index].value
+        );
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
+    return rc;
+}
+
+static int bind_update_auto_update_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (!planned_update_column_has_auto_update(plan, &plan->columns[column_index])) {
+            continue;
+        }
+        rc = bind_planned_value_parameter(statement, *parameter_index, &plan->auto_update_value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
+    return rc;
+}
+
+static int bind_update_multiple_changed_condition_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+        if (plan->assignments[index].value.is_null) {
+            continue;
+        }
+        rc = bind_planned_value_parameter(
+            statement,
+            *parameter_index,
+            &plan->assignments[index].value
+        );
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
     }
 
     return rc;

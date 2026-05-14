@@ -229,6 +229,7 @@ enum {
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
     information_schema_character_sets_column_count = 4,
+    information_schema_check_constraints_column_count = 4,
     information_schema_collations_column_count = 7,
     information_schema_engines_column_count = 6,
     information_schema_events_column_count = 24,
@@ -1610,6 +1611,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 13,
     INFORMATION_SCHEMA_TABLE_TRIGGERS = 14,
     INFORMATION_SCHEMA_TABLE_VIEWS = 15,
+    INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS = 16,
 };
 
 struct information_schema_column_definition {
@@ -2298,6 +2300,58 @@ static const struct information_schema_column_definition
          "utf8mb3_general_ci",
          "varchar(2048)"},
         {"MAXLEN", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_check_constraints_columns[] = {
+        {"CONSTRAINT_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"CHECK_CLAUSE",
+         NULL,
+         "NO",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "longtext"},
 };
 
 static const struct information_schema_column_definition information_schema_collations_columns[] = {
@@ -4195,6 +4249,10 @@ static const struct information_schema_table_definition information_schema_table
      "CHARACTER_SETS",
      information_schema_character_sets_columns,
      information_schema_character_sets_column_count},
+    {INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS,
+     "CHECK_CONSTRAINTS",
+     information_schema_check_constraints_columns,
+     information_schema_check_constraints_column_count},
     {INFORMATION_SCHEMA_TABLE_COLLATIONS,
      "COLLATIONS",
      information_schema_collations_columns,
@@ -18452,6 +18510,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
@@ -18483,6 +18542,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
+    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
         return MYLITE_OK;

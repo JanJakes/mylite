@@ -745,6 +745,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "secondary_index_part_list";
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
         return "secondary_index_part";
+    case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
+        return "foreign_key_definition";
+    case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
+        return "foreign_key_part_list";
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
         return "unique_index_definition";
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -757,6 +761,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_drop_primary_key_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
         return "alter_table_add_index_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+        return "alter_table_add_foreign_key_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return "alter_table_drop_index_statement";
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:

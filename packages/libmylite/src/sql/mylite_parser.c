@@ -1770,6 +1770,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_index_stateme
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *foreign_key
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (foreign_key != NULL) {
+        span = span_join(span, foreign_key->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, foreign_key);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
@@ -3894,6 +3919,68 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
     return unique_index;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_token foreign_token,
+    struct mylite_sql_ast_node *child_parts,
+    struct mylite_sql_ast_node *referenced_table,
+    struct mylite_sql_ast_node *referenced_parts,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&foreign_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *definition = NULL;
+
+    if (constraint_name != NULL) {
+        span = span_join(constraint_name->span, span);
+    }
+
+    definition = make_node(state, MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION, span);
+    if (definition == NULL) {
+        return NULL;
+    }
+
+    if (constraint_name != NULL) {
+        mylite_sql_ast_node_append_child(definition, constraint_name);
+    }
+    mylite_sql_ast_node_append_child(definition, child_parts);
+    mylite_sql_ast_node_append_child(definition, referenced_table);
+    mylite_sql_ast_node_append_child(definition, referenced_parts);
+    return definition;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_part_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *key_part
+) {
+    struct mylite_sql_source_span span =
+        key_part == NULL ? (struct mylite_sql_source_span){0} : key_part->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_foreign_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *key_part
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, key_part);
+    if (key_part != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, key_part->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *key_part
@@ -4833,8 +4920,11 @@ static bool map_keyword_token(
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
         {"INDEX", MYLITE_SQL_PARSE_INDEX},
         {"INDEXES", MYLITE_SQL_PARSE_INDEXES},
+        {"CONSTRAINT", MYLITE_SQL_PARSE_CONSTRAINT},
+        {"FOREIGN", MYLITE_SQL_PARSE_FOREIGN},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
+        {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"FULL", MYLITE_SQL_PARSE_FULL},

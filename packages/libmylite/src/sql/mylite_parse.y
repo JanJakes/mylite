@@ -197,6 +197,9 @@ statement(A) ::= alter_table_add_primary_key_statement(B). {
 statement(A) ::= alter_table_add_index_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_add_foreign_key_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_index_statement(B). {
     A = B;
 }
@@ -830,6 +833,17 @@ alter_table_add_index_statement(A) ::=
 alter_table_add_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD unique_index_definition(I). {
     A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+}
+
+alter_table_add_foreign_key_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD CONSTRAINT identifier(N) FOREIGN(F) KEY LPAREN
+    foreign_key_part_list(C) RPAREN REFERENCES table_name(P) LPAREN foreign_key_part_list(RL)
+    RPAREN(R). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R));
 }
 
 alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP INDEX identifier(I). {
@@ -3050,6 +3064,9 @@ create_table_item(A) ::= secondary_index_definition(B). {
 create_table_item(A) ::= unique_index_definition(B). {
     A = B;
 }
+create_table_item(A) ::= foreign_key_definition(B). {
+    A = B;
+}
 
 primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
@@ -3080,6 +3097,26 @@ unique_index_definition(A) ::= UNIQUE(U) unique_index_keyword_opt index_name_opt
 unique_index_keyword_opt ::= .
 unique_index_keyword_opt ::= KEY.
 unique_index_keyword_opt ::= INDEX.
+
+foreign_key_definition(A) ::=
+    constraint_name_opt(N) FOREIGN(F) KEY LPAREN foreign_key_part_list(C) RPAREN
+    REFERENCES table_name(P) LPAREN foreign_key_part_list(RL) RPAREN(R). {
+    A = mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R);
+}
+
+constraint_name_opt(A) ::= . {
+    A = NULL;
+}
+constraint_name_opt(A) ::= CONSTRAINT identifier(B). {
+    A = B;
+}
+
+foreign_key_part_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_foreign_key_part_list(state, B);
+}
+foreign_key_part_list(A) ::= foreign_key_part_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_foreign_key_part(state, B, C);
+}
 
 index_name_opt(A) ::= . {
     A = NULL;

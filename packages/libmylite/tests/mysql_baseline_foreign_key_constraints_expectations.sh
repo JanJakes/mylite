@@ -59,6 +59,7 @@ cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_bad2;" >/dev/null 2>&1 || true
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_bad3;" >/dev/null 2>&1 || true
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_actions;" >/dev/null 2>&1 || true
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE}_drop;" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
@@ -207,6 +208,23 @@ expect_error \
     "23000" \
     "Cannot add or update a child row" \
     "USE ${DATABASE}; INSERT INTO child VALUES (4,99);"
+ignore_rows=$(run_mysql \
+    "USE ${DATABASE};
+     INSERT IGNORE INTO child VALUES (4,99);
+     SELECT ROW_COUNT(), @@warning_count;")
+expect_value "missing parent INSERT IGNORE status" "0	1" \
+    "$(printf '%s\n' "$ignore_rows" | sed -n '1p')"
+ignore_warning=$(run_mysql \
+    "USE ${DATABASE};
+     INSERT IGNORE INTO child VALUES (4,99);
+     SHOW WARNINGS;")
+case "$(printf '%s\n' "$ignore_warning" | sed -n '1p')" in
+    Warning*1452*"Cannot add or update a child row"*) ;;
+    *) fail "missing parent INSERT IGNORE warning mismatch: [$ignore_warning]" ;;
+esac
+ignore_count=$(run_mysql "USE ${DATABASE}; SELECT COUNT(*) FROM child WHERE id = 4;")
+expect_value "missing parent INSERT IGNORE skipped row" "0" \
+    "$ignore_count"
 expect_error \
     "missing parent update" \
     1452 \
@@ -238,6 +256,21 @@ alter_metadata=$(run_mysql \
        FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
       WHERE CONSTRAINT_SCHEMA = '${DATABASE}' AND CONSTRAINT_NAME = 'fk_alter_parent';")
 expect_value "alter add fk metadata" "fk_alter_parent	alter_child	parent" "$alter_metadata"
+
+drop_database_cleanup=$(run_mysql \
+    "DROP DATABASE IF EXISTS ${DATABASE}_drop; CREATE DATABASE ${DATABASE}_drop;
+     USE ${DATABASE}_drop;
+     CREATE TABLE p(id INT PRIMARY KEY) ENGINE=InnoDB;
+     CREATE TABLE c(id INT PRIMARY KEY, pid INT,
+       CONSTRAINT fk_drop_parent FOREIGN KEY(pid) REFERENCES p(id)) ENGINE=InnoDB;
+     DROP DATABASE ${DATABASE}_drop;
+     CREATE DATABASE ${DATABASE}_drop; USE ${DATABASE}_drop;
+     CREATE TABLE p(id INT PRIMARY KEY) ENGINE=InnoDB;
+     CREATE TABLE c(id INT PRIMARY KEY, pid INT) ENGINE=InnoDB;
+     INSERT INTO c VALUES (1, 99);
+     SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+      WHERE CONSTRAINT_SCHEMA = '${DATABASE}_drop';")
+expect_value "drop database removes foreign key metadata" "0" "$drop_database_cleanup"
 
 expect_error \
     "missing parent unique key" \

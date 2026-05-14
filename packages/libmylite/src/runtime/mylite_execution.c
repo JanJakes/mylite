@@ -68,6 +68,8 @@ enum {
     mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
+    mysql_error_row_is_referenced = 1451,
+    mysql_error_no_referenced_row = 1452,
     mysql_error_incorrect_index_name = 1280,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
@@ -112,7 +114,10 @@ enum {
     mysql_warning_year_display_width_deprecated = 1287,
     mysql_warning_decimal_unsigned_deprecated = 1681,
     mysql_error_invalid_year_display_width = 1818,
+    mysql_error_failed_to_open_referenced_table = 1824,
+    mysql_error_foreign_key_column_incompatible = 3780,
     mysql_error_must_have_visible_column = 4028,
+    mysql_error_foreign_key_missing_unique = 6125,
     sqlite_use_nul_terminated_string = -1,
     year_conversion_incorrect_integer = 2,
     decimal_base = 10,
@@ -209,6 +214,7 @@ enum {
     information_schema_table_constraints_column_count = 7,
     information_schema_key_column_usage_column_count = 12,
     information_schema_statistics_column_count = 18,
+    information_schema_referential_constraints_column_count = 11,
     information_schema_tables_auto_increment_column = 13,
     information_schema_columns_default_column = 5,
     information_schema_columns_is_nullable_column = 6,
@@ -440,6 +446,19 @@ struct planned_primary_key_part {
     size_t column_index;
 };
 
+struct planned_foreign_key {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t child_column_index;
+    int64_t foreign_key_id;
+    struct mylite_catalog_table_descriptor parent_table;
+    struct mylite_catalog_column_descriptor parent_column;
+    struct mylite_catalog_index_descriptor parent_index;
+    int64_t child_index_id;
+    size_t child_secondary_index_index;
+    bool child_index_is_primary;
+    bool has_explicit_name;
+};
+
 struct planned_create_table {
     struct table_name_resolution target;
     struct planned_column *columns;
@@ -453,6 +472,9 @@ struct planned_create_table {
     struct planned_secondary_index *secondary_indexes;
     size_t secondary_index_count;
     size_t secondary_index_capacity;
+    struct planned_foreign_key *foreign_keys;
+    size_t foreign_key_count;
+    size_t foreign_key_capacity;
     int64_t auto_increment_next;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -472,6 +494,23 @@ struct loaded_index_part {
 struct loaded_index_info {
     struct mylite_catalog_index_descriptor index;
     struct loaded_index_part *parts;
+    size_t part_count;
+};
+
+struct loaded_foreign_key_part {
+    struct mylite_catalog_foreign_key_column_descriptor foreign_key_column;
+    struct mylite_catalog_column_descriptor child_column;
+    struct mylite_catalog_column_descriptor parent_column;
+    size_t child_column_index;
+    size_t parent_column_index;
+};
+
+struct loaded_foreign_key_info {
+    struct mylite_catalog_foreign_key_descriptor foreign_key;
+    struct mylite_catalog_table_descriptor child_table;
+    struct mylite_catalog_table_descriptor parent_table;
+    struct mylite_catalog_index_descriptor parent_index;
+    struct loaded_foreign_key_part *parts;
     size_t part_count;
 };
 
@@ -540,6 +579,19 @@ struct planned_alter_table_add_index {
     bool is_unique;
 };
 
+struct planned_alter_table_add_foreign_key {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_column_descriptor child_column;
+    struct mylite_catalog_table_descriptor parent_table;
+    struct mylite_catalog_column_descriptor parent_column;
+    struct mylite_catalog_index_descriptor parent_index;
+    struct mylite_catalog_index_descriptor child_index;
+    struct planned_alter_table_add_index child_index_plan;
+    bool create_child_index;
+};
+
 struct planned_drop_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -556,6 +608,27 @@ struct create_index_nodes {
     const struct mylite_sql_ast_node *index_name_node;
     const struct mylite_sql_ast_node *table_name_node;
     const struct mylite_sql_ast_node *part_list_node;
+};
+
+struct foreign_key_definition_nodes {
+    const struct mylite_sql_ast_node *constraint_name_node;
+    const struct mylite_sql_ast_node *child_parts_node;
+    const struct mylite_sql_ast_node *parent_table_node;
+    const struct mylite_sql_ast_node *parent_parts_node;
+};
+
+struct foreign_key_column_names {
+    char child[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char parent[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+struct alter_table_add_foreign_key_child_metadata {
+    struct mylite_catalog_column_descriptor *columns;
+    struct loaded_index_info *indexes;
+    struct loaded_foreign_key_info *foreign_keys;
+    size_t column_count;
+    size_t index_count;
+    size_t foreign_key_count;
 };
 
 struct drop_index_nodes {
@@ -816,6 +889,8 @@ struct planned_insert {
     size_t column_count;
     struct loaded_index_info *indexes;
     size_t index_count;
+    struct loaded_foreign_key_info *foreign_keys;
+    size_t foreign_key_count;
     struct planned_insert_row *rows;
     size_t row_count;
     bool ignore_errors;
@@ -1142,6 +1217,8 @@ struct planned_show_create_table {
     size_t column_count;
     struct loaded_index_info *indexes;
     size_t index_count;
+    struct loaded_foreign_key_info *foreign_keys;
+    size_t foreign_key_count;
 };
 
 struct planned_delete {
@@ -1237,6 +1314,40 @@ struct load_index_infos_context {
     size_t capacity;
 };
 
+struct load_foreign_key_infos_context {
+    struct mylite_db *database;
+    const struct mylite_catalog_column_descriptor *child_columns;
+    size_t child_column_count;
+    struct loaded_foreign_key_info *foreign_keys;
+    size_t count;
+    size_t capacity;
+};
+
+struct load_single_foreign_key_column_context {
+    struct mylite_db *database;
+    const struct mylite_catalog_column_descriptor *child_columns;
+    size_t child_column_count;
+    const struct mylite_catalog_column_descriptor *parent_columns;
+    size_t parent_column_count;
+    struct loaded_foreign_key_part *parts;
+    size_t count;
+    size_t capacity;
+};
+
+struct validate_parent_foreign_keys_context {
+    struct mylite_db *database;
+    int rc;
+};
+
+struct foreign_key_exists_context {
+    bool found;
+};
+
+struct foreign_key_index_exists_context {
+    int64_t index_id;
+    bool found;
+};
+
 struct loaded_index_column_lookup {
     const struct loaded_index_info *indexes;
     size_t index_count;
@@ -1292,6 +1403,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS = 6,
     INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE = 7,
     INFORMATION_SCHEMA_TABLE_STATISTICS = 8,
+    INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS = 9,
 };
 
 struct information_schema_column_definition {
@@ -2485,6 +2597,142 @@ static const struct information_schema_column_definition information_schema_stat
      "longtext"},
 };
 
+static const struct information_schema_column_definition
+    information_schema_referential_constraints_columns[] = {
+        {"CONSTRAINT_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"CONSTRAINT_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"UNIQUE_CONSTRAINT_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"UNIQUE_CONSTRAINT_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"UNIQUE_CONSTRAINT_NAME",
+         NULL,
+         "YES",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_tolower_ci",
+         "varchar(64)"},
+        {"MATCH_OPTION",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"UPDATE_RULE",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"DELETE_RULE",
+         "",
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"REFERENCED_TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+};
+
 static const struct information_schema_table_definition information_schema_table_definitions[] = {
     {INFORMATION_SCHEMA_TABLE_SCHEMATA,
      "SCHEMATA",
@@ -2522,6 +2770,10 @@ static const struct information_schema_table_definition information_schema_table
      "STATISTICS",
      information_schema_statistics_columns,
      information_schema_statistics_column_count},
+    {INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS,
+     "REFERENTIAL_CONSTRAINTS",
+     information_schema_referential_constraints_columns,
+     information_schema_referential_constraints_column_count},
 };
 
 struct show_databases_context {
@@ -3210,6 +3462,11 @@ static int execute_alter_table_add_index_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_add_foreign_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3495,6 +3752,13 @@ static int append_information_schema_table_constraints_index_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_index_info *index
 );
+static int append_information_schema_table_constraints_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
+);
 static int append_information_schema_key_column_usage_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -3507,6 +3771,26 @@ static int append_information_schema_key_column_usage_index_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_index_info *index
+);
+static int append_information_schema_key_column_usage_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
+);
+static int append_information_schema_referential_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_referential_constraints_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
 );
 static int append_information_schema_statistics_base_rows(
     struct mylite_db *database,
@@ -4062,6 +4346,11 @@ static int assign_create_table_index_ids(
     const struct mylite_catalog_mutation *mutation,
     struct planned_create_table *plan
 );
+static int assign_create_table_foreign_key_ids(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_create_table *plan
+);
 static int assign_create_temporary_table_index_ids(
     struct mylite_db *database,
     struct planned_create_table *plan
@@ -4075,6 +4364,13 @@ static int insert_create_table_catalog_rows(
     struct mylite_catalog_table_descriptor *out_table
 );
 static int insert_create_table_index_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const int64_t *column_ids
+);
+static int insert_create_table_foreign_key_catalog_rows(
     struct mylite_db *database,
     const struct planned_create_table *plan,
     const struct mylite_catalog_mutation *mutation,
@@ -4297,6 +4593,102 @@ static int extract_create_index_nodes(
 static int add_secondary_index_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
+);
+static int plan_alter_table_add_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_foreign_key *out_plan
+);
+static void planned_alter_table_add_foreign_key_deinit(
+    struct planned_alter_table_add_foreign_key *plan
+);
+static int alter_table_add_foreign_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_foreign_key *plan
+);
+static int choose_alter_table_foreign_key_child_index(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_add_foreign_key *plan
+);
+static int parse_alter_table_add_foreign_key_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct foreign_key_definition_nodes *out_nodes,
+    struct foreign_key_column_names *out_names,
+    struct planned_alter_table_add_foreign_key *out_plan
+);
+static int plan_alter_table_add_foreign_key_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_foreign_key *out_plan
+);
+static int load_alter_table_add_foreign_key_child_metadata(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_foreign_key *plan,
+    struct alter_table_add_foreign_key_child_metadata *out_metadata
+);
+static void alter_table_add_foreign_key_child_metadata_deinit(
+    struct alter_table_add_foreign_key_child_metadata *metadata
+);
+static int reject_duplicate_alter_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct alter_table_add_foreign_key_child_metadata *metadata,
+    const struct planned_alter_table_add_foreign_key *plan
+);
+static int plan_alter_table_add_foreign_key_child_column(
+    struct mylite_db *database,
+    const struct alter_table_add_foreign_key_child_metadata *metadata,
+    const struct foreign_key_column_names *names,
+    struct planned_alter_table_add_foreign_key *out_plan
+);
+static int plan_alter_table_add_foreign_key_parent(
+    struct mylite_db *database,
+    const struct foreign_key_definition_nodes *nodes,
+    const struct foreign_key_column_names *names,
+    struct planned_alter_table_add_foreign_key *out_plan
+);
+static int prepare_alter_table_foreign_key_child_index_plan(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_add_foreign_key *plan
+);
+static int validate_foreign_key_existing_child_rows(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *child_table,
+    const struct mylite_catalog_column_descriptor *child_column,
+    const struct mylite_catalog_table_descriptor *parent_table,
+    const struct mylite_catalog_column_descriptor *parent_column,
+    bool parent_write
+);
+static int insert_alter_table_foreign_key_catalog_rows(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t foreign_key_id,
+    int64_t child_index_id,
+    const struct planned_alter_table_add_foreign_key *plan
+);
+static int reject_table_referenced_by_foreign_key(struct mylite_db *database, int64_t table_id);
+static int reject_table_with_foreign_keys(struct mylite_db *database, int64_t table_id);
+static int reject_index_used_by_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_catalog_index_descriptor *index
+);
+static int collect_foreign_key_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+);
+static int collect_foreign_key_parent_index_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+);
+static int collect_foreign_key_child_index_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
 );
 static int plan_alter_table_add_index_name(
     struct mylite_db *database,
@@ -6743,6 +7135,22 @@ static int append_show_create_table_indexes(
     struct dynamic_string *string,
     const struct planned_show_create_table *plan
 );
+static int append_show_create_table_foreign_keys(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
+static int append_show_create_table_table_options(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
+static int append_show_create_table_auto_increment_option(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
+static bool show_create_table_has_auto_increment(const struct planned_show_create_table *plan);
 static int append_show_create_table_index(
     struct mylite_db *database,
     struct dynamic_string *string,
@@ -6753,6 +7161,11 @@ static int append_show_create_table_index_part(
     struct dynamic_string *string,
     const struct loaded_index_part *part,
     bool needs_comma
+);
+static int append_show_create_table_foreign_key(
+    struct dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool is_last_foreign_key
 );
 static int index_display_group(const struct loaded_index_info *index);
 static int show_create_table_type_text(
@@ -7020,6 +7433,82 @@ static int apply_create_table_secondary_index_definition(
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *secondary_index,
     bool is_unique
+);
+static int apply_create_table_foreign_key_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *item_list,
+    struct planned_create_table *plan
+);
+static int apply_create_table_foreign_key_definition(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *foreign_key
+);
+static int extract_foreign_key_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *foreign_key,
+    struct foreign_key_definition_nodes *out_nodes
+);
+static int copy_single_foreign_key_part_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *part_list,
+    const char *unsupported_message,
+    char *destination,
+    size_t destination_size
+);
+static int plan_create_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *constraint_name_node,
+    char *destination,
+    size_t destination_size
+);
+static int generate_create_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    char *destination,
+    size_t destination_size
+);
+static bool planned_foreign_key_name_is_used(
+    const struct planned_create_table *plan,
+    const char *foreign_key_name
+);
+static int validate_foreign_key_integer_columns(
+    struct mylite_db *database,
+    const char *child_logical_type,
+    const char *parent_logical_type
+);
+static int plan_create_table_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *parent_table_node,
+    const char *parent_column_name,
+    struct planned_foreign_key *foreign_key
+);
+static int find_foreign_key_parent_index(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *parent_table,
+    const struct mylite_catalog_column_descriptor *parent_column,
+    struct mylite_catalog_index_descriptor *out_index
+);
+static int choose_create_table_foreign_key_child_index(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_foreign_key *foreign_key
+);
+static int add_create_table_foreign_key_child_index(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_foreign_key *foreign_key
+);
+static bool planned_primary_key_starts_with_column(
+    const struct planned_create_table *plan,
+    size_t column_index
+);
+static int reserve_planned_foreign_keys(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t required_capacity
 );
 static int append_planned_secondary_index_part(
     struct mylite_db *database,
@@ -7587,8 +8076,25 @@ static int load_table_index_infos(
 );
 static void loaded_index_infos_deinit(struct loaded_index_info **indexes, size_t *index_count);
 static void loaded_index_info_deinit(struct loaded_index_info *index);
+static int load_table_foreign_key_infos(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *child_columns,
+    size_t child_column_count,
+    struct loaded_foreign_key_info **out_foreign_keys,
+    size_t *out_foreign_key_count
+);
+static void loaded_foreign_key_infos_deinit(
+    struct loaded_foreign_key_info **foreign_keys,
+    size_t *foreign_key_count
+);
+static void loaded_foreign_key_info_deinit(struct loaded_foreign_key_info *foreign_key);
 static int append_loaded_index_info(
     const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+);
+static int append_loaded_foreign_key_info(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
     void *user_data
 );
 static int load_index_parts(
@@ -7603,12 +8109,34 @@ static int append_loaded_index_part(
     const struct mylite_catalog_index_column_descriptor *index_column,
     void *user_data
 );
+static int load_foreign_key_parts(
+    struct mylite_db *database,
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    const struct mylite_catalog_column_descriptor *child_columns,
+    size_t child_column_count,
+    const struct mylite_catalog_column_descriptor *parent_columns,
+    size_t parent_column_count,
+    struct loaded_foreign_key_part **out_parts,
+    size_t *out_part_count
+);
+static int append_loaded_foreign_key_part(
+    const struct mylite_catalog_foreign_key_column_descriptor *foreign_key_column,
+    void *user_data
+);
 static int reserve_loaded_index_parts(
     struct load_single_index_column_context *context,
     size_t required_capacity
 );
+static int reserve_loaded_foreign_key_parts(
+    struct load_single_foreign_key_column_context *context,
+    size_t required_capacity
+);
 static int reserve_loaded_index_infos(
     struct load_index_infos_context *context,
+    size_t required_capacity
+);
+static int reserve_loaded_foreign_key_infos(
+    struct load_foreign_key_infos_context *context,
     size_t required_capacity
 );
 static const char *column_key_text(
@@ -7829,6 +8357,10 @@ static int plan_insert_auto_increment_values(
     struct mylite_db *database,
     struct planned_insert *plan
 );
+static int load_insert_target_foreign_key_infos(
+    struct mylite_db *database,
+    struct planned_insert *plan
+);
 static int plan_insert_string_key_values(
     struct mylite_db *database,
     const struct planned_insert *plan
@@ -7890,6 +8422,19 @@ static int execute_insert_plan_rows(
     sqlite3_stmt *statement,
     const struct planned_insert *plan,
     struct insert_execution_counters *counters
+);
+static int validate_insert_ignore_row_foreign_keys(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_skip_row
+);
+static int validate_insert_ignore_row_foreign_key(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    size_t row_index,
+    bool *out_violates
 );
 static int execute_insert_plan_row(
     sqlite3_stmt *statement,
@@ -9833,6 +10378,27 @@ static int append_update_changed_condition_sql(
     const struct planned_update *plan,
     size_t *next_parameter
 );
+static int validate_child_foreign_keys_after_write(
+    struct mylite_db *database,
+    int64_t child_table_id
+);
+static int validate_parent_foreign_keys_after_write(
+    struct mylite_db *database,
+    int64_t parent_table_id
+);
+static int validate_parent_foreign_key_descriptor(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+);
+static int validate_foreign_key_references(
+    struct mylite_db *database,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool parent_write
+);
+static int build_foreign_key_validation_sql(
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
+);
 static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
 static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
@@ -10324,12 +10890,21 @@ static void set_duplicate_key_error(
     const char *index_name,
     const char *value
 );
+static void set_no_referenced_row_error(struct mylite_db *database);
+static void set_row_is_referenced_error(struct mylite_db *database);
+static void set_failed_to_open_referenced_table_error(
+    struct mylite_db *database,
+    const char *table_name
+);
+static void set_foreign_key_column_incompatible_error(struct mylite_db *database);
+static void set_foreign_key_missing_unique_error(struct mylite_db *database);
 static int append_duplicate_key_warning(
     struct mylite_db *database,
     const char *table_name,
     const char *index_name,
     const char *value
 );
+static int append_no_referenced_row_warning(struct mylite_db *database);
 static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name);
 static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name);
 static void set_cant_remove_all_fields_error(struct mylite_db *database);
@@ -10693,6 +11268,8 @@ static int execute_parsed_statement(
         return execute_alter_table_add_primary_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
         return execute_alter_table_add_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+        return execute_alter_table_add_foreign_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return execute_alter_table_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
@@ -10824,6 +11401,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
+    case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
+    case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -11183,6 +11762,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -12687,6 +13267,17 @@ static int execute_drop_table_from_plan(
     if (plan->existing_count == 0U) {
         return MYLITE_OK;
     }
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing && !target->is_temporary) {
+            rc = reject_table_referenced_by_foreign_key(database, target->table.table_id);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (has_temporary_targets && database->session.user_transaction_active) {
         set_unsupported_error(
             database,
@@ -13124,6 +13715,33 @@ static int execute_alter_table_add_index_statement(
         rc = add_secondary_index_from_plan(database, &plan);
     }
     planned_alter_table_add_index_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_add_foreign_key_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_add_foreign_key plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_add_foreign_key(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_foreign_key_from_plan(database, &plan);
+    }
+    planned_alter_table_add_foreign_key_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -14296,6 +14914,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
         return MYLITE_OK;
     }
 
@@ -14324,6 +14943,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
         break;
     }
 
@@ -14407,6 +15027,14 @@ static int append_information_schema_catalog_table(
     }
     if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_STATISTICS) {
         return append_information_schema_statistics_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS) {
+        return append_information_schema_referential_constraints_base_rows(
             context->database,
             context->rows,
             context->schema,
@@ -15072,8 +15700,10 @@ static int append_information_schema_table_constraints_base_rows(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
+    struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
+    size_t foreign_key_count = 0U;
     int rc = load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
@@ -15084,6 +15714,16 @@ static int append_information_schema_table_constraints_base_rows(
             column_count,
             &indexes,
             &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &foreign_keys,
+            &foreign_key_count
         );
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
@@ -15098,7 +15738,17 @@ static int append_information_schema_table_constraints_base_rows(
             &indexes[index]
         );
     }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        rc = append_information_schema_table_constraints_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[index]
+        );
+    }
 
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
@@ -15126,6 +15776,26 @@ static int append_information_schema_table_constraints_index_row(
     return append_information_schema_row(database, rows, values);
 }
 
+static int append_information_schema_table_constraints_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    const char *values[information_schema_table_constraints_column_count] = {
+        "def",
+        schema->name,
+        foreign_key->foreign_key.name,
+        schema->name,
+        table->name,
+        "FOREIGN KEY",
+        "YES",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
 static int append_information_schema_key_column_usage_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -15134,8 +15804,10 @@ static int append_information_schema_key_column_usage_base_rows(
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
+    struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
+    size_t foreign_key_count = 0U;
     int rc = load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
@@ -15146,6 +15818,16 @@ static int append_information_schema_key_column_usage_base_rows(
             column_count,
             &indexes,
             &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &foreign_keys,
+            &foreign_key_count
         );
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
@@ -15160,7 +15842,17 @@ static int append_information_schema_key_column_usage_base_rows(
             &indexes[index]
         );
     }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        rc = append_information_schema_key_column_usage_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[index]
+        );
+    }
 
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
@@ -15205,6 +15897,118 @@ static int append_information_schema_key_column_usage_index_row(
     }
 
     return rc;
+}
+
+static int append_information_schema_key_column_usage_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    char ordinal_text[integer_text_capacity];
+    char referenced_ordinal_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
+         ++part_index) {
+        const struct loaded_foreign_key_part *part = &foreign_key->parts[part_index];
+        const char *values[information_schema_key_column_usage_column_count] = {
+            "def",
+            schema->name,
+            foreign_key->foreign_key.name,
+            "def",
+            schema->name,
+            table->name,
+            part->child_column.name,
+            ordinal_text,
+            referenced_ordinal_text,
+            schema->name,
+            foreign_key->parent_table.name,
+            part->parent_column.name,
+        };
+
+        rc = information_schema_format_i64(
+            database,
+            part->foreign_key_column.ordinal_position,
+            ordinal_text,
+            sizeof(ordinal_text)
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_format_i64(
+                database,
+                part->foreign_key_column.position_in_unique_constraint,
+                referenced_ordinal_text,
+                sizeof(referenced_ordinal_text)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+
+    return rc;
+}
+
+static int append_information_schema_referential_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_foreign_key_info *foreign_keys = NULL;
+    size_t column_count = 0U;
+    size_t foreign_key_count = 0U;
+    int rc = load_table_columns(database, table->table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &foreign_keys,
+            &foreign_key_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        rc = append_information_schema_referential_constraints_foreign_key_row(
+            database,
+            rows,
+            schema,
+            table,
+            &foreign_keys[index]
+        );
+    }
+
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    free(columns);
+    return rc;
+}
+
+static int append_information_schema_referential_constraints_foreign_key_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_foreign_key_info *foreign_key
+) {
+    const char *values[information_schema_referential_constraints_column_count] = {
+        "def",
+        schema->name,
+        foreign_key->foreign_key.name,
+        "def",
+        schema->name,
+        foreign_key->parent_index.name,
+        foreign_key->foreign_key.match_option,
+        foreign_key->foreign_key.update_rule,
+        foreign_key->foreign_key.delete_rule,
+        table->name,
+        foreign_key->parent_table.name,
+    };
+
+    return append_information_schema_row(database, rows, values);
 }
 
 static int append_information_schema_statistics_base_rows(
@@ -18712,6 +19516,16 @@ static int plan_show_create_table(
             &out_plan->index_count
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            out_plan->table.table_id,
+            out_plan->columns,
+            out_plan->column_count,
+            &out_plan->foreign_keys,
+            &out_plan->foreign_key_count
+        );
+    }
     if (rc != MYLITE_OK) {
         planned_show_create_table_deinit(out_plan);
     }
@@ -18726,6 +19540,7 @@ static void planned_show_create_table_deinit(struct planned_show_create_table *p
 
     free(plan->columns);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
     *plan = (struct planned_show_create_table){0};
 }
 
@@ -18775,7 +19590,6 @@ static int build_show_create_table_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    bool has_auto_increment = false;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -18794,49 +19608,22 @@ static int build_show_create_table_sql(
     }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
-        if (column_descriptor_is_auto_increment(&plan->columns[column_index])) {
-            has_auto_increment = true;
-        }
         rc = append_show_create_table_column_definition(
             database,
             &string,
             &plan->columns[column_index],
-            (plan->index_count == 0U && column_index + 1U == plan->column_count) != 0
+            (plan->index_count == 0U && plan->foreign_key_count == 0U &&
+             column_index + 1U == plan->column_count) != 0
         );
     }
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_indexes(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, ") ENGINE=InnoDB");
-    }
-    if (rc == MYLITE_OK && has_auto_increment && plan->table.auto_increment_next > 1) {
-        char auto_increment_text[integer_text_capacity + sizeof(" AUTO_INCREMENT=")];
-        int written = snprintf(
-            auto_increment_text,
-            sizeof(auto_increment_text),
-            " AUTO_INCREMENT=%" PRId64,
-            plan->table.auto_increment_next
-        );
-
-        if (written < 0 || (size_t)written >= sizeof(auto_increment_text)) {
-            set_runtime_error(database, "failed to format auto-increment table option");
-            rc = MYLITE_ERROR;
-        } else {
-            rc = dynamic_string_append(&string, auto_increment_text);
-        }
+        rc = append_show_create_table_foreign_keys(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " DEFAULT CHARSET=");
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, plan->table.default_charset);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " COLLATE=");
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, plan->table.default_collation);
+        rc = append_show_create_table_table_options(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -18999,16 +19786,105 @@ static int append_show_create_table_indexes(
             }
 
             ++appended;
+            const bool is_last_index = appended == plan->index_count;
+            const bool has_no_foreign_keys = plan->foreign_key_count == 0U;
+            bool is_last_definition = false;
+
+            if (is_last_index && has_no_foreign_keys) {
+                is_last_definition = true;
+            }
+
             rc = append_show_create_table_index(
                 database,
                 string,
                 &plan->indexes[index],
-                appended == plan->index_count
+                is_last_definition
             );
         }
     }
 
     return rc;
+}
+
+static int append_show_create_table_foreign_keys(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    (void)database;
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        rc = append_show_create_table_foreign_key(
+            string,
+            &plan->foreign_keys[index],
+            index + 1U == plan->foreign_key_count
+        );
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_table_options(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    int rc = dynamic_string_append(string, ") ENGINE=InnoDB");
+
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_auto_increment_option(database, string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " DEFAULT CHARSET=");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->table.default_charset);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " COLLATE=");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->table.default_collation);
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_auto_increment_option(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    char auto_increment_text[integer_text_capacity + sizeof(" AUTO_INCREMENT=")];
+    int written = 0;
+
+    if (!show_create_table_has_auto_increment(plan) || plan->table.auto_increment_next <= 1) {
+        return MYLITE_OK;
+    }
+
+    written = snprintf(
+        auto_increment_text,
+        sizeof(auto_increment_text),
+        " AUTO_INCREMENT=%" PRId64,
+        plan->table.auto_increment_next
+    );
+    if (written < 0 || (size_t)written >= sizeof(auto_increment_text)) {
+        set_runtime_error(database, "failed to format auto-increment table option");
+        return MYLITE_ERROR;
+    }
+
+    return dynamic_string_append(string, auto_increment_text);
+}
+
+static bool show_create_table_has_auto_increment(const struct planned_show_create_table *plan) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (column_descriptor_is_auto_increment(&plan->columns[column_index])) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int append_show_create_table_index(
@@ -19053,6 +19929,54 @@ static int append_show_create_table_index(
         rc = dynamic_string_append_char(string, ')');
     }
     if (rc == MYLITE_OK && !is_last_index) {
+        rc = dynamic_string_append_char(string, ',');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '\n');
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_foreign_key(
+    struct dynamic_string *string,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool is_last_foreign_key
+) {
+    const struct loaded_foreign_key_part *part = NULL;
+    int rc = MYLITE_OK;
+
+    if (foreign_key == NULL || foreign_key->part_count != 1U) {
+        return MYLITE_ERROR;
+    }
+
+    part = &foreign_key->parts[0];
+    rc = dynamic_string_append(string, "  CONSTRAINT ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, foreign_key->foreign_key.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FOREIGN KEY (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, part->child_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ") REFERENCES ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, foreign_key->parent_table.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, part->parent_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && !is_last_foreign_key) {
         rc = dynamic_string_append_char(string, ',');
     }
     if (rc == MYLITE_OK) {
@@ -19549,6 +20473,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
@@ -19623,6 +20548,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
+    case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
+    case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -19936,6 +20863,9 @@ static int plan_create_table_items(
     if (rc == MYLITE_OK) {
         rc = apply_create_table_secondary_index_definitions(database, item_list, out_plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = apply_create_table_foreign_key_definitions(database, item_list, out_plan);
+    }
 
     return rc;
 }
@@ -19950,14 +20880,25 @@ static int plan_create_table_item(
     int rc = MYLITE_OK;
 
     if (item->kind == MYLITE_SQL_AST_COLUMN_DEFINITION) {
-        rc = plan_column(database, item, &out_plan->columns[*column_index]);
+        size_t current_column_index = *column_index;
+
+        if (current_column_index >= out_plan->column_count) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        rc = plan_column(database, item, &out_plan->columns[current_column_index]);
         if (rc == MYLITE_OK && child_with_kind(item, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL) {
-            rc = apply_create_table_inline_primary_key(database, out_plan, *column_index, item);
+            rc = apply_create_table_inline_primary_key(
+                database,
+                out_plan,
+                current_column_index,
+                item
+            );
         }
         if (rc == MYLITE_OK && child_with_kind(item, MYLITE_SQL_AST_INLINE_UNIQUE_KEY) != NULL) {
-            out_plan->columns[*column_index].is_unique_key = true;
+            out_plan->columns[current_column_index].is_unique_key = true;
         }
-        ++(*column_index);
+        *column_index = current_column_index + 1U;
         return rc;
     }
 
@@ -19971,7 +20912,8 @@ static int plan_create_table_item(
     }
 
     if (item->kind == MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION ||
-        item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION) {
+        item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION ||
+        item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION) {
         return MYLITE_OK;
     }
 
@@ -20023,7 +20965,8 @@ static int validate_create_table_item_list(
         if (item->kind != MYLITE_SQL_AST_COLUMN_DEFINITION &&
             item->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION &&
             item->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
-            item->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION) {
+            item->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
+            item->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
@@ -20304,6 +21247,520 @@ static int apply_create_table_secondary_index_definition(
     free(planned_index.parts);
 
     return rc;
+}
+
+static int apply_create_table_foreign_key_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *item_list,
+    struct planned_create_table *plan
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    int rc = MYLITE_OK;
+
+    if (item_list == NULL || plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    item = child_at(item_list, 0U);
+    while (rc == MYLITE_OK && item != NULL) {
+        if (item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION) {
+            rc = apply_create_table_foreign_key_definition(database, plan, item);
+        }
+        item = item->next_sibling;
+    }
+
+    return rc;
+}
+
+static int apply_create_table_foreign_key_definition(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *foreign_key
+) {
+    struct foreign_key_definition_nodes nodes = {0};
+    char child_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char parent_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct planned_foreign_key planned = {0};
+    int rc = extract_foreign_key_definition_nodes(database, foreign_key, &nodes);
+
+    if (rc == MYLITE_OK) {
+        rc = copy_single_foreign_key_part_name(
+            database,
+            nodes.child_parts_node,
+            "FOREIGN KEY supports exactly one unqualified child column",
+            child_column_name,
+            sizeof(child_column_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_single_foreign_key_part_name(
+            database,
+            nodes.parent_parts_node,
+            "FOREIGN KEY supports exactly one unqualified referenced column",
+            parent_column_name,
+            sizeof(parent_column_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_planned_column_index(
+            plan->columns,
+            plan->column_count,
+            child_column_name,
+            &planned.child_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, child_column_name);
+            return MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_create_table_foreign_key_name(
+            database,
+            plan,
+            nodes.constraint_name_node,
+            planned.name,
+            sizeof(planned.name)
+        );
+        planned.has_explicit_name = nodes.constraint_name_node != NULL;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_create_table_foreign_key_parent(
+            database,
+            plan,
+            nodes.parent_table_node,
+            parent_column_name,
+            &planned
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const struct planned_column *child_column = &plan->columns[planned.child_column_index];
+
+        rc = validate_foreign_key_integer_columns(
+            database,
+            child_column->logical_type,
+            planned.parent_column.logical_type
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = choose_create_table_foreign_key_child_index(database, plan, &planned);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_foreign_keys(database, plan, plan->foreign_key_count + 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan->foreign_keys[plan->foreign_key_count] = planned;
+        ++plan->foreign_key_count;
+    }
+
+    return rc;
+}
+
+static int extract_foreign_key_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *foreign_key,
+    struct foreign_key_definition_nodes *out_nodes
+) {
+    const struct mylite_sql_ast_node *first_child = child_at(foreign_key, 0U);
+    const struct mylite_sql_ast_node *second_child = child_at(foreign_key, 1U);
+    size_t offset = 0U;
+
+    *out_nodes = (struct foreign_key_definition_nodes){0};
+
+    if (foreign_key == NULL || foreign_key->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION ||
+        first_child == NULL || second_child == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (first_child->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        second_child->kind == MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST) {
+        out_nodes->constraint_name_node = first_child;
+        offset = 1U;
+    }
+
+    out_nodes->child_parts_node = child_at(foreign_key, offset);
+    out_nodes->parent_table_node = child_at(foreign_key, offset + 1U);
+    out_nodes->parent_parts_node = child_at(foreign_key, offset + 2U);
+    if (out_nodes->child_parts_node == NULL ||
+        out_nodes->child_parts_node->kind != MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST ||
+        out_nodes->parent_table_node == NULL || out_nodes->parent_parts_node == NULL ||
+        out_nodes->parent_parts_node->kind != MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_single_foreign_key_part_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *part_list,
+    const char *unsupported_message,
+    char *destination,
+    size_t destination_size
+) {
+    const struct mylite_sql_ast_node *part = NULL;
+
+    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(part_list) != 1U) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    part = child_at(part_list, 0U);
+    if (part == NULL || part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    return copy_identifier_text(part, destination, destination_size, database);
+}
+
+static int plan_create_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *constraint_name_node,
+    char *destination,
+    size_t destination_size
+) {
+    int rc = MYLITE_OK;
+
+    destination[0] = '\0';
+    if (constraint_name_node == NULL) {
+        return generate_create_table_foreign_key_name(
+            database,
+            plan,
+            destination,
+            destination_size
+        );
+    }
+
+    rc = copy_identifier_text(constraint_name_node, destination, destination_size, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (planned_foreign_key_name_is_used(plan, destination)) {
+        set_duplicate_key_name_error(database, destination);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int generate_create_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    char *destination,
+    size_t destination_size
+) {
+    unsigned int suffix = 1U;
+
+    while (suffix < UINT_MAX) {
+        char candidate[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        int written =
+            snprintf(candidate, sizeof(candidate), "%s_ibfk_%u", plan->target.table_name, suffix);
+
+        if (written < 0 || (size_t)written >= sizeof(candidate)) {
+            set_identifier_too_long_error(database, "constraint");
+            return MYLITE_ERROR;
+        }
+        if (!planned_foreign_key_name_is_used(plan, candidate)) {
+            int copied = snprintf(destination, destination_size, "%s", candidate);
+
+            if (copied < 0 || (size_t)copied >= destination_size) {
+                set_identifier_too_long_error(database, "constraint");
+                return MYLITE_ERROR;
+            }
+            return MYLITE_OK;
+        }
+        ++suffix;
+    }
+
+    set_identifier_too_long_error(database, "constraint");
+    return MYLITE_ERROR;
+}
+
+static bool planned_foreign_key_name_is_used(
+    const struct planned_create_table *plan,
+    const char *foreign_key_name
+) {
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        if (text_equals_ascii_case_insensitive(plan->foreign_keys[index].name, foreign_key_name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static int validate_foreign_key_integer_columns(
+    struct mylite_db *database,
+    const char *child_logical_type,
+    const char *parent_logical_type
+) {
+    if (child_logical_type == NULL || parent_logical_type == NULL ||
+        !text_equals_ascii_case_insensitive(child_logical_type, parent_logical_type)) {
+        set_foreign_key_column_incompatible_error(database);
+        return MYLITE_ERROR;
+    }
+    if (strcmp(child_logical_type, "TINYINT") == 0 ||
+        strcmp(child_logical_type, "TINYINT UNSIGNED") == 0 ||
+        strcmp(child_logical_type, "SMALLINT") == 0 ||
+        strcmp(child_logical_type, "SMALLINT UNSIGNED") == 0 ||
+        strcmp(child_logical_type, "MEDIUMINT") == 0 ||
+        strcmp(child_logical_type, "MEDIUMINT UNSIGNED") == 0 ||
+        strcmp(child_logical_type, "INT") == 0 || strcmp(child_logical_type, "INT UNSIGNED") == 0 ||
+        strcmp(child_logical_type, "INTEGER") == 0 ||
+        strcmp(child_logical_type, "INTEGER UNSIGNED") == 0 ||
+        strcmp(child_logical_type, "BIGINT") == 0 ||
+        strcmp(child_logical_type, "BIGINT UNSIGNED") == 0) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "FOREIGN KEY supports only baseline integer columns");
+    return MYLITE_ERROR;
+}
+
+static int plan_create_table_foreign_key_parent(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *parent_table_node,
+    const char *parent_column_name,
+    struct planned_foreign_key *foreign_key
+) {
+    struct table_name_resolution parent_resolution = {0};
+    struct mylite_catalog_column_descriptor *parent_columns = NULL;
+    size_t parent_column_count = 0U;
+    size_t parent_column_index = 0U;
+    int rc = resolve_table_name(database, parent_table_node, &parent_resolution);
+
+    if (rc == MYLITE_OK && parent_resolution.schema.schema_id != plan->target.schema.schema_id) {
+        set_unsupported_error(database, "FOREIGN KEY does not yet support cross-schema references");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            parent_resolution.schema.schema_id,
+            parent_resolution.table_name,
+            &foreign_key->parent_table
+        );
+        if (rc != MYLITE_OK) {
+            set_failed_to_open_referenced_table_error(database, parent_resolution.table_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && foreign_key->parent_table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "FOREIGN KEY references only persistent base tables");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            foreign_key->parent_table.table_id,
+            &parent_columns,
+            &parent_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(
+            parent_columns,
+            parent_column_count,
+            parent_column_name,
+            &parent_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, parent_column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        foreign_key->parent_column = parent_columns[parent_column_index];
+        rc = find_foreign_key_parent_index(
+            database,
+            &foreign_key->parent_table,
+            &foreign_key->parent_column,
+            &foreign_key->parent_index
+        );
+    }
+
+    free(parent_columns);
+    return rc;
+}
+
+static int find_foreign_key_parent_index(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *parent_table,
+    const struct mylite_catalog_column_descriptor *parent_column,
+    struct mylite_catalog_index_descriptor *out_index
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = load_table_columns(database, parent_table->table_id, &columns, &column_count);
+
+    *out_index = (struct mylite_catalog_index_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            parent_table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        const struct loaded_index_info *candidate = &indexes[index];
+
+        if (!candidate->index.is_unique || candidate->part_count != 1U ||
+            candidate->parts[0].index_column.has_prefix_length) {
+            continue;
+        }
+        if (candidate->parts[0].index_column.column_id == parent_column->column_id) {
+            *out_index = candidate->index;
+            break;
+        }
+    }
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_index->index_id <= 0) {
+        set_foreign_key_missing_unique_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int choose_create_table_foreign_key_child_index(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_foreign_key *foreign_key
+) {
+    if (planned_primary_key_starts_with_column(plan, foreign_key->child_column_index)) {
+        foreign_key->child_index_is_primary = true;
+        foreign_key->child_secondary_index_index = 0U;
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        const struct planned_secondary_index *candidate = &plan->secondary_indexes[index];
+
+        if (candidate->part_count == 0U || candidate->parts[0].has_prefix_length) {
+            continue;
+        }
+        if (candidate->parts[0].column_index == foreign_key->child_column_index) {
+            foreign_key->child_index_is_primary = false;
+            foreign_key->child_secondary_index_index = index;
+            return MYLITE_OK;
+        }
+    }
+
+    return add_create_table_foreign_key_child_index(database, plan, foreign_key);
+}
+
+static int add_create_table_foreign_key_child_index(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    struct planned_foreign_key *foreign_key
+) {
+    struct planned_secondary_index index = {0};
+    const struct planned_column *column = &plan->columns[foreign_key->child_column_index];
+    const char *default_name = column->name;
+    int rc = MYLITE_OK;
+
+    if (foreign_key->has_explicit_name) {
+        default_name = foreign_key->name;
+    }
+
+    rc = plan_secondary_index_name(
+        database,
+        plan,
+        NULL,
+        default_name,
+        index.name,
+        sizeof(index.name)
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_secondary_indexes(database, plan, plan->secondary_index_count + 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_secondary_index_parts(database, &index, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        index.is_unique = false;
+        index.parts[0] = (struct planned_secondary_index_part){
+            .column_index = foreign_key->child_column_index,
+            .has_prefix_length = false,
+            .prefix_length = 0,
+        };
+        index.part_count = 1U;
+        foreign_key->child_index_is_primary = false;
+        foreign_key->child_secondary_index_index = plan->secondary_index_count;
+        plan->secondary_indexes[plan->secondary_index_count] = index;
+        index = (struct planned_secondary_index){0};
+        ++plan->secondary_index_count;
+    }
+
+    free(index.parts);
+    return rc;
+}
+
+static bool planned_primary_key_starts_with_column(
+    const struct planned_create_table *plan,
+    size_t column_index
+) {
+    if (plan == NULL || !plan->has_primary_key || plan->primary_key_part_count == 0U) {
+        return false;
+    }
+
+    return plan->primary_key_parts[0].column_index == column_index;
+}
+
+static int reserve_planned_foreign_keys(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t required_capacity
+) {
+    enum { initial_foreign_key_capacity = 4 };
+
+    struct planned_foreign_key *foreign_keys = NULL;
+    size_t capacity = 0U;
+
+    if (required_capacity <= plan->foreign_key_capacity) {
+        return MYLITE_OK;
+    }
+    capacity = plan->foreign_key_capacity == 0U ? initial_foreign_key_capacity
+                                                : plan->foreign_key_capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*foreign_keys)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    foreign_keys = realloc(plan->foreign_keys, capacity * sizeof(*foreign_keys));
+    if (foreign_keys == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->foreign_keys = foreign_keys;
+    plan->foreign_key_capacity = capacity;
+    return MYLITE_OK;
 }
 
 static int append_planned_secondary_index_part(
@@ -22415,6 +23872,7 @@ static void planned_create_table_deinit(struct planned_create_table *plan) {
         free(plan->secondary_indexes[index].parts);
     }
     free(plan->secondary_indexes);
+    free(plan->foreign_keys);
     *plan = (struct planned_create_table){0};
 }
 
@@ -22453,6 +23911,9 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
     }
     if (rc == MYLITE_OK) {
         rc = assign_create_table_index_ids(database, &mutation, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = assign_create_table_foreign_key_ids(database, &mutation, plan);
     }
     if (rc == MYLITE_OK) {
         rc = insert_create_table_catalog_rows(
@@ -22494,6 +23955,10 @@ static int create_temporary_table_from_plan(
 
     if (planned_create_table_has_auto_increment(plan)) {
         set_unsupported_error(database, "Temporary AUTO_INCREMENT tables are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (plan->foreign_key_count != 0U) {
+        set_unsupported_error(database, "Temporary FOREIGN KEY tables are not yet supported");
         return MYLITE_ERROR;
     }
 
@@ -22608,6 +24073,49 @@ static int assign_create_table_index_ids(
     return MYLITE_OK;
 }
 
+static int assign_create_table_foreign_key_ids(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_create_table *plan
+) {
+    int64_t next_foreign_key_id = 0;
+    int rc = MYLITE_OK;
+
+    if (plan->foreign_key_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_allocate_foreign_key_id_in_mutation(
+        database,
+        mutation,
+        &next_foreign_key_id
+    );
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        struct planned_foreign_key *foreign_key = &plan->foreign_keys[index];
+
+        foreign_key->foreign_key_id = next_foreign_key_id;
+        if (foreign_key->child_index_is_primary) {
+            foreign_key->child_index_id = plan->primary_key_index_id;
+        } else if (foreign_key->child_secondary_index_index < plan->secondary_index_count) {
+            foreign_key->child_index_id =
+                plan->secondary_indexes[foreign_key->child_secondary_index_index].index_id;
+        }
+        if (foreign_key->child_index_id <= 0) {
+            set_runtime_error(database, "invalid foreign-key child index descriptor");
+            return MYLITE_ERROR;
+        }
+        if (index + 1U < plan->foreign_key_count) {
+            if (next_foreign_key_id == INT64_MAX) {
+                set_runtime_error(database, "foreign-key identifier space is exhausted");
+                return MYLITE_ERROR;
+            }
+            ++next_foreign_key_id;
+        }
+    }
+
+    return rc;
+}
+
 static int assign_create_temporary_table_index_ids(
     struct mylite_db *database,
     struct planned_create_table *plan
@@ -22703,6 +24211,15 @@ static int insert_create_table_catalog_rows(
     if (rc == MYLITE_OK) {
         rc = insert_create_table_index_catalog_rows(database, plan, mutation, table_id, column_ids);
     }
+    if (rc == MYLITE_OK) {
+        rc = insert_create_table_foreign_key_catalog_rows(
+            database,
+            plan,
+            mutation,
+            table_id,
+            column_ids
+        );
+    }
 
     free(column_ids);
     return rc;
@@ -22794,6 +24311,61 @@ static int insert_create_table_index_catalog_rows(
                 column_ids[part->column_index],
                 (int64_t)part_index + 1,
                 prefix_length,
+                NULL
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int insert_create_table_foreign_key_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const int64_t *column_ids
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        const struct planned_foreign_key *foreign_key = &plan->foreign_keys[index];
+        int64_t child_column_id = 0;
+
+        if (foreign_key->child_column_index >= plan->column_count ||
+            column_ids[foreign_key->child_column_index] <= 0 || foreign_key->foreign_key_id <= 0 ||
+            foreign_key->parent_column.column_id <= 0 || foreign_key->parent_index.index_id <= 0 ||
+            foreign_key->child_index_id <= 0) {
+            set_runtime_error(database, "invalid foreign-key descriptor");
+            return MYLITE_ERROR;
+        }
+
+        child_column_id = column_ids[foreign_key->child_column_index];
+        rc = mylite_catalog_insert_foreign_key_in_mutation(
+            database,
+            mutation,
+            foreign_key->foreign_key_id,
+            table_id,
+            foreign_key->parent_table.table_id,
+            foreign_key->name,
+            foreign_key->parent_index.index_id,
+            foreign_key->child_index_id,
+            "NO ACTION",
+            "NO ACTION",
+            "NONE",
+            NULL
+        );
+        if (rc == MYLITE_OK) {
+            rc = mylite_catalog_insert_foreign_key_column_in_mutation(
+                database,
+                mutation,
+                foreign_key->foreign_key_id,
+                table_id,
+                foreign_key->parent_table.table_id,
+                child_column_id,
+                foreign_key->parent_column.column_id,
+                1,
+                1,
                 NULL
             );
         }
@@ -23408,6 +24980,12 @@ static int plan_truncate_table(
     if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
         set_unsupported_error(database, "TRUNCATE TABLE supports only persistent base tables");
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_table_with_foreign_keys(database, out_plan->table.table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_table_referenced_by_foreign_key(database, out_plan->table.table_id);
     }
 
     return rc;
@@ -25126,6 +26704,670 @@ static int add_secondary_index_from_plan(
     return MYLITE_OK;
 }
 
+static int plan_alter_table_add_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_foreign_key *out_plan
+) {
+    struct foreign_key_definition_nodes nodes = {0};
+    struct foreign_key_column_names names = {{0}, {0}};
+    struct alter_table_add_foreign_key_child_metadata child_metadata = {0};
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_add_foreign_key){0};
+    rc =
+        parse_alter_table_add_foreign_key_definition(database, statement, &nodes, &names, out_plan);
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_foreign_key_target(database, statement, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_alter_table_add_foreign_key_child_metadata(database, out_plan, &child_metadata);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_duplicate_alter_table_foreign_key_name(database, &child_metadata, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_foreign_key_child_column(
+            database,
+            &child_metadata,
+            &names,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_foreign_key_parent(database, &nodes, &names, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_foreign_key_integer_columns(
+            database,
+            out_plan->child_column.logical_type,
+            out_plan->parent_column.logical_type
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_foreign_key_parent_index(
+            database,
+            &out_plan->parent_table,
+            &out_plan->parent_column,
+            &out_plan->parent_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = choose_alter_table_foreign_key_child_index(
+            database,
+            child_metadata.columns,
+            child_metadata.column_count,
+            child_metadata.indexes,
+            child_metadata.index_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_foreign_key_existing_child_rows(
+            database,
+            &out_plan->table,
+            &out_plan->child_column,
+            &out_plan->parent_table,
+            &out_plan->parent_column,
+            false
+        );
+    }
+
+    alter_table_add_foreign_key_child_metadata_deinit(&child_metadata);
+    if (rc != MYLITE_OK) {
+        planned_alter_table_add_foreign_key_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int parse_alter_table_add_foreign_key_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct foreign_key_definition_nodes *out_nodes,
+    struct foreign_key_column_names *out_names,
+    struct planned_alter_table_add_foreign_key *out_plan
+) {
+    const struct mylite_sql_ast_node *foreign_key = child_at(statement, 1U);
+    int rc = extract_foreign_key_definition_nodes(database, foreign_key, out_nodes);
+
+    if (rc == MYLITE_OK && out_nodes->constraint_name_node == NULL) {
+        set_unsupported_error(database, "ALTER TABLE ADD FOREIGN KEY requires a constraint name");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            out_nodes->constraint_name_node,
+            out_plan->name,
+            sizeof(out_plan->name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_single_foreign_key_part_name(
+            database,
+            out_nodes->child_parts_node,
+            "FOREIGN KEY supports exactly one unqualified child column",
+            out_names->child,
+            sizeof(out_names->child)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_single_foreign_key_part_name(
+            database,
+            out_nodes->parent_parts_node,
+            "FOREIGN KEY supports exactly one unqualified referenced column",
+            out_names->parent,
+            sizeof(out_names->parent)
+        );
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_add_foreign_key_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_add_foreign_key *out_plan
+) {
+    int rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD FOREIGN KEY supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int load_alter_table_add_foreign_key_child_metadata(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_foreign_key *plan,
+    struct alter_table_add_foreign_key_child_metadata *out_metadata
+) {
+    int rc = MYLITE_OK;
+
+    *out_metadata = (struct alter_table_add_foreign_key_child_metadata){0};
+    rc = load_table_columns(
+        database,
+        plan->table.table_id,
+        &out_metadata->columns,
+        &out_metadata->column_count
+    );
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            plan->table.table_id,
+            out_metadata->columns,
+            out_metadata->column_count,
+            &out_metadata->indexes,
+            &out_metadata->index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            plan->table.table_id,
+            out_metadata->columns,
+            out_metadata->column_count,
+            &out_metadata->foreign_keys,
+            &out_metadata->foreign_key_count
+        );
+    }
+
+    return rc;
+}
+
+static void alter_table_add_foreign_key_child_metadata_deinit(
+    struct alter_table_add_foreign_key_child_metadata *metadata
+) {
+    if (metadata == NULL) {
+        return;
+    }
+
+    loaded_foreign_key_infos_deinit(&metadata->foreign_keys, &metadata->foreign_key_count);
+    loaded_index_infos_deinit(&metadata->indexes, &metadata->index_count);
+    free(metadata->columns);
+    *metadata = (struct alter_table_add_foreign_key_child_metadata){0};
+}
+
+static int reject_duplicate_alter_table_foreign_key_name(
+    struct mylite_db *database,
+    const struct alter_table_add_foreign_key_child_metadata *metadata,
+    const struct planned_alter_table_add_foreign_key *plan
+) {
+    for (size_t index = 0U; index < metadata->foreign_key_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                metadata->foreign_keys[index].foreign_key.name,
+                plan->name
+            )) {
+            set_duplicate_key_name_error(database, plan->name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_alter_table_add_foreign_key_child_column(
+    struct mylite_db *database,
+    const struct alter_table_add_foreign_key_child_metadata *metadata,
+    const struct foreign_key_column_names *names,
+    struct planned_alter_table_add_foreign_key *out_plan
+) {
+    size_t column_index = 0U;
+    int rc =
+        find_column_index(metadata->columns, metadata->column_count, names->child, &column_index);
+
+    if (rc != MYLITE_OK) {
+        set_key_column_missing_error(database, names->child);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->child_column = metadata->columns[column_index];
+    return MYLITE_OK;
+}
+
+static int plan_alter_table_add_foreign_key_parent(
+    struct mylite_db *database,
+    const struct foreign_key_definition_nodes *nodes,
+    const struct foreign_key_column_names *names,
+    struct planned_alter_table_add_foreign_key *out_plan
+) {
+    struct table_name_resolution parent_resolution = {0};
+    struct mylite_catalog_column_descriptor *parent_columns = NULL;
+    size_t parent_column_count = 0U;
+    size_t parent_column_index = 0U;
+    int rc = resolve_table_name(database, nodes->parent_table_node, &parent_resolution);
+
+    if (rc == MYLITE_OK &&
+        parent_resolution.schema.schema_id != out_plan->target.schema.schema_id) {
+        set_unsupported_error(database, "FOREIGN KEY does not yet support cross-schema references");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            parent_resolution.schema.schema_id,
+            parent_resolution.table_name,
+            &out_plan->parent_table
+        );
+        if (rc != MYLITE_OK) {
+            set_failed_to_open_referenced_table_error(database, parent_resolution.table_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->parent_table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "FOREIGN KEY references only persistent base tables");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->parent_table.table_id,
+            &parent_columns,
+            &parent_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(
+            parent_columns,
+            parent_column_count,
+            names->parent,
+            &parent_column_index
+        );
+        if (rc != MYLITE_OK) {
+            set_key_column_missing_error(database, names->parent);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->parent_column = parent_columns[parent_column_index];
+    }
+
+    free(parent_columns);
+    return rc;
+}
+
+static void planned_alter_table_add_foreign_key_deinit(
+    struct planned_alter_table_add_foreign_key *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    planned_alter_table_add_index_deinit(&plan->child_index_plan);
+    *plan = (struct planned_alter_table_add_foreign_key){0};
+}
+
+static int alter_table_add_foreign_key_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_foreign_key *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    char child_index_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY] = "";
+    int64_t foreign_key_id = 0;
+    int64_t child_index_id = plan->child_index.index_id;
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK && plan->create_child_index) {
+        rc = mylite_catalog_allocate_index_id_in_mutation(database, &mutation, &child_index_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_allocate_foreign_key_id_in_mutation(
+            database,
+            &mutation,
+            &foreign_key_id
+        );
+    }
+    if (rc == MYLITE_OK && plan->create_child_index) {
+        rc = build_physical_index_name(
+            child_index_id,
+            child_index_physical_name,
+            sizeof(child_index_physical_name)
+        );
+    }
+    if (rc == MYLITE_OK && plan->create_child_index) {
+        rc = mylite_catalog_insert_index_in_mutation(
+            database,
+            &mutation,
+            child_index_id,
+            plan->table.table_id,
+            plan->child_index_plan.index_name,
+            child_index_physical_name,
+            MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+            false,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK && plan->create_child_index) {
+        rc = mylite_catalog_insert_index_column_in_mutation(
+            database,
+            &mutation,
+            child_index_id,
+            plan->table.table_id,
+            plan->child_column.column_id,
+            1,
+            NULL,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK && plan->create_child_index) {
+        rc = execute_physical_add_index(
+            database,
+            &plan->child_index_plan,
+            child_index_physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = insert_alter_table_foreign_key_catalog_rows(
+            database,
+            &mutation,
+            foreign_key_id,
+            child_index_id,
+            plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to add foreign key");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+    return MYLITE_OK;
+}
+
+static int choose_alter_table_foreign_key_child_index(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_add_foreign_key *plan
+) {
+    (void)columns;
+    (void)column_count;
+
+    for (size_t index = 0U; index < index_count; ++index) {
+        const struct loaded_index_info *candidate = &indexes[index];
+
+        if (candidate->part_count == 0U || candidate->parts[0].index_column.has_prefix_length) {
+            continue;
+        }
+        if (candidate->parts[0].column.column_id == plan->child_column.column_id) {
+            plan->child_index = candidate->index;
+            return MYLITE_OK;
+        }
+    }
+
+    return prepare_alter_table_foreign_key_child_index_plan(database, indexes, index_count, plan);
+}
+
+static int prepare_alter_table_foreign_key_child_index_plan(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_add_foreign_key *plan
+) {
+    struct planned_alter_table_add_index *index_plan = &plan->child_index_plan;
+    int rc = MYLITE_OK;
+
+    if (text_equals_ascii_case_insensitive(plan->name, "PRIMARY")) {
+        set_incorrect_index_name_error(database, plan->name);
+        return MYLITE_ERROR;
+    }
+    if (loaded_index_name_is_used(indexes, index_count, plan->name)) {
+        set_duplicate_key_name_error(database, plan->name);
+        return MYLITE_ERROR;
+    }
+
+    index_plan->target = plan->target;
+    index_plan->table = plan->table;
+    snprintf(index_plan->index_name, sizeof(index_plan->index_name), "%s", plan->name);
+    rc = reserve_planned_alter_table_add_index_parts(database, index_plan, 1U);
+    if (rc == MYLITE_OK) {
+        index_plan->parts[0] = (struct loaded_index_part){
+            .index_column =
+                {
+                    .column_id = plan->child_column.column_id,
+                    .ordinal_position = 1,
+                    .has_prefix_length = false,
+                    .prefix_length = 0,
+                },
+            .column = plan->child_column,
+            .column_index = 0U,
+        };
+        index_plan->part_count = 1U;
+        index_plan->is_unique = false;
+        plan->create_child_index = true;
+    }
+
+    return rc;
+}
+
+static int validate_foreign_key_existing_child_rows(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *child_table,
+    const struct mylite_catalog_column_descriptor *child_column,
+    const struct mylite_catalog_table_descriptor *parent_table,
+    const struct mylite_catalog_column_descriptor *parent_column,
+    bool parent_write
+) {
+    struct loaded_foreign_key_info loaded = {
+        .child_table = *child_table,
+        .parent_table = *parent_table,
+        .part_count = 1U,
+    };
+    struct loaded_foreign_key_part part = {
+        .child_column = *child_column,
+        .parent_column = *parent_column,
+    };
+
+    loaded.parts = &part;
+    return validate_foreign_key_references(database, &loaded, parent_write);
+}
+
+static int insert_alter_table_foreign_key_catalog_rows(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t foreign_key_id,
+    int64_t child_index_id,
+    const struct planned_alter_table_add_foreign_key *plan
+) {
+    int rc = mylite_catalog_insert_foreign_key_in_mutation(
+        database,
+        mutation,
+        foreign_key_id,
+        plan->table.table_id,
+        plan->parent_table.table_id,
+        plan->name,
+        plan->parent_index.index_id,
+        child_index_id,
+        "NO ACTION",
+        "NO ACTION",
+        "NONE",
+        NULL
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_foreign_key_column_in_mutation(
+            database,
+            mutation,
+            foreign_key_id,
+            plan->table.table_id,
+            plan->parent_table.table_id,
+            plan->child_column.column_id,
+            plan->parent_column.column_id,
+            1,
+            1,
+            NULL
+        );
+    }
+
+    return rc;
+}
+
+static int reject_table_referenced_by_foreign_key(struct mylite_db *database, int64_t table_id) {
+    struct foreign_key_exists_context context = {.found = false};
+    int rc = mylite_catalog_for_each_foreign_key_for_parent_table(
+        database,
+        table_id,
+        collect_foreign_key_exists,
+        &context
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (context.found) {
+        set_row_is_referenced_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_table_with_foreign_keys(struct mylite_db *database, int64_t table_id) {
+    struct foreign_key_exists_context context = {.found = false};
+    int rc = mylite_catalog_for_each_foreign_key_in_child_table(
+        database,
+        table_id,
+        collect_foreign_key_exists,
+        &context
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (context.found) {
+        set_unsupported_error(database, "TRUNCATE TABLE does not yet support foreign keys");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_index_used_by_foreign_key(
+    struct mylite_db *database,
+    const struct mylite_catalog_index_descriptor *index
+) {
+    struct foreign_key_index_exists_context context = {
+        .index_id = 0,
+        .found = false,
+    };
+    int rc = MYLITE_OK;
+
+    if (index == NULL) {
+        set_runtime_error(database, "invalid foreign-key index lookup");
+        return MYLITE_ERROR;
+    }
+
+    context.index_id = index->index_id;
+    rc = mylite_catalog_for_each_foreign_key_for_parent_table(
+        database,
+        index->table_id,
+        collect_foreign_key_parent_index_exists,
+        &context
+    );
+
+    if (rc == MYLITE_OK && !context.found) {
+        rc = mylite_catalog_for_each_foreign_key_in_child_table(
+            database,
+            index->table_id,
+            collect_foreign_key_child_index_exists,
+            &context
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (context.found) {
+        set_row_is_referenced_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int collect_foreign_key_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+) {
+    struct foreign_key_exists_context *context = user_data;
+
+    (void)foreign_key;
+    if (context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    context->found = true;
+    return MYLITE_OK;
+}
+
+static int collect_foreign_key_parent_index_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+) {
+    struct foreign_key_index_exists_context *context = user_data;
+
+    if (foreign_key == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (foreign_key->parent_index_id == context->index_id) {
+        context->found = true;
+    }
+    return MYLITE_OK;
+}
+
+static int collect_foreign_key_child_index_exists(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+) {
+    struct foreign_key_index_exists_context *context = user_data;
+
+    if (foreign_key == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (foreign_key->child_index_id == context->index_id) {
+        context->found = true;
+    }
+    return MYLITE_OK;
+}
+
 static int plan_alter_table_add_index_name(
     struct mylite_db *database,
     const struct loaded_index_info *indexes,
@@ -25492,6 +27734,9 @@ static int plan_drop_index(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_index_used_by_foreign_key(database, &indexes[resolved_index].index);
+    }
+    if (rc == MYLITE_OK) {
         out_plan->index = indexes[resolved_index];
         indexes[resolved_index] = (struct loaded_index_info){0};
     }
@@ -25697,6 +27942,9 @@ static int plan_alter_table_drop_primary_key(
             columns,
             column_count
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_index_used_by_foreign_key(database, &out_plan->primary_key);
     }
     if (rc == MYLITE_OK) {
         rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
@@ -28204,6 +30452,9 @@ static int plan_insert(
             &out_plan->index_count
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = load_insert_target_foreign_key_infos(database, out_plan);
+    }
     if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT &&
         table_has_unique_secondary_index((struct loaded_index_info_span){
             .indexes = out_plan->indexes,
@@ -28317,6 +30568,9 @@ static int plan_insert_set(
             &out_plan->index_count
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = load_insert_target_foreign_key_infos(database, out_plan);
+    }
     if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT &&
         table_has_unique_secondary_index((struct loaded_index_info_span){
             .indexes = out_plan->indexes,
@@ -28371,6 +30625,20 @@ static int plan_insert_set(
     }
 
     return rc;
+}
+
+static int load_insert_target_foreign_key_infos(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    return load_table_foreign_key_infos(
+        database,
+        plan->table.table_id,
+        plan->columns,
+        plan->column_count,
+        &plan->foreign_keys,
+        &plan->foreign_key_count
+    );
 }
 
 static int initialize_insert_auto_increment_plan(
@@ -28882,6 +31150,7 @@ static void planned_insert_deinit(struct planned_insert *plan) {
     }
     free(plan->rows);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
+    loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
     free(plan->columns);
     *plan = (struct planned_insert){0};
 }
@@ -28935,6 +31204,9 @@ static int execute_insert_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
+    }
+    if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
@@ -28973,8 +31245,17 @@ static int execute_insert_plan_rows(
 
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < plan->row_count; ++row_index) {
         int sqlite_step_rc = SQLITE_OK;
+        bool skip_row = false;
 
-        rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
+        if (plan->ignore_errors && plan->foreign_key_count != 0U) {
+            rc = validate_insert_ignore_row_foreign_keys(database, plan, row_index, &skip_row);
+        }
+        if (rc == MYLITE_OK && skip_row) {
+            continue;
+        }
+        if (rc == MYLITE_OK) {
+            rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
+        }
         if (rc == MYLITE_OK) {
             ++counters->affected_rows;
             record_inserted_generated_auto_increment(plan, row_index, counters);
@@ -29014,6 +31295,101 @@ static int execute_insert_plan_rows(
         }
     }
 
+    return rc;
+}
+
+static int validate_insert_ignore_row_foreign_keys(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_skip_row
+) {
+    int rc = MYLITE_OK;
+
+    *out_skip_row = false;
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        bool violates = false;
+
+        rc = validate_insert_ignore_row_foreign_key(
+            database,
+            plan,
+            &plan->foreign_keys[index],
+            row_index,
+            &violates
+        );
+        if (rc == MYLITE_OK && violates) {
+            rc = append_no_referenced_row_warning(database);
+            *out_skip_row = rc == MYLITE_OK;
+            break;
+        }
+    }
+
+    return rc;
+}
+
+static int validate_insert_ignore_row_foreign_key(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_foreign_key_info *foreign_key,
+    size_t row_index,
+    bool *out_violates
+) {
+    const struct planned_value *child_value = NULL;
+    size_t child_column_index = 0U;
+    struct loaded_index_part parent_part = {0};
+    struct loaded_index_info parent_index = {0};
+    bool parent_exists = false;
+    int rc = MYLITE_OK;
+
+    *out_violates = false;
+    if (foreign_key->part_count != 1U || row_index >= plan->row_count) {
+        set_runtime_error(database, "invalid foreign-key insert descriptor");
+        return MYLITE_ERROR;
+    }
+
+    rc = find_column_index_by_id(
+        plan->columns,
+        plan->column_count,
+        &child_column_index,
+        foreign_key->parts[0].foreign_key_column.child_column_id
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "foreign-key child column descriptor is stale");
+        return MYLITE_ERROR;
+    }
+
+    child_value = &plan->rows[row_index].values[child_column_index];
+    if (child_value->is_null) {
+        return MYLITE_OK;
+    }
+
+    parent_part = (struct loaded_index_part){
+        .index_column =
+            {
+                .column_id = foreign_key->parts[0].foreign_key_column.parent_column_id,
+                .ordinal_position = 1,
+                .has_prefix_length = false,
+                .prefix_length = 0,
+            },
+        .column = foreign_key->parts[0].parent_column,
+        .column_index = foreign_key->parts[0].parent_column_index,
+    };
+    parent_index = (struct loaded_index_info){
+        .index = foreign_key->parent_index,
+        .parts = &parent_part,
+        .part_count = 1U,
+    };
+
+    rc = unique_key_single_value_exists(
+        database,
+        foreign_key->parent_table.physical_name,
+        &parent_index,
+        child_value,
+        &parent_exists
+    );
+    if (rc == MYLITE_OK && !parent_exists) {
+        *out_violates = true;
+    }
     return rc;
 }
 
@@ -29220,6 +31596,9 @@ static int plan_insert_select(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = load_insert_target_foreign_key_infos(database, &out_plan->target);
+    }
+    if (rc == MYLITE_OK) {
         rc = reject_insert_select_key_bearing_target(database, statement, out_plan, &primary_key);
     }
     if (rc == MYLITE_OK) {
@@ -29302,7 +31681,21 @@ static int reject_insert_select_key_bearing_target(
             .indexes = out_plan->target.indexes,
             .count = out_plan->target.index_count,
         })) {
-        return MYLITE_OK;
+        if (out_plan->target.foreign_key_count == 0U) {
+            return MYLITE_OK;
+        }
+        if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
+            set_unsupported_error(
+                database,
+                "REPLACE ... SELECT into foreign-key child tables is not supported"
+            );
+        } else {
+            set_unsupported_error(
+                database,
+                "INSERT ... SELECT into foreign-key child tables is not supported"
+            );
+        }
+        return MYLITE_ERROR;
     }
 
     if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
@@ -30626,6 +33019,12 @@ static int execute_update_from_plan(
             &executable_plan.assignment_value,
             affected_rows
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
@@ -46375,6 +48774,9 @@ static int execute_delete_from_plan(
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
     if (rc == MYLITE_OK) {
+        rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
+    }
+    if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
@@ -50329,6 +52731,75 @@ static void loaded_index_info_deinit(struct loaded_index_info *index) {
     *index = (struct loaded_index_info){0};
 }
 
+static int load_table_foreign_key_infos(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *child_columns,
+    size_t child_column_count,
+    struct loaded_foreign_key_info **out_foreign_keys,
+    size_t *out_foreign_key_count
+) {
+    struct load_foreign_key_infos_context context = {
+        .database = database,
+        .child_columns = child_columns,
+        .child_column_count = child_column_count,
+        .foreign_keys = NULL,
+        .count = 0U,
+        .capacity = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_foreign_keys == NULL || out_foreign_key_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_foreign_keys = NULL;
+    *out_foreign_key_count = 0U;
+    if (table_id < 0) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_for_each_foreign_key_in_child_table(
+        database,
+        table_id,
+        append_loaded_foreign_key_info,
+        &context
+    );
+    if (rc != MYLITE_OK) {
+        loaded_foreign_key_infos_deinit(&context.foreign_keys, &context.count);
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+            set_runtime_error(database, "failed to load foreign-key descriptors");
+        }
+        return rc;
+    }
+
+    *out_foreign_keys = context.foreign_keys;
+    *out_foreign_key_count = context.count;
+    return MYLITE_OK;
+}
+
+static void loaded_foreign_key_infos_deinit(
+    struct loaded_foreign_key_info **foreign_keys,
+    size_t *foreign_key_count
+) {
+    if (foreign_keys == NULL || foreign_key_count == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < *foreign_key_count; ++index) {
+        loaded_foreign_key_info_deinit(&(*foreign_keys)[index]);
+    }
+    free(*foreign_keys);
+    *foreign_keys = NULL;
+    *foreign_key_count = 0U;
+}
+
+static void loaded_foreign_key_info_deinit(struct loaded_foreign_key_info *foreign_key) {
+    if (foreign_key == NULL) {
+        return;
+    }
+    free(foreign_key->parts);
+    *foreign_key = (struct loaded_foreign_key_info){0};
+}
+
 static int append_loaded_index_info(
     const struct mylite_catalog_index_descriptor *index,
     void *user_data
@@ -50367,6 +52838,136 @@ static int append_loaded_index_info(
     };
     ++context->count;
     return MYLITE_OK;
+}
+
+static int load_foreign_key_info(
+    struct mylite_db *database,
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    const struct mylite_catalog_column_descriptor *provided_child_columns,
+    size_t provided_child_column_count,
+    struct loaded_foreign_key_info *out_info
+) {
+    struct mylite_catalog_column_descriptor *owned_child_columns = NULL;
+    struct mylite_catalog_column_descriptor *parent_columns = NULL;
+    struct loaded_index_info *parent_indexes = NULL;
+    const struct mylite_catalog_column_descriptor *child_columns = provided_child_columns;
+    struct loaded_foreign_key_part *parts = NULL;
+    size_t child_column_count = provided_child_column_count;
+    size_t parent_column_count = 0U;
+    size_t parent_index_count = 0U;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_info = (struct loaded_foreign_key_info){.foreign_key = *foreign_key};
+    rc = mylite_catalog_read_table_by_id(
+        database,
+        foreign_key->child_table_id,
+        &out_info->child_table
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_id(
+            database,
+            foreign_key->parent_table_id,
+            &out_info->parent_table
+        );
+    }
+    if (rc == MYLITE_OK && child_columns == NULL) {
+        rc = load_table_columns(
+            database,
+            out_info->child_table.table_id,
+            &owned_child_columns,
+            &child_column_count
+        );
+        child_columns = owned_child_columns;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_info->parent_table.table_id,
+            &parent_columns,
+            &parent_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        bool found_parent_index = false;
+
+        rc = load_table_index_infos(
+            database,
+            out_info->parent_table.table_id,
+            parent_columns,
+            parent_column_count,
+            &parent_indexes,
+            &parent_index_count
+        );
+        for (size_t index = 0U; rc == MYLITE_OK && index < parent_index_count; ++index) {
+            if (parent_indexes[index].index.index_id == foreign_key->parent_index_id) {
+                out_info->parent_index = parent_indexes[index].index;
+                found_parent_index = true;
+                break;
+            }
+        }
+        if (rc == MYLITE_OK && !found_parent_index) {
+            set_runtime_error(database, "foreign-key parent index descriptor is stale");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_foreign_key_parts(
+            database,
+            foreign_key,
+            child_columns,
+            child_column_count,
+            parent_columns,
+            parent_column_count,
+            &parts,
+            &part_count
+        );
+    }
+
+    loaded_index_infos_deinit(&parent_indexes, &parent_index_count);
+    free(parent_columns);
+    free(owned_child_columns);
+    if (rc != MYLITE_OK) {
+        free(parts);
+        *out_info = (struct loaded_foreign_key_info){0};
+        return rc;
+    }
+
+    out_info->parts = parts;
+    out_info->part_count = part_count;
+    return MYLITE_OK;
+}
+
+static int append_loaded_foreign_key_info(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+) {
+    struct load_foreign_key_infos_context *context = user_data;
+    struct loaded_foreign_key_info *loaded = NULL;
+    int rc = MYLITE_OK;
+
+    if (foreign_key == NULL || context == NULL || context->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = reserve_loaded_foreign_key_infos(context, context->count + 1U);
+    if (rc == MYLITE_OK) {
+        loaded = &context->foreign_keys[context->count];
+        *loaded = (struct loaded_foreign_key_info){0};
+        rc = load_foreign_key_info(
+            context->database,
+            foreign_key,
+            context->child_columns,
+            context->child_column_count,
+            loaded
+        );
+    }
+    if (rc == MYLITE_OK) {
+        ++context->count;
+    } else if (loaded != NULL) {
+        loaded_foreign_key_info_deinit(loaded);
+    }
+    return rc;
 }
 
 static int load_index_parts(
@@ -50419,6 +53020,51 @@ static int load_index_parts(
     return MYLITE_OK;
 }
 
+static int load_foreign_key_parts(
+    struct mylite_db *database,
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    const struct mylite_catalog_column_descriptor *child_columns,
+    size_t child_column_count,
+    const struct mylite_catalog_column_descriptor *parent_columns,
+    size_t parent_column_count,
+    struct loaded_foreign_key_part **out_parts,
+    size_t *out_part_count
+) {
+    struct load_single_foreign_key_column_context context = {
+        .database = database,
+        .child_columns = child_columns,
+        .child_column_count = child_column_count,
+        .parent_columns = parent_columns,
+        .parent_column_count = parent_column_count,
+        .parts = NULL,
+        .count = 0U,
+        .capacity = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_parts == NULL || out_part_count == NULL || foreign_key == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_parts = NULL;
+    *out_part_count = 0U;
+
+    rc = mylite_catalog_for_each_foreign_key_column_in_foreign_key(
+        database,
+        foreign_key->foreign_key_id,
+        append_loaded_foreign_key_part,
+        &context
+    );
+    if (rc != MYLITE_OK || context.count == 0U) {
+        free(context.parts);
+        set_runtime_error(database, "invalid foreign-key column descriptor");
+        return rc == MYLITE_OK ? MYLITE_ERROR : rc;
+    }
+
+    *out_parts = context.parts;
+    *out_part_count = context.count;
+    return MYLITE_OK;
+}
+
 static int append_loaded_index_part(
     const struct mylite_catalog_index_column_descriptor *index_column,
     void *user_data
@@ -50455,6 +53101,55 @@ static int append_loaded_index_part(
     return MYLITE_OK;
 }
 
+static int append_loaded_foreign_key_part(
+    const struct mylite_catalog_foreign_key_column_descriptor *foreign_key_column,
+    void *user_data
+) {
+    struct load_single_foreign_key_column_context *context = user_data;
+    size_t child_column_index = 0U;
+    size_t parent_column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (foreign_key_column == NULL || context == NULL || context->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = find_column_index_by_id(
+        context->child_columns,
+        context->child_column_count,
+        &child_column_index,
+        foreign_key_column->child_column_id
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(context->database, "foreign-key child column descriptor is stale");
+        return MYLITE_ERROR;
+    }
+    rc = find_column_index_by_id(
+        context->parent_columns,
+        context->parent_column_count,
+        &parent_column_index,
+        foreign_key_column->parent_column_id
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(context->database, "foreign-key parent column descriptor is stale");
+        return MYLITE_ERROR;
+    }
+    rc = reserve_loaded_foreign_key_parts(context, context->count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    context->parts[context->count] = (struct loaded_foreign_key_part){
+        .foreign_key_column = *foreign_key_column,
+        .child_column = context->child_columns[child_column_index],
+        .parent_column = context->parent_columns[parent_column_index],
+        .child_column_index = child_column_index,
+        .parent_column_index = parent_column_index,
+    };
+    ++context->count;
+
+    return MYLITE_OK;
+}
+
 static int reserve_loaded_index_parts(
     struct load_single_index_column_context *context,
     size_t required_capacity
@@ -50468,6 +53163,43 @@ static int reserve_loaded_index_parts(
         return MYLITE_OK;
     }
     capacity = context->capacity == 0U ? initial_loaded_index_part_capacity : context->capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(context->database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*parts)) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    parts = realloc(context->parts, capacity * sizeof(*parts));
+    if (parts == NULL) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    context->parts = parts;
+    context->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static int reserve_loaded_foreign_key_parts(
+    struct load_single_foreign_key_column_context *context,
+    size_t required_capacity
+) {
+    enum { initial_loaded_foreign_key_part_capacity = 4 };
+
+    struct loaded_foreign_key_part *parts = NULL;
+    size_t capacity = 0U;
+
+    if (required_capacity <= context->capacity) {
+        return MYLITE_OK;
+    }
+    capacity =
+        context->capacity == 0U ? initial_loaded_foreign_key_part_capacity : context->capacity;
     while (capacity < required_capacity) {
         if (capacity > SIZE_MAX / 2U) {
             set_nomem_error(context->database);
@@ -50523,6 +53255,42 @@ static int reserve_loaded_index_infos(
     }
 
     context->indexes = indexes;
+    context->capacity = capacity;
+    return MYLITE_OK;
+}
+
+static int reserve_loaded_foreign_key_infos(
+    struct load_foreign_key_infos_context *context,
+    size_t required_capacity
+) {
+    enum { initial_loaded_foreign_key_capacity = 4 };
+
+    struct loaded_foreign_key_info *foreign_keys = NULL;
+    size_t capacity = 0U;
+
+    if (required_capacity <= context->capacity) {
+        return MYLITE_OK;
+    }
+    capacity = context->capacity == 0U ? initial_loaded_foreign_key_capacity : context->capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(context->database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*foreign_keys)) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    foreign_keys = realloc(context->foreign_keys, capacity * sizeof(*foreign_keys));
+    if (foreign_keys == NULL) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    context->foreign_keys = foreign_keys;
     context->capacity = capacity;
     return MYLITE_OK;
 }
@@ -64316,6 +67084,224 @@ static int handle_update_unique_key_conflict(
     return MYLITE_ERROR;
 }
 
+static int validate_child_foreign_keys_after_write(
+    struct mylite_db *database,
+    int64_t child_table_id
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_foreign_key_info *foreign_keys = NULL;
+    size_t column_count = 0U;
+    size_t foreign_key_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (child_table_id <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = load_table_columns(database, child_table_id, &columns, &column_count);
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            child_table_id,
+            columns,
+            column_count,
+            &foreign_keys,
+            &foreign_key_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        rc = validate_foreign_key_references(database, &foreign_keys[index], false);
+    }
+
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    free(columns);
+    return rc;
+}
+
+static int validate_parent_foreign_keys_after_write(
+    struct mylite_db *database,
+    int64_t parent_table_id
+) {
+    struct validate_parent_foreign_keys_context context = {
+        .database = database,
+        .rc = MYLITE_OK,
+    };
+    int rc = MYLITE_OK;
+
+    if (parent_table_id <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_for_each_foreign_key_for_parent_table(
+        database,
+        parent_table_id,
+        validate_parent_foreign_key_descriptor,
+        &context
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = context.rc;
+    }
+    return rc;
+}
+
+static int validate_parent_foreign_key_descriptor(
+    const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+) {
+    struct validate_parent_foreign_keys_context *context = user_data;
+    struct loaded_foreign_key_info loaded = {0};
+    int rc = MYLITE_OK;
+
+    if (foreign_key == NULL || context == NULL || context->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = load_foreign_key_info(context->database, foreign_key, NULL, 0U, &loaded);
+    if (rc == MYLITE_OK) {
+        rc = validate_foreign_key_references(context->database, &loaded, true);
+    }
+    loaded_foreign_key_info_deinit(&loaded);
+    context->rc = rc;
+    return rc;
+}
+
+static int validate_foreign_key_references(
+    struct mylite_db *database,
+    const struct loaded_foreign_key_info *foreign_key,
+    bool parent_write
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_foreign_key_validation_sql(foreign_key, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            if (parent_write) {
+                set_row_is_referenced_error(database);
+            } else {
+                set_no_referenced_row_error(database);
+            }
+            rc = MYLITE_ERROR;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (
+        rc != MYLITE_OK &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+    ) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int build_foreign_key_validation_sql(
+    const struct loaded_foreign_key_info *foreign_key,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    const struct loaded_foreign_key_part *part = NULL;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+    if (foreign_key == NULL || foreign_key->part_count != 1U) {
+        return MYLITE_ERROR;
+    }
+
+    part = &foreign_key->parts[0];
+    rc = dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(
+            &string,
+            foreign_key->child_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, "c");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, "c");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, part->child_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(
+            &string,
+            foreign_key->parent_table.physical_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, "p");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, "p");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, part->parent_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " = ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, "c");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, part->child_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
 static int unique_key_tuple_exists(
     struct mylite_db *database,
     const char *physical_table_name,
@@ -66866,6 +69852,61 @@ static void set_duplicate_key_error(
     );
 }
 
+static void set_no_referenced_row_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_no_referenced_row,
+        "23000",
+        "Cannot add or update a child row: a foreign key constraint fails"
+    );
+}
+
+static void set_row_is_referenced_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_row_is_referenced,
+        "23000",
+        "Cannot delete or update a parent row: a foreign key constraint fails"
+    );
+}
+
+static void set_failed_to_open_referenced_table_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Failed to open the referenced table '%s'", table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_failed_to_open_referenced_table,
+        "HY000",
+        message
+    );
+}
+
+static void set_foreign_key_column_incompatible_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_foreign_key_column_incompatible,
+        "HY000",
+        "Referencing column and referenced column in foreign key constraint are incompatible"
+    );
+}
+
+static void set_foreign_key_missing_unique_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_foreign_key_missing_unique,
+        "HY000",
+        "Missing unique key for constraint in the referenced table"
+    );
+}
+
 static int append_duplicate_key_warning(
     struct mylite_db *database,
     const char *table_name,
@@ -66892,6 +69933,20 @@ static int append_duplicate_key_warning(
         "23000",
         message
     );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_no_referenced_row_warning(struct mylite_db *database) {
+    int rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_no_referenced_row,
+        "23000",
+        "Cannot add or update a child row: a foreign key constraint fails"
+    );
+
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }

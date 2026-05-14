@@ -223,6 +223,7 @@ enum {
     show_count_warnings_result_column_count = 1,
     show_errors_result_column_count = 3,
     show_count_errors_result_column_count = 1,
+    table_maintenance_result_column_count = 4,
     information_schema_schemata_column_count = 6,
     information_schema_tables_column_count = 21,
     information_schema_columns_column_count = 22,
@@ -436,6 +437,22 @@ static const struct utf8mb4_collation_descriptor utf8mb4_collations[] = {
 struct table_name_resolution {
     struct mylite_catalog_schema_descriptor schema;
     char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+enum table_maintenance_operation {
+    TABLE_MAINTENANCE_ANALYZE = 0,
+    TABLE_MAINTENANCE_CHECK = 1,
+    TABLE_MAINTENANCE_OPTIMIZE = 2,
+    TABLE_MAINTENANCE_REPAIR = 3,
+};
+
+struct table_maintenance_target {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char display_name[(MYLITE_CATALOG_IDENTIFIER_CAPACITY * 2) + 2];
+    bool missing_schema;
+    bool missing_table;
+    bool unsupported_kind;
 };
 
 enum mylite_statement_transaction_kind {
@@ -5628,6 +5645,66 @@ static int execute_show_databases_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_table_maintenance_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static enum table_maintenance_operation table_maintenance_operation_for_statement(
+    const struct mylite_sql_ast_node *statement
+);
+static int append_table_maintenance_result_columns(
+    struct mylite_db *database,
+    mylite_result *result
+);
+static int append_table_maintenance_target_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+);
+static int append_table_maintenance_success_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+);
+static int append_table_maintenance_unknown_schema_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+);
+static int append_table_maintenance_unknown_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+);
+static int append_table_maintenance_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *table_name,
+    const char *operation,
+    const char *message_type,
+    const char *message_text
+);
+static int resolve_table_maintenance_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_maintenance_target *out_target
+);
+static int check_table_maintenance_duplicate_target(
+    struct mylite_db *database,
+    const struct table_maintenance_target *targets,
+    size_t target_count,
+    const struct table_maintenance_target *target
+);
+static int format_table_maintenance_display_name(
+    struct mylite_db *database,
+    struct table_maintenance_target *target
+);
+static const char *table_maintenance_operation_text(enum table_maintenance_operation operation);
 static int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
@@ -13611,6 +13688,11 @@ static int execute_parsed_statement(
         return execute_show_engines_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return execute_show_databases_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+        return execute_table_maintenance_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
@@ -14153,6 +14235,10 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
         return true;
     default:
         return false;
@@ -20818,6 +20904,420 @@ static const char *information_schema_numeric_scale_for_descriptor(
     return "0";
 }
 
+static int execute_table_maintenance_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *table_names = child_at(statement, 0U);
+    const enum table_maintenance_operation operation =
+        table_maintenance_operation_for_statement(statement);
+    const size_t table_count =
+        table_names == NULL ? 0U : mylite_sql_ast_node_child_count(table_names);
+    struct table_maintenance_target *targets = NULL;
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (table_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    targets = (struct table_maintenance_target *)calloc(table_count, sizeof(targets[0]));
+    if (targets == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < table_count; ++target_index) {
+        rc = resolve_table_maintenance_target(
+            database,
+            child_at(table_names, target_index),
+            &targets[target_index]
+        );
+        if (rc == MYLITE_OK) {
+            rc = check_table_maintenance_duplicate_target(
+                database,
+                targets,
+                target_index,
+                &targets[target_index]
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_table_maintenance_result_columns(database, result);
+    }
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < table_count; ++target_index) {
+        rc = append_table_maintenance_target_rows(
+            database,
+            result,
+            operation,
+            &targets[target_index]
+        );
+    }
+
+    free(targets);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static enum table_maintenance_operation table_maintenance_operation_for_statement(
+    const struct mylite_sql_ast_node *statement
+) {
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+        return TABLE_MAINTENANCE_ANALYZE;
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+        return TABLE_MAINTENANCE_CHECK;
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+        return TABLE_MAINTENANCE_OPTIMIZE;
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+        return TABLE_MAINTENANCE_REPAIR;
+    default:
+        return TABLE_MAINTENANCE_CHECK;
+    }
+}
+
+static int append_table_maintenance_result_columns(
+    struct mylite_db *database,
+    mylite_result *result
+) {
+    static const char *const result_columns[table_maintenance_result_column_count] = {
+        "Table",
+        "Op",
+        "Msg_type",
+        "Msg_text",
+    };
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < table_maintenance_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int append_table_maintenance_target_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+) {
+    if (target->missing_schema) {
+        return append_table_maintenance_unknown_schema_rows(database, result, operation, target);
+    }
+    if (target->missing_table || target->unsupported_kind) {
+        return append_table_maintenance_unknown_table_rows(database, result, operation, target);
+    }
+    return append_table_maintenance_success_rows(database, result, operation, target);
+}
+
+static int append_table_maintenance_success_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+) {
+    const char *operation_text = table_maintenance_operation_text(operation);
+    int rc = MYLITE_OK;
+
+    if (operation == TABLE_MAINTENANCE_OPTIMIZE) {
+        rc = append_table_maintenance_row(
+            database,
+            result,
+            target->display_name,
+            operation_text,
+            "note",
+            "Table does not support optimize, doing recreate + analyze instead"
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_table_maintenance_row(
+                database,
+                result,
+                target->display_name,
+                operation_text,
+                "status",
+                "OK"
+            );
+        }
+        return rc;
+    }
+    if (operation == TABLE_MAINTENANCE_REPAIR) {
+        return append_table_maintenance_row(
+            database,
+            result,
+            target->display_name,
+            operation_text,
+            "note",
+            "The storage engine for the table doesn't support repair"
+        );
+    }
+
+    return append_table_maintenance_row(
+        database,
+        result,
+        target->display_name,
+        operation_text,
+        "status",
+        "OK"
+    );
+}
+
+static int append_table_maintenance_unknown_schema_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *operation_text = table_maintenance_operation_text(operation);
+    int written = snprintf(message, sizeof(message), "Unknown database '%s'", target->schema_name);
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = append_table_maintenance_row(
+        database,
+        result,
+        target->display_name,
+        operation_text,
+        "Error",
+        message
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_table_maintenance_row(
+            database,
+            result,
+            target->display_name,
+            operation_text,
+            "error",
+            "Corrupt"
+        );
+    }
+    return rc;
+}
+
+static int append_table_maintenance_unknown_table_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    enum table_maintenance_operation operation,
+    const struct table_maintenance_target *target
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *operation_text = table_maintenance_operation_text(operation);
+    int written =
+        snprintf(message, sizeof(message), "Table '%s' doesn't exist", target->display_name);
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = append_table_maintenance_row(
+        database,
+        result,
+        target->display_name,
+        operation_text,
+        "Error",
+        message
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_table_maintenance_row(
+            database,
+            result,
+            target->display_name,
+            operation_text,
+            "status",
+            "Operation failed"
+        );
+    }
+    return rc;
+}
+
+static int append_table_maintenance_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *table_name,
+    const char *operation,
+    const char *message_type,
+    const char *message_text
+) {
+    const char *const values[table_maintenance_result_column_count] = {
+        table_name,
+        operation,
+        message_type,
+        message_text,
+    };
+    int rc = mylite_result_append_text_row(result, values);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int resolve_table_maintenance_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_maintenance_target *out_target
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    size_t part_count = 0U;
+    bool schema_found = false;
+    bool table_found = false;
+    int rc = MYLITE_OK;
+
+    *out_target = (struct table_maintenance_target){0};
+    rc = collect_identifier_parts(node, parts, table_name_part_capacity, &part_count, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        if (database == NULL || !database->session.has_selected_schema) {
+            set_no_database_error(database);
+            return MYLITE_ERROR;
+        }
+        memcpy(
+            out_target->schema_name,
+            database->session.selected_schema,
+            sizeof(out_target->schema_name)
+        );
+        memcpy(out_target->table_name, parts[0], sizeof(out_target->table_name));
+    } else if (part_count == 2U) {
+        memcpy(out_target->schema_name, parts[0], sizeof(out_target->schema_name));
+        memcpy(out_target->table_name, parts[1], sizeof(out_target->table_name));
+    } else {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = format_table_maintenance_display_name(database, out_target);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_catalog_name_is_reserved(out_target->schema_name)) {
+        out_target->missing_schema = true;
+        return MYLITE_OK;
+    }
+    rc = mylite_catalog_try_read_schema_by_name(
+        database,
+        out_target->schema_name,
+        &schema,
+        &schema_found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read schema descriptor");
+        return rc;
+    }
+    if (!schema_found) {
+        out_target->missing_schema = true;
+        return MYLITE_OK;
+    }
+    if (mylite_catalog_name_is_reserved(out_target->table_name)) {
+        out_target->missing_table = true;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        out_target->schema_name,
+        out_target->table_name,
+        &table,
+        &table_found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (!table_found) {
+        rc = mylite_catalog_try_read_table_by_name(
+            database,
+            schema.schema_id,
+            out_target->table_name,
+            &table,
+            &table_found
+        );
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+            return rc;
+        }
+    }
+    if (!table_found) {
+        out_target->missing_table = true;
+        return MYLITE_OK;
+    }
+    if (table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        out_target->unsupported_kind = true;
+    }
+    return MYLITE_OK;
+}
+
+static int check_table_maintenance_duplicate_target(
+    struct mylite_db *database,
+    const struct table_maintenance_target *targets,
+    size_t target_count,
+    const struct table_maintenance_target *target
+) {
+    for (size_t index = 0U; index < target_count; ++index) {
+        if (text_equals_ascii_case_insensitive(targets[index].schema_name, target->schema_name) &&
+            text_equals_ascii_case_insensitive(targets[index].table_name, target->table_name)) {
+            set_duplicate_table_alias_error(database, target->table_name);
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int format_table_maintenance_display_name(
+    struct mylite_db *database,
+    struct table_maintenance_target *target
+) {
+    int written = snprintf(
+        target->display_name,
+        sizeof(target->display_name),
+        "%s.%s",
+        target->schema_name,
+        target->table_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(target->display_name)) {
+        set_identifier_too_long_error(database, "table");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static const char *table_maintenance_operation_text(enum table_maintenance_operation operation) {
+    switch (operation) {
+    case TABLE_MAINTENANCE_ANALYZE:
+        return "analyze";
+    case TABLE_MAINTENANCE_CHECK:
+        return "check";
+    case TABLE_MAINTENANCE_OPTIMIZE:
+        return "optimize";
+    case TABLE_MAINTENANCE_REPAIR:
+        return "repair";
+    }
+    return "";
+}
+
 static int execute_show_tables_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -23702,6 +24202,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:

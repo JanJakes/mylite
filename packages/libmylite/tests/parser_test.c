@@ -87,6 +87,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_table_maintenance_statements(void);
 static int test_temporary_table_lifecycle_statements(void);
 static int test_serial_alias_statements(void);
 static int test_varchar_type_statements(void);
@@ -330,6 +331,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_table_maintenance_statements();
     failures += test_temporary_table_lifecycle_statements();
     failures += test_serial_alias_statements();
     failures += test_varchar_type_statements();
@@ -7766,6 +7768,88 @@ static int test_table_lifecycle_statements(void) {
         "amount",
         "second projection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_table_maintenance_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_names = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ANALYZE TABLE t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT, "analyze statement");
+    failures += expect_child_count(statement, 1U, "analyze child count");
+    failures += expect_node(table_names, MYLITE_SQL_AST_TABLE_NAME_LIST, "analyze target list");
+    failures += expect_child_count(table_names, 1U, "analyze target count");
+    failures += expect_span_text(child_at(table_names, 0U), "t", "analyze target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE LOCAL TABLE app.t, other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT, "analyze local");
+    failures += expect_child_count(table_names, 2U, "analyze local target count");
+    failures += expect_span_text(child_at(table_names, 0U), "app.t", "analyze qualified target");
+    failures += expect_span_text(child_at(table_names, 1U), "other", "analyze second target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE NO_WRITE_TO_BINLOG TABLE t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT,
+        "analyze no_write_to_binlog"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CHECK TABLE t QUICK FAST MEDIUM EXTENDED CHANGED FOR UPGRADE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, "check statement");
+    failures += expect_child_count(statement, 1U, "check child count");
+    failures += expect_child_count(table_names, 1U, "check target count");
+    failures += expect_span_text(child_at(table_names, 0U), "t", "check target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("OPTIMIZE LOCAL TABLE t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT, "optimize statement");
+    failures += expect_span_text(child_at(table_names, 0U), "t", "optimize target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPAIR NO_WRITE_TO_BINLOG TABLE app.t QUICK EXTENDED USE_FRM;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT, "repair statement");
+    failures += expect_span_text(child_at(table_names, 0U), "app.t", "repair target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ANALYZE TABLE t UPDATE HISTOGRAM ON c;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPAIR TABLE t FOR UPGRADE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

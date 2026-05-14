@@ -8,16 +8,16 @@
       names, duplicate names, row counts, warning counts, and implicit commit.
 - [x] Write independently authored feature spec and scope boundaries.
 - [x] Add MySQL-runtime expectation artifact for this feature surface.
-- [ ] Add parser/AST support for the admitted maintenance grammar.
-- [ ] Add runtime result synthesis for supported base-table targets and
+- [x] Add parser/AST support for the admitted maintenance grammar.
+- [x] Add runtime result synthesis for supported base-table targets and
       unavailable-target result rows.
-- [ ] Preserve MySQL implicit-commit and savepoint-clear behavior.
-- [ ] Add fast parser/runtime C tests for success paths, options,
+- [x] Preserve MySQL implicit-commit and savepoint-clear behavior.
+- [x] Add fast parser/runtime C tests for success paths, options,
       diagnostics/result rows, transaction behavior, persistence, and
       unsupported forms.
-- [ ] Update compatibility docs for the exact supported subset.
-- [ ] Run the feature MySQL expectation script.
-- [ ] Run targeted parser/runtime CTest entries.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff, commit atomically, push `main`, and run a
+- [x] Update compatibility docs for the exact supported subset.
+- [x] Run the feature MySQL expectation script.
+- [x] Run targeted parser/runtime CTest entries.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff, commit atomically, push `main`, and run a
       subagent release-gate review.

@@ -274,6 +274,9 @@ statement(A) ::= update_statement(B). {
 statement(A) ::= transaction_control_statement(B). {
     A = B;
 }
+statement(A) ::= table_maintenance_statement(B). {
+    A = B;
+}
 statement(A) ::= do_statement(B). {
     A = B;
 }
@@ -324,6 +327,54 @@ rollback_work_opt ::= WORK.
 
 rollback_savepoint_opt ::= .
 rollback_savepoint_opt ::= SAVEPOINT.
+
+table_maintenance_statement(A) ::=
+    ANALYZE(T) maintenance_binlog_opt TABLE table_name_list(N). {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT, T, N);
+}
+table_maintenance_statement(A) ::=
+    CHECK(T) TABLE table_name_list(N) check_table_option_list_opt. {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
+}
+table_maintenance_statement(A) ::=
+    OPTIMIZE(T) maintenance_binlog_opt TABLE table_name_list(N). {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT, T, N);
+}
+table_maintenance_statement(A) ::=
+    REPAIR(T) maintenance_binlog_opt TABLE table_name_list(N) repair_table_option_list_opt. {
+    A = mylite_sql_parser_make_table_maintenance_statement(
+        state, MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT, T, N);
+}
+
+maintenance_binlog_opt ::= .
+maintenance_binlog_opt ::= NO_WRITE_TO_BINLOG.
+maintenance_binlog_opt ::= LOCAL.
+
+check_table_option_list_opt ::= .
+check_table_option_list_opt ::= check_table_option_list.
+
+check_table_option_list ::= check_table_option.
+check_table_option_list ::= check_table_option_list check_table_option.
+
+check_table_option ::= FOR UPGRADE.
+check_table_option ::= QUICK.
+check_table_option ::= FAST.
+check_table_option ::= MEDIUM.
+check_table_option ::= EXTENDED.
+check_table_option ::= CHANGED.
+
+repair_table_option_list_opt ::= .
+repair_table_option_list_opt ::= repair_table_option_list.
+
+repair_table_option_list ::= repair_table_option.
+repair_table_option_list ::= repair_table_option_list repair_table_option.
+
+repair_table_option ::= QUICK.
+repair_table_option ::= EXTENDED.
+repair_table_option ::= USE_FRM.
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -3329,6 +3380,42 @@ identifier(A) ::= COMMIT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ROLLBACK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ANALYZE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHECK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= OPTIMIZE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= REPAIR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= NO_WRITE_TO_BINLOG(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= QUICK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FAST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MEDIUM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= EXTENDED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHANGED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UPGRADE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= USE_FRM(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

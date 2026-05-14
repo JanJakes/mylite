@@ -563,6 +563,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_savepoint_control_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_maintenance_statement(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_ast_node *table_names
+) {
+    struct mylite_sql_source_span span = span_from_token(&first_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_names != NULL) {
+        span = span_join(span, table_names->span);
+    }
+
+    statement = make_node(state, statement_kind, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_names);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,
@@ -5191,6 +5213,18 @@ static bool map_keyword_token(
         {"ROLLBACK", MYLITE_SQL_PARSE_ROLLBACK},
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
+        {"ANALYZE", MYLITE_SQL_PARSE_ANALYZE},
+        {"CHECK", MYLITE_SQL_PARSE_CHECK},
+        {"OPTIMIZE", MYLITE_SQL_PARSE_OPTIMIZE},
+        {"REPAIR", MYLITE_SQL_PARSE_REPAIR},
+        {"NO_WRITE_TO_BINLOG", MYLITE_SQL_PARSE_NO_WRITE_TO_BINLOG},
+        {"QUICK", MYLITE_SQL_PARSE_QUICK},
+        {"FAST", MYLITE_SQL_PARSE_FAST},
+        {"MEDIUM", MYLITE_SQL_PARSE_MEDIUM},
+        {"EXTENDED", MYLITE_SQL_PARSE_EXTENDED},
+        {"CHANGED", MYLITE_SQL_PARSE_CHANGED},
+        {"UPGRADE", MYLITE_SQL_PARSE_UPGRADE},
+        {"USE_FRM", MYLITE_SQL_PARSE_USE_FRM},
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"LOCAL", MYLITE_SQL_PARSE_LOCAL},

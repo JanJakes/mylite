@@ -662,10 +662,10 @@ tests.
 | `SET TRANSACTION` | ❌ | Isolation and access scope. | [SQL transactions](docs/compatibility/sql-transactions.md) |
 | `LOCK TABLES` | ❌ | Table lock syntax and behavior. | [SQL locking](docs/compatibility/sql-locking.md) |
 | `UNLOCK TABLES` | ❌ | Release table locks. | [SQL locking](docs/compatibility/sql-locking.md) |
-| `ANALYZE TABLE` | ❌ | Table analysis result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
-| `CHECK TABLE` | ❌ | Table check result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
-| `OPTIMIZE TABLE` | ❌ | Table optimize result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
-| `REPAIR TABLE` | ❌ | Table repair result shape. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `ANALYZE TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with optional `NO_WRITE_TO_BINLOG` / `LOCAL`, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no histograms, partition maintenance, statistics refresh, optimizer effects, privileges, or binary logging. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `CHECK TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with admitted `QUICK`, `FAST`, `MEDIUM`, `EXTENDED`, `CHANGED`, and `FOR UPGRADE` options as no-ops, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no physical integrity checking, partition checks, checksum validation, privileges, or repair advice. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `OPTIMIZE TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with optional `NO_WRITE_TO_BINLOG` / `LOCAL`, InnoDB-style note plus status rows, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no table rebuild, statistics refresh, free-space recovery, optimizer effects, privileges, or binary logging. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
+| `REPAIR TABLE` | 🟡 | Limited persistent and shadowing temporary base-table result-set surface with optional `NO_WRITE_TO_BINLOG` / `LOCAL` and admitted `QUICK`, `EXTENDED`, and `USE_FRM` options as no-ops, InnoDB-style unsupported-repair note rows, multi-target ordering, MySQL-shaped missing-target rows, implicit user-transaction commit, `ROW_COUNT() = -1`, and no warnings; no physical repair, partition repair, `.frm` handling, privileges, or binary logging. | [SQL table maintenance](docs/compatibility/sql-table-maintenance.md) |
 
 ## Detailed Compatibility Tables
 

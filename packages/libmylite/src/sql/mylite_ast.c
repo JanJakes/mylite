@@ -1093,6 +1093,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "rollback_to_savepoint_statement";
     case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
         return "release_savepoint_statement";
+    case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
+        return "analyze_table_statement";
+    case MYLITE_SQL_AST_CHECK_TABLE_STATEMENT:
+        return "check_table_statement";
+    case MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT:
+        return "optimize_table_statement";
+    case MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT:
+        return "repair_table_statement";
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
         return "update_assignment_list";
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:

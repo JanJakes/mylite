@@ -656,9 +656,9 @@ tests.
 | `BEGIN WORK` | 🟡 | Limited start-transaction synonym. | [SQL transactions](docs/compatibility/sql-transactions.md) |
 | `COMMIT` | 🟡 | Limited explicit commit of the active MyLite user transaction, plus no-op success outside a transaction; admits optional `WORK` only. | [SQL transactions](docs/compatibility/sql-transactions.md) |
 | `ROLLBACK` | 🟡 | Limited explicit rollback of the active MyLite user transaction, plus no-op success outside a transaction; admits optional `WORK` only. | [SQL transactions](docs/compatibility/sql-transactions.md) |
-| `SAVEPOINT` | ❌ | Create or replace savepoint. | [SQL transactions](docs/compatibility/sql-transactions.md) |
-| `ROLLBACK TO SAVEPOINT` | ❌ | Partial rollback. | [SQL transactions](docs/compatibility/sql-transactions.md) |
-| `RELEASE SAVEPOINT` | ❌ | Release savepoint. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `SAVEPOINT` | 🟡 | Limited user-visible savepoint creation and same-name replacement inside current explicit MyLite user transactions; outside a transaction it is a MySQL-compatible no-op success under the fixed autocommit baseline; no stored-program savepoint levels, mutable autocommit, protocol flags, or isolation/access semantics. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `ROLLBACK TO SAVEPOINT` | 🟡 | Limited partial rollback for current user-visible savepoints, including `ROLLBACK TO`, `ROLLBACK TO SAVEPOINT`, and `ROLLBACK WORK TO [SAVEPOINT]`; missing savepoints return MySQL-compatible error `1305`; no stored-program scoping or lock/protocol semantics. | [SQL transactions](docs/compatibility/sql-transactions.md) |
+| `RELEASE SAVEPOINT` | 🟡 | Limited release of current user-visible savepoints and later savepoints in the active explicit transaction, with MySQL-compatible missing-savepoint diagnostics; no stored-program scoping or protocol semantics. | [SQL transactions](docs/compatibility/sql-transactions.md) |
 | `SET TRANSACTION` | ❌ | Isolation and access scope. | [SQL transactions](docs/compatibility/sql-transactions.md) |
 | `LOCK TABLES` | ❌ | Table lock syntax and behavior. | [SQL locking](docs/compatibility/sql-locking.md) |
 | `UNLOCK TABLES` | ❌ | Release table locks. | [SQL locking](docs/compatibility/sql-locking.md) |

@@ -9,11 +9,14 @@
 #include "mylite_temporary_catalog.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 enum {
     MYLITE_SESSION_IDENTIFIER_CAPACITY = 64,
     MYLITE_SESSION_SCHEMA_CAPACITY = 64,
+    MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY = 64,
+    MYLITE_SESSION_SAVEPOINT_INTERNAL_NAME_CAPACITY = 128,
     MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY = 512,
     MYLITE_SESSION_TIME_ZONE_CAPACITY = 64,
     MYLITE_SESSION_CHARSET_NAME_CAPACITY = 64,
@@ -57,6 +60,12 @@ enum {
 
 struct sqlite3;
 
+struct mylite_session_savepoint {
+    char name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+    char folded_name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+    char sqlite_name[MYLITE_SESSION_SAVEPOINT_INTERNAL_NAME_CAPACITY];
+};
+
 struct mylite_session_state {
     bool has_selected_schema;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
@@ -81,6 +90,10 @@ struct mylite_session_state {
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     bool user_transaction_active;
+    struct mylite_session_savepoint *savepoints;
+    size_t savepoint_count;
+    size_t savepoint_capacity;
+    uint64_t next_savepoint_id;
     bool has_timestamp_override;
     int64_t timestamp_override;
     int64_t active_statement_time;

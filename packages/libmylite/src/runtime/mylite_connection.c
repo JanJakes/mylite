@@ -247,6 +247,10 @@ static void destroy_database_handle(struct mylite_db *database) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
         database->session.user_transaction_active = false;
     }
+    free(database->session.savepoints);
+    database->session.savepoints = NULL;
+    database->session.savepoint_count = 0U;
+    database->session.savepoint_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
@@ -325,6 +329,10 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->user_transaction_active = false;
+    session->savepoints = NULL;
+    session->savepoint_count = 0U;
+    session->savepoint_capacity = 0U;
+    session->next_savepoint_id = 1U;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;

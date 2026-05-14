@@ -78,6 +78,7 @@ enum {
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
     mysql_error_collation_not_valid_for_character_set = 1253,
+    mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_subquery_returns_more_than_one_row = 1242,
     mysql_error_session_variable_only = 1238,
@@ -446,6 +447,16 @@ enum mylite_statement_transaction_kind {
 struct mylite_statement_transaction {
     enum mylite_statement_transaction_kind kind;
     bool active;
+};
+
+struct savepoint_control_sql_request {
+    const char *prefix;
+    const char *sqlite_name;
+};
+
+struct user_savepoint_values {
+    const char *name;
+    const char *sqlite_name;
 };
 
 struct planned_select_source;
@@ -4590,6 +4601,21 @@ static int execute_start_transaction_statement(
 );
 static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_rollback_to_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_release_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_set_connection_character_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -4690,6 +4716,39 @@ static bool statement_requires_implicit_user_transaction_commit(
     const struct mylite_sql_ast_node *statement
 );
 static int commit_active_user_transaction_for_ddl(struct mylite_db *database);
+static void clear_user_savepoints(struct mylite_db *database);
+static int create_or_replace_user_savepoint(struct mylite_db *database, const char *name);
+static int rollback_to_user_savepoint(struct mylite_db *database, const char *name);
+static int release_user_savepoint(struct mylite_db *database, const char *name);
+static int copy_savepoint_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size
+);
+static void fold_savepoint_name(const char *source, char *destination, size_t destination_size);
+static bool find_user_savepoint(
+    const struct mylite_session_state *session,
+    const char *name,
+    size_t *out_index
+);
+static int reserve_user_savepoints(struct mylite_db *database, size_t required_capacity);
+static int format_next_sqlite_savepoint_name(
+    struct mylite_db *database,
+    char *destination,
+    size_t destination_size
+);
+static int execute_sqlite_savepoint_control(
+    struct mylite_db *database,
+    const char *prefix,
+    const char *sqlite_name
+);
+static int build_savepoint_control_sql(
+    struct savepoint_control_sql_request request,
+    char **out_sql
+);
+static void remove_user_savepoint_at(struct mylite_session_state *session, size_t index);
+static int append_user_savepoint(struct mylite_db *database, struct user_savepoint_values values);
 static int begin_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
@@ -12997,6 +13056,10 @@ static void set_unknown_storage_engine_error(struct mylite_db *database, const c
 static void set_failed_read_auto_increment_error(struct mylite_db *database);
 static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name);
 static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name);
+static void set_savepoint_does_not_exist_error(
+    struct mylite_db *database,
+    const char *savepoint_name
+);
 static void set_table_does_not_exist_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -13412,6 +13475,12 @@ static int execute_parsed_statement(
         return execute_commit_statement(database, out_result);
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
         return execute_rollback_statement(database, out_result);
+    case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
+        return execute_savepoint_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
+        return execute_rollback_to_savepoint_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
+        return execute_release_savepoint_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return execute_create_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -13879,6 +13948,7 @@ static int execute_start_transaction_statement(
         rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_user_savepoints(database);
         }
     }
     if (rc == MYLITE_OK) {
@@ -13912,6 +13982,7 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
         rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_user_savepoints(database);
         }
     }
     if (rc != MYLITE_OK) {
@@ -13937,7 +14008,104 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
             normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_user_savepoints(database);
         }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    char savepoint_name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = copy_savepoint_name(
+        database,
+        child_at(statement, 0U),
+        savepoint_name,
+        sizeof(savepoint_name)
+    );
+    if (rc == MYLITE_OK && database->session.user_transaction_active) {
+        rc = create_or_replace_user_savepoint(database, savepoint_name);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_rollback_to_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    char savepoint_name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = copy_savepoint_name(
+        database,
+        child_at(statement, 0U),
+        savepoint_name,
+        sizeof(savepoint_name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = rollback_to_user_savepoint(database, savepoint_name);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_release_savepoint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    char savepoint_name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = copy_savepoint_name(
+        database,
+        child_at(statement, 0U),
+        savepoint_name,
+        sizeof(savepoint_name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = release_user_savepoint(database, savepoint_name);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -14001,8 +14169,288 @@ static int commit_active_user_transaction_for_ddl(struct mylite_db *database) {
     rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = false;
+        clear_user_savepoints(database);
     }
     return rc;
+}
+
+static void clear_user_savepoints(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    database->session.savepoint_count = 0U;
+}
+
+static int create_or_replace_user_savepoint(struct mylite_db *database, const char *name) {
+    char sqlite_name[MYLITE_SESSION_SAVEPOINT_INTERNAL_NAME_CAPACITY];
+    size_t existing_index = 0U;
+    bool has_existing = false;
+    int rc = MYLITE_OK;
+
+    has_existing = find_user_savepoint(&database->session, name, &existing_index);
+    rc = reserve_user_savepoints(database, database->session.savepoint_count + 1U);
+    if (rc == MYLITE_OK) {
+        rc = format_next_sqlite_savepoint_name(database, sqlite_name, sizeof(sqlite_name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_savepoint_control(database, "SAVEPOINT ", sqlite_name);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (has_existing) {
+        remove_user_savepoint_at(&database->session, existing_index);
+    }
+
+    rc = append_user_savepoint(
+        database,
+        (struct user_savepoint_values){
+            .name = name,
+            .sqlite_name = sqlite_name,
+        }
+    );
+    if (rc == MYLITE_OK) {
+        ++database->session.next_savepoint_id;
+    }
+    return rc;
+}
+
+static int rollback_to_user_savepoint(struct mylite_db *database, const char *name) {
+    size_t index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!database->session.user_transaction_active ||
+        !find_user_savepoint(&database->session, name, &index)) {
+        set_savepoint_does_not_exist_error(database, name);
+        return MYLITE_ERROR;
+    }
+
+    rc = execute_sqlite_savepoint_control(
+        database,
+        "ROLLBACK TO SAVEPOINT ",
+        database->session.savepoints[index].sqlite_name
+    );
+    if (rc == MYLITE_OK) {
+        database->session.savepoint_count = index + 1U;
+    }
+    return rc;
+}
+
+static int release_user_savepoint(struct mylite_db *database, const char *name) {
+    size_t index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!database->session.user_transaction_active ||
+        !find_user_savepoint(&database->session, name, &index)) {
+        set_savepoint_does_not_exist_error(database, name);
+        return MYLITE_ERROR;
+    }
+
+    rc = execute_sqlite_savepoint_control(
+        database,
+        "RELEASE SAVEPOINT ",
+        database->session.savepoints[index].sqlite_name
+    );
+    if (rc == MYLITE_OK) {
+        database->session.savepoint_count = index;
+    }
+    return rc;
+}
+
+static int copy_savepoint_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size
+) {
+    return copy_identifier_text(node, destination, destination_size, database);
+}
+
+static void fold_savepoint_name(const char *source, char *destination, size_t destination_size) {
+    size_t index = 0U;
+
+    if (destination_size == 0U) {
+        return;
+    }
+    if (source == NULL) {
+        destination[0] = '\0';
+        return;
+    }
+
+    for (; index + 1U < destination_size && source[index] != '\0'; ++index) {
+        destination[index] = ascii_lower((unsigned char)source[index]);
+    }
+    destination[index] = '\0';
+}
+
+static bool find_user_savepoint(
+    const struct mylite_session_state *session,
+    const char *name,
+    size_t *out_index
+) {
+    char folded_name[MYLITE_SESSION_SAVEPOINT_NAME_CAPACITY];
+
+    fold_savepoint_name(name, folded_name, sizeof(folded_name));
+    for (size_t index = 0U; index < session->savepoint_count; ++index) {
+        if (strcmp(session->savepoints[index].folded_name, folded_name) == 0) {
+            if (out_index != NULL) {
+                *out_index = index;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static int reserve_user_savepoints(struct mylite_db *database, size_t required_capacity) {
+    struct mylite_session_state *session = &database->session;
+    struct mylite_session_savepoint *savepoints = NULL;
+    size_t new_capacity = 0U;
+
+    if (required_capacity <= session->savepoint_capacity) {
+        return MYLITE_OK;
+    }
+
+    new_capacity = session->savepoint_capacity == 0U ? 4U : session->savepoint_capacity;
+    while (new_capacity < required_capacity) {
+        if (new_capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        new_capacity *= 2U;
+    }
+
+    savepoints = realloc(session->savepoints, new_capacity * sizeof(session->savepoints[0]));
+    if (savepoints == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    session->savepoints = savepoints;
+    session->savepoint_capacity = new_capacity;
+    return MYLITE_OK;
+}
+
+static int format_next_sqlite_savepoint_name(
+    struct mylite_db *database,
+    char *destination,
+    size_t destination_size
+) {
+    int written = 0;
+
+    if (database->session.next_savepoint_id == UINT64_MAX) {
+        set_runtime_error(database, "too many savepoints in this transaction");
+        return MYLITE_ERROR;
+    }
+
+    written = snprintf(
+        destination,
+        destination_size,
+        "_mylite_user_savepoint_%" PRIu64 "_%" PRIu64,
+        database->session.connection_id,
+        database->session.next_savepoint_id
+    );
+    if (written < 0 || (size_t)written >= destination_size) {
+        set_runtime_error(database, "failed to format savepoint name");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int execute_sqlite_savepoint_control(
+    struct mylite_db *database,
+    const char *prefix,
+    const char *sqlite_name
+) {
+    char *sql = NULL;
+    int rc = build_savepoint_control_sql(
+        (struct savepoint_control_sql_request){
+            .prefix = prefix,
+            .sqlite_name = sqlite_name,
+        },
+        &sql
+    );
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else {
+            set_runtime_error(database, "failed to build savepoint control SQL");
+        }
+        return rc;
+    }
+
+    rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, sql));
+    free(sql);
+    return rc;
+}
+
+static int build_savepoint_control_sql(
+    struct savepoint_control_sql_request request,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, request.prefix);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, request.sqlite_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static void remove_user_savepoint_at(struct mylite_session_state *session, size_t index) {
+    if (index >= session->savepoint_count) {
+        return;
+    }
+
+    if (index + 1U < session->savepoint_count) {
+        memmove(
+            &session->savepoints[index],
+            &session->savepoints[index + 1U],
+            (session->savepoint_count - index - 1U) * sizeof(session->savepoints[0])
+        );
+    }
+    --session->savepoint_count;
+}
+
+static int append_user_savepoint(struct mylite_db *database, struct user_savepoint_values values) {
+    struct mylite_session_state *session = &database->session;
+    struct mylite_session_savepoint *savepoint = NULL;
+    int written = 0;
+
+    if (session->savepoint_count >= session->savepoint_capacity) {
+        set_runtime_error(database, "savepoint registry capacity was not reserved");
+        return MYLITE_ERROR;
+    }
+
+    savepoint = &session->savepoints[session->savepoint_count];
+    written = snprintf(savepoint->name, sizeof(savepoint->name), "%s", values.name);
+    if (written < 0 || (size_t)written >= sizeof(savepoint->name)) {
+        set_identifier_too_long_error(database, "savepoint");
+        return MYLITE_ERROR;
+    }
+    fold_savepoint_name(savepoint->name, savepoint->folded_name, sizeof(savepoint->folded_name));
+    written =
+        snprintf(savepoint->sqlite_name, sizeof(savepoint->sqlite_name), "%s", values.sqlite_name);
+    if (written < 0 || (size_t)written >= sizeof(savepoint->sqlite_name)) {
+        set_runtime_error(database, "failed to store savepoint name");
+        return MYLITE_ERROR;
+    }
+
+    ++session->savepoint_count;
+    return MYLITE_OK;
 }
 
 static int begin_statement_transaction(
@@ -23200,6 +23648,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
+    case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
+    case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
+    case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
@@ -77505,6 +77956,24 @@ static void set_unknown_collation_error(struct mylite_db *database, const char *
         mylite_connection_diagnostics(database),
         mysql_error_unknown_collation,
         "HY000",
+        message
+    );
+}
+
+static void set_savepoint_does_not_exist_error(
+    struct mylite_db *database,
+    const char *savepoint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "SAVEPOINT %s does not exist", savepoint_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_savepoint_does_not_exist,
+        "42000",
         message
     );
 }

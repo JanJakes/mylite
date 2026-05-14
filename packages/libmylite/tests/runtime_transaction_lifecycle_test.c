@@ -16,6 +16,7 @@ enum {
     test_path_capacity = 1024,
     mysql_error_unknown_table = 1051,
     mysql_error_duplicate_key = 1062,
+    mysql_error_savepoint_does_not_exist = 1305,
 };
 
 struct expected_query {
@@ -32,6 +33,8 @@ struct expected_nonquery {
 };
 
 static int test_transaction_control_and_dml(void);
+static int test_savepoint_lifecycle(void);
+static int test_independent_savepoint_handles(void);
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
@@ -42,6 +45,13 @@ static int expect_nonquery_with_warnings(
     struct expected_nonquery expected
 );
 static int expect_error(mylite_db *database, const char *sql, int expected_code);
+static int expect_error_details(
+    mylite_db *database,
+    const char *sql,
+    int expected_code,
+    const char *expected_sqlstate,
+    const char *expected_message
+);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_row_count_zero(mylite_db *database);
 static int expect_result_value(
@@ -71,6 +81,8 @@ int main(void) {
     int failures = 0;
 
     failures += test_transaction_control_and_dml();
+    failures += test_savepoint_lifecycle();
+    failures += test_independent_savepoint_handles();
     failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
 
@@ -239,6 +251,294 @@ static int test_transaction_control_and_dml(void) {
     return failures;
 }
 
+static int test_savepoint_lifecycle(void) {
+    static const char *const missing_warning[] = {
+        "Error",
+        "1305",
+        "SAVEPOINT outside_sp does not exist",
+    };
+    static const char *const first_rollback_rows[] = {"1", "10"};
+    static const char *const release_rows[] = {"1", "10", "4", "40", "5", "50"};
+    static const char *const replacement_rows[] = {"1"};
+    static const char *const case_rows[] = {"3"};
+    static const char *const nested_start_rows[] = {"1"};
+    static const char *const ddl_rows[] = {"1", "1"};
+    static const char *const statement_error_rows[] = {"0"};
+    static const char *const reopen_rows[] =
+        {"1", "10", "4", "40", "5", "50", "8", "80", "17", "170"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "savepoint") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open savepoint file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+
+    failures += expect_nonquery(database, "SAVEPOINT outside_sp", 0);
+    failures += expect_row_count_zero(database);
+    failures += expect_error_details(
+        database,
+        "ROLLBACK TO SAVEPOINT outside_sp",
+        mysql_error_savepoint_does_not_exist,
+        "42000",
+        "SAVEPOINT outside_sp does not exist"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = missing_warning,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "missing savepoint warning row",
+        }
+    );
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT a", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (2, 20)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT b", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (3, 30)", 1);
+    failures += expect_nonquery(database, "ROLLBACK TO SAVEPOINT a", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = first_rollback_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "rollback to savepoint keeps target",
+        }
+    );
+    failures += expect_nonquery(database, "ROLLBACK TO a", 0);
+    failures += expect_error(database, "ROLLBACK TO b", mysql_error_savepoint_does_not_exist);
+    failures += expect_nonquery(database, "RELEASE SAVEPOINT a", 0);
+    failures += expect_error(database, "RELEASE SAVEPOINT a", mysql_error_savepoint_does_not_exist);
+    failures += expect_nonquery(database, "COMMIT", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (4, 40)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT released", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (5, 50)", 1);
+    failures += expect_nonquery(database, "RELEASE SAVEPOINT released", 0);
+    failures += expect_nonquery(database, "COMMIT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = release_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "release keeps row changes",
+        }
+    );
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SAVEPOINT dup_a", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (14, 140)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT dup_b", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (15, 150)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT dup_a", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (16, 160)", 1);
+    failures += expect_nonquery(database, "ROLLBACK WORK TO SAVEPOINT dup_b", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE id IN (14, 15, 16)",
+            .values = replacement_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "replacement preserves different later savepoint",
+        }
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SAVEPOINT dup", 0);
+    failures += expect_nonquery(database, "SAVEPOINT dup", 0);
+    failures += expect_nonquery(database, "RELEASE SAVEPOINT dup", 0);
+    failures +=
+        expect_error(database, "ROLLBACK TO SAVEPOINT dup", mysql_error_savepoint_does_not_exist);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SAVEPOINT MixedName", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (6, 60)", 1);
+    failures += expect_nonquery(database, "ROLLBACK TO mixedname", 0);
+    failures += expect_nonquery(database, "SAVEPOINT `sp ace`", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (7, 70)", 1);
+    failures += expect_nonquery(database, "ROLLBACK TO SAVEPOINT `SP ACE`", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t",
+            .values = case_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "case-insensitive savepoint names",
+        }
+    );
+    failures += expect_nonquery(database, "COMMIT", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (17, 170)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT nested_start_sp", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures +=
+        expect_error(database, "ROLLBACK TO nested_start_sp", mysql_error_savepoint_does_not_exist);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE id = 17",
+            .values = nested_start_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "nested START TRANSACTION clears savepoint and commits previous work",
+        }
+    );
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (8, 80)", 1);
+    failures += expect_nonquery(database, "SAVEPOINT ddl_sp", 0);
+    failures += expect_nonquery(database, "CREATE TABLE ddl_savepoint_marker (id INT)", 0);
+    failures += expect_error(database, "ROLLBACK TO ddl_sp", mysql_error_savepoint_does_not_exist);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE id = 8",
+            .values = &ddl_rows[0],
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "DDL savepoint row persisted",
+        }
+    );
+    failures += expect_nonquery(database, "INSERT INTO ddl_savepoint_marker VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM ddl_savepoint_marker",
+            .values = &ddl_rows[1],
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "DDL savepoint table persisted",
+        }
+    );
+
+    failures += expect_nonquery(database, "CREATE TABLE unique_savepoint (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SAVEPOINT before_error", 0);
+    failures += expect_nonquery(database, "INSERT INTO unique_savepoint VALUES (1)", 1);
+    failures += expect_error(
+        database,
+        "INSERT INTO unique_savepoint VALUES (1)",
+        mysql_error_duplicate_key
+    );
+    failures += expect_nonquery(database, "ROLLBACK TO before_error", 0);
+    failures += expect_nonquery(database, "COMMIT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM unique_savepoint",
+            .values = statement_error_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "statement error preserves user savepoint",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen savepoint file");
+    failures += expect_nonquery(database, "USE app", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = reopen_rows,
+            .column_count = 2U,
+            .row_count = sizeof(reopen_rows) / (2U * sizeof(reopen_rows[0])),
+            .context = "committed savepoint-controlled changes persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_independent_savepoint_handles(void) {
+    static const char *const first_handle_rows[] = {"1"};
+    static const char *const second_handle_rows[] = {"10"};
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    if (make_test_path(first_path, sizeof(first_path), "savepoint_first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "savepoint_second") != 0) {
+        return 1;
+    }
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures += seed_schema(first);
+    failures += seed_schema(second);
+    failures += expect_nonquery(first, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(second, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
+
+    failures += expect_nonquery(first, "START TRANSACTION", 0);
+    failures += expect_nonquery(first, "INSERT INTO t VALUES (1)", 1);
+    failures += expect_nonquery(first, "SAVEPOINT same_name", 0);
+    failures += expect_nonquery(first, "INSERT INTO t VALUES (2)", 1);
+
+    failures += expect_nonquery(second, "START TRANSACTION", 0);
+    failures += expect_nonquery(second, "INSERT INTO t VALUES (10)", 1);
+    failures += expect_nonquery(second, "SAVEPOINT same_name", 0);
+    failures += expect_nonquery(second, "INSERT INTO t VALUES (20)", 1);
+    failures += expect_nonquery(second, "ROLLBACK TO same_name", 0);
+    failures += expect_nonquery(second, "COMMIT", 0);
+
+    failures += expect_nonquery(first, "ROLLBACK TO same_name", 0);
+    failures += expect_nonquery(first, "COMMIT", 0);
+
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY id",
+            .values = first_handle_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "first handle savepoint state",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY id",
+            .values = second_handle_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "second handle savepoint state",
+        }
+    );
+
+    mylite_close(second);
+    mylite_close(first);
+    remove_related_files(second_path);
+    remove_related_files(first_path);
+    return failures;
+}
+
 static int test_drop_table_missing_implicitly_commits_transaction(void) {
     static const char *const first_insert_committed[] = {"1"};
     static const char *const second_insert_committed[] = {"1"};
@@ -312,6 +612,7 @@ static int test_file_close_rolls_back_transaction(void) {
     failures += expect_nonquery(database, "CREATE TABLE persisted (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "INSERT INTO persisted VALUES (1, 10)", 1);
     failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SAVEPOINT close_sp", 0);
     failures += expect_nonquery(database, "INSERT INTO persisted VALUES (2, 20)", 1);
     mylite_close(database);
     database = NULL;
@@ -389,12 +690,29 @@ static int expect_nonquery_with_warnings(
 }
 
 static int expect_error(mylite_db *database, const char *sql, int expected_code) {
+    return expect_error_details(database, sql, expected_code, NULL, NULL);
+}
+
+static int expect_error_details(
+    mylite_db *database,
+    const char *sql,
+    int expected_code,
+    const char *expected_sqlstate,
+    const char *expected_message
+) {
     mylite_result *result = NULL;
     int failures = 0;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
 
     failures += expect_int(rc, MYLITE_ERROR, sql);
     failures += expect_int(mylite_errcode(database), expected_code, "diagnostic code");
+    if (expected_sqlstate != NULL) {
+        failures +=
+            expect_text(mylite_sqlstate(database), expected_sqlstate, "diagnostic SQLSTATE");
+    }
+    if (expected_message != NULL) {
+        failures += expect_text(mylite_errmsg(database), expected_message, "diagnostic message");
+    }
     failures += expect_size((size_t)(result != NULL), 0U, "error result");
     mylite_result_free(result);
     return failures;

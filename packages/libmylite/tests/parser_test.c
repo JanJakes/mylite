@@ -15076,8 +15076,52 @@ static int test_transaction_control_statements(void) {
     failures += expect_span_text(statement, "ROLLBACK WORK", "rollback work span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SAVEPOINT sp;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, "savepoint");
+    failures += expect_child_count(statement, 1U, "savepoint children");
+    failures += expect_span_text(statement, "SAVEPOINT sp", "savepoint span");
+    failures += expect_span_text(child_at(statement, 0U), "sp", "savepoint name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ROLLBACK TO sp;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+        "rollback to savepoint"
+    );
+    failures += expect_child_count(statement, 1U, "rollback to savepoint children");
+    failures += expect_span_text(statement, "ROLLBACK TO sp", "rollback to savepoint span");
+    failures += expect_span_text(child_at(statement, 0U), "sp", "rollback to savepoint name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ROLLBACK WORK TO SAVEPOINT `sp ace`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT,
+        "rollback work to savepoint"
+    );
+    failures += expect_span_text(
+        statement,
+        "ROLLBACK WORK TO SAVEPOINT `sp ace`",
+        "rollback work to savepoint span"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "`sp ace`", "quoted savepoint name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("RELEASE SAVEPOINT sp;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, "release savepoint");
+    failures += expect_child_count(statement, 1U, "release savepoint children");
+    failures += expect_span_text(statement, "RELEASE SAVEPOINT sp", "release savepoint span");
+    failures += expect_span_text(child_at(statement, 0U), "sp", "release savepoint name");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "CREATE TABLE transaction (begin INT, commit INT, rollback INT, work INT);",
+        "CREATE TABLE transaction (begin INT, commit INT, rollback INT, work INT, savepoint INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -15095,6 +15139,10 @@ static int test_transaction_control_statements(void) {
     failures += parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("ROLLBACK RELEASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TO 'sp';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("RELEASE sp;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

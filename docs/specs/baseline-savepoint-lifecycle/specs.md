@@ -305,16 +305,16 @@ statements that preserve the MySQL-visible state:
 
 - `SAVEPOINT <quoted-internal-name>` for new active-transaction savepoints;
 - `ROLLBACK TO SAVEPOINT <quoted-internal-name>` for partial rollback;
-- `RELEASE SAVEPOINT <quoted-internal-name>` for release and for replacement
-  cleanup when the replaced savepoint is the visible top savepoint.
+- `RELEASE SAVEPOINT <quoted-internal-name>` for user-visible release.
 
-When replacing a same-name savepoint that has differently named savepoints above
-it, MyLite leaves the older internal SQLite savepoint unreachable and removes
-only the old user-visible registry entry. This is intentional: SQLite has no
-public operation to delete a non-top savepoint while preserving later
-savepoints. The unreachable savepoint is cleared by later rollback/release of a
-lower savepoint or by the transaction boundary, and it is never exposed through
-MyLite's user-visible savepoint registry.
+When replacing a same-name savepoint, MyLite leaves the older internal SQLite
+savepoint unreachable and removes only the old user-visible registry entry.
+This is intentional: SQLite has no public operation to delete a non-top
+savepoint while preserving later savepoints, and using one replacement policy
+for top and non-top savepoints keeps failure behavior consistent. The
+unreachable savepoint is cleared by later rollback/release of a lower savepoint
+or by the transaction boundary, and it is never exposed through MyLite's
+user-visible savepoint registry.
 
 Generated SQLite identifiers must be quoted with the existing runtime dynamic
 string identifier quoting helper. Savepoint names are identifiers, not values,

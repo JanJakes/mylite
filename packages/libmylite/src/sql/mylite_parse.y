@@ -38,6 +38,8 @@
 %left BITWISE_XOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
+%fallback IDENTIFIER SAVEPOINT.
+
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
 %type binary_string_type_name { struct mylite_sql_binary_string_type_tokens }
@@ -304,6 +306,24 @@ transaction_control_statement(A) ::= ROLLBACK(R) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, W);
 }
+transaction_control_statement(A) ::= SAVEPOINT(S) identifier(N). {
+    A = mylite_sql_parser_make_savepoint_control_statement(
+        state, MYLITE_SQL_AST_SAVEPOINT_STATEMENT, S, N);
+}
+transaction_control_statement(A) ::= ROLLBACK(R) rollback_work_opt TO rollback_savepoint_opt identifier(N). {
+    A = mylite_sql_parser_make_savepoint_control_statement(
+        state, MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT, R, N);
+}
+transaction_control_statement(A) ::= RELEASE(R) SAVEPOINT identifier(N). {
+    A = mylite_sql_parser_make_savepoint_control_statement(
+        state, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, R, N);
+}
+
+rollback_work_opt ::= .
+rollback_work_opt ::= WORK.
+
+rollback_savepoint_opt ::= .
+rollback_savepoint_opt ::= SAVEPOINT.
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);

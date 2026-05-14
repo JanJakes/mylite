@@ -541,6 +541,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     return make_node(state, statement_kind, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_savepoint_control_statement(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_ast_node *savepoint_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&first_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (savepoint_name != NULL) {
+        span = span_join(span, savepoint_name->span);
+    }
+
+    statement = make_node(state, statement_kind, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, savepoint_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,
@@ -5167,6 +5189,8 @@ static bool map_keyword_token(
         {"WORK", MYLITE_SQL_PARSE_WORK},
         {"COMMIT", MYLITE_SQL_PARSE_COMMIT},
         {"ROLLBACK", MYLITE_SQL_PARSE_ROLLBACK},
+        {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
+        {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"LOCAL", MYLITE_SQL_PARSE_LOCAL},

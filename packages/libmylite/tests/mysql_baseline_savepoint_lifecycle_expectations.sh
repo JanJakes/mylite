@@ -195,6 +195,18 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "nested start transaction clears savepoints" \
+    "ERROR 1305 (42000)" \
+    "START TRANSACTION; INSERT INTO t VALUES (17, 170); SAVEPOINT nested_sp; START TRANSACTION; ROLLBACK TO nested_sp;" \
+    "$DATABASE"
+
+expect_output \
+    "nested start transaction committed previous transaction" \
+    "1" \
+    "SELECT COUNT(*) FROM t WHERE id = 17;" \
+    "$DATABASE"
+
+expect_error \
     "ddl implicit commit clears savepoints" \
     "ERROR 1305 (42000)" \
     "START TRANSACTION; INSERT INTO t VALUES (13, 130); SAVEPOINT ddl_sp; CREATE TABLE ddl_marker (id INT); ROLLBACK TO ddl_sp;" \

@@ -13,5 +13,6 @@ Stored procedure and function DDL, loadable-function declarations, and procedure
 | `DROP FUNCTION` (loadable) | ❌ | Loadable-function deregistration syntax |
 | `DROP PROCEDURE` | ❌ | Stored-procedure deletion and metadata cleanup |
 | `CALL` | ❌ | Procedure invocation results |
+| `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable empty synthetic stored-routine metadata view with MySQL 8.4.9 column shape; no routine descriptors, rows, DDL, parameters, definitions, definers, privileges, or execution |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

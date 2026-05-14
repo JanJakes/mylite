@@ -13,7 +13,7 @@ descriptor-driven `SHOW` statements.
 The feature is intentionally not stored routine support. It exposes MySQL's
 routine-status result column shape and returns zero rows until `CREATE
 PROCEDURE`, `CREATE FUNCTION`, `ALTER`/`DROP` routine lifecycle, routine
-descriptors, definers, privileges, and `INFORMATION_SCHEMA.ROUTINES` exist.
+descriptors, definers, privileges, and routine metadata rows exist.
 
 ## Sources
 
@@ -137,7 +137,7 @@ This feature must not implement:
   parsing, compound statements, variables, cursors, handlers, routine
   parameter descriptors, deterministic metadata, comments, definers, SQL
   security, routine SQL modes, character-set capture, privileges, or
-  `INFORMATION_SCHEMA.ROUTINES`;
+  `INFORMATION_SCHEMA.ROUTINES` rows;
 - rows in `SHOW PROCEDURE STATUS` or `SHOW FUNCTION STATUS`;
 - `SHOW CREATE PROCEDURE`, `SHOW CREATE FUNCTION`, `SHOW PROCEDURE CODE`, or
   `SHOW FUNCTION CODE`;
@@ -317,5 +317,6 @@ foundation, schema/table lifecycle, row values, update, delete, and existing
 `SHOW PROCEDURE STATUS` and `SHOW FUNCTION STATUS` as limited empty routine
 introspection only. They must not claim stored routine support, routine rows,
 `WHERE`, privileges, routine DDL, `SHOW CREATE`, code listings,
-`INFORMATION_SCHEMA.ROUTINES`, definers, security metadata, or full filter
-support.
+definers, security metadata, or full filter support. A later
+`INFORMATION_SCHEMA.ROUTINES` metadata-only surface may be documented
+separately without changing this feature's empty `SHOW` behavior.

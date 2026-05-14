@@ -66,7 +66,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.ROLE_COLUMN_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROLE_ROUTINE_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROLE_TABLE_GRANTS` | ❌ | Table shape and diagnostics |
-| `INFORMATION_SCHEMA.ROUTINES` | ❌ | Stored routine information |
+| `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameters, stored definitions, definers, privileges, or `INFORMATION_SCHEMA.PARAMETERS` rows |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | ❌ | Privileges on schemas |
 | `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema` and MyLite catalog schemas with fixed charset/collation/default-encryption metadata; no `mysql`, `performance_schema`, `sys`, privileges, or schema options |
 | `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | Schema options |

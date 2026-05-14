@@ -1058,6 +1058,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_FIELD = 4,
     PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT = 5,
     PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL = 6,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH = 7,
 };
 
 enum planned_row_scalar_field_domain {
@@ -1066,9 +1067,17 @@ enum planned_row_scalar_field_domain {
     PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER = 2,
 };
 
+enum planned_string_length_function_kind {
+    PLANNED_STRING_LENGTH_FUNCTION_NONE = 0,
+    PLANNED_STRING_LENGTH_FUNCTION_BYTE = 1,
+    PLANNED_STRING_LENGTH_FUNCTION_BIT = 2,
+    PLANNED_STRING_LENGTH_FUNCTION_CHARACTER = 3,
+};
+
 struct planned_row_scalar_expression {
     enum planned_row_scalar_expression_kind kind;
     enum planned_row_scalar_field_domain field_domain;
+    enum planned_string_length_function_kind string_length_kind;
     struct planned_value value;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
@@ -3621,6 +3630,12 @@ static int execute_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_scalar_or_row_scalar_select_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result,
+    bool *out_handled
+);
 static int reject_select_modifier_usage_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -5774,6 +5789,9 @@ static int count_execution_error(struct mylite_db *database, int rc);
 static int column_aggregate_execution_error(struct mylite_db *database, int rc);
 static int grouped_aggregate_execution_error(struct mylite_db *database, int rc);
 static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement);
+static bool select_statement_is_string_length_scalar_projection(
+    const struct mylite_sql_ast_node *statement
+);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
 static int reject_bare_native_function_identifier_lookup_if_needed(
     struct mylite_db *database,
@@ -5866,6 +5884,30 @@ static int current_timestamp_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell
 );
+static int string_length_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_string_length_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int string_length_session_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static enum planned_string_length_function_kind string_length_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_string_length_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int scalar_subquery_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -6952,6 +6994,7 @@ static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_no
 static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -9708,6 +9751,36 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_string_length_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_length_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_length_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -10211,6 +10284,20 @@ static int append_row_scalar_field_operand_sql(
     size_t *next_parameter,
     bool use_string_collation
 );
+static int append_row_scalar_string_length_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_string_length_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter,
+    bool force_blob
+);
+static bool row_scalar_string_length_argument_is_binary(
+    const struct planned_row_scalar_expression *expression
+);
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
@@ -10654,6 +10741,11 @@ static int bind_row_scalar_field_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_date_format_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_length_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -11546,6 +11638,16 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -14564,7 +14666,7 @@ static int execute_do_statement(
             "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited FIELD(), and "
-            "top-level CASE expressions"
+            "limited string length functions, and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -14622,6 +14724,7 @@ static int execute_select_statement(
     struct planned_column_aggregate aggregate_plan = {0};
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
+    bool projected_statement_handled = false;
     int rc = MYLITE_OK;
 
     argument_count_error_function = select_statement_argument_count_error_function(statement);
@@ -14644,11 +14747,14 @@ static int execute_select_statement(
     if (is_information_schema_query) {
         return execute_information_schema_select_statement(database, statement, out_result);
     }
-    if (select_statement_is_row_scalar_projection_attempt(statement)) {
-        return execute_row_scalar_select_statement(database, statement, out_result);
-    }
-    if (select_statement_is_scalar_projection(statement)) {
-        return execute_scalar_projection_select_statement(database, statement, out_result);
+    rc = execute_scalar_or_row_scalar_select_if_needed(
+        database,
+        statement,
+        out_result,
+        &projected_statement_handled
+    );
+    if (projected_statement_handled || rc != MYLITE_OK) {
+        return rc;
     }
     rc = reject_bare_native_function_identifier_lookup_if_needed(database, statement);
     if (rc != MYLITE_OK) {
@@ -14711,6 +14817,27 @@ static int execute_select_statement(
     planned_select_deinit(&plan);
 
     return rc;
+}
+
+static int execute_scalar_or_row_scalar_select_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result,
+    bool *out_handled
+) {
+    *out_handled = true;
+    if (select_statement_is_string_length_scalar_projection(statement)) {
+        return execute_scalar_projection_select_statement(database, statement, out_result);
+    }
+    if (select_statement_is_row_scalar_projection_attempt(statement)) {
+        return execute_row_scalar_select_statement(database, statement, out_result);
+    }
+    if (select_statement_is_scalar_projection(statement)) {
+        return execute_scalar_projection_select_statement(database, statement, out_result);
+    }
+
+    *out_handled = false;
+    return MYLITE_OK;
 }
 
 static int reject_select_modifier_usage_if_needed(
@@ -20723,6 +20850,16 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -38580,6 +38717,32 @@ static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_no
     return true;
 }
 
+static bool select_statement_is_string_length_scalar_projection(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+    bool found_string_length = false;
+
+    if (!select_statement_is_scalar_projection(statement)) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
+        if (is_string_length_projection_expression(expression)) {
+            found_string_length = true;
+        } else if (row_scalar_expression_contains_row_function(expression)) {
+            return false;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return found_string_length;
+}
+
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
 
@@ -39229,6 +39392,16 @@ static const char *argument_count_error_node_function_name(
         return "CURRENT_TIMESTAMP";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "BIT_COUNT";
+    case MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "LENGTH";
+    case MYLITE_SQL_AST_OCTET_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "OCTET_LENGTH";
+    case MYLITE_SQL_AST_BIT_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "BIT_LENGTH";
+    case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "CHAR_LENGTH";
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "CHARACTER_LENGTH";
     default:
         break;
     }
@@ -39297,6 +39470,12 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        return string_length_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -39467,6 +39646,319 @@ static int current_timestamp_scalar_value(
         out_cell->value = out_cell->datetime_text;
     }
     return rc;
+}
+
+static int string_length_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_length_function_kind function_kind = PLANNED_STRING_LENGTH_FUNCTION_NONE;
+    struct session_scalar_cell argument_cell = {0};
+    char *owned_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
+    size_t character_count = 0U;
+    uint64_t result = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_LENGTH_FUNCTION_NONE
+                                       : string_length_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "string length functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_length_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &argument_cell,
+        &owned_text,
+        &text,
+        &text_length,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_text);
+        session_scalar_cell_deinit(&argument_cell);
+        return rc;
+    }
+
+    if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_CHARACTER) {
+        rc = validate_utf8_text(text, text_length, &character_count);
+        if (rc != MYLITE_OK) {
+            set_runtime_error(database, "invalid UTF-8 value in string length function");
+            free(owned_text);
+            session_scalar_cell_deinit(&argument_cell);
+            return MYLITE_ERROR;
+        }
+        result = (uint64_t)character_count;
+    } else if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_BIT) {
+        if (text_length > UINT64_MAX / byte_bit_count) {
+            set_unsupported_error(database, "BIT_LENGTH() result is out of range");
+            free(owned_text);
+            session_scalar_cell_deinit(&argument_cell);
+            return MYLITE_ERROR;
+        }
+        result = (uint64_t)text_length * byte_bit_count;
+    } else {
+        result = (uint64_t)text_length;
+    }
+
+    rc = format_uint64(database, result, out_cell->integer_text, sizeof(out_cell->integer_text));
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->integer_text;
+    }
+    free(owned_text);
+    session_scalar_cell_deinit(&argument_cell);
+    return rc;
+}
+
+static int evaluate_string_length_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_length_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string length functions support only string, integer, boolean, NULL, "
+            "session scalar, and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "string length functions support only string literals",
+                "string length function literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int string_length_session_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL) {
+        return MYLITE_OK;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        if (database->session.has_selected_schema) {
+            out_cell->value = database->session.selected_schema;
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+        out_cell->value = database->session.client_user_identity;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+        out_cell->value = database->session.current_user_identity;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+        out_cell->value = "NONE";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.connection_id
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format CONNECTION_ID() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+        out_cell->value = mylite_version();
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_PI_FUNCTION:
+        out_cell->value = scalar_pi_text;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+        return rand_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+        set_unsupported_error(database, "RAND(seed) is not supported");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+        return current_timestamp_scalar_value(database, out_cell);
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRId64,
+            database->session.previous_row_count
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format ROW_COUNT() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.found_rows
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format FOUND_ROWS() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.last_insert_id
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format LAST_INSERT_ID() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        return system_variable_value(database, expression, out_cell);
+    default:
+        set_unsupported_error(
+            database,
+            "string length functions support only string, integer, boolean, NULL, "
+            "session scalar, and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+}
+
+static bool string_length_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (is_session_scalar_expression(expression)) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static enum planned_string_length_function_kind string_length_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+        return PLANNED_STRING_LENGTH_FUNCTION_BYTE;
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+        return PLANNED_STRING_LENGTH_FUNCTION_BIT;
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        return PLANNED_STRING_LENGTH_FUNCTION_CHARACTER;
+    default:
+        return PLANNED_STRING_LENGTH_FUNCTION_NONE;
+    }
+}
+
+static bool is_string_length_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_length_function_kind(ast_kind) != PLANNED_STRING_LENGTH_FUNCTION_NONE;
 }
 
 static int scalar_subquery_value(
@@ -48019,6 +48511,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_bit_count_projection_expression(expression)) {
         return true;
     }
+    if (is_string_length_projection_expression(expression)) {
+        return true;
+    }
     if (is_cast_binary_projection_expression(expression)) {
         return true;
     }
@@ -48219,6 +48714,18 @@ static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node 
         return false;
     }
     return child_at(expression, 0U) != NULL;
+}
+
+static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || !is_string_length_function_kind(expression->kind)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return string_length_scalar_argument_is_admitted(child_at(expression, 0U));
 }
 
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -57914,6 +58421,17 @@ static int plan_row_scalar_expression(
         set_unsupported_error(database, "DATE_FORMAT() numeric comparison requires a literal");
         return MYLITE_ERROR;
     }
+    if (is_string_length_function_kind(expression->kind)) {
+        return plan_row_scalar_string_length_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
 
     if (has_source) {
         allow_scalar_subquery = false;
@@ -57928,6 +58446,186 @@ static int plan_row_scalar_expression(
         allow_scalar_subquery,
         out_expression
     );
+}
+
+static int plan_row_scalar_string_length_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_length_function_kind function_kind = PLANNED_STRING_LENGTH_FUNCTION_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_LENGTH_FUNCTION_NONE
+                                       : string_length_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_LENGTH_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "string length functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH;
+    out_expression->string_length_kind = function_kind;
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_string_length_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    return rc;
+}
+
+static int plan_row_scalar_string_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "string length functions support only string, integer, boolean, NULL, session "
+            "scalar, system variable, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_length_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED)) {
+        set_unsupported_error(
+            database,
+            "string length functions do not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_length_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string length functions support only string, integer, boolean, NULL, session "
+            "scalar, system variable, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_length_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string length functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_length_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_length_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "string length functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "string length functions support only integer, DECIMAL, string, binary string, BIT, "
+        "YEAR, and temporal columns"
+    );
+    return false;
 }
 
 static int plan_row_scalar_non_concat_expression(
@@ -58934,9 +59632,10 @@ static bool row_scalar_column_descriptor_is_supported(
         return true;
     }
     if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
-        column_descriptor_is_binary_string_family(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return true;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -58949,7 +59648,7 @@ static bool row_scalar_column_descriptor_is_supported(
 
     set_unsupported_error(
         database,
-        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, YEAR, and "
+        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, BIT, YEAR, and "
         "temporal columns"
     );
     return false;
@@ -58974,7 +59673,8 @@ static bool row_scalar_expression_contains_row_function(
         }
         if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FIELD_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) {
+            current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
+            is_string_length_function_kind(current->kind)) {
             found = true;
             break;
         }
@@ -65144,6 +65844,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_date_format_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
         return append_row_scalar_date_format_numeric_equal_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+        return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -65171,6 +65873,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -65371,6 +66074,79 @@ static int append_row_scalar_field_operand_sql(
         rc = append_string_key_collation_sql(string);
     }
     return rc;
+}
+
+static int append_row_scalar_string_length_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const struct planned_row_scalar_expression *argument = NULL;
+    bool argument_is_binary = false;
+    bool force_blob = false;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    argument = &expression->arguments[0];
+    argument_is_binary = row_scalar_string_length_argument_is_binary(argument);
+    if (!argument_is_binary &&
+        expression->string_length_kind != PLANNED_STRING_LENGTH_FUNCTION_CHARACTER) {
+        force_blob = true;
+    }
+
+    if (expression->string_length_kind == PLANNED_STRING_LENGTH_FUNCTION_BIT) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "length(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_string_length_operand_sql(
+            string,
+            argument,
+            next_parameter,
+            force_blob
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && expression->string_length_kind == PLANNED_STRING_LENGTH_FUNCTION_BIT) {
+        rc = dynamic_string_append(string, " * 8)");
+    }
+    return rc;
+}
+
+static int append_row_scalar_string_length_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter,
+    bool force_blob
+) {
+    int rc = MYLITE_OK;
+
+    if (force_blob) {
+        rc = dynamic_string_append(string, "CAST(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    }
+    if (rc == MYLITE_OK && force_blob) {
+        rc = dynamic_string_append(string, " AS BLOB)");
+    }
+    return rc;
+}
+
+static bool row_scalar_string_length_argument_is_binary(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return false;
+    }
+    return (column_descriptor_is_binary_string_family(&expression->column) ||
+            column_descriptor_is_bit(&expression->column)) != 0;
 }
 
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
@@ -68302,6 +69078,12 @@ static int bind_row_scalar_expression_parameters(
             );
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+        return bind_row_scalar_string_length_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -68329,6 +69111,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -68390,6 +69173,21 @@ static int bind_row_scalar_date_format_expression_parameters(
         );
     }
     return rc;
+}
+
+static int bind_row_scalar_string_length_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
 }
 
 static int bind_select_predicate_parameters(

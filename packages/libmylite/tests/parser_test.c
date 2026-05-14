@@ -56,6 +56,7 @@ static int test_sign_function(void);
 static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
+static int test_string_length_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -283,6 +284,7 @@ int main(void) {
     failures += test_rounding_functions();
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
+    failures += test_string_length_functions();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -2960,6 +2962,127 @@ static int test_bit_count_function(void) {
     failures += parse_sql("CREATE TABLE bit_count (bit_count INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "bit_count identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_length_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LENGTH(v), OCTET_LENGTH('a'), BIT_LENGTH(1), CHAR_LENGTH(NULL), "
+        "CHARACTER_LENGTH(name) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LENGTH_FUNCTION, "length function");
+    failures += expect_span_text(expression, "LENGTH(v)", "length span");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "length column");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION, "octet_length function");
+    failures += expect_literal(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "octet_length literal"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_BIT_LENGTH_FUNCTION, "bit_length function");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION, "char_length function");
+    expression = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION,
+        "character_length function"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "string length from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LENGTH ('a'), (CHAR_LENGTH('a')), BIT_LENGTH(+1) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LENGTH_FUNCTION, "spaced length");
+    failures += expect_span_text(expression, "LENGTH ('a')", "spaced length span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized char_length"
+    );
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION,
+        "wrapped char_length"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_BIT_LENGTH_FUNCTION, "signed bit_length");
+    failures += expect_operator(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "bit_length signed argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LENGTH();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR,
+        "empty length argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CHARACTER_LENGTH('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR,
+        "two character_length argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO LENGTH('a'), OCTET_LENGTH('a'), BIT_LENGTH('a'), CHAR_LENGTH('a');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "string length do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LENGTH_FUNCTION, "do length");
+    failures += expect_node(
+        child_at(expression_list, 3U),
+        MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION,
+        "do char_length"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE lengths (length INT, char_length INT, bit_length INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "string length identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

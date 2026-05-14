@@ -813,6 +813,26 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_count_function";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "bit_count_argument_count_error";
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+        return "length_function";
+    case MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "length_argument_count_error";
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+        return "octet_length_function";
+    case MYLITE_SQL_AST_OCTET_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "octet_length_argument_count_error";
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+        return "bit_length_function";
+    case MYLITE_SQL_AST_BIT_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "bit_length_argument_count_error";
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+        return "char_length_function";
+    case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "char_length_argument_count_error";
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        return "character_length_function";
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "character_length_argument_count_error";
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return "abs_function";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:

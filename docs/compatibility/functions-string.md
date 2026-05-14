@@ -5,10 +5,10 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | Function or operator | Status | Notes |
 | --- | --- | --- |
 | `ASCII()` | ❌ | Return numeric value of left-most character |
-| `BIT_LENGTH()` | ❌ | Return length of argument in bits |
+| `BIT_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns byte length multiplied by 8, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `CHAR()` | ❌ | Return character for each integer passed |
-| `CHAR_LENGTH()` | ❌ | Return number of characters in argument |
-| `CHARACTER_LENGTH()` | ❌ | Synonym for CHAR_LENGTH() |
+| `CHAR_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns UTF-8 character count for text values and byte count for binary string and `BIT` values, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
+| `CHARACTER_LENGTH()` | 🟡 | Synonym for the limited `CHAR_LENGTH()` subset |
 | `CHARSET()` | ❌ | Return character set of the argument |
 | `COERCIBILITY()` | ❌ | Return collation coercibility value of the string argument |
 | `COLLATION()` | ❌ | Return collation of the string argument |
@@ -24,14 +24,14 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `INSTR()` | ❌ | Return index of the first occurrence of substring |
 | `LCASE()` | ❌ | Synonym for LOWER() |
 | `LEFT()` | ❌ | Return leftmost number of characters as specified |
-| `LENGTH()` | ❌ | Return length of a string in bytes |
+| `LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns byte length, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `LOCATE()` | ❌ | Return position of the first occurrence of substring |
 | `LOWER()` | ❌ | Return argument in lowercase |
 | `LPAD()` | ❌ | Left-padding behavior |
 | `LTRIM()` | ❌ | Remove leading spaces |
 | `MAKE_SET()` | ❌ | Bitmask-selected string set |
 | `MID()` | ❌ | Return a substring starting from the specified position |
-| `OCTET_LENGTH()` | ❌ | Synonym for LENGTH() |
+| `OCTET_LENGTH()` | 🟡 | Synonym for the limited `LENGTH()` subset |
 | `ORD()` | ❌ | Return character code for leftmost character of the argument |
 | `POSITION()` | ❌ | Synonym for LOCATE() |
 | `QUOTE()` | ❌ | Escape the argument for use in an SQL statement |

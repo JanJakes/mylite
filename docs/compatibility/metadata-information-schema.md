@@ -17,7 +17,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `INFORMATION_SCHEMA.CONNECTION_CONTROL_FAILED_LOGIN_ATTEMPTS` | ❌ | Failed login attempts per account |
 | `INFORMATION_SCHEMA.ENABLED_ROLES` | ❌ | Roles enabled within current session |
 | `INFORMATION_SCHEMA.ENGINES` | 🟡 | Limited queryable synthetic one-row catalog for MyLite's fixed default `InnoDB` engine, with MySQL 8.4.9-shaped columns and system-view metadata; no alternate engines, plugins, privileges, or engine internals |
-| `INFORMATION_SCHEMA.EVENTS` | ❌ | Event Manager events |
+| `INFORMATION_SCHEMA.EVENTS` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real Event Scheduler descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no `CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`, event execution, scheduling, stored definitions, definers, privileges, or Event Scheduler state |
 | `INFORMATION_SCHEMA.FILES` | ❌ | Files that store tablespace data |
 | `INFORMATION_SCHEMA.INNODB_BUFFER_PAGE` | ❌ | Pages in InnoDB buffer pool |
 | `INFORMATION_SCHEMA.INNODB_BUFFER_PAGE_LRU` | ❌ | LRU ordering of pages in InnoDB buffer pool |

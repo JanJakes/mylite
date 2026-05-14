@@ -811,6 +811,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_information_schema_events_test)
 
+  add_executable(mylite_runtime_information_schema_parameters_test
+    tests/runtime_information_schema_parameters_test.c
+  )
+  target_link_libraries(mylite_runtime_information_schema_parameters_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_information_schema_parameters_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_information_schema_parameters_test)
+
   add_executable(mylite_runtime_information_schema_routines_test
     tests/runtime_information_schema_routines_test.c
   )
@@ -2517,6 +2528,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.information_schema_events
     COMMAND mylite_runtime_information_schema_events_test
+  )
+  add_test(
+    NAME libmylite.runtime.information_schema_parameters
+    COMMAND mylite_runtime_information_schema_parameters_test
   )
   add_test(
     NAME libmylite.runtime.information_schema_routines

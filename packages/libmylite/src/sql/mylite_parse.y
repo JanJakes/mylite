@@ -57,6 +57,7 @@
 %type select_sql_no_cache_opt { int }
 %type select_sql_calc_found_rows_opt { int }
 %type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
+%type join_operator { enum mylite_sql_ast_join_kind }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1335,11 +1336,11 @@ select_statement(A) ::=
         state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator(JO)
     table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, RT, J), W, G, H, O, L, K);
+        state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
@@ -1361,21 +1362,33 @@ select_statement(A) ::=
         mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
 }
 select_statement(A) ::=
-    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator
+    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator(JO)
     table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
     having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_join(state, F, LT, RT, J), W, G, H, O, L, K);
+        mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
 
 table_source(A) ::= table_name(N) table_alias_opt(AL). {
     A = mylite_sql_parser_make_table_source(state, N, AL);
 }
 
-join_operator ::= JOIN.
-join_operator ::= INNER JOIN.
-join_operator ::= CROSS JOIN.
+join_operator(A) ::= JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+join_operator(A) ::= INNER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+join_operator(A) ::= CROSS JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_INNER;
+}
+join_operator(A) ::= LEFT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
+}
+join_operator(A) ::= LEFT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
+}
 
 join_condition_opt(A) ::= . {
     A = NULL;

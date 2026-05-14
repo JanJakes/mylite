@@ -13133,6 +13133,10 @@ static int test_select_inner_join_clause(void) {
     limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "join from clause");
     failures += expect_child_count(from_join, 3U, "join child count");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "join kind"
+    );
     failures += expect_node(left_source, MYLITE_SQL_AST_FROM_TABLE, "join left source");
     failures += expect_span_text(child_at(left_source, 0U), "lefts", "join left table");
     failures += expect_span_text(child_at(left_source, 1U), "l", "join left alias");
@@ -13158,6 +13162,10 @@ static int test_select_inner_join_clause(void) {
     );
     failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "cross join from clause");
     failures += expect_child_count(from_join, 2U, "cross join omits condition child");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "cross join kind"
+    );
     failures += expect_span_text(child_at(child_at(from_join, 0U), 0U), "lefts", "cross left");
     failures += expect_span_text(child_at(child_at(from_join, 1U), 0U), "rights", "cross right");
     mylite_sql_parse_result_deinit(&result);
@@ -13168,13 +13176,40 @@ static int test_select_inner_join_clause(void) {
         &result
     );
     statement = child_at(result.root, 0U);
-    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_JOIN, "inner join");
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "inner join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "inner join kind"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "left join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "left join kind"
+    );
+    failures += expect_child_count(from_join, 3U, "left join child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l LEFT OUTER JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "left outer join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "left outer join kind"
     );
     mylite_sql_parse_result_deinit(&result);
 

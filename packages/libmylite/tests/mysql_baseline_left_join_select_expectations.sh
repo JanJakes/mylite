@@ -184,6 +184,26 @@ expect_output \
     "$DATABASE"
 
 expect_output_with_headers \
+    "exact limit" \
+    "id	id
+4	NULL
+1	7
+1	8" \
+    "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r ON l.k = r.k "\
+"WHERE l.id = 1 OR l.id = 4 ORDER BY r.id LIMIT 3;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "oversized limit" \
+    "id	id
+4	NULL
+1	7
+1	8" \
+    "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r ON l.k = r.k "\
+"WHERE l.id = 1 OR l.id = 4 ORDER BY r.id LIMIT 10;" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "mysql accepts using but mylite defers it" \
     "id
 1
@@ -200,6 +220,14 @@ expect_error \
     42000 \
     "You have an error in your SQL syntax" \
     "SELECT l.id FROM lefts l LEFT JOIN rights r;" \
+    "$DATABASE"
+
+expect_error \
+    "left join without condition is syntax before table lookup" \
+    1064 \
+    42000 \
+    "You have an error in your SQL syntax" \
+    "SELECT * FROM missing LEFT JOIN also_missing;" \
     "$DATABASE"
 
 expect_error \

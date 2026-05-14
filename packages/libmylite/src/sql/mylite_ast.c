@@ -121,6 +121,17 @@ void mylite_sql_ast_node_set_select_locking_clause(
     node->payload.select.locking_clause = locking_clause;
 }
 
+void mylite_sql_ast_node_set_join_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_kind join_kind
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.join.kind = join_kind;
+}
+
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -325,6 +336,19 @@ enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_cla
     }
 
     return node->payload.select.locking_clause;
+}
+
+enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_FROM_JOIN) {
+        return MYLITE_SQL_AST_JOIN_KIND_INNER;
+    }
+    if (node->payload.join.kind == 0) {
+        return MYLITE_SQL_AST_JOIN_KIND_INNER;
+    }
+
+    return node->payload.join.kind;
 }
 
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(

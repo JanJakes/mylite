@@ -398,11 +398,21 @@ enum mylite_sql_ast_select_locking_clause {
     MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_LOCK_IN_SHARE_MODE = 3,
 };
 
+enum mylite_sql_ast_join_kind {
+    MYLITE_SQL_AST_JOIN_KIND_UNSPECIFIED = 0,
+    MYLITE_SQL_AST_JOIN_KIND_INNER = 1,
+    MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER = 2,
+};
+
 struct mylite_sql_ast_select_payload {
     enum mylite_sql_ast_select_modifier modifier;
     unsigned int options;
     int calc_found_rows;
     enum mylite_sql_ast_select_locking_clause locking_clause;
+};
+
+struct mylite_sql_ast_join_payload {
+    enum mylite_sql_ast_join_kind kind;
 };
 
 struct mylite_sql_ast_literal_payload {
@@ -481,6 +491,7 @@ struct mylite_sql_ast_column_visibility_payload {
 
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_select_payload select;
+    struct mylite_sql_ast_join_payload join;
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
@@ -540,6 +551,10 @@ void mylite_sql_ast_node_set_select_calc_found_rows(
 void mylite_sql_ast_node_set_select_locking_clause(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_select_locking_clause locking_clause
+);
+void mylite_sql_ast_node_set_join_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_kind join_kind
 );
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
@@ -607,6 +622,7 @@ int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node 
 enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_clause(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );

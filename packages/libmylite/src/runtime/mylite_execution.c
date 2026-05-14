@@ -962,6 +962,7 @@ struct planned_select {
     size_t column_count;
     bool is_distinct;
     bool calc_found_rows;
+    enum mylite_sql_ast_join_kind join_kind;
     struct planned_select_join_condition join_condition;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
@@ -4882,6 +4883,7 @@ static const char *planned_select_source_reference_name(const struct planned_sel
 static int plan_joined_select_condition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *condition_node,
+    enum mylite_sql_ast_join_kind join_kind,
     const struct select_source_context *source_context,
     struct planned_select_join_condition *out_condition
 );
@@ -30938,6 +30940,7 @@ static int plan_joined_select(
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *join_condition = child_at(from_clause, 2U);
     const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
     struct select_source_context source_context = {0};
     int rc = MYLITE_OK;
@@ -30967,6 +30970,11 @@ static int plan_joined_select(
         optional_clause = optional_clause->next_sibling;
     }
 
+    out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
     out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
     if (out_plan->sources == NULL) {
         set_nomem_error(database);
@@ -30995,7 +31003,8 @@ static int plan_joined_select(
     if (rc == MYLITE_OK) {
         rc = plan_joined_select_condition(
             database,
-            child_at(from_clause, 2U),
+            join_condition,
+            out_plan->join_kind,
             &source_context,
             &out_plan->join_condition
         );
@@ -31124,6 +31133,7 @@ static const char *planned_select_source_reference_name(
 static int plan_joined_select_condition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *condition_node,
+    enum mylite_sql_ast_join_kind join_kind,
     const struct select_source_context *source_context,
     struct planned_select_join_condition *out_condition
 ) {
@@ -31131,6 +31141,10 @@ static int plan_joined_select_condition(
 
     *out_condition = (struct planned_select_join_condition){.has_condition = false};
     if (condition_node == NULL) {
+        if (join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
         return MYLITE_OK;
     }
     if (condition_node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -61715,7 +61729,9 @@ static int append_select_from_sql(
     if (rc == MYLITE_OK) {
         rc = append_select_source_alias(string, 0U);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+        rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " JOIN ");
     }
     if (rc == MYLITE_OK) {

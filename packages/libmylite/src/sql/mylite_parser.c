@@ -2755,6 +2755,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,
     struct mylite_sql_ast_node *left,
+    enum mylite_sql_ast_join_kind join_kind,
     struct mylite_sql_ast_node *right,
     struct mylite_sql_ast_node *condition
 ) {
@@ -2776,6 +2777,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
         return NULL;
     }
 
+    mylite_sql_ast_node_set_join_kind(join, join_kind);
     mylite_sql_ast_node_append_child(join, left);
     mylite_sql_ast_node_append_child(join, right);
     mylite_sql_ast_node_append_child(join, condition);
@@ -4871,6 +4873,8 @@ static bool map_keyword_token(
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"INNER", MYLITE_SQL_PARSE_INNER},
         {"JOIN", MYLITE_SQL_PARSE_JOIN},
+        {"LEFT", MYLITE_SQL_PARSE_LEFT},
+        {"OUTER", MYLITE_SQL_PARSE_OUTER},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
         {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
         {"HIGH_PRIORITY", MYLITE_SQL_PARSE_HIGH_PRIORITY},

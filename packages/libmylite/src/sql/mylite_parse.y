@@ -2846,6 +2846,24 @@ expression(A) ::= BIT_XOR(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION, B, R);
 }
+expression(A) ::= GROUP_CONCAT(T) LPAREN(L) qualified_identifier(B)
+    group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R). {
+    A = mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R);
+}
+
+group_concat_order_opt(A) ::= . {
+    A = NULL;
+}
+group_concat_order_opt(A) ::= ORDER(O) BY qualified_identifier(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_clause(state, O, K, D);
+}
+
+group_concat_separator_opt(A) ::= . {
+    A = NULL;
+}
+group_concat_separator_opt(A) ::= SEPARATOR STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 expression(A) ::= VERSION(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
@@ -3298,6 +3316,9 @@ identifier(A) ::= BIT_OR(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_XOR(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= GROUP_CONCAT(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_COUNT(T). {

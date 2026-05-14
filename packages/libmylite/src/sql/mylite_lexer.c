@@ -507,6 +507,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"GRANT", MYLITE_SQL_KEYWORD_RESERVED},
         {"GRANTS", 0U},
         {"GROUP", MYLITE_SQL_KEYWORD_RESERVED},
+        {"GROUP_CONCAT", 0U},
         {"GROUPING", MYLITE_SQL_KEYWORD_RESERVED},
         {"GROUPS", MYLITE_SQL_KEYWORD_RESERVED},
         {"GROUP_REPLICATION", 0U},

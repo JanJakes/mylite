@@ -83,6 +83,7 @@ static int test_min_max_aggregate(void);
 static int test_sum_aggregate(void);
 static int test_avg_aggregate(void);
 static int test_bitwise_aggregate(void);
+static int test_group_concat_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -329,6 +330,7 @@ int main(void) {
     failures += test_sum_aggregate();
     failures += test_avg_aggregate();
     failures += test_bitwise_aggregate();
+    failures += test_group_concat_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -5752,6 +5754,151 @@ static int test_bitwise_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT BIT_XOR(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_group_concat_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(id), group_concat(name ORDER BY id), "
+        "Group_Concat(name ORDER BY id DESC SEPARATOR '|') FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "group_concat aggregate"
+    );
+    failures += expect_span_text(first_expression, "GROUP_CONCAT(id)", "group_concat span");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "group_concat arg");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "lower group_concat aggregate"
+    );
+    failures +=
+        expect_span_text(second_expression, "group_concat(name ORDER BY id)", "ordered span");
+    order_clause = child_at(second_expression, 1U);
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "group_concat order");
+    failures += expect_span_text(child_at(order_clause, 0U), "id", "group_concat order key");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "mixed group_concat aggregate"
+    );
+    order_clause = child_at(third_expression, 1U);
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "desc order clause");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "desc order direction"
+    );
+    failures +=
+        expect_literal(child_at(third_expression, 2U), MYLITE_SQL_AST_LITERAL_STRING, "separator");
+    failures += expect_span_text(
+        third_expression,
+        "Group_Concat(name ORDER BY id DESC SEPARATOR '|')",
+        "desc separator span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(t.name ORDER BY t.id ASC SEPARATOR \"\") FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified group_concat argument"
+    );
+    order_clause = child_at(first_expression, 1U);
+    failures += expect_node(
+        child_at(order_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified group_concat order key"
+    );
+    failures +=
+        expect_literal(child_at(first_expression, 2U), MYLITE_SQL_AST_LITERAL_STRING, "empty sep");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT GROUP_CONCAT (id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "SELECT GROUP_CONCAT (id ORDER BY id) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "ignore_space group_concat"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT GROUP_CONCAT;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare group_concat identifier");
+    failures += expect_span_text(first_expression, "GROUP_CONCAT", "bare group_concat span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(DISTINCT id) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT GROUP_CONCAT(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT GROUP_CONCAT(id + 1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(id ORDER BY 1) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(id ORDER BY id, n) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(id SEPARATOR NULL) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT GROUP_CONCAT(id SEPARATOR 1) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

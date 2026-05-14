@@ -1075,6 +1075,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
     struct mylite_sql_ast_node *argument,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *separator,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

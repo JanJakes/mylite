@@ -3697,6 +3697,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *separator,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    function = make_node(
+        state,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, value);
+    mylite_sql_ast_node_append_child(function, order_clause);
+    mylite_sql_ast_node_append_child(function, separator);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -5074,6 +5106,7 @@ static bool map_keyword_token(
         {"OR", MYLITE_SQL_PARSE_OR},
         {"XOR", MYLITE_SQL_PARSE_XOR},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
+        {"GROUP_CONCAT", MYLITE_SQL_PARSE_GROUP_CONCAT},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
@@ -5320,6 +5353,7 @@ static bool map_keyword_token(
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},
         {"SERIAL", MYLITE_SQL_PARSE_SERIAL},
         {"SHARE", MYLITE_SQL_PARSE_SHARE},
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
@@ -5647,6 +5681,7 @@ static bool span_text_matches_ignore_space_function_name(
         "CAST",
         "COUNT",
         "DATE_ADD",
+        "GROUP_CONCAT",
         "MAX",
         "MIN",
         "SESSION_USER",

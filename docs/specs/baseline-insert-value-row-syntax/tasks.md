@@ -12,21 +12,21 @@
 
 ## Implementation
 
-- [ ] Extend parser grammar so `VALUE` ordinary row lists and
+- [x] Extend parser grammar so `VALUE` ordinary row lists and
       `VALUES ROW(...)` constructor lists normalize to existing insert-row AST
       nodes.
-- [ ] Preserve parser rejection for `VALUE ROW(...)` and mixed ordinary/row
+- [x] Preserve parser rejection for `VALUE ROW(...)` and mixed ordinary/row
       constructor lists.
-- [ ] Reuse existing descriptor-driven values planners without runtime storage
+- [x] Reuse existing descriptor-driven values planners without runtime storage
       changes.
-- [ ] Add focused parser and runtime C coverage.
+- [x] Add focused parser and runtime C coverage.
 
 ## Verification
 
-- [ ] Run `packages/libmylite/tests/mysql_baseline_insert_value_row_syntax_expectations.sh`.
-- [ ] Run `cmake --build --preset dev`.
-- [ ] Run focused CTest entries for parser, default values, row values,
+- [x] Run `packages/libmylite/tests/mysql_baseline_insert_value_row_syntax_expectations.sh`.
+- [x] Run `cmake --build --preset dev`.
+- [x] Run focused CTest entries for parser, default values, row values,
       duplicate-key update, replace values, insert-ignore, and file-backed
       behavior.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote main.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote main.

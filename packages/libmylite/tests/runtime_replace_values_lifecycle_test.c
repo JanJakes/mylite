@@ -126,6 +126,7 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     };
     static const char *const row_count_two[] = {"2"};
     static const char *const persisted_row[] = {"1", "-2147483648", "9"};
+    static const char *const value_row_syntax_rows[] = {"8", "80", "9", "90", "10", "100"};
     static const char *const renamed_row[] = {"7", "77"};
     static const char *const last_insert_and_row_count[] = {"0", "1"};
     char path[test_path_capacity];
@@ -275,6 +276,22 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "persisted replace row",
+        }
+    );
+    failures += expect_replace_ok(database, "REPLACE INTO numbers (id, nn) VALUE (8, 80)", 1);
+    failures += expect_replace_ok(
+        database,
+        "REPLACE INTO numbers (id, nn) VALUES ROW(9, 90), ROW(10, 100)",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nn FROM numbers WHERE id >= 8 ORDER BY id",
+            .values = value_row_syntax_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "replace value row syntax rows",
         }
     );
 
@@ -474,6 +491,24 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
         database,
         "REPLACE INTO numbers VALUE (1)",
         (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers VALUES ROW(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers VALUE ROW(1)",
+        (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",
@@ -481,7 +516,16 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUES ROW(1)",
+        "REPLACE INTO numbers VALUES ROW(1), (2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers VALUES (1), ROW(2)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

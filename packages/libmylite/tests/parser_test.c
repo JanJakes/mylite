@@ -7935,6 +7935,60 @@ static int test_empty_insert_values_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("INSERT INTO simple_lifecycle VALUE ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert value empty");
+    failures += expect_child_count(child_at(statement, 2U), 1U, "value empty row list count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        0U,
+        "value empty insert row value count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO simple_lifecycle VALUE (1), (2);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert value rows");
+    failures += expect_child_count(child_at(statement, 2U), 2U, "value row list count");
+    failures +=
+        expect_child_count(child_at(child_at(statement, 2U), 0U), 1U, "first value row count");
+    failures +=
+        expect_child_count(child_at(child_at(statement, 2U), 1U), 1U, "second value row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO simple_lifecycle VALUES ROW();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert row empty");
+    failures += expect_child_count(child_at(statement, 2U), 1U, "row empty row list count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        0U,
+        "row empty insert row value count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO simple_lifecycle VALUES ROW(1), ROW(2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert row constructors");
+    failures += expect_child_count(child_at(statement, 2U), 2U, "row constructor list count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        1U,
+        "first row constructor count"
+    );
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 1U),
+        1U,
+        "second row constructor count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("REPLACE INTO simple_lifecycle () VALUES (), ();", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
@@ -7946,6 +8000,54 @@ static int test_empty_insert_values_statements(void) {
         expect_child_count(child_at(child_at(statement, 2U), 0U), 0U, "first empty replace row");
     failures +=
         expect_child_count(child_at(child_at(statement, 2U), 1U), 0U, "second empty replace row");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO simple_lifecycle VALUE (1), (2);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "replace value rows");
+    failures += expect_child_count(child_at(statement, 2U), 2U, "replace value row list count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        1U,
+        "replace first value row count"
+    );
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 1U),
+        1U,
+        "replace second value row count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE INTO simple_lifecycle VALUES ROW(), ROW();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "replace row constructors");
+    failures += expect_child_count(child_at(statement, 2U), 2U, "replace row constructor count");
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 0U),
+        0U,
+        "replace first empty row constructor"
+    );
+    failures += expect_child_count(
+        child_at(child_at(statement, 2U), 1U),
+        0U,
+        "replace second empty row constructor"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE value (value INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "value keyword identifier table"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -16546,10 +16648,15 @@ static int test_syntax_errors(void) {
     failures += parse_sql("INSERT INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t VALUE ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t VALUE ROW();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT INTO t VALUES ROW();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("INSERT INTO t VALUES ROW(1), (2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO t VALUES (1), ROW(2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (1.5);", MYLITE_SQL_PARSE_OK, &result);
@@ -16558,10 +16665,15 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUE (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t VALUE ROW(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t VALUES ROW(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("REPLACE INTO t VALUES ROW(1), (2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t VALUES (1), ROW(2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

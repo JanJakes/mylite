@@ -5220,6 +5220,8 @@ static bool map_keyword_token(
         {"INTO", MYLITE_SQL_PARSE_INTO},
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"MODE", MYLITE_SQL_PARSE_MODE},
+        {"ROW", MYLITE_SQL_PARSE_ROW},
+        {"VALUE", MYLITE_SQL_PARSE_VALUE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},
         {"DUPLICATE", MYLITE_SQL_PARSE_DUPLICATE},
         {"TO", MYLITE_SQL_PARSE_TO},

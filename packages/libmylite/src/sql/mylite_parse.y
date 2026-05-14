@@ -1102,24 +1102,24 @@ table_rename_connector_opt(A) ::= AS. {
 
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(R) on_duplicate_key_update_opt(D). {
+    insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL, D);
 }
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(R) on_duplicate_key_update_opt(D). {
+    insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(
         state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
 }
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(R) on_duplicate_key_update_opt(D). {
+    insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R, M, NULL, D);
 }
 insert_values_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(R) on_duplicate_key_update_opt(D). {
+    insert_values_source(R) on_duplicate_key_update_opt(D). {
     A = mylite_sql_parser_make_insert_statement(
         state, I, T, C, R, M, mylite_sql_parser_make_insert_ignore_modifier(state, G), D
     );
@@ -1150,12 +1150,12 @@ insert_modifier_opt(A) ::= DELAYED(T). {
 
 replace_values_statement(A) ::=
     REPLACE(R) replace_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(V). {
+    insert_values_source(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 replace_values_statement(A) ::=
     REPLACE(R) replace_modifier_opt(M) table_name(T) insert_column_list_opt(C)
-    VALUES insert_row_list(V). {
+    insert_values_source(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V, M);
 }
 
@@ -1300,10 +1300,27 @@ identifier_list(A) ::= identifier_list(B) COMMA identifier(C). {
     A = mylite_sql_parser_append_identifier(state, B, C);
 }
 
+insert_values_source(A) ::= VALUES insert_row_list(R). {
+    A = R;
+}
+insert_values_source(A) ::= VALUE insert_row_list(R). {
+    A = R;
+}
+insert_values_source(A) ::= VALUES insert_row_constructor_list(R). {
+    A = R;
+}
+
 insert_row_list(A) ::= insert_row(B). {
     A = mylite_sql_parser_make_insert_row_list(state, B);
 }
 insert_row_list(A) ::= insert_row_list(B) COMMA insert_row(C). {
+    A = mylite_sql_parser_append_insert_row(state, B, C);
+}
+
+insert_row_constructor_list(A) ::= insert_row_constructor(B). {
+    A = mylite_sql_parser_make_insert_row_list(state, B);
+}
+insert_row_constructor_list(A) ::= insert_row_constructor_list(B) COMMA insert_row_constructor(C). {
     A = mylite_sql_parser_append_insert_row(state, B, C);
 }
 
@@ -1314,6 +1331,18 @@ insert_row(A) ::= LPAREN(L) RPAREN(R). {
     A = mylite_sql_parser_make_insert_row(
         state,
         L,
+        mylite_sql_parser_make_insert_row_values(state, NULL),
+        R
+    );
+}
+
+insert_row_constructor(A) ::= ROW(T) LPAREN insert_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(state, T, V, R);
+}
+insert_row_constructor(A) ::= ROW(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(
+        state,
+        T,
         mylite_sql_parser_make_insert_row_values(state, NULL),
         R
     );
@@ -3437,6 +3466,9 @@ identifier(A) ::= YEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DUPLICATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= VALUE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= START(T). {

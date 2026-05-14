@@ -231,6 +231,13 @@ Each successfully planned explicit national column declaration appends:
 
 `CREATE TABLE ... LIKE` copies descriptors and does not re-append this warning.
 
+For `ALTER TABLE ... MODIFY COLUMN` and `ALTER TABLE ... CHANGE COLUMN`,
+MyLite keeps the current limited replacement path's public result convention:
+metadata-only replacements report zero affected rows, while descriptor-backed
+physical rebuilds report the copied/validated row count. The MySQL expectation
+script still records MySQL's `ROW_COUNT()` behavior so this MyLite public result
+choice remains explicit rather than accidental.
+
 ### Diagnostics
 
 The feature uses existing diagnostics where possible:

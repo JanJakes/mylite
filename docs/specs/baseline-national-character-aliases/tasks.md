@@ -6,15 +6,15 @@
 - [x] Specify the narrow grammar, descriptor model, warnings, ownership
   boundaries, diagnostics, metadata, performance posture, and non-goals.
 - [x] Add MySQL-runtime expectation script for supported and deferred behavior.
-- [ ] Extend parser support for national `CHAR` and `VARCHAR` aliases.
-- [ ] Preserve national logical descriptors with existing SQLite `TEXT`
+- [x] Extend parser support for national `CHAR` and `VARCHAR` aliases.
+- [x] Preserve national logical descriptors with existing SQLite `TEXT`
   physical storage.
-- [ ] Add national descriptor metadata for `SHOW`, `INFORMATION_SCHEMA`, and
+- [x] Add national descriptor metadata for `SHOW`, `INFORMATION_SCHEMA`, and
   public result-column metadata.
-- [ ] Add fast C runtime tests for warnings, metadata, defaults, DML,
+- [x] Add fast C runtime tests for warnings, metadata, defaults, DML,
   persistence, diagnostics, and file-format safety.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs.
-- [ ] Run focused parser/runtime/MySQL expectation tests.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, descriptor authority,
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs.
+- [x] Run focused parser/runtime/MySQL expectation tests.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for MySQL behavior, descriptor authority,
   physical SQL safety, metadata accuracy, and scope control.

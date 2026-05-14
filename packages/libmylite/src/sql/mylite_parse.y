@@ -3236,6 +3236,15 @@ identifier(A) ::= CHARSET(T). {
 identifier(A) ::= NAMES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= NATIONAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= NCHAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= NVARCHAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= MODE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3512,6 +3521,7 @@ varchar_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
             .type_token = T,
             .length_token = L,
             .end_token = R,
+            .is_national = 0,
         });
 }
 varchar_type(A) ::= CHARACTER(T) VARYING LPAREN INTEGER(L) RPAREN(R). {
@@ -3521,6 +3531,7 @@ varchar_type(A) ::= CHARACTER(T) VARYING LPAREN INTEGER(L) RPAREN(R). {
             .type_token = T,
             .length_token = L,
             .end_token = R,
+            .is_national = 0,
         });
 }
 varchar_type(A) ::= CHAR(T) VARYING LPAREN INTEGER(L) RPAREN(R). {
@@ -3530,6 +3541,67 @@ varchar_type(A) ::= CHAR(T) VARYING LPAREN INTEGER(L) RPAREN(R). {
             .type_token = T,
             .length_token = L,
             .end_token = R,
+            .is_national = 0,
+        });
+}
+varchar_type(A) ::= NVARCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
+        });
+}
+varchar_type(A) ::= NATIONAL(T) VARCHAR LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
+        });
+}
+varchar_type(A) ::= NCHAR(T) VARCHAR LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
+        });
+}
+varchar_type(A) ::= NCHAR(T) VARYING LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
+        });
+}
+varchar_type(A) ::= NATIONAL(T) CHAR VARYING LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
+        });
+}
+varchar_type(A) ::= NATIONAL(T) CHARACTER VARYING LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_varchar_type(
+        state,
+        (struct mylite_sql_varchar_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .is_national = 1,
         });
 }
 
@@ -3541,6 +3613,7 @@ char_type(A) ::= CHAR(T). {
             .length_token = (struct mylite_sql_token){0},
             .end_token = T,
             .has_explicit_length = 0,
+            .is_national = 0,
         });
 }
 char_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN(R). {
@@ -3551,6 +3624,7 @@ char_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN(R). {
             .length_token = L,
             .end_token = R,
             .has_explicit_length = 1,
+            .is_national = 0,
         });
 }
 char_type(A) ::= CHARACTER(T). {
@@ -3561,6 +3635,7 @@ char_type(A) ::= CHARACTER(T). {
             .length_token = (struct mylite_sql_token){0},
             .end_token = T,
             .has_explicit_length = 0,
+            .is_national = 0,
         });
 }
 char_type(A) ::= CHARACTER(T) LPAREN INTEGER(L) RPAREN(R). {
@@ -3571,6 +3646,73 @@ char_type(A) ::= CHARACTER(T) LPAREN INTEGER(L) RPAREN(R). {
             .length_token = L,
             .end_token = R,
             .has_explicit_length = 1,
+            .is_national = 0,
+        });
+}
+char_type(A) ::= NCHAR(T). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = (struct mylite_sql_token){0},
+            .end_token = T,
+            .has_explicit_length = 0,
+            .is_national = 1,
+        });
+}
+char_type(A) ::= NCHAR(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .has_explicit_length = 1,
+            .is_national = 1,
+        });
+}
+char_type(A) ::= NATIONAL(T) CHAR(E). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = (struct mylite_sql_token){0},
+            .end_token = E,
+            .has_explicit_length = 0,
+            .is_national = 1,
+        });
+}
+char_type(A) ::= NATIONAL(T) CHAR LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .has_explicit_length = 1,
+            .is_national = 1,
+        });
+}
+char_type(A) ::= NATIONAL(T) CHARACTER(E). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = (struct mylite_sql_token){0},
+            .end_token = E,
+            .has_explicit_length = 0,
+            .is_national = 1,
+        });
+}
+char_type(A) ::= NATIONAL(T) CHARACTER LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_char_type(
+        state,
+        (struct mylite_sql_char_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .has_explicit_length = 1,
+            .is_national = 1,
         });
 }
 

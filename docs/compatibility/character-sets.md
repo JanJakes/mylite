@@ -38,7 +38,7 @@
 | `tis620` | ❌ | Metadata and conversions |
 | `ucs2` | ❌ | Metadata and conversions |
 | `ujis` | ❌ | Metadata and conversions |
-| `utf8mb3` | 🟡 | Limited scalar `@@character_set_system` placeholder value plus metadata charset labels in supported synthetic `INFORMATION_SCHEMA` system-view column rows; no table/column/literal storage, conversions, collations, or identifier character-set semantics |
+| `utf8mb3` | 🟡 | Limited scalar `@@character_set_system` placeholder value, metadata charset labels in supported synthetic `INFORMATION_SCHEMA` system-view column rows, and national `CHAR` / `VARCHAR` alias column metadata (`SHOW CREATE TABLE`, `SHOW FULL COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, and result-column metadata). National alias values still use existing SQLite `TEXT` storage and MyLite string validation; no general table/column charset attributes, literal introducers, conversions, collation semantics, or identifier character-set semantics |
 | `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row, one-row `INFORMATION_SCHEMA.CHARACTER_SETS` metadata, `CREATE TABLE` / `CREATE TABLE ... LIKE` / `ALTER TABLE ... [DEFAULT] CHARSET` table default metadata for `utf8mb4`, scalar `@@character_set_client` / `@@character_set_connection` / `@@character_set_results` reads updated by admitted `SET NAMES` / `SET CHARACTER SET` forms, fixed scalar `@@character_set_server` and `@@character_set_database`, and limited UTF-8 validation for `CHAR`, `VARCHAR(0..16383)`, and baseline `TEXT` family storage; no conversions, alternate database or column charsets, mutable server/database charset state, or full catalog semantics |
 | `utf16` | ❌ | Metadata and conversions |
 | `utf16le` | ❌ | Metadata and conversions |

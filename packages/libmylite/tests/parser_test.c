@@ -206,7 +206,18 @@ static int expect_varchar_type(
     const char *expected_length,
     const char *context
 );
+static int expect_national_varchar_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+);
 static int expect_char_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+);
+static int expect_national_char_type(
     const struct mylite_sql_ast_node *node,
     const char *expected_length,
     int expected_explicit_length,
@@ -7938,6 +7949,10 @@ static int test_serial_alias_statements(void) {
 }
 
 static int test_varchar_type_statements(void) {
+    enum {
+        national_varchar_column_count = 6U,
+        national_varchar_last_column_index = 5U,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
@@ -7981,6 +7996,53 @@ static int test_varchar_type_statements(void) {
     column_type = child_at(column, 1U);
     failures += expect_varchar_type(column_type, "4", "char varying column type");
     failures += expect_span_text(column_type, "CHAR VARYING(4)", "char varying span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE national_varchar_types ("
+        "nv NVARCHAR(5), "
+        "national_v NATIONAL VARCHAR(6), "
+        "nchar_v NCHAR VARCHAR(7), "
+        "nchar_varying NCHAR VARYING(8), "
+        "national_char_varying NATIONAL CHAR VARYING(9), "
+        "national_character_varying NATIONAL CHARACTER VARYING(10));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, national_varchar_column_count, "national varchar column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_varchar_type(column_type, "5", "nvarchar column type");
+    failures += expect_span_text(column_type, "NVARCHAR(5)", "nvarchar span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_varchar_type(column_type, "6", "national varchar column type");
+    failures += expect_span_text(column_type, "NATIONAL VARCHAR(6)", "national varchar span");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_varchar_type(column_type, "7", "nchar varchar column type");
+    failures += expect_span_text(column_type, "NCHAR VARCHAR(7)", "nchar varchar span");
+    column = child_at(columns, 3U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_varchar_type(column_type, "8", "nchar varying column type");
+    failures += expect_span_text(column_type, "NCHAR VARYING(8)", "nchar varying span");
+    column = child_at(columns, 4U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_varchar_type(column_type, "9", "national char varying column type");
+    failures +=
+        expect_span_text(column_type, "NATIONAL CHAR VARYING(9)", "national char varying span");
+    column = child_at(columns, national_varchar_last_column_index);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_national_varchar_type(column_type, "10", "national character varying column type");
+    failures += expect_span_text(
+        column_type,
+        "NATIONAL CHARACTER VARYING(10)",
+        "national character varying span"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8041,11 +8103,28 @@ static int test_varchar_type_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "CREATE TABLE bad_nvarchar (c NVARCHAR);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE bad_national_varchar (c NATIONAL VARCHAR);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
 static int test_char_type_statements(void) {
-    enum { char_column_count = 5U };
+    enum {
+        char_column_count = 5U,
+        national_char_column_count = 6U,
+        national_char_last_column_index = 5U,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
@@ -8094,6 +8173,49 @@ static int test_char_type_statements(void) {
     column_type = child_at(column, 1U);
     failures += expect_char_type(column_type, "2", 1, "character alias length type");
     failures += expect_span_text(column_type, "CHARACTER(2)", "character alias length span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE national_char_types ("
+        "n NCHAR, "
+        "n2 NCHAR(2), "
+        "national_char NATIONAL CHAR, "
+        "national_char3 NATIONAL CHAR(3), "
+        "national_character NATIONAL CHARACTER, "
+        "national_character4 NATIONAL CHARACTER(4));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, national_char_column_count, "national char column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_char_type(column_type, NULL, 0, "bare nchar column type");
+    failures += expect_span_text(column_type, "NCHAR", "bare nchar span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_char_type(column_type, "2", 1, "nchar length column type");
+    failures += expect_span_text(column_type, "NCHAR(2)", "nchar length span");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_char_type(column_type, NULL, 0, "national char column type");
+    failures += expect_span_text(column_type, "NATIONAL CHAR", "national char span");
+    column = child_at(columns, 3U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_char_type(column_type, "3", 1, "national char length column type");
+    failures += expect_span_text(column_type, "NATIONAL CHAR(3)", "national char length span");
+    column = child_at(columns, 4U);
+    column_type = child_at(column, 1U);
+    failures += expect_national_char_type(column_type, NULL, 0, "national character column type");
+    failures += expect_span_text(column_type, "NATIONAL CHARACTER", "national character span");
+    column = child_at(columns, national_char_last_column_index);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_national_char_type(column_type, "4", 1, "national character length column type");
+    failures +=
+        expect_span_text(column_type, "NATIONAL CHARACTER(4)", "national character length span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8164,6 +8286,12 @@ static int test_char_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("CREATE TABLE bad_char (c CHARACTER());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_char (c NCHAR());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("CREATE TABLE bad_char (c NCHAR(-1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -16692,6 +16820,42 @@ static int expect_varchar_type(
         );
         return 1;
     }
+    if (mylite_sql_ast_node_varchar_type_is_national(node) != 0) {
+        fprintf(stderr, "%s: expected ordinary VARCHAR type, got national type\n", context);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_national_varchar_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+
+    if (expect_node(node, MYLITE_SQL_AST_VARCHAR_TYPE, context) != 0) {
+        return 1;
+    }
+
+    span = mylite_sql_ast_node_varchar_type_length_span(node);
+    if (span.text == NULL || span.length != strlen(expected_length) ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected national VARCHAR length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
+        );
+        return 1;
+    }
+    if (mylite_sql_ast_node_varchar_type_is_national(node) == 0) {
+        fprintf(stderr, "%s: expected national VARCHAR type\n", context);
+        return 1;
+    }
 
     return 0;
 }
@@ -16720,6 +16884,10 @@ static int expect_char_type(
         );
         return 1;
     }
+    if (mylite_sql_ast_node_char_type_is_national(node) != 0) {
+        fprintf(stderr, "%s: expected ordinary CHAR type, got national type\n", context);
+        return 1;
+    }
     if (expected_length == NULL) {
         return 0;
     }
@@ -16730,6 +16898,55 @@ static int expect_char_type(
         fprintf(
             stderr,
             "%s: expected CHAR length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_national_char_type(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    int expected_explicit_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span = {0};
+    int has_explicit_length = 0;
+
+    if (expect_node(node, MYLITE_SQL_AST_CHAR_TYPE, context) != 0) {
+        return 1;
+    }
+
+    has_explicit_length = mylite_sql_ast_node_char_type_has_explicit_length(node);
+    if (has_explicit_length != expected_explicit_length) {
+        fprintf(
+            stderr,
+            "%s: expected explicit national CHAR length %d, got %d\n",
+            context,
+            expected_explicit_length,
+            has_explicit_length
+        );
+        return 1;
+    }
+    if (mylite_sql_ast_node_char_type_is_national(node) == 0) {
+        fprintf(stderr, "%s: expected national CHAR type\n", context);
+        return 1;
+    }
+    if (expected_length == NULL) {
+        return 0;
+    }
+
+    span = mylite_sql_ast_node_char_type_length_span(node);
+    if (span.text == NULL || span.length != strlen(expected_length) ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected national CHAR length %s, got %.*s\n",
             context,
             expected_length,
             (int)span.length,

@@ -439,12 +439,28 @@ struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     return node->payload.varchar_type.length_span;
 }
 
+int mylite_sql_ast_node_varchar_type_is_national(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_VARCHAR_TYPE) {
+        return 0;
+    }
+
+    return node->payload.varchar_type.is_national;
+}
+
 int mylite_sql_ast_node_char_type_has_explicit_length(const struct mylite_sql_ast_node *node) {
     if (node == NULL || node->kind != MYLITE_SQL_AST_CHAR_TYPE) {
         return 0;
     }
 
     return node->payload.char_type.has_explicit_length;
+}
+
+int mylite_sql_ast_node_char_type_is_national(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_CHAR_TYPE) {
+        return 0;
+    }
+
+    return node->payload.char_type.is_national;
 }
 
 struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(

@@ -4436,6 +4436,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_varchar_type(
     mylite_sql_ast_node_set_varchar_type(
         type,
         (struct mylite_sql_ast_varchar_type_payload){
+            .is_national = tokens.is_national,
             .length_span = span_from_token(&tokens.length_token),
         }
     );
@@ -4449,7 +4450,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_char_type(
     struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
     struct mylite_sql_ast_node *type = NULL;
 
-    if (tokens.has_explicit_length) {
+    if (tokens.has_explicit_length ||
+        (tokens.end_token.text != NULL && tokens.end_token.text != tokens.type_token.text)) {
         span = span_join(span, span_from_token(&tokens.end_token));
     }
 
@@ -4462,6 +4464,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_char_type(
         type,
         (struct mylite_sql_ast_char_type_payload){
             .has_explicit_length = tokens.has_explicit_length,
+            .is_national = tokens.is_national,
             .length_span = span_from_token(&tokens.length_token),
         }
     );
@@ -5173,6 +5176,8 @@ static bool map_keyword_token(
         {"ON", MYLITE_SQL_PARSE_ON},
         {"OFF", MYLITE_SQL_PARSE_OFF},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
+        {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
+        {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
         {"INT", MYLITE_SQL_PARSE_INT},
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
         {"SMALLINT", MYLITE_SQL_PARSE_SMALLINT},
@@ -5197,6 +5202,7 @@ static bool map_keyword_token(
         {"TIMESTAMP", MYLITE_SQL_PARSE_TIMESTAMP},
         {"YEAR", MYLITE_SQL_PARSE_YEAR},
         {"VARCHAR", MYLITE_SQL_PARSE_VARCHAR},
+        {"NVARCHAR", MYLITE_SQL_PARSE_NVARCHAR},
         {"VARBINARY", MYLITE_SQL_PARSE_VARBINARY},
         {"BYTE", MYLITE_SQL_PARSE_BYTE},
         {"TINYBLOB", MYLITE_SQL_PARSE_TINYBLOB},

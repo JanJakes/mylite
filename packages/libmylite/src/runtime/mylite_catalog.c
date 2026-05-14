@@ -6376,7 +6376,13 @@ static bool catalog_logical_type_accepts_empty_text_default(const char *logical_
     if (text_has_ascii_case_insensitive_prefix(logical_type, "CHAR(") != 0) {
         return true;
     }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "NCHAR(") != 0) {
+        return true;
+    }
     if (text_has_ascii_case_insensitive_prefix(logical_type, "VARCHAR(") != 0) {
+        return true;
+    }
+    if (text_has_ascii_case_insensitive_prefix(logical_type, "NVARCHAR(") != 0) {
         return true;
     }
     if (text_has_ascii_case_insensitive_prefix(logical_type, "ENUM(") != 0) {

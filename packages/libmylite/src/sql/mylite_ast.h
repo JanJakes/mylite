@@ -466,11 +466,13 @@ struct mylite_sql_ast_integer_type_payload {
 };
 
 struct mylite_sql_ast_varchar_type_payload {
+    int is_national;
     struct mylite_sql_source_span length_span;
 };
 
 struct mylite_sql_ast_char_type_payload {
     int has_explicit_length;
+    int is_national;
     struct mylite_sql_source_span length_span;
 };
 
@@ -673,7 +675,9 @@ struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_spa
 struct mylite_sql_source_span mylite_sql_ast_node_varchar_type_length_span(
     const struct mylite_sql_ast_node *node
 );
+int mylite_sql_ast_node_varchar_type_is_national(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_char_type_has_explicit_length(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_char_type_is_national(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     const struct mylite_sql_ast_node *node
 );

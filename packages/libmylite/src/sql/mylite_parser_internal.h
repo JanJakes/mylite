@@ -32,6 +32,7 @@ struct mylite_sql_varchar_type_tokens {
     struct mylite_sql_token type_token;
     struct mylite_sql_token length_token;
     struct mylite_sql_token end_token;
+    int is_national;
 };
 
 struct mylite_sql_char_type_tokens {
@@ -39,6 +40,7 @@ struct mylite_sql_char_type_tokens {
     struct mylite_sql_token length_token;
     struct mylite_sql_token end_token;
     int has_explicit_length;
+    int is_national;
 };
 
 struct mylite_sql_text_type_tokens {

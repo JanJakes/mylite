@@ -188,7 +188,7 @@ are compiled in MySQL 8.4.9.
 | `utf32_croatian_ci` | ❌ | utf32; id 181; sortlen 8; PAD SPACE |
 | `utf32_unicode_520_ci` | ❌ | utf32; id 182; sortlen 8; PAD SPACE |
 | `utf32_vietnamese_ci` | ❌ | utf32; id 183; sortlen 8; PAD SPACE |
-| `utf8mb3_general_ci` | ❌ | utf8mb3; id 33; default; sortlen 1; PAD SPACE |
+| `utf8mb3_general_ci` | 🟡 | Limited metadata collation for national `CHAR` / `VARCHAR` aliases in `SHOW CREATE TABLE`, `SHOW FULL COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, and result-column metadata; no static `SHOW COLLATION` row, table/default admission, conversion, or general comparison/order/group/distinct semantics |
 | `utf8mb3_tolower_ci` | ❌ | utf8mb3; id 76; sortlen 1; PAD SPACE |
 | `utf8mb3_bin` | ❌ | utf8mb3; id 83; sortlen 1; PAD SPACE |
 | `utf8mb3_unicode_ci` | ❌ | utf8mb3; id 192; sortlen 8; PAD SPACE |

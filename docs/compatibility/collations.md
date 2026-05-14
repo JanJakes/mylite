@@ -8,7 +8,7 @@ are compiled in MySQL 8.4.9.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` rows and `INFORMATION_SCHEMA.COLLATIONS` metadata for `utf8mb4_0900_ai_ci`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci`; no other collations, `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or `mysql.collations` |
+| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` rows, `INFORMATION_SCHEMA.COLLATIONS` metadata, and `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` mappings for `utf8mb4_0900_ai_ci`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci`; no other collations, other character sets, or `mysql.collations` |
 | Default collation selection | 🟡 | Limited `CREATE TABLE`, `CREATE TABLE ... LIKE`, `ALTER TABLE ... [DEFAULT] COLLATE`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, and `INFORMATION_SCHEMA.TABLES` preservation for admitted `utf8mb4` table default collations; limited `SET NAMES utf8mb4 COLLATE admitted_collation` updates session readback; scalar `@@collation_server` / `@@collation_database` remain fixed defaults; admitted `CHAR` / `VARCHAR` primary and unique key enforcement still uses MyLite's fixed ASCII subset of `utf8mb4_0900_ai_ci`; no database or column defaults, conversion, general collation comparison/order/group/distinct semantics, full Unicode weights, mutable server/database state, or full charset/collation catalogs |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
 | Binary collations | 🟡 | Limited metadata admission and session/table default preservation for `utf8mb4_bin`; no binary comparison or ordering semantics |

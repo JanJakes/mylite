@@ -230,6 +230,7 @@ enum {
     information_schema_columns_column_count = 22,
     information_schema_character_sets_column_count = 4,
     information_schema_check_constraints_column_count = 4,
+    information_schema_collation_applicability_column_count = 2,
     information_schema_collations_column_count = 7,
     information_schema_engines_column_count = 6,
     information_schema_events_column_count = 24,
@@ -1612,6 +1613,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_TRIGGERS = 14,
     INFORMATION_SCHEMA_TABLE_VIEWS = 15,
     INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS = 16,
+    INFORMATION_SCHEMA_TABLE_COLLATION_CHARACTER_SET_APPLICABILITY = 17,
 };
 
 struct information_schema_column_definition {
@@ -2417,6 +2419,34 @@ static const struct information_schema_column_definition information_schema_coll
      "utf8mb3",
      "utf8mb3_bin",
      "enum('PAD SPACE','NO PAD')"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_collation_applicability_columns[] = {
+        {"COLLATION_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"CHARACTER_SET_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
 };
 
 static const struct information_schema_column_definition information_schema_engines_columns[] = {
@@ -4257,6 +4287,10 @@ static const struct information_schema_table_definition information_schema_table
      "COLLATIONS",
      information_schema_collations_columns,
      information_schema_collations_column_count},
+    {INFORMATION_SCHEMA_TABLE_COLLATION_CHARACTER_SET_APPLICABILITY,
+     "COLLATION_CHARACTER_SET_APPLICABILITY",
+     information_schema_collation_applicability_columns,
+     information_schema_collation_applicability_column_count},
     {INFORMATION_SCHEMA_TABLE_ENGINES,
      "ENGINES",
      information_schema_engines_columns,
@@ -5303,6 +5337,10 @@ static int append_information_schema_character_sets_system_row(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_collations_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_collation_applicability_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -18504,6 +18542,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_character_sets_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_COLLATIONS:
         return append_information_schema_collations_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_COLLATION_CHARACTER_SET_APPLICABILITY:
+        return append_information_schema_collation_applicability_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_ENGINES:
         return append_information_schema_engines_system_row(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
@@ -18537,6 +18577,7 @@ static int append_information_schema_catalog_rows(
     switch (rows->definition->kind) {
     case INFORMATION_SCHEMA_TABLE_CHARACTER_SETS:
     case INFORMATION_SCHEMA_TABLE_COLLATIONS:
+    case INFORMATION_SCHEMA_TABLE_COLLATION_CHARACTER_SET_APPLICABILITY:
     case INFORMATION_SCHEMA_TABLE_ENGINES:
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
@@ -18763,6 +18804,27 @@ static int append_information_schema_collations_system_row(
             collation->compiled,
             collation->sortlen,
             collation->pad_attribute,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
+static int append_information_schema_collation_applicability_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(utf8mb4_collations) / sizeof(utf8mb4_collations[0]);
+         ++row_index) {
+        const struct utf8mb4_collation_descriptor *collation = &utf8mb4_collations[row_index];
+        const char *values[information_schema_collation_applicability_column_count] = {
+            collation->name,
+            "utf8mb4",
         };
 
         rc = append_information_schema_row(database, rows, values);

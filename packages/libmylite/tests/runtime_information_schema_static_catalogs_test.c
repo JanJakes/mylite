@@ -13,6 +13,7 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_unknown_column = 1054,
+    information_schema_collation_applicability_metadata_row_count = 2,
     information_schema_character_sets_metadata_row_count = 4,
     information_schema_collations_metadata_row_count = 7,
     information_schema_engines_metadata_row_count = 6,
@@ -127,16 +128,32 @@ static int test_information_schema_static_catalogs(void) {
         "0",
         "NO PAD",
     };
+    static const char *const collation_applicability_columns[] = {
+        "COLLATION_NAME",
+        "CHARACTER_SET_NAME",
+    };
+    static const char *const collation_applicability_values[] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "utf8mb4",
+        "utf8mb4_general_ci",
+        "utf8mb4",
+        "utf8mb4_unicode_520_ci",
+        "utf8mb4",
+        "utf8mb4_unicode_ci",
+        "utf8mb4",
+    };
     static const char *const single_engine_column[] = {"ENGINE"};
     static const char *const single_engine_value[] = {"InnoDB"};
     static const char *const single_charset_column[] = {"CHARACTER_SET_NAME"};
     static const char *const single_charset_value[] = {"utf8mb4"};
     static const char *const single_collation_column[] = {"COLLATION_NAME"};
     static const char *const single_collation_value[] = {"utf8mb4_0900_ai_ci"};
+    static const char *const single_applicability_values[] = {"utf8mb4_bin", "utf8mb4"};
     static const char *const support_column[] = {"SUPPORT"};
     static const char *const support_value[] = {"DEFAULT"};
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_one[] = {"1"};
     static const char *const count_five[] = {"5"};
     static const char *const count_zero[] = {"0"};
     static const char *const system_table_columns[] = {
@@ -152,6 +169,15 @@ static int test_information_schema_static_catalogs(void) {
         "information_schema", "CHARACTER_SETS", "SYSTEM VIEW", NULL, "10", NULL, "0",
         "information_schema", "COLLATIONS",     "SYSTEM VIEW", NULL, "10", NULL, "0",
         "information_schema", "ENGINES",        "SYSTEM VIEW", NULL, "10", NULL, "0",
+    };
+    static const char *const collation_applicability_system_table_values[] = {
+        "information_schema",
+        "COLLATION_CHARACTER_SET_APPLICABILITY",
+        "SYSTEM VIEW",
+        NULL,
+        "10",
+        NULL,
+        "0",
     };
     static const char *const metadata_columns[] = {
         "COLUMN_NAME",
@@ -327,6 +353,36 @@ static int test_information_schema_static_catalogs(void) {
         "select",
         NULL,
     };
+    static const char *const collation_applicability_metadata_values[] = {
+        "COLLATION_NAME",
+        "1",
+        NULL,
+        "NO",
+        "varchar",
+        "64",
+        "192",
+        NULL,
+        NULL,
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "varchar(64)",
+        "select",
+        NULL,
+        "CHARACTER_SET_NAME",
+        "2",
+        NULL,
+        "NO",
+        "varchar",
+        "64",
+        "192",
+        NULL,
+        NULL,
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "varchar(64)",
+        "select",
+        NULL,
+    };
     static const char *const engines_metadata_values[] = {
         "ENGINE",
         "1",
@@ -470,6 +526,23 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT COLLATION_NAME, CHARACTER_SET_NAME "
+                   "FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY "
+                   "ORDER BY COLLATION_NAME",
+            .column_names = collation_applicability_columns,
+            .column_count = sizeof(collation_applicability_columns) /
+                            sizeof(collation_applicability_columns[0]),
+            .values = collation_applicability_values,
+            .row_count = sizeof(collation_applicability_values) /
+                         sizeof(collation_applicability_values[0]) /
+                         (sizeof(collation_applicability_columns) /
+                          sizeof(collation_applicability_columns[0])),
+            .context = "collation applicability static rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE = 'innodb'",
             .column_names = single_engine_column,
             .column_count = 1U,
@@ -505,6 +578,20 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT a.COLLATION_NAME, a.CHARACTER_SET_NAME "
+                   "FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY AS a "
+                   "WHERE a.COLLATION_NAME = 'UTF8MB4_BIN'",
+            .column_names = collation_applicability_columns,
+            .column_count = sizeof(collation_applicability_columns) /
+                            sizeof(collation_applicability_columns[0]),
+            .values = single_applicability_values,
+            .row_count = 1U,
+            .context = "collation applicability alias predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT SUPPORT FROM INFORMATION_SCHEMA.ENGINES ORDER BY ENGINE DESC LIMIT 1",
             .column_names = support_column,
             .column_count = 1U,
@@ -527,6 +614,30 @@ static int test_information_schema_static_catalogs(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+            .column_names = count_column,
+            .column_count = 1U,
+            .values = count_five,
+            .row_count = 1U,
+            .context = "collation applicability count star",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLLATION_NAME "
+                   "FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY "
+                   "ORDER BY COLLATION_NAME LIMIT 1",
+            .column_names = single_collation_column,
+            .column_count = 1U,
+            .values = single_collation_value,
+            .row_count = 1U,
+            .context = "collation applicability ordered limited projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
                    "TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES "
                    "WHERE TABLE_SCHEMA = 'information_schema' "
@@ -537,6 +648,20 @@ static int test_information_schema_static_catalogs(void) {
             .values = system_table_values,
             .row_count = 3U,
             .context = "static catalog system table rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
+                   "TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = 'information_schema' "
+                   "AND TABLE_NAME = 'COLLATION_CHARACTER_SET_APPLICABILITY'",
+            .column_names = system_table_columns,
+            .column_count = sizeof(system_table_columns) / sizeof(system_table_columns[0]),
+            .values = collation_applicability_system_table_values,
+            .row_count = 1U,
+            .context = "collation applicability system table row",
         }
     );
     failures += expect_query(
@@ -578,6 +703,23 @@ static int test_information_schema_static_catalogs(void) {
                    "DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
                    "NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_SET_NAME, COLLATION_NAME, "
                    "COLUMN_TYPE, PRIVILEGES, SRS_ID FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'information_schema' "
+                   "AND TABLE_NAME = 'COLLATION_CHARACTER_SET_APPLICABILITY' "
+                   "ORDER BY ORDINAL_POSITION",
+            .column_names = metadata_columns,
+            .column_count = sizeof(metadata_columns) / sizeof(metadata_columns[0]),
+            .values = collation_applicability_metadata_values,
+            .row_count = information_schema_collation_applicability_metadata_row_count,
+            .context = "collation applicability system column metadata",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT, IS_NULLABLE, "
+                   "DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
+                   "NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE, PRIVILEGES, SRS_ID FROM INFORMATION_SCHEMA.COLUMNS "
                    "WHERE TABLE_SCHEMA = 'information_schema' AND TABLE_NAME = 'ENGINES' "
                    "ORDER BY ORDINAL_POSITION",
             .column_names = metadata_columns,
@@ -592,8 +734,9 @@ static int test_information_schema_static_catalogs(void) {
         (struct expected_query){
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
                    "WHERE TABLE_SCHEMA = 'information_schema' "
-                   "AND (TABLE_NAME = 'CHARACTER_SETS' OR TABLE_NAME = 'COLLATIONS' "
-                   "OR TABLE_NAME = 'ENGINES') "
+                   "AND (TABLE_NAME = 'CHARACTER_SETS' "
+                   "OR TABLE_NAME = 'COLLATION_CHARACTER_SET_APPLICABILITY' "
+                   "OR TABLE_NAME = 'COLLATIONS' OR TABLE_NAME = 'ENGINES') "
                    "AND (COLUMN_KEY IS NULL OR COLUMN_KEY <> '' "
                    "OR EXTRA IS NULL OR EXTRA <> '' "
                    "OR COLUMN_COMMENT IS NULL OR COLUMN_COMMENT <> '' "
@@ -632,6 +775,37 @@ static int test_information_schema_static_catalogs(void) {
             .message_part = "Unknown column 'nope' in 'order clause'",
         }
     );
+    failures += expect_error(
+        database,
+        (struct expected_sql_error){
+            .sql = "SELECT nope FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'nope' in 'field list'",
+        }
+    );
+    failures += expect_error(
+        database,
+        (struct expected_sql_error){
+            .sql = "SELECT COLLATION_NAME FROM "
+                   "INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY "
+                   "WHERE nope = 'x'",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'nope' in 'where clause'",
+        }
+    );
+    failures += expect_error(
+        database,
+        (struct expected_sql_error){
+            .sql = "SELECT COLLATION_NAME FROM "
+                   "INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY "
+                   "ORDER BY nope",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'nope' in 'order clause'",
+        }
+    );
 
     failures += expect_statement_ok(database, "CREATE DATABASE app");
     mylite_close(database);
@@ -642,12 +816,13 @@ static int test_information_schema_static_catalogs(void) {
         failures += expect_query(
             database,
             (struct expected_query){
-                .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ENGINES",
+                .sql =
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
                 .column_names = count_column,
                 .column_count = 1U,
-                .values = count_one,
+                .values = count_five,
                 .row_count = 1U,
-                .context = "reopened static catalog row",
+                .context = "reopened collation applicability static rows",
             }
         );
     }
@@ -667,12 +842,13 @@ static int test_information_schema_static_catalogs(void) {
         failures += expect_query(
             second_database,
             (struct expected_query){
-                .sql = "SELECT ENGINE FROM INFORMATION_SCHEMA.ENGINES",
-                .column_names = single_engine_column,
+                .sql =
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
+                .column_names = count_column,
                 .column_count = 1U,
-                .values = single_engine_value,
+                .values = count_five,
                 .row_count = 1U,
-                .context = "second independent handle static catalog row",
+                .context = "second independent handle collation applicability rows",
             }
         );
     }

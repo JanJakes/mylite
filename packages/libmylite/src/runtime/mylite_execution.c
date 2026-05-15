@@ -230,6 +230,7 @@ enum {
     information_schema_columns_column_count = 22,
     information_schema_character_sets_column_count = 4,
     information_schema_check_constraints_column_count = 4,
+    information_schema_column_privileges_column_count = 7,
     information_schema_collation_applicability_column_count = 2,
     information_schema_collations_column_count = 7,
     information_schema_engines_column_count = 6,
@@ -239,11 +240,14 @@ enum {
     information_schema_processlist_db_column = 3,
     information_schema_processlist_info_column = 7,
     information_schema_routines_column_count = 31,
+    information_schema_schema_privileges_column_count = 5,
     information_schema_table_constraints_column_count = 7,
     information_schema_key_column_usage_column_count = 12,
     information_schema_statistics_column_count = 18,
     information_schema_referential_constraints_column_count = 11,
+    information_schema_table_privileges_column_count = 6,
     information_schema_triggers_column_count = 22,
+    information_schema_user_privileges_column_count = 4,
     information_schema_views_column_count = 10,
     information_schema_tables_auto_increment_column = 13,
     information_schema_columns_default_column = 5,
@@ -435,6 +439,79 @@ static const struct utf8mb4_collation_descriptor utf8mb4_collations[] = {
     {"utf8mb4_unicode_ci", "224", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_unicode_520_ci", "246", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_0900_ai_ci", "255", "Yes", "Yes", "0", "NO PAD"},
+};
+
+static const char *const embedded_root_global_privileges[] = {
+    "ALLOW_NONEXISTENT_DEFINER",
+    "ALTER",
+    "ALTER ROUTINE",
+    "APPLICATION_PASSWORD_ADMIN",
+    "AUDIT_ABORT_EXEMPT",
+    "AUDIT_ADMIN",
+    "AUTHENTICATION_POLICY_ADMIN",
+    "BACKUP_ADMIN",
+    "BINLOG_ADMIN",
+    "BINLOG_ENCRYPTION_ADMIN",
+    "CLONE_ADMIN",
+    "CONNECTION_ADMIN",
+    "CREATE",
+    "CREATE ROLE",
+    "CREATE ROUTINE",
+    "CREATE TABLESPACE",
+    "CREATE TEMPORARY TABLES",
+    "CREATE USER",
+    "CREATE VIEW",
+    "DELETE",
+    "DROP",
+    "DROP ROLE",
+    "ENCRYPTION_KEY_ADMIN",
+    "EVENT",
+    "EXECUTE",
+    "FILE",
+    "FIREWALL_EXEMPT",
+    "FLUSH_OPTIMIZER_COSTS",
+    "FLUSH_PRIVILEGES",
+    "FLUSH_STATUS",
+    "FLUSH_TABLES",
+    "FLUSH_USER_RESOURCES",
+    "GROUP_REPLICATION_ADMIN",
+    "GROUP_REPLICATION_STREAM",
+    "INDEX",
+    "INNODB_REDO_LOG_ARCHIVE",
+    "INNODB_REDO_LOG_ENABLE",
+    "INSERT",
+    "LOCK TABLES",
+    "OPTIMIZE_LOCAL_TABLE",
+    "PASSWORDLESS_USER_ADMIN",
+    "PERSIST_RO_VARIABLES_ADMIN",
+    "PROCESS",
+    "REFERENCES",
+    "RELOAD",
+    "REPLICATION CLIENT",
+    "REPLICATION SLAVE",
+    "REPLICATION_APPLIER",
+    "REPLICATION_SLAVE_ADMIN",
+    "RESOURCE_GROUP_ADMIN",
+    "RESOURCE_GROUP_USER",
+    "ROLE_ADMIN",
+    "SELECT",
+    "SENSITIVE_VARIABLES_OBSERVER",
+    "SERVICE_CONNECTION_ADMIN",
+    "SESSION_VARIABLES_ADMIN",
+    "SET_ANY_DEFINER",
+    "SHOW DATABASES",
+    "SHOW VIEW",
+    "SHOW_ROUTINE",
+    "SHUTDOWN",
+    "SUPER",
+    "SYSTEM_USER",
+    "SYSTEM_VARIABLES_ADMIN",
+    "TABLE_ENCRYPTION_ADMIN",
+    "TELEMETRY_LOG_ADMIN",
+    "TRANSACTION_GTID_TAG",
+    "TRIGGER",
+    "UPDATE",
+    "XA_RECOVER_ADMIN",
 };
 
 struct table_name_resolution {
@@ -1614,6 +1691,10 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_VIEWS = 15,
     INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS = 16,
     INFORMATION_SCHEMA_TABLE_COLLATION_CHARACTER_SET_APPLICABILITY = 17,
+    INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES = 18,
+    INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES = 19,
+    INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES = 20,
+    INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES = 21,
 };
 
 struct information_schema_column_definition {
@@ -2354,6 +2435,94 @@ static const struct information_schema_column_definition
          "utf8mb3",
          "utf8mb3_bin",
          "longtext"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_column_privileges_columns[] = {
+        {"GRANTEE",
+         "",
+         "NO",
+         "varchar",
+         "97",
+         "292",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(292)"},
+        {"TABLE_CATALOG",
+         "",
+         "NO",
+         "varchar",
+         "170",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(512)"},
+        {"TABLE_SCHEMA",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"COLUMN_NAME",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"PRIVILEGE_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"IS_GRANTABLE",
+         "",
+         "NO",
+         "varchar",
+         "1",
+         "3",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(3)"},
 };
 
 static const struct information_schema_column_definition information_schema_collations_columns[] = {
@@ -3894,6 +4063,198 @@ static const struct information_schema_column_definition information_schema_rout
      "varchar(64)"},
 };
 
+static const struct information_schema_column_definition
+    information_schema_schema_privileges_columns[] = {
+        {"GRANTEE",
+         "",
+         "NO",
+         "varchar",
+         "97",
+         "292",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(292)"},
+        {"TABLE_CATALOG",
+         "",
+         "NO",
+         "varchar",
+         "170",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(512)"},
+        {"TABLE_SCHEMA",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"PRIVILEGE_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"IS_GRANTABLE",
+         "",
+         "NO",
+         "varchar",
+         "1",
+         "3",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(3)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_table_privileges_columns[] = {
+        {"GRANTEE",
+         "",
+         "NO",
+         "varchar",
+         "97",
+         "292",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(292)"},
+        {"TABLE_CATALOG",
+         "",
+         "NO",
+         "varchar",
+         "170",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(512)"},
+        {"TABLE_SCHEMA",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"PRIVILEGE_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"IS_GRANTABLE",
+         "",
+         "NO",
+         "varchar",
+         "1",
+         "3",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(3)"},
+};
+
+static const struct information_schema_column_definition
+    information_schema_user_privileges_columns[] = {
+        {"GRANTEE",
+         "",
+         "NO",
+         "varchar",
+         "97",
+         "292",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(292)"},
+        {"TABLE_CATALOG",
+         "",
+         "NO",
+         "varchar",
+         "170",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(512)"},
+        {"PRIVILEGE_TYPE",
+         "",
+         "NO",
+         "varchar",
+         "21",
+         "64",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(64)"},
+        {"IS_GRANTABLE",
+         "",
+         "NO",
+         "varchar",
+         "1",
+         "3",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_general_ci",
+         "varchar(3)"},
+};
+
 static const struct information_schema_column_definition information_schema_triggers_columns[] = {
     {"TRIGGER_CATALOG",
      NULL,
@@ -4283,6 +4644,10 @@ static const struct information_schema_table_definition information_schema_table
      "CHECK_CONSTRAINTS",
      information_schema_check_constraints_columns,
      information_schema_check_constraints_column_count},
+    {INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES,
+     "COLUMN_PRIVILEGES",
+     information_schema_column_privileges_columns,
+     information_schema_column_privileges_column_count},
     {INFORMATION_SCHEMA_TABLE_COLLATIONS,
      "COLLATIONS",
      information_schema_collations_columns,
@@ -4311,6 +4676,10 @@ static const struct information_schema_table_definition information_schema_table
      "ROUTINES",
      information_schema_routines_columns,
      information_schema_routines_column_count},
+    {INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES,
+     "SCHEMA_PRIVILEGES",
+     information_schema_schema_privileges_columns,
+     information_schema_schema_privileges_column_count},
     {INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS,
      "TABLE_CONSTRAINTS",
      information_schema_table_constraints_columns,
@@ -4327,10 +4696,18 @@ static const struct information_schema_table_definition information_schema_table
      "REFERENTIAL_CONSTRAINTS",
      information_schema_referential_constraints_columns,
      information_schema_referential_constraints_column_count},
+    {INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES,
+     "TABLE_PRIVILEGES",
+     information_schema_table_privileges_columns,
+     information_schema_table_privileges_column_count},
     {INFORMATION_SCHEMA_TABLE_TRIGGERS,
      "TRIGGERS",
      information_schema_triggers_columns,
      information_schema_triggers_column_count},
+    {INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES,
+     "USER_PRIVILEGES",
+     information_schema_user_privileges_columns,
+     information_schema_user_privileges_column_count},
     {INFORMATION_SCHEMA_TABLE_VIEWS,
      "VIEWS",
      information_schema_views_columns,
@@ -5345,6 +5722,10 @@ static int append_information_schema_collation_applicability_system_rows(
     struct information_schema_row_set *rows
 );
 static int append_information_schema_engines_system_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_information_schema_user_privileges_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
@@ -18546,15 +18927,20 @@ static int append_information_schema_system_rows(
         return append_information_schema_collation_applicability_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_ENGINES:
         return append_information_schema_engines_system_row(database, rows);
+    case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
+        return append_information_schema_user_privileges_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
+    case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
         return MYLITE_OK;
@@ -18584,7 +18970,11 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
     case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
+    case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
+    case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
+    case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
@@ -18847,6 +19237,29 @@ static int append_information_schema_engines_system_row(
     };
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_user_privileges_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(embedded_root_global_privileges) /
+                                            sizeof(embedded_root_global_privileges[0]);
+         ++row_index) {
+        const char *values[information_schema_user_privileges_column_count] = {
+            "'root'@'%'",
+            "def",
+            embedded_root_global_privileges[row_index],
+            "YES",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
 }
 
 static int append_information_schema_processlist_system_row(

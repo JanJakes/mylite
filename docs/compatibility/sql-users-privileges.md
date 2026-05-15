@@ -4,7 +4,8 @@ Account, role, password, privilege grant, and active-role statement surface.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Embedded current identity | 🟡 | Limited scalar `USER()`, `SESSION_USER()`, `SYSTEM_USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose `root@%`; no account storage, authentication, roles, privileges, definer behavior, `IGNORE_SPACE`, or stored-function resolution |
+| Embedded current identity | 🟡 | Limited scalar `USER()`, `SESSION_USER()`, `SYSTEM_USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose `root@%`; limited `INFORMATION_SCHEMA.USER_PRIVILEGES` exposes synthetic global privilege rows for that embedded identity; no account storage, authentication, roles, grant descriptors, privilege enforcement, definer behavior, `IGNORE_SPACE`, or stored-function resolution |
+| Privilege metadata views | 🟡 | Limited synthetic `INFORMATION_SCHEMA.USER_PRIVILEGES` global rows for `root@%` plus empty `SCHEMA_PRIVILEGES`, `TABLE_PRIVILEGES`, and `COLUMN_PRIVILEGES` system views; no grant storage, grant/revoke DDL, `SHOW GRANTS`, roles, lower-level privilege rows, privilege filtering, or enforcement |
 | Current active role | 🟡 | Limited scalar `CURRENT_ROLE()` returns `NONE`; no role catalog, grants, default roles, active-role state, `SET ROLE`, privileges, or bare `CURRENT_ROLE` |
 | `ALTER USER` | ❌ | Auth, TLS, resources, roles |
 | `CREATE USER` | ❌ | Auth factors, TLS, resources |

@@ -16,7 +16,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | Warnings and diagnostics | ❌ | Warnings, errors, diagnostics area |
 | Prepared statement registry | ❌ | Per-connection prepared statements |
 | Temporary table namespace | 🟡 | Limited per-session temporary table descriptors for explicit `CREATE TEMPORARY TABLE` / `DROP TEMPORARY TABLE`, same-schema shadowing for current descriptor-driven DML and selected SHOW statements, and close-time cleanup; no cross-handle visibility, temporary DDL inside active user transactions, temporary auto-increment counters, temporary `LIKE`/CTAS/ALTER/RENAME/TRUNCATE, or privilege state |
-| Role and privilege state | ❌ | Role and privilege state |
+| Role and privilege state | 🟡 | Fixed embedded `root@%` identity with no active role, no account store, and limited synthetic `INFORMATION_SCHEMA.USER_PRIVILEGES` readback for global privileges; no mutable roles, grant descriptors, grant/revoke DDL, lower-level privilege rows, privilege filtering, or enforcement |
 | Locks | ❌ | Named, table, metadata, backup locks |
 
 ## SQL modes

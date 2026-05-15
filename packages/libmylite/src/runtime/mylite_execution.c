@@ -273,6 +273,7 @@ enum {
     information_schema_triggers_column_count = 22,
     information_schema_user_privileges_column_count = 4,
     information_schema_views_column_count = 10,
+    information_schema_view_table_usage_column_count = 6,
     information_schema_tables_auto_increment_column = 13,
     information_schema_columns_default_column = 5,
     information_schema_columns_is_nullable_column = 6,
@@ -2628,6 +2629,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES = 20,
     INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES = 21,
     INFORMATION_SCHEMA_TABLE_KEYWORDS = 22,
+    INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE = 23,
 };
 
 struct information_schema_column_definition {
@@ -5572,6 +5574,82 @@ static const struct information_schema_column_definition information_schema_view
      "varchar(64)"},
 };
 
+static const struct information_schema_column_definition
+    information_schema_view_table_usage_columns[] = {
+        {"VIEW_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"VIEW_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"VIEW_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_CATALOG",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_SCHEMA",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+        {"TABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "192",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb3",
+         "utf8mb3_bin",
+         "varchar(64)"},
+};
+
 static const struct information_schema_table_definition information_schema_table_definitions[] = {
     {INFORMATION_SCHEMA_TABLE_SCHEMATA,
      "SCHEMATA",
@@ -5665,6 +5743,10 @@ static const struct information_schema_table_definition information_schema_table
      "VIEWS",
      information_schema_views_columns,
      information_schema_views_column_count},
+    {INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE,
+     "VIEW_TABLE_USAGE",
+     information_schema_view_table_usage_columns,
+     information_schema_view_table_usage_column_count},
 };
 
 struct show_databases_context {
@@ -21640,6 +21722,7 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
+    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
         return MYLITE_OK;
     }
 
@@ -21673,6 +21756,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_VIEWS:
+    case INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE:
         return MYLITE_OK;
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_TABLES:

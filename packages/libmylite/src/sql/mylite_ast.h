@@ -323,6 +323,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CURRENT_TIME_VALUE = 314,
     MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE = 315,
     MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE = 316,
+    MYLITE_SQL_AST_EXISTS_PREDICATE = 317,
 };
 
 enum mylite_sql_ast_literal_kind {

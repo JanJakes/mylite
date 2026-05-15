@@ -929,6 +929,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
     struct mylite_sql_ast_node *values,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_exists_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token exists_token,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_predicate_value_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *value

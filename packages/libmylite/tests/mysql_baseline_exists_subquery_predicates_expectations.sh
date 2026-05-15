@@ -186,6 +186,16 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "limit zero with literal predicate makes exists false" \
+    "NULL" \
+    "SELECT GROUP_CONCAT(u.id ORDER BY u.id)
+     FROM users AS u
+     WHERE EXISTS (
+         SELECT 1 FROM orders AS o WHERE o.status = 'closed' LIMIT 0
+     );" \
+    "$DATABASE"
+
+expect_output \
     "limit one keeps exists true for matching rows" \
     "1,2" \
     "SELECT GROUP_CONCAT(u.id ORDER BY u.id)

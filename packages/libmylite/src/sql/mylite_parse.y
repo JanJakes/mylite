@@ -1966,6 +1966,9 @@ predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 
+predicate_atom(A) ::= EXISTS(E) LPAREN select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_exists_predicate(state, E, S, R);
+}
 predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
@@ -2092,6 +2095,9 @@ predicate_range_value(A) ::= BIT_LITERAL(T). {
 }
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
+    A = V;
+}
+predicate_comparison_value(A) ::= qualified_identifier(V). {
     A = V;
 }
 predicate_comparison_value(A) ::= STRING(T). {

@@ -1091,6 +1091,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "between_predicate";
     case MYLITE_SQL_AST_IN_PREDICATE:
         return "in_predicate";
+    case MYLITE_SQL_AST_EXISTS_PREDICATE:
+        return "exists_predicate";
     case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
         return "predicate_value_list";
     case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:

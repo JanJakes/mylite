@@ -3211,6 +3211,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_exists_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token exists_token,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span = span_from_token(&exists_token);
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    span = span_join(span, span_from_token(&right_paren));
+    predicate = make_node(state, MYLITE_SQL_AST_EXISTS_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(predicate, select_statement);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_predicate_value_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *value

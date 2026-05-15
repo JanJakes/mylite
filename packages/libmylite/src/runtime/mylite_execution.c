@@ -592,6 +592,7 @@ struct user_savepoint_values {
 };
 
 struct planned_select_source;
+struct planned_exists_subquery;
 
 struct select_source_context {
     const struct table_name_resolution *source;
@@ -1180,6 +1181,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_IN = 7,
     PLANNED_SELECT_PREDICATE_IS_BOOLEAN = 8,
     PLANNED_SELECT_PREDICATE_XOR = 9,
+    PLANNED_SELECT_PREDICATE_EXISTS = 10,
 };
 
 struct planned_select_predicate_node {
@@ -1188,12 +1190,16 @@ struct planned_select_predicate_node {
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
     struct planned_value value;
+    bool value_is_column_reference;
+    struct mylite_catalog_column_descriptor value_column;
+    size_t value_column_source_index;
     struct planned_value upper_value;
     struct planned_value *values;
     size_t value_count;
     size_t left_index;
     size_t right_index;
     bool like_uses_escape;
+    struct planned_exists_subquery *exists_subquery;
 };
 
 struct planned_select_predicate {
@@ -1202,6 +1208,14 @@ struct planned_select_predicate {
     size_t root_index;
     bool has_root;
     bool qualify_column_references;
+};
+
+struct select_predicate_plan_options {
+    bool allow_exists;
+    bool allow_column_reference_rhs;
+    const struct select_source_context *outer_source_context;
+    const struct mylite_catalog_column_descriptor *outer_columns;
+    size_t outer_column_count;
 };
 
 enum predicate_work_item_kind {
@@ -1280,6 +1294,13 @@ struct planned_select_source {
     bool has_alias;
 };
 
+struct planned_exists_subquery {
+    bool has_table_source;
+    struct planned_select_source source;
+    struct planned_select_predicate predicate;
+    struct planned_select_limit limit;
+};
+
 struct planned_select_join_condition {
     bool has_condition;
     struct mylite_catalog_column_descriptor left_column;
@@ -1301,11 +1322,18 @@ struct planned_select {
     size_t column_count;
     bool is_distinct;
     bool calc_found_rows;
+    bool requires_source_alias;
     enum mylite_sql_ast_join_kind join_kind;
     struct planned_select_join_condition join_condition;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
+};
+
+struct select_optional_clauses {
+    const struct mylite_sql_ast_node *where_clause;
+    const struct mylite_sql_ast_node *order_clause;
+    const struct mylite_sql_ast_node *limit_clause;
 };
 
 enum planned_row_scalar_expression_kind {
@@ -7520,6 +7548,19 @@ static int plan_select(
     const struct mylite_sql_ast_node *statement,
     struct planned_select *out_plan
 );
+static int collect_select_optional_clauses(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct select_optional_clauses *out_clauses
+);
+static int plan_select_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+);
 static void copy_plan_source_alias_if_present(
     struct planned_select *plan,
     const struct select_source_context *context
@@ -12155,13 +12196,36 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 );
+static int plan_select_predicate_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
 static void planned_select_predicate_deinit(struct planned_select_predicate *predicate);
+static void planned_select_predicate_deinit_without_exists(
+    struct planned_select_predicate *predicate
+);
+static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery);
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 );
 static int plan_select_predicate_work_item(
@@ -12174,6 +12238,20 @@ static int plan_select_predicate_work_item(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_work_item_without_exists(
+    struct mylite_db *database,
+    struct predicate_work_item item,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 );
 static int finish_planned_select_logical_predicate(
@@ -12199,6 +12277,20 @@ static int plan_select_predicate_ast_node(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_ast_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 );
 static const struct mylite_sql_ast_node *unwrap_parenthesized_predicate(
@@ -12231,6 +12323,18 @@ static int plan_select_predicate_leaf_node(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_leaf_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 );
 static bool planned_predicate_kind_for_operator(
@@ -12243,8 +12347,93 @@ static int plan_comparison_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
+);
+static bool comparison_predicate_rhs_is_column_reference(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int validate_comparison_predicate_column(
+    struct mylite_db *database,
+    const struct planned_select_predicate_node *node
+);
+static int plan_exists_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_exists_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_exists_subquery *out_subquery
+);
+static int plan_exists_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_exists_subquery *out_subquery
+);
+static int validate_exists_select_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct planned_exists_subquery *subquery
+);
+static bool exists_select_item_is_supported_literal(const struct mylite_sql_ast_node *expression);
+static int plan_exists_inner_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_exists_subquery *subquery
+);
+static void offset_exists_inner_predicate_source_indexes(
+    struct planned_select_predicate *predicate,
+    size_t source_index_offset
+);
+static int plan_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int resolve_exists_column_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *inner_source_context,
+    const struct mylite_catalog_column_descriptor *inner_columns,
+    size_t inner_column_count,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+);
+static int resolve_exists_column_reference_in_source(
+    struct mylite_db *database,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const char *column_name,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_resolved
+);
+static bool exists_correlated_column_comparison_is_supported(
+    const struct planned_select_predicate_node *node
 );
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind);
@@ -12367,6 +12556,16 @@ static int pop_predicate_result_index(
 static int bind_select_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate *predicate,
+    int *parameter_index
+);
+static int bind_select_predicate_parameters_without_exists(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate,
+    int *parameter_index
+);
+static int bind_select_exists_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_exists_subquery *subquery,
     int *parameter_index
 );
 static int bind_select_predicate_node_parameters(
@@ -13430,7 +13629,17 @@ static int append_select_predicate_sql(
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
 );
+static int append_select_predicate_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+);
 static int append_select_predicate_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+);
+static int append_select_predicate_expression_sql_without_exists(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
@@ -13443,11 +13652,27 @@ static int append_select_predicate_expression_work_item(
     size_t *item_count,
     size_t *next_parameter
 );
+static int append_select_predicate_expression_work_item_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    struct predicate_sql_work_item item,
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t *next_parameter
+);
 static int append_select_predicate_logical_operator_sql(
     struct dynamic_string *string,
     enum mylite_sql_ast_operator operator_kind
 );
 static int append_select_predicate_expression_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t node_index,
+    size_t *next_parameter,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+);
+static int append_select_predicate_expression_node_sql_without_exists(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
     size_t node_index,
@@ -13473,6 +13698,21 @@ static int append_select_predicate_node_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_predicate_node_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_exists_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t *next_parameter
+);
+static int append_exists_subquery_from_sql(
+    struct dynamic_string *string,
+    const struct planned_exists_subquery *subquery
+);
 static int append_descriptor_value_sql_for_source(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column,
@@ -13493,6 +13733,7 @@ static int append_time_seconds_value_sql_for_source(
 );
 static int append_select_comparison_predicate_term_sql(
     struct dynamic_string *string,
+    bool qualify_column,
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
@@ -13549,6 +13790,7 @@ static int append_select_order_sql(
     const struct planned_select_order *order
 );
 static int append_select_source_alias(struct dynamic_string *string, size_t source_index);
+static bool planned_select_qualifies_source_references(const struct planned_select *plan);
 static int append_select_from_sql(struct dynamic_string *string, const struct planned_select *plan);
 static int append_select_join_condition_sql(
     struct dynamic_string *string,
@@ -14841,6 +15083,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_IN_PREDICATE:
+    case MYLITE_SQL_AST_EXISTS_PREDICATE:
     case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
@@ -26031,6 +26274,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_IN_PREDICATE:
+    case MYLITE_SQL_AST_EXISTS_PREDICATE:
     case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
@@ -40075,12 +40319,10 @@ static int plan_select(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *where_clause = NULL;
-    const struct mylite_sql_ast_node *order_clause = NULL;
-    const struct mylite_sql_ast_node *limit_clause = NULL;
-    const struct mylite_sql_ast_node *optional_clause = NULL;
+    struct select_optional_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
+    struct select_predicate_plan_options predicate_options = {.allow_exists = true};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -40102,27 +40344,16 @@ static int plan_select(
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
         return MYLITE_ERROR;
     }
-    optional_clause = child_at(statement, 2U);
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-            order_clause = optional_clause;
-        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
-            limit_clause = optional_clause;
-        } else {
-            set_unsupported_error(database, "SELECT supports only WHERE, ORDER BY, and LIMIT");
-            return MYLITE_ERROR;
-        }
-        optional_clause = optional_clause->next_sibling;
-    }
+    rc = collect_select_optional_clauses(database, statement, &clauses);
 
-    rc = resolve_visible_table_reference(
-        database,
-        child_at(from_clause, 0U),
-        &out_plan->source,
-        &out_plan->table
-    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_visible_table_reference(
+            database,
+            child_at(from_clause, 0U),
+            &out_plan->source,
+            &out_plan->table
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
@@ -40136,46 +40367,42 @@ static int plan_select(
         );
     }
     if (rc == MYLITE_OK) {
-        if (out_plan->is_distinct) {
-            rc = plan_select_distinct_column(
-                database,
-                select_list,
-                &source_context,
-                table_columns,
-                table_column_count,
-                out_plan
-            );
-        } else {
-            rc = plan_select_columns(
-                database,
-                select_list,
-                &source_context,
-                table_columns,
-                table_column_count,
-                out_plan
-            );
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        rc = plan_select_projection(
             database,
-            where_clause,
+            select_list,
             &source_context,
             table_columns,
             table_column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate_with_options(
+            database,
+            clauses.where_clause,
+            &source_context,
+            table_columns,
+            table_column_count,
+            &predicate_options,
             &out_plan->predicate
         );
+    }
+    if (rc == MYLITE_OK && out_plan->predicate.qualify_column_references) {
+        out_plan->requires_source_alias = true;
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_order(
             database,
-            order_clause,
+            clauses.order_clause,
             &source_context,
             out_plan,
             table_columns,
             table_column_count,
             &out_plan->order
         );
+    }
+    if (rc == MYLITE_OK && out_plan->requires_source_alias) {
+        out_plan->order.qualify_column_reference = true;
     }
     if (rc == MYLITE_OK && out_plan->is_distinct && out_plan->order.has_order &&
         out_plan->order.column.column_id != out_plan->columns[0].column_id) {
@@ -40186,7 +40413,7 @@ static int plan_select(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+        rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
     free(table_columns);
@@ -40195,6 +40422,60 @@ static int plan_select(
     }
 
     return rc;
+}
+
+static int collect_select_optional_clauses(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct select_optional_clauses *out_clauses
+) {
+    const struct mylite_sql_ast_node *optional_clause = child_at(statement, 2U);
+
+    *out_clauses = (struct select_optional_clauses){0};
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            out_clauses->where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            out_clauses->order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            out_clauses->limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "SELECT supports only WHERE, ORDER BY, and LIMIT");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_select_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+) {
+    if (out_plan->is_distinct) {
+        return plan_select_distinct_column(
+            database,
+            select_list,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
+
+    return plan_select_columns(
+        database,
+        select_list,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan
+    );
 }
 
 static void copy_plan_source_alias_if_present(
@@ -71077,6 +71358,28 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 ) {
+    const struct select_predicate_plan_options options = {.allow_exists = false};
+
+    return plan_select_predicate_with_options(
+        database,
+        where_clause,
+        source_context,
+        table_columns,
+        table_column_count,
+        &options,
+        out_predicate
+    );
+}
+
+static int plan_select_predicate_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
     int rc = MYLITE_OK;
 
     *out_predicate = (struct planned_select_predicate){0};
@@ -71095,6 +71398,7 @@ static int plan_select_predicate(
         source_context,
         table_columns,
         table_column_count,
+        options,
         out_predicate
     );
     if (rc != MYLITE_OK) {
@@ -71117,9 +71421,41 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
             planned_value_deinit(&predicate->nodes[node_index].values[value_index]);
         }
         free(predicate->nodes[node_index].values);
+        planned_exists_subquery_deinit(predicate->nodes[node_index].exists_subquery);
+        free(predicate->nodes[node_index].exists_subquery);
     }
     free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
+}
+
+static void planned_select_predicate_deinit_without_exists(
+    struct planned_select_predicate *predicate
+) {
+    if (predicate == NULL) {
+        return;
+    }
+
+    for (size_t node_index = 0U; node_index < predicate->node_count; ++node_index) {
+        planned_value_deinit(&predicate->nodes[node_index].value);
+        planned_value_deinit(&predicate->nodes[node_index].upper_value);
+        for (size_t value_index = 0U; value_index < predicate->nodes[node_index].value_count;
+             ++value_index) {
+            planned_value_deinit(&predicate->nodes[node_index].values[value_index]);
+        }
+        free(predicate->nodes[node_index].values);
+    }
+    free(predicate->nodes);
+    *predicate = (struct planned_select_predicate){0};
+}
+
+static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery) {
+    if (subquery == NULL) {
+        return;
+    }
+
+    free(subquery->source.columns);
+    planned_select_predicate_deinit_without_exists(&subquery->predicate);
+    *subquery = (struct planned_exists_subquery){.has_table_source = false};
 }
 
 static int plan_select_predicate_node(
@@ -71128,6 +71464,7 @@ static int plan_select_predicate_node(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
     struct predicate_work_item *items = NULL;
@@ -71148,6 +71485,52 @@ static int plan_select_predicate_node(
             source_context,
             table_columns,
             table_column_count,
+            options,
+            out_predicate
+        );
+    }
+
+    if (rc == MYLITE_OK && result_index_count == 1U) {
+        out_predicate->root_index = result_indexes[0];
+        out_predicate->has_root = true;
+    } else if (rc == MYLITE_OK) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        rc = MYLITE_ERROR;
+    }
+
+    free(result_indexes);
+    free(items);
+    return rc;
+}
+
+static int plan_select_predicate_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
+    struct predicate_work_item *items = NULL;
+    size_t item_count = 0U;
+    size_t *result_indexes = NULL;
+    size_t result_index_count = 0U;
+    int rc = append_predicate_work_node(database, &items, &item_count, predicate_node);
+
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_work_item item = items[--item_count];
+        rc = plan_select_predicate_work_item_without_exists(
+            database,
+            item,
+            &items,
+            &item_count,
+            &result_indexes,
+            &result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
             out_predicate
         );
     }
@@ -71175,6 +71558,7 @@ static int plan_select_predicate_work_item(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
     switch (item.kind) {
@@ -71208,6 +71592,60 @@ static int plan_select_predicate_work_item(
             source_context,
             table_columns,
             table_column_count,
+            options,
+            out_predicate
+        );
+    }
+
+    set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+    return MYLITE_ERROR;
+}
+
+static int plan_select_predicate_work_item_without_exists(
+    struct mylite_db *database,
+    struct predicate_work_item item,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
+    switch (item.kind) {
+    case PREDICATE_WORK_DEPRECATED_AND_WARNING:
+        return append_deprecated_logical_and_warning(database);
+    case PREDICATE_WORK_DEPRECATED_OR_WARNING:
+        return append_deprecated_logical_or_warning(database);
+    case PREDICATE_WORK_FINISH_LOGICAL:
+        return finish_planned_select_logical_predicate(
+            database,
+            item.operator_kind,
+            result_indexes,
+            result_index_count,
+            out_predicate
+        );
+    case PREDICATE_WORK_FINISH_NOT:
+        return finish_planned_select_not_predicate(
+            database,
+            result_indexes,
+            result_index_count,
+            out_predicate
+        );
+    case PREDICATE_WORK_NODE:
+        return plan_select_predicate_ast_node_without_exists(
+            database,
+            item.node,
+            items,
+            item_count,
+            result_indexes,
+            result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
             out_predicate
         );
     }
@@ -71300,6 +71738,51 @@ static int plan_select_predicate_ast_node(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
+    const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(predicate_node);
+
+    if (current != NULL && current->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return append_select_predicate_not_work(database, current, items, item_count);
+    }
+    if (is_logical_predicate_node(current)) {
+        return append_select_predicate_logical_work(database, current, items, item_count);
+    }
+    if (current != NULL && (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IN_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_EXISTS_PREDICATE)) {
+        return plan_select_predicate_leaf_node(
+            database,
+            current,
+            result_indexes,
+            result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate
+        );
+    }
+
+    set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+    return MYLITE_ERROR;
+}
+
+static int plan_select_predicate_ast_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
     const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(predicate_node);
@@ -71315,7 +71798,7 @@ static int plan_select_predicate_ast_node(
                             current->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IN_PREDICATE)) {
-        return plan_select_predicate_leaf_node(
+        return plan_select_predicate_leaf_node_without_exists(
             database,
             current,
             result_indexes,
@@ -71323,6 +71806,7 @@ static int plan_select_predicate_ast_node(
             source_context,
             table_columns,
             table_column_count,
+            options,
             out_predicate
         );
     }
@@ -71426,6 +71910,7 @@ static int plan_select_predicate_leaf_node(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *out_predicate
 ) {
     size_t node_index = 0U;
@@ -71438,6 +71923,92 @@ static int plan_select_predicate_leaf_node(
             source_context,
             table_columns,
             table_column_count,
+            options,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        rc = plan_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE) {
+        rc = plan_is_boolean_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
+        rc = plan_between_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IN_PREDICATE) {
+        rc = plan_in_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else {
+        rc = plan_exists_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate,
+            &node_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+    }
+
+    return rc;
+}
+
+static int plan_select_predicate_leaf_node_without_exists(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *out_predicate
+) {
+    size_t node_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (predicate_node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        rc = plan_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
             out_predicate,
             &node_index
         );
@@ -71550,6 +72121,7 @@ static int plan_comparison_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 ) {
@@ -71559,6 +72131,27 @@ static int plan_comparison_predicate(
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
     };
+
+    if (comparison_predicate_rhs_is_column_reference(predicate_node)) {
+        if (options == NULL || !options->allow_column_reference_rhs) {
+            set_unsupported_error(
+                database,
+                "WHERE column-to-column predicates are supported only inside EXISTS"
+            );
+            return MYLITE_ERROR;
+        }
+        return plan_column_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            out_node_index
+        );
+    }
+
     int rc = resolve_predicate_column_with_source_index(
         database,
         child_at(predicate_node, 0U),
@@ -71570,45 +72163,9 @@ static int plan_comparison_predicate(
     );
 
     if (rc == MYLITE_OK) {
-        if (comparison_operator_is_like(node.operator_kind) &&
-            column_descriptor_is_enum(&node.column)) {
-            set_unsupported_error(
-                database,
-                "WHERE enum predicates support only =, <=>, <>, and !="
-            );
-            return MYLITE_ERROR;
-        }
-        if (comparison_operator_is_like(node.operator_kind) &&
-            column_descriptor_is_set(&node.column)) {
-            set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
-            return MYLITE_ERROR;
-        }
-        if (comparison_operator_is_like(node.operator_kind) &&
-            !column_descriptor_is_string_family(&node.column)) {
-            set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
-            return MYLITE_ERROR;
-        }
-        if (column_descriptor_is_string_family(&node.column) &&
-            !comparison_operator_is_string_predicate(node.operator_kind)) {
-            set_unsupported_error(
-                database,
-                "WHERE string predicates support only =, <=>, <>, !=, and LIKE"
-            );
-            return MYLITE_ERROR;
-        }
-        if (column_descriptor_is_enum(&node.column) &&
-            !comparison_operator_is_enum_predicate(node.operator_kind)) {
-            set_unsupported_error(
-                database,
-                "WHERE enum predicates support only =, <=>, <>, and !="
-            );
-            return MYLITE_ERROR;
-        }
-        if (column_descriptor_is_set(&node.column) &&
-            !comparison_operator_is_enum_predicate(node.operator_kind)) {
-            set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
-            return MYLITE_ERROR;
-        }
+        rc = validate_comparison_predicate_column(database, &node);
+    }
+    if (rc == MYLITE_OK) {
         if (comparison_operator_is_like(node.operator_kind)) {
             node.like_uses_escape = (bool)!session_sql_mode_has(
                 &database->session,
@@ -71633,6 +72190,536 @@ static int plan_comparison_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static bool comparison_predicate_rhs_is_column_reference(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *right = child_at(predicate_node, 1U);
+
+    return (right != NULL && (right->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                              right->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) != 0;
+}
+
+static int validate_comparison_predicate_column(
+    struct mylite_db *database,
+    const struct planned_select_predicate_node *node
+) {
+    if (comparison_operator_is_like(node->operator_kind) &&
+        column_descriptor_is_enum(&node->column)) {
+        set_unsupported_error(database, "WHERE enum predicates support only =, <=>, <>, and !=");
+        return MYLITE_ERROR;
+    }
+    if (comparison_operator_is_like(node->operator_kind) &&
+        column_descriptor_is_set(&node->column)) {
+        set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
+        return MYLITE_ERROR;
+    }
+    if (comparison_operator_is_like(node->operator_kind) &&
+        !column_descriptor_is_string_family(&node->column)) {
+        set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_string_family(&node->column) &&
+        !comparison_operator_is_string_predicate(node->operator_kind)) {
+        set_unsupported_error(
+            database,
+            "WHERE string predicates support only =, <=>, <>, !=, and LIKE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_enum(&node->column) &&
+        !comparison_operator_is_enum_predicate(node->operator_kind)) {
+        set_unsupported_error(database, "WHERE enum predicates support only =, <=>, <>, and !=");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_set(&node->column) &&
+        !comparison_operator_is_enum_predicate(node->operator_kind)) {
+        set_unsupported_error(database, "WHERE set predicates support only =, <=>, <>, and !=");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_exists_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_EXISTS,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    struct planned_exists_subquery *subquery = NULL;
+    int rc = MYLITE_OK;
+
+    if (options == NULL || !options->allow_exists) {
+        set_unsupported_error(database, "EXISTS subqueries are supported only in SELECT WHERE");
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL || select_source_context_is_joined(source_context)) {
+        set_unsupported_error(database, "EXISTS subqueries support only one outer table source");
+        return MYLITE_ERROR;
+    }
+
+    subquery = calloc(1U, sizeof(*subquery));
+    if (subquery == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_exists_subquery(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        subquery
+    );
+    if (rc != MYLITE_OK) {
+        planned_exists_subquery_deinit(subquery);
+        free(subquery);
+        return rc;
+    }
+
+    node.exists_subquery = subquery;
+    rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    if (rc != MYLITE_OK) {
+        planned_exists_subquery_deinit(subquery);
+        free(subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
+}
+
+static int plan_exists_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_exists_subquery *out_subquery
+) {
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    int rc = MYLITE_OK;
+
+    *out_subquery = (struct planned_exists_subquery){.has_table_source = false};
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "EXISTS supports only SELECT subqueries");
+        return MYLITE_ERROR;
+    }
+    select_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    optional_clause = child_at(statement, 2U);
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(database, "EXISTS subqueries do not support SELECT modifiers");
+        return MYLITE_ERROR;
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "EXISTS subqueries support only WHERE and LIMIT");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        rc = plan_exists_table_source(database, from_clause, out_subquery);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_exists_select_list(database, select_list, out_subquery);
+    }
+    if (rc == MYLITE_OK && where_clause != NULL && !out_subquery->has_table_source) {
+        set_unsupported_error(database, "EXISTS tableless subqueries do not support WHERE");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && out_subquery->has_table_source) {
+        rc = plan_exists_inner_predicate(
+            database,
+            where_clause,
+            outer_source_context,
+            outer_columns,
+            outer_column_count,
+            out_subquery
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_delete_limit(database, limit_clause, &out_subquery->limit);
+    }
+
+    return rc;
+}
+
+static int plan_exists_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_exists_subquery *out_subquery
+) {
+    int rc = MYLITE_OK;
+
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "EXISTS subqueries support only one table source");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_joined_select_source(database, from_clause, &out_subquery->source);
+    if (rc == MYLITE_OK) {
+        out_subquery->has_table_source = true;
+    }
+    return rc;
+}
+
+static int validate_exists_select_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct planned_exists_subquery *subquery
+) {
+    struct select_source_context source_context = {0};
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (subquery->has_table_source) {
+        source_context = (struct select_source_context){
+            .source = &subquery->source.source,
+            .has_alias = subquery->source.has_alias,
+        };
+        memcpy(source_context.alias, subquery->source.alias, sizeof(source_context.alias));
+    }
+
+    for (const struct mylite_sql_ast_node *item = child_at(select_list, 0U); item != NULL;
+         item = item->next_sibling) {
+        const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+        struct mylite_catalog_column_descriptor column = {0};
+
+        if (expression == NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        if (expression->kind == MYLITE_SQL_AST_WILDCARD ||
+            exists_select_item_is_supported_literal(expression)) {
+            continue;
+        }
+        if (!subquery->has_table_source) {
+            set_unsupported_error(database, "EXISTS tableless subqueries support only literals");
+            return MYLITE_ERROR;
+        }
+        if (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+            expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+            set_unsupported_error(
+                database,
+                "EXISTS subqueries support only literal or descriptor-column select items"
+            );
+            return MYLITE_ERROR;
+        }
+        int rc = resolve_descriptor_column_reference(
+            database,
+            expression,
+            &source_context,
+            COLUMN_REFERENCE_FIELD,
+            "EXISTS subqueries support only literal or descriptor-column select items",
+            subquery->source.columns,
+            subquery->source.column_count,
+            &column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static bool exists_select_item_is_supported_literal(const struct mylite_sql_ast_node *expression) {
+    enum mylite_sql_ast_literal_kind kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    kind = mylite_sql_ast_node_literal_kind(expression);
+    return (kind == MYLITE_SQL_AST_LITERAL_INTEGER || kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            kind == MYLITE_SQL_AST_LITERAL_FALSE || kind == MYLITE_SQL_AST_LITERAL_NULL ||
+            kind == MYLITE_SQL_AST_LITERAL_STRING) != 0;
+}
+
+static int plan_exists_inner_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_exists_subquery *subquery
+) {
+    struct select_source_context inner_source_context = {
+        .source = &subquery->source.source,
+        .has_alias = subquery->source.has_alias,
+    };
+    const struct select_predicate_plan_options options = {
+        .allow_column_reference_rhs = true,
+        .outer_source_context = outer_source_context,
+        .outer_columns = outer_columns,
+        .outer_column_count = outer_column_count,
+    };
+
+    memcpy(inner_source_context.alias, subquery->source.alias, sizeof(inner_source_context.alias));
+    int rc = MYLITE_OK;
+
+    subquery->predicate = (struct planned_select_predicate){0};
+    subquery->predicate.qualify_column_references =
+        select_source_context_is_joined(&inner_source_context);
+    if (where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_select_predicate_node_without_exists(
+        database,
+        child_at(where_clause, 0U),
+        &inner_source_context,
+        subquery->source.columns,
+        subquery->source.column_count,
+        &options,
+        &subquery->predicate
+    );
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit_without_exists(&subquery->predicate);
+    }
+
+    if (rc == MYLITE_OK && subquery->predicate.qualify_column_references) {
+        offset_exists_inner_predicate_source_indexes(&subquery->predicate, 1U);
+    }
+    return rc;
+}
+
+static void offset_exists_inner_predicate_source_indexes(
+    struct planned_select_predicate *predicate,
+    size_t source_index_offset
+) {
+    if (predicate == NULL || source_index_offset == 0U) {
+        return;
+    }
+
+    for (size_t node_index = 0U; node_index < predicate->node_count; ++node_index) {
+        struct planned_select_predicate_node *node = &predicate->nodes[node_index];
+
+        if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON && node->value_is_column_reference) {
+            continue;
+        }
+        if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON ||
+            node->kind == PLANNED_SELECT_PREDICATE_IS_NULL ||
+            node->kind == PLANNED_SELECT_PREDICATE_IS_BOOLEAN ||
+            node->kind == PLANNED_SELECT_PREDICATE_BETWEEN ||
+            node->kind == PLANNED_SELECT_PREDICATE_IN) {
+            node->column_source_index += source_index_offset;
+        }
+    }
+}
+
+static int plan_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+        .value_is_column_reference = true,
+    };
+    int rc = MYLITE_OK;
+
+    if (node.operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        node.operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        set_unsupported_error(database, "EXISTS correlated predicates support only = and <=>");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_exists_column_reference(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        options->outer_source_context,
+        options->outer_columns,
+        options->outer_column_count,
+        &node.column,
+        &node.column_source_index
+    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_exists_column_reference(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            options->outer_source_context,
+            options->outer_columns,
+            options->outer_column_count,
+            &node.value_column,
+            &node.value_column_source_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!exists_correlated_column_comparison_is_supported(&node)) {
+        set_unsupported_error(
+            database,
+            "EXISTS correlated predicates support one inner and one outer integer column"
+        );
+        return MYLITE_ERROR;
+    }
+
+    predicate->qualify_column_references = true;
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int resolve_exists_column_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *inner_source_context,
+    const struct mylite_catalog_column_descriptor *inner_columns,
+    size_t inner_column_count,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t part_count = 0U;
+    bool resolved = false;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    *out_source_index = 0U;
+    if (column_node == NULL || (column_node->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                                column_node->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(database, "EXISTS correlated predicates require descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_column_reference_parts(database, column_node, parts, &part_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc =
+        format_column_reference_name(database, parts, part_count, column_name, sizeof(column_name));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = resolve_exists_column_reference_in_source(
+        database,
+        parts,
+        part_count,
+        column_name,
+        inner_source_context,
+        inner_columns,
+        inner_column_count,
+        out_column,
+        &resolved
+    );
+    if (rc != MYLITE_OK || resolved) {
+        *out_source_index = 1U;
+        return rc;
+    }
+
+    rc = resolve_exists_column_reference_in_source(
+        database,
+        parts,
+        part_count,
+        column_name,
+        outer_source_context,
+        outer_columns,
+        outer_column_count,
+        out_column,
+        &resolved
+    );
+    if (rc != MYLITE_OK || resolved) {
+        *out_source_index = 0U;
+        return rc;
+    }
+
+    set_unknown_column_reference_error(database, COLUMN_REFERENCE_WHERE, column_name);
+    return MYLITE_ERROR;
+}
+
+static int resolve_exists_column_reference_in_source(
+    struct mylite_db *database,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const char *column_name,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_resolved
+) {
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_resolved = false;
+    if (!column_reference_qualifier_matches_source(parts, part_count, source_context)) {
+        return MYLITE_OK;
+    }
+
+    rc = find_column_index(columns, column_count, parts[part_count - 1U], &column_index);
+    if (rc != MYLITE_OK) {
+        if (part_count > 1U) {
+            set_unknown_column_reference_error(database, COLUMN_REFERENCE_WHERE, column_name);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    *out_column = columns[column_index];
+    *out_resolved = true;
+    return MYLITE_OK;
+}
+
+static bool exists_correlated_column_comparison_is_supported(
+    const struct planned_select_predicate_node *node
+) {
+    bool left_is_outer = node->column_source_index == 0U;
+    bool right_is_outer = node->value_column_source_index == 0U;
+
+    if (left_is_outer == right_is_outer) {
+        return false;
+    }
+    if (!join_condition_column_is_integer_family(&node->column)) {
+        return false;
+    }
+    return join_condition_column_is_integer_family(&node->value_column);
 }
 
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind) {
@@ -77242,7 +78329,7 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
                 &string,
                 &plan->columns[column_index],
                 plan->column_source_indexes[column_index],
-                plan->source_count > 0U
+                planned_select_qualifies_source_references(plan)
             );
         }
     }
@@ -77280,7 +78367,14 @@ static int append_select_from_sql(
     int rc = MYLITE_OK;
 
     if (plan->source_count == 0U) {
-        return dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+        if (rc == MYLITE_OK && plan->requires_source_alias) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && plan->requires_source_alias) {
+            rc = append_select_source_alias(string, 0U);
+        }
+        return rc;
     }
     if (plan->source_count != 2U) {
         return MYLITE_ERROR;
@@ -77312,6 +78406,13 @@ static int append_select_from_sql(
     }
 
     return rc;
+}
+
+static bool planned_select_qualifies_source_references(const struct planned_select *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    return (plan->source_count > 0U || plan->requires_source_alias) != 0;
 }
 
 static int append_select_join_condition_sql(
@@ -78346,6 +79447,29 @@ static int append_select_predicate_sql(
     return rc;
 }
 
+static int append_select_predicate_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (!planned_select_predicate_has_expression(predicate)) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " WHERE ");
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_expression_sql_without_exists(
+            string,
+            predicate,
+            next_parameter
+        );
+    }
+
+    return rc;
+}
+
 static int append_select_predicate_expression_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -78358,6 +79482,31 @@ static int append_select_predicate_expression_sql(
     while (rc == MYLITE_OK && item_count > 0U) {
         struct predicate_sql_work_item item = items[--item_count];
         rc = append_select_predicate_expression_work_item(
+            string,
+            predicate,
+            item,
+            &items,
+            &item_count,
+            next_parameter
+        );
+    }
+
+    free(items);
+    return rc;
+}
+
+static int append_select_predicate_expression_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+) {
+    struct predicate_sql_work_item *items = NULL;
+    size_t item_count = 0U;
+    int rc = append_predicate_sql_work_node(&items, &item_count, predicate->root_index);
+
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_sql_work_item item = items[--item_count];
+        rc = append_select_predicate_expression_work_item_without_exists(
             string,
             predicate,
             item,
@@ -78386,6 +79535,33 @@ static int append_select_predicate_expression_work_item(
         return append_select_predicate_logical_operator_sql(string, item.operator_kind);
     case PREDICATE_SQL_WORK_NODE:
         return append_select_predicate_expression_node_sql(
+            string,
+            predicate,
+            item.node_index,
+            next_parameter,
+            items,
+            item_count
+        );
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_select_predicate_expression_work_item_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    struct predicate_sql_work_item item,
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t *next_parameter
+) {
+    switch (item.kind) {
+    case PREDICATE_SQL_WORK_CLOSE:
+        return dynamic_string_append_char(string, ')');
+    case PREDICATE_SQL_WORK_OPERATOR:
+        return append_select_predicate_logical_operator_sql(string, item.operator_kind);
+    case PREDICATE_SQL_WORK_NODE:
+        return append_select_predicate_expression_node_sql_without_exists(
             string,
             predicate,
             item.node_index,
@@ -78443,6 +79619,32 @@ static int append_select_predicate_expression_node_sql(
     return append_select_predicate_node_sql(string, predicate, node, next_parameter);
 }
 
+static int append_select_predicate_expression_node_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t node_index,
+    size_t *next_parameter,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+) {
+    const struct planned_select_predicate_node *node = NULL;
+
+    if (node_index >= predicate->node_count) {
+        return MYLITE_ERROR;
+    }
+
+    node = &predicate->nodes[node_index];
+    if (node->kind == PLANNED_SELECT_PREDICATE_AND || node->kind == PLANNED_SELECT_PREDICATE_OR ||
+        node->kind == PLANNED_SELECT_PREDICATE_XOR) {
+        return append_select_predicate_logical_node_sql(string, node, items, item_count);
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_NOT) {
+        return append_select_predicate_not_node_sql(string, node, items, item_count);
+    }
+
+    return append_select_predicate_node_sql_without_exists(string, predicate, node, next_parameter);
+}
+
 static int append_select_predicate_logical_node_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node,
@@ -78493,6 +79695,16 @@ static int append_select_predicate_node_sql(
 ) {
     int rc = dynamic_string_append_char(string, '(');
 
+    if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_exists_predicate_sql(string, node->exists_subquery, next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
+
     if (rc == MYLITE_OK) {
         rc = append_descriptor_value_sql_for_source(
             string,
@@ -78502,7 +79714,12 @@ static int append_select_predicate_node_sql(
         );
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = append_select_comparison_predicate_term_sql(string, node, next_parameter);
+        rc = append_select_comparison_predicate_term_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
         rc = append_select_is_null_predicate_term_sql(string, node);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_BOOLEAN) {
@@ -78520,6 +79737,108 @@ static int append_select_predicate_node_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_select_predicate_node_sql_without_exists(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS) {
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_value_sql_for_source(
+            string,
+            &node->column,
+            node->column_source_index,
+            predicate->qualify_column_references
+        );
+    }
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        rc = append_select_comparison_predicate_term_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
+        rc = append_select_is_null_predicate_term_sql(string, node);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_BOOLEAN) {
+        rc = append_select_is_boolean_predicate_term_sql(
+            string,
+            predicate->qualify_column_references,
+            node
+        );
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
+        rc = append_select_between_predicate_term_sql(string, next_parameter);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IN) {
+        rc = append_select_in_predicate_term_sql(string, node, next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_select_exists_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_exists_subquery *subquery,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (subquery->limit.has_limit && subquery->limit.row_count == 0) {
+        return dynamic_string_append(string, "0");
+    }
+
+    rc = dynamic_string_append(string, "EXISTS (SELECT 1");
+    if (rc == MYLITE_OK && subquery->has_table_source) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK && subquery->has_table_source) {
+        rc = append_exists_subquery_from_sql(string, subquery);
+    }
+    if (rc == MYLITE_OK && subquery->has_table_source) {
+        rc = append_select_predicate_sql_without_exists(
+            string,
+            &subquery->predicate,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK && subquery->limit.has_limit) {
+        rc = append_select_limit_sql(string, &subquery->limit, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_exists_subquery_from_sql(
+    struct dynamic_string *string,
+    const struct planned_exists_subquery *subquery
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, subquery->source.table.physical_name);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 1U);
     }
 
     return rc;
@@ -78642,6 +79961,7 @@ static int append_time_seconds_value_sql_for_source(
 
 static int append_select_comparison_predicate_term_sql(
     struct dynamic_string *string,
+    bool qualify_column,
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
@@ -78660,9 +79980,18 @@ static int append_select_comparison_predicate_term_sql(
         rc = dynamic_string_append_char(string, ' ');
     }
     if (rc == MYLITE_OK) {
-        rc = append_numbered_parameter(string, *next_parameter);
+        if (node->value_is_column_reference) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &node->value_column,
+                node->value_column_source_index,
+                qualify_column
+            );
+        } else {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !node->value_is_column_reference) {
         ++(*next_parameter);
     }
 
@@ -81597,6 +82926,91 @@ static int bind_select_predicate_parameters(
             rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
             continue;
         }
+        if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS) {
+            rc = bind_select_exists_predicate_parameters(
+                statement,
+                node->exists_subquery,
+                parameter_index
+            );
+            continue;
+        }
+        rc = bind_select_predicate_node_parameters(statement, node, parameter_index);
+    }
+
+    free(items);
+    return rc;
+}
+
+static int bind_select_exists_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_exists_subquery *subquery,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (subquery->limit.has_limit && subquery->limit.row_count == 0) {
+        return MYLITE_OK;
+    }
+
+    rc = bind_select_predicate_parameters_without_exists(
+        statement,
+        &subquery->predicate,
+        parameter_index
+    );
+    if (rc == MYLITE_OK && subquery->limit.has_limit) {
+        rc = bind_int64_parameter(statement, *parameter_index, subquery->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
+    return rc;
+}
+
+static int bind_select_predicate_parameters_without_exists(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate,
+    int *parameter_index
+) {
+    struct predicate_sql_work_item *items = NULL;
+    size_t item_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!planned_select_predicate_has_expression(predicate)) {
+        return MYLITE_OK;
+    }
+
+    rc = append_predicate_sql_work_node(&items, &item_count, predicate->root_index);
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_sql_work_item item = items[--item_count];
+        const struct planned_select_predicate_node *node = NULL;
+
+        if (item.node_index >= predicate->node_count) {
+            rc = MYLITE_ERROR;
+            continue;
+        }
+
+        node = &predicate->nodes[item.node_index];
+        if (node->kind == PLANNED_SELECT_PREDICATE_AND ||
+            node->kind == PLANNED_SELECT_PREDICATE_OR ||
+            node->kind == PLANNED_SELECT_PREDICATE_XOR) {
+            rc = append_predicate_sql_work_node(&items, &item_count, node->right_index);
+            if (rc == MYLITE_OK) {
+                rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
+            }
+            continue;
+        }
+        if (node->kind == PLANNED_SELECT_PREDICATE_NOT) {
+            rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
+            continue;
+        }
+        if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS) {
+            rc = MYLITE_ERROR;
+            continue;
+        }
         rc = bind_select_predicate_node_parameters(statement, node, parameter_index);
     }
 
@@ -81616,6 +83030,9 @@ static int bind_select_predicate_node_parameters(
     }
     if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON &&
         node->kind != PLANNED_SELECT_PREDICATE_BETWEEN) {
+        return MYLITE_OK;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON && node->value_is_column_reference) {
         return MYLITE_OK;
     }
 

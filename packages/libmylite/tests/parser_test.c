@@ -13942,6 +13942,83 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT id FROM users WHERE EXISTS (SELECT 1 FROM orders);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_EXISTS_PREDICATE,
+        "exists predicate"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        "EXISTS (SELECT 1 FROM orders)",
+        "exists predicate span"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "exists inner select"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM users WHERE NOT EXISTS (SELECT * FROM empty_orders);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not exists predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_EXISTS_PREDICATE,
+        "not exists child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT u.id FROM users AS u WHERE EXISTS "
+        "(SELECT 1 FROM orders AS o WHERE o.user_id = u.id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(
+            child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 2U),
+            0U
+        ),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "exists correlated comparison"
+    );
+    failures += expect_node(
+        child_at(
+            child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 2U),
+            0U
+        ),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "exists correlated comparison node"
+    );
+    failures += expect_node(
+        child_at(
+            child_at(
+                child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "exists correlated right column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT EXISTS (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

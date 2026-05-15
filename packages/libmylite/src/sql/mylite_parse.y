@@ -152,6 +152,9 @@ statement(A) ::= show_routine_status_statement(B). {
 statement(A) ::= show_processlist_statement(B). {
     A = B;
 }
+statement(A) ::= show_grants_statement(B). {
+    A = B;
+}
 statement(A) ::= show_warnings_statement(B). {
     A = B;
 }
@@ -771,6 +774,16 @@ show_processlist_statement(A) ::= SHOW(S) PROCESSLIST(P). {
 show_processlist_statement(A) ::= SHOW(S) FULL PROCESSLIST(P). {
     A = mylite_sql_parser_make_show_processlist_statement(
         state, S, P, MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT);
+}
+
+show_grants_statement(A) ::= SHOW(S) GRANTS(G). {
+    A = mylite_sql_parser_make_show_grants_statement(state, S, G);
+}
+show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER(C). {
+    A = mylite_sql_parser_make_show_grants_statement(state, S, C);
+}
+show_grants_statement(A) ::= SHOW(S) GRANTS FOR CURRENT_USER LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_show_grants_statement(state, S, R);
 }
 
 show_warnings_statement(A) ::= SHOW(S) WARNINGS(W) limit_clause_opt(L). {
@@ -3469,6 +3482,9 @@ identifier(A) ::= OPEN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= PROCESSLIST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= GRANTS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= WARNINGS(T). {

@@ -1534,6 +1534,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_processlist_statement(
     return make_node(state, statement_kind, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token end_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&end_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -5314,6 +5326,7 @@ static bool map_keyword_token(
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},
         {"OPEN", MYLITE_SQL_PARSE_OPEN},
         {"PROCESSLIST", MYLITE_SQL_PARSE_PROCESSLIST},
+        {"GRANTS", MYLITE_SQL_PARSE_GRANTS},
         {"WARNINGS", MYLITE_SQL_PARSE_WARNINGS},
         {"ERRORS", MYLITE_SQL_PARSE_ERRORS},
         {"PROCEDURE", MYLITE_SQL_PARSE_PROCEDURE},

@@ -129,6 +129,7 @@ static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_processlist_introspection_statements(void);
+static int test_show_grants_statement(void);
 static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
@@ -377,6 +378,7 @@ int main(void) {
     failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_routine_status_empty_introspection_statements();
     failures += test_show_processlist_introspection_statements();
+    failures += test_show_grants_statement();
     failures += test_show_warnings_diagnostics_statements();
     failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
@@ -12482,6 +12484,85 @@ static int test_show_processlist_introspection_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW EXTENDED PROCESSLIST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_grants_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW GRANTS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT, "show grants");
+    failures += expect_child_count(statement, 0U, "show grants child count");
+    failures += expect_span_text(statement, "SHOW GRANTS", "show grants span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("show grants;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT, "lowercase show grants");
+    failures += expect_child_count(statement, 0U, "lowercase show grants child count");
+    failures += expect_span_text(statement, "show grants", "lowercase show grants span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS FOR CURRENT_USER;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT, "show grants current user");
+    failures += expect_child_count(statement, 0U, "show grants current user child count");
+    failures += expect_span_text(
+        statement,
+        "SHOW GRANTS FOR CURRENT_USER",
+        "show grants current user span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS FOR CURRENT_USER();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT,
+        "show grants current user function"
+    );
+    failures += expect_child_count(statement, 0U, "show grants current user function child count");
+    failures += expect_span_text(
+        statement,
+        "SHOW GRANTS FOR CURRENT_USER()",
+        "show grants current user function span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE grants (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "grants table");
+    failures += expect_span_text(child_at(statement, 0U), "grants", "grants identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS FOR root;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS FOR 'root'@'%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW GRANTS FOR CURRENT_USER USING 'r';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS LIKE 'root%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GRANTS LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW GRANTS WHERE User = 'root';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

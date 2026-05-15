@@ -318,6 +318,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_LOCK_TABLE_READ_LOCK = 309,
     MYLITE_SQL_AST_LOCK_TABLE_READ_LOCAL_LOCK = 310,
     MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK = 311,
+    MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT = 312,
 };
 
 enum mylite_sql_ast_literal_kind {

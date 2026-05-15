@@ -490,6 +490,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_processlist_statement(
     struct mylite_sql_token processlist_token,
     enum mylite_sql_ast_node_kind statement_kind
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_grants_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token end_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

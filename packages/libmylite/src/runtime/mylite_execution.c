@@ -220,6 +220,7 @@ enum {
     show_open_tables_result_column_count = 4,
     show_routine_status_result_column_count = 12,
     show_processlist_result_column_count = 8,
+    show_grants_result_column_count = 1,
     show_warnings_result_column_count = 3,
     show_count_warnings_result_column_count = 1,
     show_errors_result_column_count = 3,
@@ -512,6 +513,27 @@ static const char *const embedded_root_global_privileges[] = {
     "TRIGGER",
     "UPDATE",
     "XA_RECOVER_ADMIN",
+};
+
+static const char *const show_grants_embedded_root_rows[] = {
+    "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, RELOAD, SHUTDOWN, PROCESS, FILE, "
+    "REFERENCES, INDEX, ALTER, SHOW DATABASES, SUPER, CREATE TEMPORARY TABLES, LOCK TABLES, "
+    "EXECUTE, REPLICATION SLAVE, REPLICATION CLIENT, CREATE VIEW, SHOW VIEW, CREATE ROUTINE, "
+    "ALTER ROUTINE, CREATE USER, EVENT, TRIGGER, CREATE TABLESPACE, CREATE ROLE, DROP ROLE ON "
+    "*.* TO `root`@`%` WITH GRANT OPTION",
+    "GRANT "
+    "ALLOW_NONEXISTENT_DEFINER,APPLICATION_PASSWORD_ADMIN,AUDIT_ABORT_EXEMPT,AUDIT_ADMIN,"
+    "AUTHENTICATION_POLICY_ADMIN,BACKUP_ADMIN,BINLOG_ADMIN,BINLOG_ENCRYPTION_ADMIN,"
+    "CLONE_ADMIN,CONNECTION_ADMIN,ENCRYPTION_KEY_ADMIN,FIREWALL_EXEMPT,"
+    "FLUSH_OPTIMIZER_COSTS,FLUSH_PRIVILEGES,FLUSH_STATUS,FLUSH_TABLES,"
+    "FLUSH_USER_RESOURCES,GROUP_REPLICATION_ADMIN,GROUP_REPLICATION_STREAM,"
+    "INNODB_REDO_LOG_ARCHIVE,INNODB_REDO_LOG_ENABLE,OPTIMIZE_LOCAL_TABLE,"
+    "PASSWORDLESS_USER_ADMIN,PERSIST_RO_VARIABLES_ADMIN,REPLICATION_APPLIER,"
+    "REPLICATION_SLAVE_ADMIN,RESOURCE_GROUP_ADMIN,RESOURCE_GROUP_USER,ROLE_ADMIN,"
+    "SENSITIVE_VARIABLES_OBSERVER,SERVICE_CONNECTION_ADMIN,SESSION_VARIABLES_ADMIN,"
+    "SET_ANY_DEFINER,SHOW_ROUTINE,SYSTEM_USER,SYSTEM_VARIABLES_ADMIN,TABLE_ENCRYPTION_ADMIN,"
+    "TELEMETRY_LOG_ADMIN,TRANSACTION_GTID_TAG,XA_RECOVER_ADMIN ON *.* TO `root`@`%` WITH "
+    "GRANT OPTION",
 };
 
 struct table_name_resolution {
@@ -6171,6 +6193,7 @@ static int execute_show_processlist_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_grants_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_warnings_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -14589,6 +14612,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
         return execute_show_processlist_statement(database, context, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT:
+        return execute_show_grants_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
         return execute_show_warnings_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
@@ -23465,6 +23490,45 @@ static int append_show_processlist_warning(struct mylite_db *database) {
     );
 }
 
+static int execute_show_grants_statement(struct mylite_db *database, mylite_result **out_result) {
+    static const char *const result_columns[show_grants_result_column_count] = {
+        "Grants for root@%",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_grants_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK && row_index < sizeof(show_grants_embedded_root_rows) /
+                                            sizeof(show_grants_embedded_root_rows[0]);
+         ++row_index) {
+        const char *const values[show_grants_result_column_count] = {
+            show_grants_embedded_root_rows[row_index],
+        };
+
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_warnings_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -25433,6 +25497,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_GRANTS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:

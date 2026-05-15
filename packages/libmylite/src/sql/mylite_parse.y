@@ -507,6 +507,12 @@ set_system_variable_target(A) ::= SYSTEM_VARIABLE(T). {
 set_system_variable_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_set_default_value(state, T);
 }
+set_system_variable_value(A) ::= SYSTEM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+set_system_variable_value(A) ::= UTC(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 set_system_variable_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
@@ -531,6 +537,9 @@ set_system_variable_value(A) ::= ON(T). {
 }
 set_system_variable_value(A) ::= OFF(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+set_system_variable_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 set_system_variable_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
@@ -3477,6 +3486,9 @@ identifier(A) ::= UPPER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UCASE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UTC(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

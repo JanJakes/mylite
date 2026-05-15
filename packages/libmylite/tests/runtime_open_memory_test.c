@@ -56,8 +56,10 @@ static int test_open_memory_success_and_independent_handles(void) {
             "SQL mode default text"
         );
         failures += expect_bool(session->sql_mode_is_placeholder, false, "SQL mode is placeholder");
+        failures += expect_text(session->time_zone, "SYSTEM", "time zone default text");
+        failures += expect_int(session->time_zone_offset_minutes, 0, "time zone offset");
         failures +=
-            expect_bool(session->time_zone_is_placeholder, true, "time zone is placeholder");
+            expect_bool(session->time_zone_is_placeholder, false, "time zone is placeholder");
         failures += expect_bool(
             session->character_set_state_is_placeholder,
             true,

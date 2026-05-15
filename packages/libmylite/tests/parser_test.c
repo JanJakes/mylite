@@ -15745,6 +15745,26 @@ static int test_set_fixed_system_variable_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SET time_zone = SYSTEM;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_node(value, MYLITE_SQL_AST_IDENTIFIER, "set time_zone SYSTEM value");
+    failures += expect_span_text(value, "SYSTEM", "set time_zone SYSTEM span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET time_zone = UTC;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_node(value, MYLITE_SQL_AST_IDENTIFIER, "set time_zone UTC value");
+    failures += expect_span_text(value, "UTC", "set time_zone UTC span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET time_zone = NULL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_NULL, "set time_zone NULL value");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SET autocommit = 1, sql_notes = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -16330,8 +16350,11 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SET character_set_client = utf8mb4;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SET character_set_client = utf8mb4, character_set_results = utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SET NAMES ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

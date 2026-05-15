@@ -78,6 +78,7 @@ enum {
     mysql_error_incorrect_index_name = 1280,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
+    mysql_error_incorrect_argument_type = 1232,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_operand_should_contain_one_column = 1241,
@@ -110,6 +111,7 @@ enum {
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
     mysql_error_duplicated_value_in_set = 1291,
+    mysql_error_unknown_or_incorrect_time_zone = 1298,
     mysql_error_illegal_set_value = 1367,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
@@ -134,6 +136,12 @@ enum {
     sqlite_use_nul_terminated_string = -1,
     year_conversion_incorrect_integer = 2,
     decimal_base = 10,
+    time_zone_max_minute = 59,
+    time_zone_seconds_per_minute = 60,
+    time_zone_minutes_per_hour = 60,
+    time_zone_max_positive_offset_minutes = 14 * time_zone_minutes_per_hour,
+    time_zone_max_negative_offset_minutes =
+        (13 * time_zone_minutes_per_hour) + time_zone_max_minute,
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
@@ -5004,6 +5012,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
     SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER = 34,
     SESSION_SYSTEM_VARIABLE_TIMESTAMP = 35,
+    SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE = 36,
+    SESSION_SYSTEM_VARIABLE_TIME_ZONE = 37,
 };
 
 struct system_variable_component {
@@ -5070,7 +5080,9 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT, true, true},
     {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER, true, true},
     {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS, true, true},
+    {"system_time_zone", SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE, true, true},
     {"timestamp", SESSION_SYSTEM_VARIABLE_TIMESTAMP, true, false},
+    {"time_zone", SESSION_SYSTEM_VARIABLE_TIME_ZONE, true, true},
     {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS, true, true},
     {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
     {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
@@ -5289,6 +5301,34 @@ static int apply_set_timestamp_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_time_zone_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+);
+static int copy_set_time_zone_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value
+);
+static int set_session_time_zone(struct mylite_db *database, const char *text);
+static int parse_time_zone_text(
+    struct mylite_db *database,
+    const char *text,
+    char *canonical,
+    size_t canonical_size,
+    int *out_offset_minutes
+);
+static bool parse_time_zone_offset(
+    const char *text,
+    char *canonical,
+    size_t canonical_size,
+    int *out_offset_minutes
+);
+static void set_unknown_or_incorrect_time_zone_error(
+    struct mylite_db *database,
+    const char *value_text
+);
+static void set_time_zone_incorrect_argument_type_error(struct mylite_db *database);
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes);
 static int parse_sql_mode_token(
     struct mylite_db *database,
@@ -11659,7 +11699,7 @@ static int format_current_timestamp_text(
 );
 static int format_current_date_text(struct mylite_db *database, char *buffer, size_t buffer_size);
 static int format_current_time_text(struct mylite_db *database, char *buffer, size_t buffer_size);
-static int current_timestamp_utc_parts(struct mylite_db *database, struct tm *out_time_parts);
+static int current_timestamp_session_parts(struct mylite_db *database, struct tm *out_time_parts);
 static int make_zero_approximate_value(struct planned_value *out_value);
 static int parse_approximate_literal_value(
     struct mylite_db *database,
@@ -16128,6 +16168,9 @@ static int apply_set_system_variable_statement(
     if (target.kind == SESSION_SYSTEM_VARIABLE_TIMESTAMP) {
         return apply_set_timestamp_value(database, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_TIME_ZONE) {
+        return apply_set_time_zone_value(database, value_node);
+    }
 
     set_read_only_system_variable_error(database, target.name);
     return MYLITE_ERROR;
@@ -16475,6 +16518,253 @@ static int apply_set_timestamp_value(
     database->session.has_timestamp_override = true;
     database->session.timestamp_override = (int64_t)magnitude;
     return MYLITE_OK;
+}
+
+static int apply_set_time_zone_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char *decoded = NULL;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return set_session_time_zone(database, "SYSTEM");
+    }
+    rc = copy_set_time_zone_value_text(database, value_node, &decoded);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = set_session_time_zone(database, decoded);
+    free(decoded);
+    return rc;
+}
+
+static int copy_set_time_zone_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid time_zone value");
+        return MYLITE_ERROR;
+    }
+    *out_value = NULL;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        char value[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+        size_t value_length = 0U;
+
+        rc = copy_identifier_text(value_node, value, sizeof(value), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        value_length = strlen(value);
+        *out_value = (char *)malloc(value_length + 1U);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_value, value, value_length + 1U);
+        return MYLITE_OK;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_time_zone_incorrect_argument_type_error(database);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return decode_table_option_string_literal(
+            database,
+            value_node,
+            out_value,
+            (struct table_option_name_policy){
+                .identifier_kind = "time_zone",
+                .nul_message = "SET time_zone does not support NUL bytes",
+            }
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
+        return MYLITE_ERROR;
+    }
+
+    set_time_zone_incorrect_argument_type_error(database);
+    return MYLITE_ERROR;
+}
+
+static int set_session_time_zone(struct mylite_db *database, const char *text) {
+    char canonical[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    int offset_minutes = 0;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || text == NULL) {
+        set_runtime_error(database, "invalid time_zone state");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_time_zone_text(database, text, canonical, sizeof(canonical), &offset_minutes);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    memcpy(database->session.time_zone, canonical, strlen(canonical) + 1U);
+    database->session.time_zone_offset_minutes = offset_minutes;
+    database->session.time_zone_is_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_time_zone_text(
+    struct mylite_db *database,
+    const char *text,
+    char *canonical,
+    size_t canonical_size,
+    int *out_offset_minutes
+) {
+    if (text == NULL || canonical == NULL || canonical_size == 0U || out_offset_minutes == NULL) {
+        set_runtime_error(database, "invalid time_zone value");
+        return MYLITE_ERROR;
+    }
+    if (sql_mode_token_matches(text, strlen(text), "SYSTEM")) {
+        if (sizeof("SYSTEM") > canonical_size) {
+            set_runtime_error(database, "time_zone state is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(canonical, "SYSTEM", sizeof("SYSTEM"));
+        *out_offset_minutes = 0;
+        return MYLITE_OK;
+    }
+    if (sql_mode_token_matches(text, strlen(text), "UTC")) {
+        if (sizeof("UTC") > canonical_size) {
+            set_runtime_error(database, "time_zone state is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(canonical, "UTC", sizeof("UTC"));
+        *out_offset_minutes = 0;
+        return MYLITE_OK;
+    }
+    if (parse_time_zone_offset(text, canonical, canonical_size, out_offset_minutes)) {
+        return MYLITE_OK;
+    }
+
+    set_unknown_or_incorrect_time_zone_error(database, text);
+    return MYLITE_ERROR;
+}
+
+static bool parse_time_zone_offset(
+    const char *text,
+    char *canonical,
+    size_t canonical_size,
+    int *out_offset_minutes
+) {
+    size_t offset = 0U;
+    int sign = 1;
+    int hours = 0;
+    int minutes = 0;
+    int total_minutes = 0;
+    int written = 0;
+
+    if (text == NULL || canonical == NULL || out_offset_minutes == NULL) {
+        return false;
+    }
+    if (text[offset] == '+') {
+        sign = 1;
+    } else if (text[offset] == '-') {
+        sign = -1;
+    } else {
+        return false;
+    }
+    ++offset;
+    if (text[offset] < '0' || text[offset] > '9') {
+        return false;
+    }
+    hours = text[offset] - '0';
+    ++offset;
+    if (text[offset] >= '0' && text[offset] <= '9') {
+        hours = (hours * decimal_base) + (text[offset] - '0');
+        ++offset;
+    }
+    if (text[offset] != ':') {
+        return false;
+    }
+    ++offset;
+    if (text[offset] < '0' || text[offset] > '9') {
+        return false;
+    }
+    minutes = text[offset] - '0';
+    ++offset;
+    if (text[offset] >= '0' && text[offset] <= '9') {
+        minutes = (minutes * decimal_base) + (text[offset] - '0');
+        ++offset;
+    }
+    if (text[offset] != '\0' || minutes > time_zone_max_minute) {
+        return false;
+    }
+
+    total_minutes = sign * ((hours * time_zone_minutes_per_hour) + minutes);
+    if (total_minutes > time_zone_max_positive_offset_minutes ||
+        total_minutes < -time_zone_max_negative_offset_minutes) {
+        return false;
+    }
+    if (total_minutes == 0) {
+        sign = 1;
+    }
+
+    written = snprintf(
+        canonical,
+        canonical_size,
+        "%c%02d:%02d",
+        sign < 0 ? '-' : '+',
+        abs(total_minutes) / time_zone_minutes_per_hour,
+        abs(total_minutes) % time_zone_minutes_per_hour
+    );
+    if (written < 0 || (size_t)written >= canonical_size) {
+        return false;
+    }
+    *out_offset_minutes = total_minutes;
+    return true;
+}
+
+static void set_unknown_or_incorrect_time_zone_error(
+    struct mylite_db *database,
+    const char *value_text
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Unknown or incorrect time zone: '%s'",
+        value_text == NULL ? "" : value_text
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_or_incorrect_time_zone,
+        "HY000",
+        message
+    );
+}
+
+static void set_time_zone_incorrect_argument_type_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_argument_type,
+        "42000",
+        "Incorrect argument type to variable 'time_zone'"
+    );
 }
 
 static int parse_sql_mode_text(struct mylite_db *database, const char *text, uint64_t *out_modes) {
@@ -54509,6 +54799,16 @@ static int system_variable_value(
             out_cell->value = database->session.sql_mode_text;
         }
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
+        out_cell->value = "UTC";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_cell->value = "SYSTEM";
+        } else {
+            out_cell->value = database->session.time_zone;
+        }
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
@@ -54759,6 +55059,8 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
+    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
         return true;
     default:
         return false;
@@ -54772,6 +55074,7 @@ static bool system_variable_kind_allows_session_scope(enum session_system_variab
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
         return false;
     default:
         return true;
@@ -54834,6 +55137,16 @@ static int show_system_variable_value(
             *out_value = default_sql_mode_value();
         } else {
             *out_value = database->session.sql_mode_text;
+        }
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
+        *out_value = "UTC";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_TIME_ZONE:
+        if (global_scope) {
+            *out_value = "SYSTEM";
+        } else {
+            *out_value = database->session.time_zone;
         }
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
@@ -66672,7 +66985,7 @@ static int format_current_timestamp_text(
         set_runtime_error(database, "invalid current timestamp buffer");
         return MYLITE_ERROR;
     }
-    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
+    if (current_timestamp_session_parts(database, &time_parts) != MYLITE_OK) {
         return MYLITE_ERROR;
     }
     written = snprintf(
@@ -66701,7 +67014,7 @@ static int format_current_date_text(struct mylite_db *database, char *buffer, si
         set_runtime_error(database, "invalid current date buffer");
         return MYLITE_ERROR;
     }
-    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
+    if (current_timestamp_session_parts(database, &time_parts) != MYLITE_OK) {
         return MYLITE_ERROR;
     }
     written = snprintf(
@@ -66727,7 +67040,7 @@ static int format_current_time_text(struct mylite_db *database, char *buffer, si
         set_runtime_error(database, "invalid current time buffer");
         return MYLITE_ERROR;
     }
-    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
+    if (current_timestamp_session_parts(database, &time_parts) != MYLITE_OK) {
         return MYLITE_ERROR;
     }
     written = snprintf(
@@ -66745,19 +67058,34 @@ static int format_current_time_text(struct mylite_db *database, char *buffer, si
     return MYLITE_OK;
 }
 
-static int current_timestamp_utc_parts(struct mylite_db *database, struct tm *out_time_parts) {
-    time_t epoch = (time_t)current_timestamp_epoch(database);
+static int current_timestamp_session_parts(struct mylite_db *database, struct tm *out_time_parts) {
+    int64_t epoch = current_timestamp_epoch(database);
+    int offset_seconds = database == NULL ? 0
+                                          : database->session.time_zone_offset_minutes *
+                                                time_zone_seconds_per_minute;
+    time_t time_value = (time_t)0;
 
     if (out_time_parts == NULL) {
         return MYLITE_MISUSE;
     }
+    if ((offset_seconds > 0 && epoch > INT64_MAX - (int64_t)offset_seconds) ||
+        (offset_seconds < 0 && epoch < INT64_MIN - (int64_t)offset_seconds)) {
+        set_runtime_error(database, "failed to apply session time zone");
+        return MYLITE_ERROR;
+    }
+    epoch += (int64_t)offset_seconds;
+    time_value = (time_t)epoch;
+    if ((int64_t)time_value != epoch) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
 #ifdef _WIN32
-    if (gmtime_s(out_time_parts, &epoch) != 0) {
+    if (gmtime_s(out_time_parts, &time_value) != 0) {
         set_runtime_error(database, "failed to format current timestamp");
         return MYLITE_ERROR;
     }
 #else
-    if (gmtime_r(&epoch, out_time_parts) == NULL) {
+    if (gmtime_r(&time_value, out_time_parts) == NULL) {
         set_runtime_error(database, "failed to format current timestamp");
         return MYLITE_ERROR;
     }

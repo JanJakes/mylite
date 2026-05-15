@@ -91,6 +91,7 @@ struct mylite_session_state {
     char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
     bool sql_mode_is_placeholder;
     char time_zone[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    int time_zone_offset_minutes;
     bool time_zone_is_placeholder;
     char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];

@@ -1008,6 +1008,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"USER_RESOURCES", 0U},
         {"USE_FRM", 0U},
         {"USING", MYLITE_SQL_KEYWORD_RESERVED},
+        {"UTC", 0U},
         {"UTC_DATE", MYLITE_SQL_KEYWORD_RESERVED},
         {"UTC_TIME", MYLITE_SQL_KEYWORD_RESERVED},
         {"UTC_TIMESTAMP", MYLITE_SQL_KEYWORD_RESERVED},

@@ -359,7 +359,7 @@ static int test_set_fixed_system_variables_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "SET supports only fixed no-op system variable assignments",
         }
     );
     failures += execute_error(

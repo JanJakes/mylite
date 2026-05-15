@@ -209,8 +209,8 @@ set_system_variable_target ::= SYSTEM_VARIABLE.
 
 set_system_variable_value ::= DEFAULT.
 set_system_variable_value ::= STRING.
-set_system_variable_value ::= identifier.
 set_system_variable_value ::= SYSTEM.
+set_system_variable_value ::= UTC.
 set_system_variable_value ::= INTEGER.
 set_system_variable_value ::= PLUS INTEGER.
 set_system_variable_value ::= MINUS INTEGER.
@@ -220,7 +220,7 @@ set_system_variable_value ::= ON.
 set_system_variable_value ::= OFF.
 ```
 
-Only `time_zone` may consume identifier or `SYSTEM` values in this feature.
+Only `time_zone` may consume `SYSTEM` or `UTC` values in this feature.
 Other mutable system-variable slices keep their current validation behavior.
 
 ## Semantics

@@ -14,5 +14,5 @@
 - [x] Update compatibility documentation with limited seeded RAND wording.
 - [x] Run MySQL expectation tests, focused parser/runtime CTests, and
   `cmake --workflow --preset check`.
-- [ ] Review the diff for MySQL parity, scope control, architecture boundaries,
+- [x] Review the diff for MySQL parity, scope control, architecture boundaries,
   performance, file-format safety, and test relevance.

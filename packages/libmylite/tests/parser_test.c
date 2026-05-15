@@ -13944,6 +13944,16 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id REGEXP '^1$';",
+            MYLITE_SQL_AST_OPERATOR_REGEXP,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id RLIKE '^1$';",
+            MYLITE_SQL_AST_OPERATOR_RLIKE,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id = TRUE;",
             MYLITE_SQL_AST_OPERATOR_EQUAL,
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
@@ -14212,6 +14222,50 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT REGEXP '^1$';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not regexp predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "not regexp child"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_REGEXP,
+        "not regexp child operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT RLIKE '^1$';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not rlike predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "not rlike child"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_RLIKE,
+        "not rlike child operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE NOT id IN (-2, 1, NULL);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -14324,6 +14378,20 @@ static int test_select_where_predicates(void) {
 
     failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id LIKE '1%' ESCAPE '#';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id REGEXP 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id REGEXP DATABASE();",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -417,6 +417,8 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_BITWISE_AND = 34,
     MYLITE_SQL_AST_OPERATOR_BITWISE_OR = 35,
     MYLITE_SQL_AST_OPERATOR_LIKE = 36,
+    MYLITE_SQL_AST_OPERATOR_REGEXP = 37,
+    MYLITE_SQL_AST_OPERATOR_RLIKE = 38,
 };
 
 enum mylite_sql_ast_integer_type {

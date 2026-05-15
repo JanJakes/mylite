@@ -670,7 +670,7 @@ static int test_filtered_select_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "WHERE REGEXP predicates support only string columns",
         }
     );
     failures += execute_error(

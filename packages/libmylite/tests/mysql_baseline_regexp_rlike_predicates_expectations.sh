@@ -168,12 +168,42 @@ expect_output \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '1\\\\+2';" \
     "$DATABASE"
 
+run_mysql \
+    "INSERT INTO strings VALUES (4, 'ac'), (5, 'abc'), (6, 'abbc');" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "regex star allows zero or more matches" \
+    "4,5,6" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^ab*c$';" \
+    "$DATABASE"
+
+expect_output \
+    "regex question mark allows zero or one match" \
+    "4,5" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^ab?c$';" \
+    "$DATABASE"
+
+expect_output \
+    "regex quantifiers backtrack" \
+    "5,6" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^ab*bc$';" \
+    "$DATABASE"
+
 expect_error \
     "invalid bracket expression" \
     3696 \
     HY000 \
     "unclosed bracket expression" \
     "SELECT v REGEXP '[' FROM strings LIMIT 1;" \
+    "$DATABASE"
+
+expect_error \
+    "invalid character range" \
+    3697 \
+    HY000 \
+    "character range where x comes after y" \
+    "SELECT v REGEXP '[z-a]' FROM strings LIMIT 1;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_regexp_rlike_predicates_expectations: ok"

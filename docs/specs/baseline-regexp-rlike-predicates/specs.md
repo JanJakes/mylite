@@ -69,7 +69,9 @@ MySQL 8.4.9 behavior used for this slice:
 - SQL string-literal decoding happens before regular-expression matching. To
   pass a literal regex backslash in default SQL mode, the SQL text must contain
   the usual doubled SQL backslash sequence.
-- Invalid regular expressions produce MySQL error `3696 / HY000`.
+- Invalid regular expressions produce MySQL errors verified for the admitted
+  subset: `3696 / HY000` for malformed bracket expressions and `3697 / HY000`
+  for invalid character ranges.
 - Successful supported statements report warning count `0`.
 
 ## Ownership Boundaries
@@ -230,8 +232,9 @@ Supported comparison semantics:
 - `.` matches one byte in the admitted ASCII baseline.
 - Bracket classes/ranges and negated classes are evaluated over ASCII bytes
   with the same case-insensitive folding as literals.
-- `NULL` pattern returns `NULL`; `NULL` value returns `NULL` after a non-`NULL`
-  pattern has been validated.
+- MySQL returns `NULL` when either regex operand is `NULL`, but this MyLite
+  slice admits only string-literal pattern operands; `NULL` column values return
+  `NULL` after the admitted non-`NULL` pattern has been validated.
 - `NOT REGEXP` and `NOT RLIKE` are ordinary `NOT` over the regex predicate and
   therefore do not match `NULL` values in `WHERE`.
 
@@ -242,13 +245,14 @@ Supported diagnostics:
 - parser syntax errors through existing parse diagnostics;
 - unknown columns through existing descriptor-column diagnostics;
 - non-string left operands with a deterministic unsupported diagnostic;
-- non-string right operands with a deterministic unsupported diagnostic;
+- unsupported right operands outside the admitted string-literal pattern grammar
+  as syntax errors through existing parse diagnostics;
 - non-ASCII or embedded-`NUL` pattern literals with a deterministic
   unsupported diagnostic;
 - unsupported regex constructs with a deterministic unsupported diagnostic;
-- invalid supported-subset regex syntax with MySQL-compatible
-  `3696 / HY000` diagnostics where verified, including unclosed bracket
-  expressions;
+- invalid supported-subset regex syntax with MySQL-compatible diagnostics where
+  verified: `3696 / HY000` for unclosed bracket expressions and
+  `3697 / HY000` for invalid character ranges;
 - allocation failures through existing `MYLITE_NOMEM` and diagnostics;
 - physical SQLite failures through existing internal SQLite diagnostics.
 

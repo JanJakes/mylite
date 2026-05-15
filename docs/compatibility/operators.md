@@ -60,10 +60,10 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `NOT EXISTS()` | 🟡 | Limited negation of the descriptor-driven `EXISTS` predicate slice through existing `NOT` predicate semantics |
 | `NOT IN()` | 🟡 | Limited negation of the descriptor-backed `IN` predicate subset, including MySQL three-valued `NULL` list semantics; no expression operands, subqueries, row constructors, strings outside current temporal descriptors, or full expression-level operator support |
 | `NOT LIKE` | 🟡 | Limited negation of the descriptor-backed `LIKE` predicate subset in existing filtered `SELECT`, aggregate-source, `DELETE`, and `UPDATE` contexts; `NULL` column values remain unmatched like MySQL |
-| `NOT REGEXP` | ❌ | Negation of REGEXP |
+| `NOT REGEXP` | 🟡 | Limited negation of the descriptor-backed `REGEXP` predicate subset in existing filtered `SELECT`, aggregate-source, `DELETE`, and `UPDATE` contexts; `NULL` column values remain unmatched like MySQL |
 | `OR, \|\|` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `OR` binds looser than `XOR` and `AND`, `\|\|` is accepted as logical OR with deprecation warning 1287, and limited no-source/`DUAL` scalar logical projection plus limited `DO` expression execution admit keyword `OR` only, with no scalar `\|\|`, `PIPES_AS_CONCAT`, or general expression-level boolean semantics |
-| `REGEXP` | ❌ | Whether string matches regular expression |
-| `RLIKE` | ❌ | Whether string matches regular expression |
+| `REGEXP` | 🟡 | Limited descriptor-backed `WHERE` predicate for `CHAR`, `VARCHAR`, and baseline `TEXT` family columns with an ASCII regular-expression string literal in existing filtered `SELECT`, aggregate-source, `DELETE`, and `UPDATE` contexts; no expression operands, parameter patterns, non-ASCII pattern literals, or full regex syntax |
+| `RLIKE` | 🟡 | Synonym for the limited descriptor-backed `REGEXP` predicate subset |
 | `SOUNDS LIKE` | ❌ | Compare sounds |
 | `XOR` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `XOR` binds looser than `AND` and tighter than `OR`, propagates `NULL` for the admitted predicate subset, and has limited no-source/`DUAL` scalar logical projection plus limited `DO` expression execution support |
 | `\|` | 🟡 | Limited no-source/`DUAL` unsigned-64 numeric scalar bitwise OR projection and limited `DO` expression execution over the current signed-64 scalar arithmetic operand domain; no table-backed expression support or binary-string bit operations |

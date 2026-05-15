@@ -7,6 +7,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_json.h"
 #include "mylite_parser.h"
+#include "mylite_regexp.h"
 #include "mylite_result.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
@@ -129,6 +130,8 @@ enum {
     mysql_error_duplicated_value_in_set = 1291,
     mysql_error_unknown_or_incorrect_time_zone = 1298,
     mysql_error_illegal_set_value = 1367,
+    mysql_error_regular_expression = 3696,
+    mysql_error_regular_expression_character_range = 3697,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_values_function_deprecated = 1287,
@@ -14267,6 +14270,7 @@ static bool exists_correlated_column_comparison_is_supported(
 static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator operator_kind);
 static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind);
+static bool comparison_operator_is_regexp(enum mylite_sql_ast_operator operator_kind);
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -14440,6 +14444,11 @@ static int convert_predicate_string_literal(
     struct planned_value *out_value
 );
 static int convert_predicate_string_pattern_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+);
+static int convert_predicate_regexp_pattern_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct planned_value *out_value
@@ -15597,6 +15606,12 @@ static int append_select_like_predicate_term_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_regexp_predicate_sql(
+    struct dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node
@@ -16590,6 +16605,8 @@ static void set_decimal_scale_greater_than_precision_error(
 static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
 static void set_having_out_of_range_error(struct mylite_db *database, const char *operand_name);
 static void set_limit_out_of_range_error(struct mylite_db *database);
+static void set_regexp_error(struct mylite_db *database, const char *message);
+static void set_regexp_character_range_error(struct mylite_db *database, const char *message);
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
 static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
 static void set_nomem_error(struct mylite_db *database);
@@ -80301,6 +80318,8 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -80383,6 +80402,12 @@ static int plan_comparison_predicate(
                 child_at(predicate_node, 1U),
                 &node.value
             );
+        } else if (comparison_operator_is_regexp(node.operator_kind)) {
+            rc = convert_predicate_regexp_pattern_literal(
+                database,
+                child_at(predicate_node, 1U),
+                &node.value
+            );
         } else {
             rc = convert_predicate_value(
                 database,
@@ -80427,11 +80452,16 @@ static int validate_comparison_predicate_column(
         set_unsupported_error(database, "WHERE LIKE predicates support only string columns");
         return MYLITE_ERROR;
     }
+    if (comparison_operator_is_regexp(node->operator_kind) &&
+        !column_descriptor_is_string_family(&node->column)) {
+        set_unsupported_error(database, "WHERE REGEXP predicates support only string columns");
+        return MYLITE_ERROR;
+    }
     if (column_descriptor_is_string_family(&node->column) &&
         !comparison_operator_is_string_predicate(node->operator_kind)) {
         set_unsupported_error(
             database,
-            "WHERE string predicates support only =, <=>, <>, !=, and LIKE"
+            "WHERE string predicates support only =, <=>, <>, !=, LIKE, REGEXP, and RLIKE"
         );
         return MYLITE_ERROR;
     }
@@ -80935,6 +80965,8 @@ static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
         return true;
     default:
         return false;
@@ -80954,6 +80986,11 @@ static bool comparison_operator_is_enum_predicate(enum mylite_sql_ast_operator o
 
 static bool comparison_operator_is_like(enum mylite_sql_ast_operator operator_kind) {
     return operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE;
+}
+
+static bool comparison_operator_is_regexp(enum mylite_sql_ast_operator operator_kind) {
+    return (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) != 0;
 }
 
 static int plan_is_null_predicate(
@@ -81756,6 +81793,75 @@ static int convert_predicate_string_pattern_literal(
     if (!text_value_is_supported_string_key(text, text_length)) {
         free(text);
         set_unsupported_error(database, "WHERE LIKE pattern literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
+}
+
+static int convert_predicate_regexp_pattern_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    struct mylite_regexp_program *program = NULL;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "WHERE REGEXP predicates support only string pattern literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "WHERE REGEXP predicates support only string pattern literals",
+        "WHERE REGEXP pattern literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(text, text_length)) {
+        free(text);
+        set_unsupported_error(database, "WHERE REGEXP pattern literals support only ASCII text");
+        return MYLITE_ERROR;
+    }
+
+    enum mylite_regexp_compile_status status =
+        mylite_regexp_compile_ascii_ci(text, text_length, &program);
+    mylite_regexp_program_free(program);
+    if (status != MYLITE_REGEXP_COMPILE_OK) {
+        free(text);
+        if (status == MYLITE_REGEXP_COMPILE_NOMEM) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        if (status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+            set_regexp_error(
+                database,
+                "The regular expression contains an unclosed bracket expression."
+            );
+            return MYLITE_ERROR;
+        }
+        if (status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+            set_regexp_character_range_error(
+                database,
+                "The regular expression contains an invalid character range."
+            );
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(
+            database,
+            "WHERE REGEXP patterns support only MyLite's baseline ASCII regular expression subset"
+        );
         return MYLITE_ERROR;
     }
 
@@ -88048,6 +88154,21 @@ static int append_select_predicate_node_sql(
         }
         return rc;
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        comparison_operator_is_regexp(node->operator_kind)) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_regexp_predicate_sql(
+                string,
+                predicate->qualify_column_references,
+                node,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
 
     if (rc == MYLITE_OK) {
         rc = append_descriptor_value_sql_for_source(
@@ -88096,6 +88217,21 @@ static int append_select_predicate_node_sql_without_exists(
 
     if (node->kind == PLANNED_SELECT_PREDICATE_EXISTS) {
         return MYLITE_ERROR;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        comparison_operator_is_regexp(node->operator_kind)) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_regexp_predicate_sql(
+                string,
+                predicate->qualify_column_references,
+                node,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
     }
     if (rc == MYLITE_OK) {
         rc = append_descriptor_value_sql_for_source(
@@ -88362,6 +88498,38 @@ static int append_select_like_predicate_term_sql(
     return rc;
 }
 
+static int append_select_regexp_predicate_sql(
+    struct dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, "_mylite_regexp_ci_ascii(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_value_sql_for_source(
+            string,
+            &node->column,
+            node->column_source_index,
+            qualify_column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node
@@ -88407,6 +88575,8 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -89135,6 +89305,8 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
@@ -94761,6 +94933,24 @@ static void set_limit_out_of_range_error(struct mylite_db *database) {
         mysql_error_parse,
         "42000",
         "LIMIT literal is outside the supported range"
+    );
+}
+
+static void set_regexp_error(struct mylite_db *database, const char *message) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_regular_expression,
+        "HY000",
+        message
+    );
+}
+
+static void set_regexp_character_range_error(struct mylite_db *database, const char *message) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_regular_expression_character_range,
+        "HY000",
+        message
     );
 }
 

@@ -15,6 +15,7 @@
 
 enum {
     test_path_capacity = 1024,
+    show_columns_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_timestamp_value = 1525,
@@ -374,6 +375,39 @@ static int test_zero_temporal_defaults_predicates_and_persistence(void) {
         "0000-00-00",
         "0000-00-00 00:00:00",
     };
+    static const char *const wp_show_columns_rows[] = {
+        "d",
+        "date",
+        "NO",
+        "",
+        "0000-00-00",
+        "",
+        "dt",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "ts",
+        "timestamp",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+    };
+    static const char *const wp_show_create_rows[] = {
+        "wp_defaults",
+        "CREATE TABLE `wp_defaults` (\n"
+        "  `d` date NOT NULL DEFAULT '0000-00-00',\n"
+        "  `dt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `ts` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const wp_default_rows[] = {
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+    };
     static const char *const one_count_rows[] = {"1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -408,6 +442,44 @@ static int test_zero_temporal_defaults_predicates_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "zero temporal defaults",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_defaults ("
+        "d DATE NOT NULL DEFAULT '0000-00-00', "
+        "dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00', "
+        "ts TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM wp_defaults",
+            .values = wp_show_columns_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 3U,
+            .context = "WP-style NOT NULL zero temporal default metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE wp_defaults",
+            .values = wp_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "WP-style NOT NULL zero temporal SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_defaults () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT d, dt, ts FROM wp_defaults",
+            .values = wp_default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "WP-style NOT NULL zero temporal inserted defaults",
         }
     );
 

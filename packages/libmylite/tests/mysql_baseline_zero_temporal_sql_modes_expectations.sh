@@ -4,6 +4,7 @@ set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
 DATABASE="mylite_zero_temporal_sql_modes_expectations_$$"
+EMPTY_SHOW_FIELD=$(printf '\t')
 
 fail() {
     printf '%s\n' "mysql_baseline_zero_temporal_sql_modes_expectations: $1" >&2
@@ -218,6 +219,33 @@ ts	timestamp	YES		0000-00-00 00:00:00	" \
 "dt DATETIME DEFAULT '0000-00-00 00:00:00', "\
 "ts TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00'); "\
 "SHOW COLUMNS FROM zero_defaults;" \
+    "$DATABASE"
+
+expect_output \
+    "empty sql_mode admits WP-style NOT NULL zero temporal defaults" \
+    "0	0
+d	date	NO		0000-00-00${EMPTY_SHOW_FIELD}
+dt	datetime	NO		0000-00-00 00:00:00${EMPTY_SHOW_FIELD}
+ts	timestamp	NO		0000-00-00 00:00:00${EMPTY_SHOW_FIELD}
+wp_defaults	CREATE TABLE \`wp_defaults\` (
+  \`d\` date NOT NULL DEFAULT '0000-00-00',
+  \`dt\` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  \`ts\` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+1	0
+0000-00-00	0000-00-00 00:00:00	0000-00-00 00:00:00" \
+    "SET time_zone = '+00:00'; SET sql_mode = ''; "\
+"DROP TABLE IF EXISTS wp_defaults; "\
+"CREATE TABLE wp_defaults ("\
+"d DATE NOT NULL DEFAULT '0000-00-00', "\
+"dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00', "\
+"ts TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM wp_defaults; "\
+"SHOW CREATE TABLE wp_defaults; "\
+"INSERT INTO wp_defaults () VALUES (); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT d, dt, ts FROM wp_defaults;" \
     "$DATABASE"
 
 expect_output \

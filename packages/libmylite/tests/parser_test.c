@@ -73,6 +73,7 @@ static int test_exp_log_power_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
+static int test_set_transaction_statement(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -330,6 +331,7 @@ int main(void) {
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
+    failures += test_set_transaction_statement();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -15982,6 +15984,120 @@ static int test_set_fixed_system_variable_statement(void) {
     return failures;
 }
 
+static int test_set_transaction_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *characteristics = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT,
+        "set transaction statement"
+    );
+    failures += expect_child_count(statement, 1U, "set transaction child count");
+    failures += expect_span_text(
+        statement,
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
+        "set transaction span"
+    );
+    failures += expect_node(
+        characteristics,
+        MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST,
+        "set transaction characteristic list"
+    );
+    failures += expect_child_count(characteristics, 1U, "set transaction isolation count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED,
+        "set transaction read committed"
+    );
+    failures +=
+        expect_span_text(child_at(characteristics, 0U), "READ COMMITTED", "read committed span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET SESSION TRANSACTION READ ONLY;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "set session transaction child count");
+    failures += expect_span_text(child_at(statement, 0U), "SESSION", "set transaction scope");
+    failures += expect_child_count(characteristics, 1U, "set transaction access count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+        "set transaction read only"
+    );
+    failures += expect_span_text(child_at(characteristics, 0U), "READ ONLY", "read only span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SET GLOBAL TRANSACTION READ WRITE, ISOLATION LEVEL SERIALIZABLE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 1U);
+    failures += expect_span_text(child_at(statement, 0U), "GLOBAL", "set global scope");
+    failures += expect_child_count(characteristics, 2U, "set transaction mixed count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE,
+        "set transaction read write"
+    );
+    failures += expect_node(
+        child_at(characteristics, 1U),
+        MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE,
+        "set transaction serializable"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "set session transaction isolation level repeatable read, read write;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 1U);
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ,
+        "set transaction repeatable read"
+    );
+    failures += expect_node(
+        child_at(characteristics, 1U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE,
+        "set transaction lower read write"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET LOCAL TRANSACTION READ WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SET TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SET TRANSACTION READ WRITE, READ ONLY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SET TRANSACTION ISOLATION LEVEL READ COMMITTED, ISOLATION LEVEL SERIALIZABLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SET TRANSACTION ISOLATION LEVEL READ-COMMITTED;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_update_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -16280,7 +16396,10 @@ static int test_transaction_control_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE transaction (begin INT, commit INT, rollback INT, work INT, savepoint INT);",
+        "CREATE TABLE transaction ("
+        "begin INT, commit INT, rollback INT, work INT, savepoint INT, "
+        "isolation INT, level INT, committed INT, uncommitted INT, repeatable INT, "
+        "serializable INT, only INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );

@@ -92,6 +92,9 @@ statement(A) ::= use_statement(B). {
 statement(A) ::= set_connection_charset_statement(B). {
     A = B;
 }
+statement(A) ::= set_transaction_statement(B). {
+    A = B;
+}
 statement(A) ::= set_system_variable_statement(B). {
     A = B;
 }
@@ -327,6 +330,67 @@ transaction_control_statement(A) ::= ROLLBACK(R) rollback_work_opt TO rollback_s
 transaction_control_statement(A) ::= RELEASE(R) SAVEPOINT identifier(N). {
     A = mylite_sql_parser_make_savepoint_control_statement(
         state, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, R, N);
+}
+
+set_transaction_statement(A) ::= SET(S) TRANSACTION set_transaction_characteristics(C). {
+    A = mylite_sql_parser_make_set_transaction_statement(state, S, NULL, C);
+}
+set_transaction_statement(A) ::= SET(S) SESSION(Q) TRANSACTION set_transaction_characteristics(C). {
+    A = mylite_sql_parser_make_set_transaction_statement(
+        state, S, mylite_sql_parser_make_identifier(state, Q), C);
+}
+set_transaction_statement(A) ::= SET(S) GLOBAL(Q) TRANSACTION set_transaction_characteristics(C). {
+    A = mylite_sql_parser_make_set_transaction_statement(
+        state, S, mylite_sql_parser_make_identifier(state, Q), C);
+}
+
+set_transaction_characteristics(A) ::= set_transaction_isolation(C). {
+    A = mylite_sql_parser_make_transaction_characteristic_list(state, C);
+}
+set_transaction_characteristics(A) ::= set_transaction_access_mode(C). {
+    A = mylite_sql_parser_make_transaction_characteristic_list(state, C);
+}
+set_transaction_characteristics(A) ::= set_transaction_isolation(I) COMMA set_transaction_access_mode(M). {
+    A = mylite_sql_parser_append_transaction_characteristic(
+        state,
+        mylite_sql_parser_make_transaction_characteristic_list(state, I),
+        M);
+}
+set_transaction_characteristics(A) ::= set_transaction_access_mode(M) COMMA set_transaction_isolation(I). {
+    A = mylite_sql_parser_append_transaction_characteristic(
+        state,
+        mylite_sql_parser_make_transaction_characteristic_list(state, M),
+        I);
+}
+
+set_transaction_isolation(A) ::= ISOLATION LEVEL transaction_isolation_level(L). {
+    A = L;
+}
+
+transaction_isolation_level(A) ::= REPEATABLE(R) READ(D). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ, R, D);
+}
+transaction_isolation_level(A) ::= READ(R) COMMITTED(C). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED, R, C);
+}
+transaction_isolation_level(A) ::= READ(R) UNCOMMITTED(U). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_UNCOMMITTED, R, U);
+}
+transaction_isolation_level(A) ::= SERIALIZABLE(S). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE, S, S);
+}
+
+set_transaction_access_mode(A) ::= READ(R) WRITE(W). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE, R, W);
+}
+set_transaction_access_mode(A) ::= READ(R) ONLY(O). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY, R, O);
 }
 
 rollback_work_opt ::= .
@@ -3337,6 +3401,27 @@ identifier(A) ::= LOCAL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= GLOBAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ISOLATION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LEVEL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COMMITTED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UNCOMMITTED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= REPEATABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SERIALIZABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ONLY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= OFF(T). {

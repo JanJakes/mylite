@@ -210,6 +210,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     struct mylite_sql_token first_token,
     struct mylite_sql_token last_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_transaction_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *scope,
+    struct mylite_sql_ast_node *characteristics
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_characteristic_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *characteristic
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_transaction_characteristic(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *characteristic
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_characteristic(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_savepoint_control_statement(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_node_kind statement_kind,

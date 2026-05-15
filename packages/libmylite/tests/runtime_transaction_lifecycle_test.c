@@ -14,9 +14,12 @@
 
 enum {
     test_path_capacity = 1024,
+    mysql_error_parse = 1064,
     mysql_error_unknown_table = 1051,
     mysql_error_duplicate_key = 1062,
     mysql_error_savepoint_does_not_exist = 1305,
+    mysql_error_transaction_characteristics_changed = 1568,
+    mysql_error_read_only_transaction = 1792,
 };
 
 struct expected_query {
@@ -33,8 +36,10 @@ struct expected_nonquery {
 };
 
 static int test_transaction_control_and_dml(void);
+static int test_set_transaction_lifecycle(void);
 static int test_savepoint_lifecycle(void);
 static int test_independent_savepoint_handles(void);
+static int test_independent_transaction_characteristic_handles(void);
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
@@ -81,8 +86,10 @@ int main(void) {
     int failures = 0;
 
     failures += test_transaction_control_and_dml();
+    failures += test_set_transaction_lifecycle();
     failures += test_savepoint_lifecycle();
     failures += test_independent_savepoint_handles();
+    failures += test_independent_transaction_characteristic_handles();
     failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
 
@@ -247,6 +254,228 @@ static int test_transaction_control_and_dml(void) {
     );
 
     mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_set_transaction_lifecycle(void) {
+    static const char *const one_row[] = {"1", "10"};
+    static const char *const two_rows[] = {"1", "10", "2", "20"};
+    static const char *const persisted_rows[] = {"1", "10", "2", "20", "6", "60", "8", "80"};
+    static const char *const temp_rows[] = {"1"};
+    static const char *const ddl_rows[] = {"1"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "set_transaction") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open set transaction file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
+
+    failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL READ COMMITTED", 0);
+    failures += expect_row_count_zero(database);
+    failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED", 0);
+    failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", 0);
+    failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", 0);
+    failures += expect_nonquery(database, "SET TRANSACTION READ WRITE", 0);
+    failures +=
+        expect_nonquery(database, "SET TRANSACTION READ WRITE, ISOLATION LEVEL READ COMMITTED", 0);
+    failures += expect_nonquery(
+        database,
+        "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE",
+        0
+    );
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_error_details(
+        database,
+        "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+        mysql_error_transaction_characteristics_changed,
+        "25001",
+        "Transaction characteristics can't be changed while a transaction is in progress"
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (2, 20)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_error_details(
+        database,
+        "UPDATE t SET v = 11 WHERE id = 1",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = one_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "failed read-only writes do not mutate persistent table",
+        }
+    );
+
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t",
+            .values = temp_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "read-only select consumes next transaction characteristic",
+        }
+    );
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (2, 20)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = two_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "write after select uses session read-write default",
+        }
+    );
+
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_error_details(
+        database,
+        "DELETE FROM t WHERE id = 1",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "CREATE TEMPORARY TABLE tmp (id INT)", 0);
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO tmp VALUES (1)", 1);
+    failures += expect_nonquery(database, "COMMIT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM tmp ORDER BY id",
+            .values = temp_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary DML is allowed in read-only transaction",
+        }
+    );
+
+    failures += expect_nonquery(database, "SET SESSION TRANSACTION READ ONLY", 0);
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (3, 30)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "SET TRANSACTION READ WRITE", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (6, 60)", 1);
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (7, 70)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "SET SESSION TRANSACTION READ WRITE", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (8, 80)", 1);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SET SESSION TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (9, 90)", 1);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (10, 100)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "SET SESSION TRANSACTION READ WRITE", 0);
+
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "CREATE TABLE ddl_read_only_marker (id INT)", 0);
+    failures += expect_nonquery(database, "INSERT INTO ddl_read_only_marker VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM ddl_read_only_marker",
+            .values = ddl_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "DDL implicit commit clears active read-only state",
+        }
+    );
+
+    failures += expect_error_details(
+        database,
+        "SET GLOBAL TRANSACTION READ WRITE",
+        mysql_error_parse,
+        "42000",
+        "SET GLOBAL TRANSACTION is not supported"
+    );
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 2U,
+            .row_count = sizeof(persisted_rows) / (2U * sizeof(persisted_rows[0])),
+            .context = "set transaction persistent rows before reopen",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen set transaction file");
+    failures += expect_nonquery(database, "USE app", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 2U,
+            .row_count = sizeof(persisted_rows) / (2U * sizeof(persisted_rows[0])),
+            .context = "set transaction rows persist after reopen",
+        }
+    );
+    mylite_close(database);
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read set transaction preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "set transaction lifecycle preserves MyLite preamble"
+    );
+
     remove_related_files(path);
     return failures;
 }
@@ -529,6 +758,70 @@ static int test_independent_savepoint_handles(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "second handle savepoint state",
+        }
+    );
+
+    mylite_close(second);
+    mylite_close(first);
+    remove_related_files(second_path);
+    remove_related_files(first_path);
+    return failures;
+}
+
+static int test_independent_transaction_characteristic_handles(void) {
+    static const char *const first_handle_rows[] = {"1"};
+    static const char *const second_handle_rows[] = {"10", "20"};
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    if (make_test_path(first_path, sizeof(first_path), "transaction_characteristics_first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "transaction_characteristics_second") !=
+            0) {
+        return 1;
+    }
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures += seed_schema(first);
+    failures += seed_schema(second);
+    failures += expect_nonquery(first, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(second, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(first, "INSERT INTO t VALUES (1)", 1);
+    failures += expect_nonquery(second, "INSERT INTO t VALUES (10)", 1);
+
+    failures += expect_nonquery(first, "SET SESSION TRANSACTION READ ONLY", 0);
+    failures += expect_error_details(
+        first,
+        "INSERT INTO t VALUES (2)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(second, "INSERT INTO t VALUES (20)", 1);
+
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY id",
+            .values = first_handle_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "first handle transaction characteristics",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY id",
+            .values = second_handle_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "second handle transaction characteristics",
         }
     );
 

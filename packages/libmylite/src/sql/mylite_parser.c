@@ -551,6 +551,76 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     return make_node(state, statement_kind, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_transaction_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *scope,
+    struct mylite_sql_ast_node *characteristics
+) {
+    struct mylite_sql_source_span span = span_from_token(&set_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (characteristics != NULL) {
+        span = span_join(span, characteristics->span);
+    } else if (scope != NULL) {
+        span = span_join(span, scope->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, scope);
+    mylite_sql_ast_node_append_child(statement, characteristics);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_characteristic_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *characteristic
+) {
+    struct mylite_sql_source_span span =
+        characteristic == NULL ? (struct mylite_sql_source_span){0} : characteristic->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, characteristic);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_transaction_characteristic(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *characteristic
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, characteristic);
+    if (characteristic != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, characteristic->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_characteristic(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&first_token), span_from_token(&last_token));
+
+    return make_node(state, kind, span);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_savepoint_control_statement(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_node_kind statement_kind,
@@ -5545,6 +5615,13 @@ static bool map_keyword_token(
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"MODE", MYLITE_SQL_PARSE_MODE},
         {"READ", MYLITE_SQL_PARSE_READ},
+        {"COMMITTED", MYLITE_SQL_PARSE_COMMITTED},
+        {"ISOLATION", MYLITE_SQL_PARSE_ISOLATION},
+        {"LEVEL", MYLITE_SQL_PARSE_LEVEL},
+        {"ONLY", MYLITE_SQL_PARSE_ONLY},
+        {"REPEATABLE", MYLITE_SQL_PARSE_REPEATABLE},
+        {"SERIALIZABLE", MYLITE_SQL_PARSE_SERIALIZABLE},
+        {"UNCOMMITTED", MYLITE_SQL_PARSE_UNCOMMITTED},
         {"ROW", MYLITE_SQL_PARSE_ROW},
         {"VALUE", MYLITE_SQL_PARSE_VALUE},
         {"VALUES", MYLITE_SQL_PARSE_VALUES},

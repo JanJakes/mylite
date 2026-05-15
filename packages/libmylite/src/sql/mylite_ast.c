@@ -1125,6 +1125,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "update_statement";
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
         return "start_transaction_statement";
+    case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
+        return "set_transaction_statement";
+    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
+        return "transaction_characteristic_list";
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ:
+        return "transaction_isolation_repeatable_read";
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED:
+        return "transaction_isolation_read_committed";
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_UNCOMMITTED:
+        return "transaction_isolation_read_uncommitted";
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
+        return "transaction_isolation_serializable";
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
+        return "transaction_access_read_write";
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
+        return "transaction_access_read_only";
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
         return "commit_statement";
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:

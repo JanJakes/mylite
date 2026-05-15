@@ -82,31 +82,26 @@ struct mylite_session_table_lock {
     enum mylite_session_table_lock_mode mode;
 };
 
+enum mylite_transaction_isolation {
+    MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ = 0,
+    MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED = 1,
+    MYLITE_TRANSACTION_ISOLATION_READ_UNCOMMITTED = 2,
+    MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE = 3,
+};
+
+enum mylite_transaction_access_mode {
+    MYLITE_TRANSACTION_ACCESS_READ_WRITE = 0,
+    MYLITE_TRANSACTION_ACCESS_READ_ONLY = 1,
+};
+
 struct mylite_session_state {
-    bool has_selected_schema;
-    char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
-    char current_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
-    char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
     uint64_t sql_mode;
-    char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
-    bool sql_mode_is_placeholder;
-    char time_zone[MYLITE_SESSION_TIME_ZONE_CAPACITY];
-    int time_zone_offset_minutes;
-    bool time_zone_is_placeholder;
-    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
-    char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
-    char character_set_results[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
-    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
-    bool character_set_state_is_placeholder;
-    bool system_variables_are_placeholder;
-    struct mylite_temporary_catalog temporary_catalog;
     uint64_t connection_id;
     int64_t previous_row_count;
     uint64_t found_rows;
     uint64_t last_insert_id;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
-    bool user_transaction_active;
     struct mylite_session_savepoint *savepoints;
     size_t savepoint_count;
     size_t savepoint_capacity;
@@ -114,9 +109,33 @@ struct mylite_session_state {
     struct mylite_session_table_lock *table_locks;
     size_t table_lock_count;
     size_t table_lock_capacity;
-    bool has_timestamp_override;
     int64_t timestamp_override;
     int64_t active_statement_time;
+    struct mylite_temporary_catalog temporary_catalog;
+    int time_zone_offset_minutes;
+    enum mylite_transaction_isolation session_transaction_isolation;
+    enum mylite_transaction_access_mode session_transaction_access_mode;
+    enum mylite_transaction_isolation next_transaction_isolation;
+    enum mylite_transaction_access_mode next_transaction_access_mode;
+    bool has_selected_schema;
+    bool sql_mode_is_placeholder;
+    bool time_zone_is_placeholder;
+    bool character_set_state_is_placeholder;
+    bool system_variables_are_placeholder;
+    bool user_transaction_active;
+    bool has_next_transaction_isolation;
+    bool has_next_transaction_access_mode;
+    bool active_transaction_read_only;
+    bool has_timestamp_override;
+    char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
+    char current_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char time_zone[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    char character_set_client[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char character_set_results[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
+    char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
 };
 
 struct mylite_db {

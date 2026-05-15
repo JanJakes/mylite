@@ -97,6 +97,8 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_data_too_long = 1406,
+    mysql_error_transaction_characteristics_changed = 1568,
+    mysql_error_read_only_transaction = 1792,
     mysql_error_key_part_length_cannot_be_zero = 1391,
     mysql_error_decimal_scale_too_big = 1425,
     mysql_error_decimal_precision_too_big = 1426,
@@ -1322,6 +1324,13 @@ enum mylite_statement_transaction_kind {
 struct mylite_statement_transaction {
     enum mylite_statement_transaction_kind kind;
     bool active;
+};
+
+struct transaction_characteristics {
+    bool has_isolation;
+    enum mylite_transaction_isolation isolation;
+    bool has_access_mode;
+    enum mylite_transaction_access_mode access_mode;
 };
 
 struct savepoint_control_sql_request {
@@ -5972,6 +5981,11 @@ static int execute_set_system_variable_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_set_transaction_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_start_transaction_statement(
     struct mylite_db *database,
     mylite_result **out_result
@@ -6151,6 +6165,47 @@ static bool system_variable_expression_has_global_scope(
 static void set_read_only_system_variable_error(
     struct mylite_db *database,
     const char *variable_name
+);
+static int apply_set_transaction_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static int collect_transaction_characteristics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *list,
+    struct transaction_characteristics *out_characteristics
+);
+static int apply_session_transaction_characteristics(
+    struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+);
+static int apply_next_transaction_characteristics(
+    struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+);
+static enum mylite_transaction_access_mode current_transaction_access_mode(
+    const struct mylite_db *database
+);
+static void clear_next_transaction_characteristics(struct mylite_db *database);
+static void clear_active_transaction_characteristics(struct mylite_db *database);
+static void clear_next_transaction_characteristics_before_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static bool statement_consumes_next_characteristics_before_execution(
+    const struct mylite_sql_ast_node *statement
+);
+static void clear_next_transaction_characteristics_after_statement(struct mylite_db *database);
+static int reject_read_only_persistent_write(
+    struct mylite_db *database,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int table_resolution_is_temporary(
+    struct mylite_db *database,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_is_temporary
 );
 static bool statement_requires_implicit_user_transaction_commit(
     const struct mylite_sql_ast_node *statement
@@ -15612,6 +15667,7 @@ static int execute_parsed_statement(
     }
     database->session.active_statement_time = (int64_t)mylite_statement_context_time(context);
 
+    clear_next_transaction_characteristics_before_statement(database, statement);
     if (statement_requires_implicit_user_transaction_commit(statement)) {
         int rc = commit_active_user_transaction_for_ddl(database);
 
@@ -15629,6 +15685,8 @@ static int execute_parsed_statement(
         return execute_set_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
         return execute_set_system_variable_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
+        return execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
         return execute_start_transaction_statement(database, out_result);
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
@@ -15730,8 +15788,14 @@ static int execute_parsed_statement(
         return execute_update_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DO_STATEMENT:
         return execute_do_statement(database, statement, out_result);
-    case MYLITE_SQL_AST_SELECT_STATEMENT:
-        return execute_select_statement(database, context, statement, out_result);
+    case MYLITE_SQL_AST_SELECT_STATEMENT: {
+        int rc = execute_select_statement(database, context, statement, out_result);
+
+        if (rc == MYLITE_OK) {
+            clear_next_transaction_characteristics_after_statement(database);
+        }
+        return rc;
+    }
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
@@ -16020,6 +16084,13 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
     case MYLITE_SQL_AST_SET_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_UNCOMMITTED:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
@@ -16130,6 +16201,268 @@ static int execute_set_system_variable_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_set_transaction_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = apply_set_transaction_statement(database, statement);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int apply_set_transaction_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *scope = NULL;
+    const struct mylite_sql_ast_node *characteristic_list = first_child;
+    struct transaction_characteristics characteristics = {
+        .has_isolation = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
+        .has_access_mode = false,
+        .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+    };
+    char scope_text[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        scope = first_child;
+        characteristic_list = child_at(statement, 1U);
+    }
+    rc = collect_transaction_characteristics(database, characteristic_list, &characteristics);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (scope == NULL) {
+        return apply_next_transaction_characteristics(database, &characteristics);
+    }
+
+    rc = copy_identifier_text(scope, scope_text, sizeof(scope_text), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(scope_text, "session")) {
+        return apply_session_transaction_characteristics(database, &characteristics);
+    }
+    if (text_equals_ascii_case_insensitive(scope_text, "global")) {
+        set_unsupported_error(database, "SET GLOBAL TRANSACTION is not supported");
+        return MYLITE_ERROR;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int collect_transaction_characteristics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *list,
+    struct transaction_characteristics *out_characteristics
+) {
+    const struct mylite_sql_ast_node *characteristic = NULL;
+
+    *out_characteristics = (struct transaction_characteristics){
+        .has_isolation = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
+        .has_access_mode = false,
+        .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+    };
+    if (list == NULL || list->kind != MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    characteristic = child_at(list, 0U);
+    while (characteristic != NULL) {
+        switch (characteristic->kind) {
+        case MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ:
+            out_characteristics->has_isolation = true;
+            out_characteristics->isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED:
+            out_characteristics->has_isolation = true;
+            out_characteristics->isolation = MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_UNCOMMITTED:
+            out_characteristics->has_isolation = true;
+            out_characteristics->isolation = MYLITE_TRANSACTION_ISOLATION_READ_UNCOMMITTED;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
+            out_characteristics->has_isolation = true;
+            out_characteristics->isolation = MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
+            out_characteristics->has_access_mode = true;
+            out_characteristics->access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
+            out_characteristics->has_access_mode = true;
+            out_characteristics->access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+            break;
+        default:
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        characteristic = characteristic->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int apply_session_transaction_characteristics(
+    struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+) {
+    if (characteristics->has_isolation) {
+        database->session.session_transaction_isolation = characteristics->isolation;
+        if (!database->session.user_transaction_active) {
+            database->session.has_next_transaction_isolation = false;
+        }
+    }
+    if (characteristics->has_access_mode) {
+        database->session.session_transaction_access_mode = characteristics->access_mode;
+        if (!database->session.user_transaction_active) {
+            database->session.has_next_transaction_access_mode = false;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_next_transaction_characteristics(
+    struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+) {
+    if (database->session.user_transaction_active) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_transaction_characteristics_changed,
+            "25001",
+            "Transaction characteristics can't be changed while a transaction is in progress"
+        );
+        return MYLITE_ERROR;
+    }
+    if (characteristics->has_isolation) {
+        database->session.has_next_transaction_isolation = true;
+        database->session.next_transaction_isolation = characteristics->isolation;
+    }
+    if (characteristics->has_access_mode) {
+        database->session.has_next_transaction_access_mode = true;
+        database->session.next_transaction_access_mode = characteristics->access_mode;
+    }
+    return MYLITE_OK;
+}
+
+static enum mylite_transaction_access_mode current_transaction_access_mode(
+    const struct mylite_db *database
+) {
+    if (database->session.has_next_transaction_access_mode) {
+        return database->session.next_transaction_access_mode;
+    }
+    return database->session.session_transaction_access_mode;
+}
+
+static void clear_next_transaction_characteristics(struct mylite_db *database) {
+    database->session.has_next_transaction_isolation = false;
+    database->session.has_next_transaction_access_mode = false;
+}
+
+static void clear_active_transaction_characteristics(struct mylite_db *database) {
+    database->session.active_transaction_read_only = false;
+}
+
+static void clear_next_transaction_characteristics_before_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    if (statement_consumes_next_characteristics_before_execution(statement)) {
+        clear_next_transaction_characteristics(database);
+    }
+}
+
+static bool statement_consumes_next_characteristics_before_execution(
+    const struct mylite_sql_ast_node *statement
+) {
+    return statement_requires_implicit_user_transaction_commit(statement);
+}
+
+static void clear_next_transaction_characteristics_after_statement(struct mylite_db *database) {
+    clear_next_transaction_characteristics(database);
+}
+
+static int reject_read_only_persistent_write(
+    struct mylite_db *database,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    bool is_temporary = false;
+    int rc = MYLITE_OK;
+
+    if (database->session.user_transaction_active) {
+        if (!database->session.active_transaction_read_only) {
+            return MYLITE_OK;
+        }
+    } else if (current_transaction_access_mode(database) != MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
+        return MYLITE_OK;
+    }
+
+    rc = table_resolution_is_temporary(database, target, table, &is_temporary);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_temporary) {
+        return MYLITE_OK;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    return MYLITE_ERROR;
+}
+
+static int table_resolution_is_temporary(
+    struct mylite_db *database,
+    const struct table_name_resolution *target,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_is_temporary
+) {
+    struct mylite_catalog_table_descriptor temporary_table = {0};
+    bool found_temporary = false;
+    int rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        target->schema.name,
+        target->table_name,
+        &temporary_table,
+        &found_temporary
+    );
+
+    *out_is_temporary = false;
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found_temporary && temporary_table.table_id == table->table_id) {
+        *out_is_temporary = true;
+    }
+    return MYLITE_OK;
+}
+
 static int execute_start_transaction_statement(
     struct mylite_db *database,
     mylite_result **out_result
@@ -16147,6 +16480,7 @@ static int execute_start_transaction_statement(
         rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
         }
     }
@@ -16157,6 +16491,9 @@ static int execute_start_transaction_statement(
         );
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = true;
+            database->session.active_transaction_read_only =
+                current_transaction_access_mode(database) == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+            clear_next_transaction_characteristics(database);
         }
     }
     if (rc != MYLITE_OK) {
@@ -16181,6 +16518,7 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
         rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
         }
     }
@@ -16207,6 +16545,7 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
             normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = false;
+            clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
         }
     }
@@ -16611,6 +16950,7 @@ static int commit_active_user_transaction_for_ddl(struct mylite_db *database) {
     rc = normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "COMMIT"));
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = false;
+        clear_active_transaction_characteristics(database);
         clear_user_savepoints(database);
     }
     return rc;
@@ -19647,6 +19987,9 @@ static int execute_planned_insert_statement(
         rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
     }
     if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
     }
     planned_insert_deinit(&plan);
@@ -19655,6 +19998,7 @@ static int execute_planned_insert_statement(
         return rc;
     }
 
+    clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -19703,6 +20047,9 @@ static int execute_planned_insert_select_statement(
         rc = append_select_modifier_warnings(database, child_at(statement, 2U));
     }
     if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.target.target, &plan.target.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_select_from_plan(database, &plan, result);
     }
     planned_insert_select_deinit(&plan);
@@ -19711,6 +20058,7 @@ static int execute_planned_insert_select_statement(
         return rc;
     }
 
+    clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -19759,6 +20107,9 @@ static int execute_planned_insert_set_statement(
         rc = append_insert_duplicate_update_warnings_if_needed(database, &plan);
     }
     if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
     }
     planned_insert_deinit(&plan);
@@ -19767,6 +20118,7 @@ static int execute_planned_insert_set_statement(
         return rc;
     }
 
+    clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -19817,6 +20169,9 @@ static int execute_delete_statement(
 
     rc = plan_delete(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_delete_from_plan(database, &plan, result);
     }
     planned_delete_deinit(&plan);
@@ -19825,6 +20180,7 @@ static int execute_delete_statement(
         return rc;
     }
 
+    clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -19844,6 +20200,9 @@ static int execute_update_statement(
 
     rc = plan_update(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reject_read_only_persistent_write(database, &plan.target, &plan.table);
+    }
+    if (rc == MYLITE_OK) {
         rc = execute_update_from_plan(database, &plan, result);
     }
     planned_update_deinit(&plan);
@@ -19852,6 +20211,7 @@ static int execute_update_statement(
         return rc;
     }
 
+    clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -26942,6 +27302,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
+    case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
@@ -27245,6 +27606,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
     case MYLITE_SQL_AST_SET_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_REPEATABLE_READ:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_COMMITTED:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_READ_UNCOMMITTED:
+    case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
+    case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:

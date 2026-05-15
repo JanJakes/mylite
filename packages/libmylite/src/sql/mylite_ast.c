@@ -967,6 +967,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "atan2_function";
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
         return "atan2_argument_count_error";
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+        return "sin_function";
+    case MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR:
+        return "sin_argument_count_error";
+    case MYLITE_SQL_AST_COS_FUNCTION:
+        return "cos_function";
+    case MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR:
+        return "cos_argument_count_error";
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+        return "tan_function";
+    case MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR:
+        return "tan_argument_count_error";
+    case MYLITE_SQL_AST_COT_FUNCTION:
+        return "cot_function";
+    case MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR:
+        return "cot_argument_count_error";
     case MYLITE_SQL_AST_EXP_FUNCTION:
         return "exp_function";
     case MYLITE_SQL_AST_EXP_ARGUMENT_COUNT_ERROR:

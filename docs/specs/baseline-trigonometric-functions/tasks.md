@@ -11,23 +11,23 @@
 
 ## Implementation
 
-- [ ] Extend lexer/parser/AST support for `SIN`, `COS`, `TAN`, and `COT`.
-- [ ] Add runtime evaluation using the current scalar approximate operand
+- [x] Extend lexer/parser/AST support for `SIN`, `COS`, `TAN`, and `COT`.
+- [x] Add runtime evaluation using the current scalar approximate operand
   helper and double formatter.
-- [ ] Preserve descriptor/catalog/storage isolation and `.mylite` preamble
+- [x] Preserve descriptor/catalog/storage isolation and `.mylite` preamble
   invariants.
-- [ ] Add deterministic unsupported diagnostics for deferred placements and
+- [x] Add deterministic unsupported diagnostics for deferred placements and
   operand forms.
 
 ## Tests and Docs
 
 - [x] Add the MySQL 8.4.9 expectation script for the feature surface.
-- [ ] Add parser tests.
-- [ ] Add runtime tests for values, diagnostics, warning ordering, result
+- [x] Add parser tests.
+- [x] Add runtime tests for values, diagnostics, warning ordering, result
   conventions, and file-safety invariants.
-- [ ] Update `COMPATIBILITY.md` and
+- [x] Update `COMPATIBILITY.md` and
   `docs/compatibility/functions-numeric-math.md`.
-- [ ] Run focused build/tests, the MySQL expectation script, and
+- [x] Run focused build/tests, the MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, architecture boundaries,
+- [x] Review the final diff for MySQL behavior, architecture boundaries,
   performance, cleanup, and scope control.

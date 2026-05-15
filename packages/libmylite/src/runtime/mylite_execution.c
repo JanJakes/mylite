@@ -9619,6 +9619,23 @@ static int inverse_trig_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int direct_trig_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static const char *direct_trig_function_name(const struct mylite_sql_ast_node *expression);
+static int finish_direct_trig_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t warning_count,
+    struct session_scalar_cell *out_cell
+);
+static int set_cot_zero_out_of_range_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
 static int atan_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -9849,6 +9866,7 @@ static void set_rounding_unsupported_error(struct mylite_db *database);
 static void set_sqrt_unsupported_error(struct mylite_db *database);
 static void set_angle_conversion_unsupported_error(struct mylite_db *database);
 static void set_inverse_trig_unsupported_error(struct mylite_db *database);
+static void set_direct_trig_unsupported_error(struct mylite_db *database);
 static void set_atan_unsupported_error(struct mylite_db *database);
 static void set_exp_log_power_unsupported_error(struct mylite_db *database);
 static void set_base_conversion_unsupported_error(struct mylite_db *database);
@@ -10153,6 +10171,7 @@ static bool is_rounding_projection_expression(const struct mylite_sql_ast_node *
 static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_direct_trig_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_atan_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_exp_log_power_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -15925,6 +15944,14 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+    case MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_COS_FUNCTION:
+    case MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+    case MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_COT_FUNCTION:
+    case MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
@@ -19856,8 +19883,8 @@ static int execute_do_statement(
             "signed 64-bit scalar comparison, keyword scalar logical operators, scalar IS "
             "predicates, limited numeric "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
-            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/EXP()/LN()/LOG()/LOG10()/LOG2()/"
-            "POW()/POWER() "
+            "RADIANS()/ACOS()/ASIN()/SIN()/COS()/TAN()/COT()/ATAN()/ATAN2()/EXP()/LN()/"
+            "LOG()/LOG10()/LOG2()/POW()/POWER() "
             "and CEIL()/CEILING()/FLOOR()/ROUND(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited FIELD(), and "
             "limited string length and string case functions, and top-level CASE expressions"
@@ -20001,8 +20028,8 @@ static int execute_select_statement(
             "arithmetic, %, MOD, DIV, top-level / division, limited numeric bitwise, scalar "
             "functions, "
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
-            "RADIANS()/ACOS()/ASIN()/ATAN()/ATAN2()/EXP()/LN()/LOG()/LOG10()/LOG2()/"
-            "POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
+            "RADIANS()/ACOS()/ASIN()/SIN()/COS()/TAN()/COT()/ATAN()/ATAN2()/EXP()/LN()/"
+            "LOG()/LOG10()/LOG2()/POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND(), and "
             "CAST(value AS BINARY), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
             "limited string length and string case functions"
         );
@@ -27142,6 +27169,14 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ACOS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+    case MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_COS_FUNCTION:
+    case MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+    case MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_COT_FUNCTION:
+    case MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
@@ -46730,6 +46765,10 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         !text_equals_ascii_case_insensitive(column_name, "radians") &&
         !text_equals_ascii_case_insensitive(column_name, "acos") &&
         !text_equals_ascii_case_insensitive(column_name, "asin") &&
+        !text_equals_ascii_case_insensitive(column_name, "sin") &&
+        !text_equals_ascii_case_insensitive(column_name, "cos") &&
+        !text_equals_ascii_case_insensitive(column_name, "tan") &&
+        !text_equals_ascii_case_insensitive(column_name, "cot") &&
         !text_equals_ascii_case_insensitive(column_name, "atan") &&
         !text_equals_ascii_case_insensitive(column_name, "atan2") &&
         !text_equals_ascii_case_insensitive(column_name, "exp") &&
@@ -47326,6 +47365,14 @@ static const char *argument_count_error_node_function_name(
         return "ACOS";
     case MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR:
         return "ASIN";
+    case MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR:
+        return "SIN";
+    case MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR:
+        return "COS";
+    case MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR:
+        return "TAN";
+    case MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR:
+        return "COT";
     case MYLITE_SQL_AST_ATAN_ARGUMENT_COUNT_ERROR:
         return "ATAN";
     case MYLITE_SQL_AST_ATAN2_ARGUMENT_COUNT_ERROR:
@@ -47548,6 +47595,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
         return inverse_trig_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+    case MYLITE_SQL_AST_COS_FUNCTION:
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+    case MYLITE_SQL_AST_COT_FUNCTION:
+        return direct_trig_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
         return atan_function_value(database, expression, out_cell);
@@ -49661,6 +49713,179 @@ static int inverse_trig_function_value(
         out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     }
     return rc;
+}
+
+static int direct_trig_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct approximate_numeric_input_value value = {
+        .is_null = false,
+        .is_negative = false,
+        .magnitude = 0U,
+        .division_by_zero_warning_count = 0U,
+    };
+    const char *function_name = NULL;
+    size_t warning_count = 0U;
+    double input = 0.0;
+    double output = 0.0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    function_name = direct_trig_function_name(expression);
+    if (function_name == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_direct_trig_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_approximate_numeric_operand(
+        database,
+        child_at(expression, 0U),
+        &value,
+        set_direct_trig_unsupported_error
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = accumulate_staged_warning_count(
+        database,
+        value.division_by_zero_warning_count,
+        &warning_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.is_null) {
+        out_cell->staged_division_by_zero_warning_count = warning_count;
+        return MYLITE_OK;
+    }
+
+    input = approximate_numeric_input_to_double(&value);
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+        output = sin(input);
+        break;
+    case MYLITE_SQL_AST_COS_FUNCTION:
+        output = cos(input);
+        break;
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+        output = tan(input);
+        break;
+    case MYLITE_SQL_AST_COT_FUNCTION:
+        if (input == 0.0) {
+            rc = append_division_by_zero_warnings(database, warning_count);
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            return set_cot_zero_out_of_range_error(database, expression);
+        }
+        output = 1.0 / tan(input);
+        break;
+    default:
+        set_direct_trig_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return finish_direct_trig_function_value(
+        database,
+        output,
+        function_name,
+        warning_count,
+        out_cell
+    );
+}
+
+static const char *direct_trig_function_name(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+        return "SIN";
+    case MYLITE_SQL_AST_COS_FUNCTION:
+        return "COS";
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+        return "TAN";
+    case MYLITE_SQL_AST_COT_FUNCTION:
+        return "COT";
+    default:
+        return NULL;
+    }
+}
+
+static int finish_direct_trig_function_value(
+    struct mylite_db *database,
+    double output,
+    const char *function_name,
+    size_t warning_count,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = format_double_text(
+        database,
+        output,
+        function_name,
+        out_cell->double_text,
+        sizeof(out_cell->double_text)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_cell->value = out_cell->double_text;
+    out_cell->staged_division_by_zero_warning_count = warning_count;
+    return MYLITE_OK;
+}
+
+static int set_cot_zero_out_of_range_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum { cot_error_expression_text_capacity = 64 };
+
+    char text[cot_error_expression_text_capacity];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t length = 0U;
+    int written = 0;
+
+    if (expression != NULL && expression->span.text != NULL && expression->span.length != 0U &&
+        expression->span.length < sizeof(text)) {
+        length = expression->span.length;
+        for (size_t index = 0U; index < length; ++index) {
+            char character = expression->span.text[index];
+
+            if (character >= 'A' && character <= 'Z') {
+                character = (char)(character - 'A' + 'a');
+            }
+            text[index] = character;
+        }
+        text[length] = '\0';
+    } else {
+        memcpy(text, "cot(0)", sizeof("cot(0)"));
+    }
+
+    written = snprintf(message, sizeof(message), "DOUBLE value is out of range in '%s'", text);
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "DOUBLE value is out of range");
+        return MYLITE_ERROR;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_bigint_out_of_range,
+        "22003",
+        message
+    );
+    return MYLITE_ERROR;
 }
 
 static int atan_function_value(
@@ -54870,6 +55095,15 @@ static void set_inverse_trig_unsupported_error(struct mylite_db *database) {
     );
 }
 
+static void set_direct_trig_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "SIN()/COS()/TAN()/COT() support only top-level no-source SELECT, FROM DUAL SELECT, "
+        "and DO trigonometry over integer, boolean, NULL, signed 64-bit scalar arithmetic, "
+        "and limited numeric bitwise operands"
+    );
+}
+
 static void set_atan_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
@@ -57180,6 +57414,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_inverse_trig_projection_expression(expression)) {
         return true;
     }
+    if (is_direct_trig_projection_expression(expression)) {
+        return true;
+    }
     if (is_atan_projection_expression(expression)) {
         return true;
     }
@@ -57311,6 +57548,24 @@ static bool is_inverse_trig_projection_expression(const struct mylite_sql_ast_no
     }
     if (expression->kind != MYLITE_SQL_AST_ACOS_FUNCTION &&
         expression->kind != MYLITE_SQL_AST_ASIN_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_direct_trig_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind != MYLITE_SQL_AST_SIN_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_COS_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_TAN_FUNCTION &&
+        expression->kind != MYLITE_SQL_AST_COT_FUNCTION) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -58054,6 +58309,10 @@ static bool is_scalar_numeric_function_attempt_operand(
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+    case MYLITE_SQL_AST_COS_FUNCTION:
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+    case MYLITE_SQL_AST_COT_FUNCTION:
     case MYLITE_SQL_AST_ATAN_FUNCTION:
     case MYLITE_SQL_AST_ATAN2_FUNCTION:
     case MYLITE_SQL_AST_EXP_FUNCTION:

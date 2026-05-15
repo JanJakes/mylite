@@ -67,6 +67,7 @@ static int test_rand_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
+static int test_direct_trig_functions(void);
 static int test_atan_functions(void);
 static int test_exp_log_power_functions(void);
 static int test_case_operator(void);
@@ -323,6 +324,7 @@ int main(void) {
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
+    failures += test_direct_trig_functions();
     failures += test_atan_functions();
     failures += test_exp_log_power_functions();
     failures += test_case_operator();
@@ -3696,6 +3698,135 @@ static int test_inverse_trig_functions(void) {
     failures += expect_span_text(first_expression, "ACOS", "bare acos span");
     failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare asin");
     failures += expect_span_text(second_expression, "ASIN", "bare asin span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_direct_trig_functions(void) {
+    enum { cot_multiple_argument_select_item_index = 5U };
+
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT SIN(1), Cos(0), tan(-1), COT(2) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SIN_FUNCTION, "sin function");
+    failures += expect_span_text(first_expression, "SIN(1)", "sin function span");
+    failures += expect_child_count(first_expression, 1U, "sin argument count");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "sin arg");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_COS_FUNCTION, "mixed cos");
+    failures += expect_span_text(second_expression, "Cos(0)", "mixed cos span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_TAN_FUNCTION, "lower tan");
+    failures += expect_span_text(third_expression, "tan(-1)", "lower tan span");
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_COT_FUNCTION, "cot function");
+    failures += expect_span_text(fourth_expression, "COT(2)", "cot function span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "direct trig dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SIN (0), (COT(NULL));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SIN_FUNCTION, "spaced sin");
+    failures += expect_span_text(first_expression, "SIN (0)", "spaced sin span");
+    failures += expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped cot");
+    failures += expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_COT_FUNCTION, "cot child");
+    failures += expect_span_text(parenthesized, "(COT(NULL))", "parenthesized cot span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SIN(1) AS s, COS(0) c;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_SIN_FUNCTION, "aliased sin");
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 1U), "s", "sin alias");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_COS_FUNCTION, "aliased cos");
+    failures += expect_span_text(child_at(child_at(select_list, 1U), 1U), "c", "cos alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SIN(), SIN(1, 2), COS(), TAN(1, 2), COT(), COT(1, 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR,
+        "sin empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR,
+        "sin multiple argument error"
+    );
+    arguments = child_at(child_at(child_at(select_list, 1U), 0U), 0U);
+    failures += expect_child_count(arguments, 1U, "sin multiple argument count");
+    failures += expect_node(
+        child_at(child_at(select_list, 2U), 0U),
+        MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR,
+        "cos empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR,
+        "tan multiple argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 4U), 0U),
+        MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR,
+        "cot empty argument error"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cot_multiple_argument_select_item_index), 0U),
+        MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR,
+        "cot multiple argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO SIN(1), COS(NULL), TAN(TRUE), COT(2);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_DO_STATEMENT, "direct trig do");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE sin (cos INT, tan INT, cot INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "direct trig ids");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SIN, COS, TAN, COT;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare sin");
+    failures += expect_span_text(first_expression, "SIN", "bare sin span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare cos");
+    failures += expect_span_text(second_expression, "COS", "bare cos span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_IDENTIFIER, "bare tan");
+    failures += expect_span_text(third_expression, "TAN", "bare tan span");
+    failures += expect_node(fourth_expression, MYLITE_SQL_AST_IDENTIFIER, "bare cot");
+    failures += expect_span_text(fourth_expression, "COT", "bare cot span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

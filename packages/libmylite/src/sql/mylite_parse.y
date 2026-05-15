@@ -2430,6 +2430,22 @@ expression(A) ::= ASIN(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ASIN_FUNCTION, B, R);
 }
+expression(A) ::= SIN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SIN_FUNCTION, B, R);
+}
+expression(A) ::= COS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COS_FUNCTION, B, R);
+}
+expression(A) ::= TAN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TAN_FUNCTION, B, R);
+}
+expression(A) ::= COT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COT_FUNCTION, B, R);
+}
 expression(A) ::= ATAN(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ATAN_FUNCTION, B, R);
@@ -2713,6 +2729,42 @@ expression(A) ::= ASIN(T) LPAREN expression(B) COMMA function_argument_list(C) R
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_ASIN_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= SIN(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SIN(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SIN_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= COS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= COS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= TAN(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= TAN(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_TAN_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= COT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= COT(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COT_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= ATAN(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -3408,6 +3460,18 @@ identifier(A) ::= ACOS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ASIN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SIN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TAN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ATAN(T). {

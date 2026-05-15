@@ -779,6 +779,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "foreign_key_definition";
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
         return "foreign_key_part_list";
+    case MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION:
+        return "check_constraint_definition";
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED:
+        return "check_enforcement_enforced";
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED:
+        return "check_enforcement_not_enforced";
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
         return "unique_index_definition";
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:

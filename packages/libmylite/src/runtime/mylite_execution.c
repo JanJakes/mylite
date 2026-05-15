@@ -112,6 +112,15 @@ enum {
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_duplicate_foreign_key = 1826,
+    mysql_error_check_constraint_non_boolean = 3812,
+    mysql_error_check_constraint_column_ref = 3813,
+    mysql_error_check_constraint_function = 3814,
+    mysql_error_check_constraint_subquery = 3815,
+    mysql_error_check_constraint_variable = 3816,
+    mysql_error_check_constraint_auto_increment = 3818,
+    mysql_error_check_constraint_violated = 3819,
+    mysql_error_check_constraint_unknown_column = 3820,
+    mysql_error_duplicate_check_constraint = 3822,
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
     mysql_error_duplicated_value_in_set = 1291,
@@ -1438,6 +1447,50 @@ struct planned_foreign_key {
     bool has_explicit_name;
 };
 
+struct planned_check_constraint {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char check_clause[MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY];
+    char sqlite_expression[MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY];
+    int64_t check_constraint_id;
+    int64_t generated_ordinal;
+    int64_t ordinal_position;
+    bool is_enforced;
+    bool name_is_generated;
+};
+
+struct create_table_check_constraint_definition {
+    const struct mylite_sql_ast_node *check_constraint;
+    const struct mylite_sql_ast_node *inline_enforcement;
+    const struct planned_column *inline_column;
+    size_t inline_column_index;
+};
+
+enum check_expression_render_work_item_kind {
+    CHECK_EXPRESSION_RENDER_NODE = 0,
+    CHECK_EXPRESSION_RENDER_TEXT = 1,
+    CHECK_EXPRESSION_RENDER_CHAR = 2,
+    CHECK_EXPRESSION_RENDER_OPERATOR = 3,
+};
+
+struct check_expression_render_work_item {
+    enum check_expression_render_work_item_kind kind;
+    const struct mylite_sql_ast_node *node;
+    bool require_boolean;
+    const char *text;
+    char character;
+    enum mylite_sql_ast_operator operator_kind;
+};
+
+struct check_expression_render_context {
+    struct mylite_db *database;
+    const struct planned_create_table *plan;
+    const struct planned_column *inline_column;
+    size_t inline_column_index;
+    struct dynamic_string *check_clause;
+    struct dynamic_string *sqlite_expression;
+};
+
 struct planned_create_table {
     struct table_name_resolution target;
     struct planned_column *columns;
@@ -1454,6 +1507,9 @@ struct planned_create_table {
     struct planned_foreign_key *foreign_keys;
     size_t foreign_key_count;
     size_t foreign_key_capacity;
+    struct planned_check_constraint *check_constraints;
+    size_t check_constraint_count;
+    size_t check_constraint_capacity;
     int64_t auto_increment_next;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -1491,6 +1547,10 @@ struct loaded_foreign_key_info {
     struct mylite_catalog_index_descriptor parent_index;
     struct loaded_foreign_key_part *parts;
     size_t part_count;
+};
+
+struct loaded_check_constraint_info {
+    struct mylite_catalog_check_constraint_descriptor check_constraint;
 };
 
 struct loaded_index_info_span {
@@ -2301,6 +2361,8 @@ struct planned_show_create_table {
     size_t index_count;
     struct loaded_foreign_key_info *foreign_keys;
     size_t foreign_key_count;
+    struct loaded_check_constraint_info *check_constraints;
+    size_t check_constraint_count;
 };
 
 struct planned_delete {
@@ -2423,6 +2485,28 @@ struct load_foreign_key_infos_context {
     struct loaded_foreign_key_info *foreign_keys;
     size_t count;
     size_t capacity;
+};
+
+struct load_check_constraint_infos_context {
+    struct mylite_db *database;
+    struct loaded_check_constraint_info *check_constraints;
+    size_t count;
+    size_t capacity;
+};
+
+struct find_check_constraint_name_context {
+    const char *name;
+    bool found;
+};
+
+struct check_constraint_name_collision_context {
+    const char *name;
+    int64_t excluded_table_id;
+    bool found;
+};
+
+struct check_constraint_presence_context {
+    bool has_check_constraint;
 };
 
 struct load_single_foreign_key_column_context {
@@ -6757,6 +6841,25 @@ static int append_information_schema_table_constraints_foreign_key_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_foreign_key_info *foreign_key
 );
+static int append_information_schema_table_constraints_check_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_check_constraint_info *check_constraint
+);
+static int append_information_schema_check_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_check_constraints_check_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct loaded_check_constraint_info *check_constraint
+);
 static int append_information_schema_key_column_usage_base_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
@@ -7335,6 +7438,11 @@ static int clone_create_table_like_indexes(
     size_t source_column_count,
     struct planned_create_table *out_plan
 );
+static int clone_create_table_like_check_constraints(
+    struct mylite_db *database,
+    int64_t source_table_id,
+    struct planned_create_table *out_plan
+);
 static void planned_create_table_like_deinit(struct planned_create_table_like *plan);
 static int validate_create_table_options(
     struct mylite_db *database,
@@ -7444,6 +7552,11 @@ static int assign_create_table_foreign_key_ids(
     const struct mylite_catalog_mutation *mutation,
     struct planned_create_table *plan
 );
+static int assign_create_table_check_constraint_ids(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_create_table *plan
+);
 static int assign_create_temporary_table_index_ids(
     struct mylite_db *database,
     struct planned_create_table *plan
@@ -7469,6 +7582,12 @@ static int insert_create_table_foreign_key_catalog_rows(
     const struct mylite_catalog_mutation *mutation,
     int64_t table_id,
     const int64_t *column_ids
+);
+static int insert_create_table_check_constraint_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
 );
 static int execute_physical_create_table(
     struct mylite_db *database,
@@ -8194,6 +8313,28 @@ static int rename_table_pair_in_mutation(
     const struct planned_rename_table *plan,
     bool allow_same_object_noop,
     const char *unsupported_object_message
+);
+static int reject_rename_table_check_constraint_collisions(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *source,
+    const struct planned_rename_table *plan
+);
+static int build_renamed_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan,
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    char *destination,
+    size_t destination_size
+);
+static int reject_rename_table_check_constraint_schema_collision(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *source,
+    const struct planned_rename_table *plan,
+    const char *check_constraint_name
+);
+static int reject_rename_table_check_constraint_schema_collision_callback(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
 );
 
 static int plan_insert(
@@ -10502,6 +10643,10 @@ static int append_show_create_table_foreign_keys(
     struct dynamic_string *string,
     const struct planned_show_create_table *plan
 );
+static int append_show_create_table_check_constraints(
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
 static int append_show_create_table_table_options(
     struct mylite_db *database,
     struct dynamic_string *string,
@@ -10895,6 +11040,153 @@ static int apply_create_table_foreign_key_definition(
     struct mylite_db *database,
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *foreign_key
+);
+static int apply_create_table_check_constraint_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *item_list,
+    struct planned_create_table *plan
+);
+static int apply_create_table_column_check_constraint_definitions(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *column_definition,
+    size_t column_index
+);
+static int apply_create_table_check_constraint_definition(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct create_table_check_constraint_definition *definition
+);
+static int64_t next_planned_check_constraint_generated_ordinal(
+    const struct planned_create_table *plan
+);
+static int plan_create_table_check_constraint_name(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *name_node,
+    struct planned_check_constraint *check_constraint
+);
+static int generate_create_table_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t generated_ordinal,
+    char *destination,
+    size_t destination_size
+);
+static bool planned_check_constraint_name_is_used(
+    const struct planned_create_table *plan,
+    const char *check_constraint_name
+);
+static int reject_duplicate_schema_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const char *check_constraint_name
+);
+static int reject_duplicate_schema_check_constraint_name_callback(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
+);
+static int render_check_constraint_expression(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_column *inline_column,
+    size_t inline_column_index,
+    const struct mylite_sql_ast_node *expression,
+    char *check_clause,
+    size_t check_clause_size,
+    char *sqlite_expression,
+    size_t sqlite_expression_size
+);
+static int render_check_expression_node(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean,
+    bool *out_is_boolean
+);
+static int render_check_expression_work_item(
+    struct check_expression_render_context *context,
+    struct check_expression_render_work_item item,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+);
+static int render_check_expression_column(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+);
+static int render_check_expression_literal(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean,
+    bool *out_is_boolean
+);
+static int render_check_expression_unary(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+);
+static int render_check_expression_binary(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+);
+static bool check_expression_binary_operator_is_boolean(enum mylite_sql_ast_operator operator_kind);
+static bool check_expression_binary_operator_is_arithmetic(
+    enum mylite_sql_ast_operator operator_kind
+);
+static bool check_expression_binary_operator_requires_boolean_children(
+    enum mylite_sql_ast_operator operator_kind
+);
+static const char *check_expression_check_clause_operator_sql(
+    enum mylite_sql_ast_operator operator_kind
+);
+static const char *check_expression_sqlite_operator_sql(enum mylite_sql_ast_operator operator_kind);
+static int append_check_expression_span_text(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *node
+);
+static int append_check_expression_render_node(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean
+);
+static int append_check_expression_render_text(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    const char *text
+);
+static int append_check_expression_render_char(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    char character
+);
+static int append_check_expression_render_operator(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int append_check_expression_render_work_item(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    struct check_expression_render_work_item item
+);
+static bool check_constraint_node_is_not_enforced(const struct mylite_sql_ast_node *node);
+static bool check_constraint_node_is_enforcement(const struct mylite_sql_ast_node *node);
+static int reserve_planned_check_constraints(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t requested_capacity
 );
 static int extract_foreign_key_definition_nodes(
     struct mylite_db *database,
@@ -11805,12 +12097,26 @@ static void loaded_foreign_key_infos_deinit(
     size_t *foreign_key_count
 );
 static void loaded_foreign_key_info_deinit(struct loaded_foreign_key_info *foreign_key);
+static int load_table_check_constraint_infos(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct loaded_check_constraint_info **out_check_constraints,
+    size_t *out_check_constraint_count
+);
+static void loaded_check_constraint_infos_deinit(
+    struct loaded_check_constraint_info **check_constraints,
+    size_t *check_constraint_count
+);
 static int append_loaded_index_info(
     const struct mylite_catalog_index_descriptor *index,
     void *user_data
 );
 static int append_loaded_foreign_key_info(
     const struct mylite_catalog_foreign_key_descriptor *foreign_key,
+    void *user_data
+);
+static int append_loaded_check_constraint_info(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
     void *user_data
 );
 static int load_index_parts(
@@ -11855,6 +12161,10 @@ static int reserve_loaded_foreign_key_infos(
     struct load_foreign_key_infos_context *context,
     size_t required_capacity
 );
+static int reserve_loaded_check_constraint_infos(
+    struct load_check_constraint_infos_context *context,
+    size_t required_capacity
+);
 static const char *column_key_text(
     struct loaded_index_info_span indexes,
     const struct primary_key_info *primary_key,
@@ -11893,6 +12203,15 @@ static int reject_secondary_index_table_alter(
 );
 static int note_secondary_index_presence(
     const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+);
+static int reject_check_constraint_table_alter(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *message
+);
+static int note_check_constraint_presence(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
     void *user_data
 );
 static int reject_primary_key_column_alter(
@@ -14147,6 +14466,11 @@ static int append_show_database(
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
 static int build_physical_index_name(int64_t index_id, char *destination, size_t destination_size);
+static int build_physical_check_constraint_name(
+    int64_t check_constraint_id,
+    char *destination,
+    size_t destination_size
+);
 static int build_create_table_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
@@ -14154,6 +14478,10 @@ static int build_create_table_sql(
     char **out_sql
 );
 static int append_create_table_columns_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan
+);
+static int append_create_table_check_constraints_sql(
     struct dynamic_string *string,
     const struct planned_create_table *plan
 );
@@ -14881,6 +15209,21 @@ static int build_replace_conflicting_row_delete_sql(
 static int step_insert_row(sqlite3_stmt *statement, int *out_sqlite_rc);
 static bool sqlite_status_is_constraint(int sqlite_rc);
 static int reset_insert_statement_after_constraint(sqlite3_stmt *statement);
+static int handle_check_constraint_violation(
+    struct mylite_db *database,
+    int64_t table_id,
+    bool ignore_errors,
+    bool *out_was_check_violation
+);
+static bool sqlite_error_message_has_check_constraint(
+    const char *message,
+    const char **out_physical_name
+);
+static int set_or_warn_check_constraint_violation(
+    struct mylite_db *database,
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    bool ignore_errors
+);
 static int find_insert_unique_key_conflict(
     struct mylite_db *database,
     int sqlite_step_rc,
@@ -15475,6 +15818,29 @@ static void set_duplicate_foreign_key_error(
     struct mylite_db *database,
     const char *foreign_key_name
 );
+static void set_check_constraint_non_boolean_error(struct mylite_db *database);
+static void set_check_constraint_column_ref_error(
+    struct mylite_db *database,
+    const char *constraint_name,
+    const char *column_name
+);
+static void set_check_constraint_function_error(struct mylite_db *database);
+static void set_check_constraint_subquery_error(struct mylite_db *database);
+static void set_check_constraint_variable_error(struct mylite_db *database);
+static void set_check_constraint_auto_increment_error(struct mylite_db *database);
+static void set_check_constraint_violated_error(
+    struct mylite_db *database,
+    const char *constraint_name
+);
+static void set_check_constraint_unknown_column_error(
+    struct mylite_db *database,
+    const char *column_name
+);
+static void set_duplicate_check_constraint_error(
+    struct mylite_db *database,
+    const char *check_constraint_name
+);
+static int append_check_constraint_warning(struct mylite_db *database, const char *constraint_name);
 static int append_duplicate_key_warning(
     struct mylite_db *database,
     const char *table_name,
@@ -16029,6 +16395,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
+    case MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION:
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED:
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -20988,12 +21357,12 @@ static int append_information_schema_system_rows(
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
-    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
+    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TRIGGERS:
@@ -21025,7 +21394,6 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
     case INFORMATION_SCHEMA_TABLE_ROUTINES:
-    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_COLUMN_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_SCHEMA_PRIVILEGES:
     case INFORMATION_SCHEMA_TABLE_TABLE_PRIVILEGES:
@@ -21036,6 +21404,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_SCHEMATA:
     case INFORMATION_SCHEMA_TABLE_TABLES:
     case INFORMATION_SCHEMA_TABLE_COLUMNS:
+    case INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
@@ -21107,6 +21476,14 @@ static int append_information_schema_catalog_table(
     }
     if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS) {
         return append_information_schema_table_constraints_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_CHECK_CONSTRAINTS) {
+        return append_information_schema_check_constraints_base_rows(
             context->database,
             context->rows,
             context->schema,
@@ -21968,9 +22345,11 @@ static int append_information_schema_table_constraints_base_rows(
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_index_info *indexes = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
+    struct loaded_check_constraint_info *check_constraints = NULL;
     size_t column_count = 0U;
     size_t index_count = 0U;
     size_t foreign_key_count = 0U;
+    size_t check_constraint_count = 0U;
     int rc = load_table_columns(database, table->table_id, &columns, &column_count);
 
     if (rc == MYLITE_OK) {
@@ -21991,6 +22370,14 @@ static int append_information_schema_table_constraints_base_rows(
             column_count,
             &foreign_keys,
             &foreign_key_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_check_constraint_infos(
+            database,
+            table->table_id,
+            &check_constraints,
+            &check_constraint_count
         );
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
@@ -22014,7 +22401,17 @@ static int append_information_schema_table_constraints_base_rows(
             &foreign_keys[index]
         );
     }
+    for (size_t index = 0U; rc == MYLITE_OK && index < check_constraint_count; ++index) {
+        rc = append_information_schema_table_constraints_check_row(
+            database,
+            rows,
+            schema,
+            table,
+            &check_constraints[index]
+        );
+    }
 
+    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
     loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
@@ -22058,6 +22455,76 @@ static int append_information_schema_table_constraints_foreign_key_row(
         table->name,
         "FOREIGN KEY",
         "YES",
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_table_constraints_check_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct loaded_check_constraint_info *check_constraint
+) {
+    const char *enforced = "NO";
+
+    if (check_constraint->check_constraint.is_enforced) {
+        enforced = "YES";
+    }
+
+    const char *values[information_schema_table_constraints_column_count] = {
+        "def",
+        schema->name,
+        check_constraint->check_constraint.name,
+        schema->name,
+        table->name,
+        "CHECK",
+        enforced,
+    };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_check_constraints_base_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct loaded_check_constraint_info *check_constraints = NULL;
+    size_t check_constraint_count = 0U;
+    int rc = load_table_check_constraint_infos(
+        database,
+        table->table_id,
+        &check_constraints,
+        &check_constraint_count
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < check_constraint_count; ++index) {
+        rc = append_information_schema_check_constraints_check_row(
+            database,
+            rows,
+            schema,
+            &check_constraints[index]
+        );
+    }
+
+    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    return rc;
+}
+
+static int append_information_schema_check_constraints_check_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct loaded_check_constraint_info *check_constraint
+) {
+    const char *values[information_schema_check_constraints_column_count] = {
+        "def",
+        schema->name,
+        check_constraint->check_constraint.name,
+        check_constraint->check_constraint.check_clause,
     };
 
     return append_information_schema_row(database, rows, values);
@@ -26481,6 +26948,14 @@ static int plan_show_create_table(
             &out_plan->foreign_key_count
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = load_table_check_constraint_infos(
+            database,
+            out_plan->table.table_id,
+            &out_plan->check_constraints,
+            &out_plan->check_constraint_count
+        );
+    }
     if (rc != MYLITE_OK) {
         planned_show_create_table_deinit(out_plan);
     }
@@ -26496,6 +26971,7 @@ static void planned_show_create_table_deinit(struct planned_show_create_table *p
     free(plan->columns);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);
+    loaded_check_constraint_infos_deinit(&plan->check_constraints, &plan->check_constraint_count);
     *plan = (struct planned_show_create_table){0};
 }
 
@@ -26569,7 +27045,7 @@ static int build_show_create_table_sql(
             &plan->table,
             &plan->columns[column_index],
             (plan->index_count == 0U && plan->foreign_key_count == 0U &&
-             column_index + 1U == plan->column_count) != 0
+             plan->check_constraint_count == 0U && column_index + 1U == plan->column_count) != 0
         );
     }
     if (rc == MYLITE_OK) {
@@ -26577,6 +27053,9 @@ static int build_show_create_table_sql(
     }
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_foreign_keys(database, &string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_check_constraints(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_table_options(database, &string, plan);
@@ -26811,9 +27290,10 @@ static int append_show_create_table_indexes(
             ++appended;
             const bool is_last_index = appended == plan->index_count;
             const bool has_no_foreign_keys = plan->foreign_key_count == 0U;
+            const bool has_no_check_constraints = plan->check_constraint_count == 0U;
             bool is_last_definition = false;
 
-            if (is_last_index && has_no_foreign_keys) {
+            if (is_last_index && has_no_foreign_keys && has_no_check_constraints) {
                 is_last_definition = true;
             }
 
@@ -26838,11 +27318,53 @@ static int append_show_create_table_foreign_keys(
 
     (void)database;
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
+        bool is_last_constraint = false;
+
+        if (index + 1U == plan->foreign_key_count && plan->check_constraint_count == 0U) {
+            is_last_constraint = true;
+        }
         rc = append_show_create_table_foreign_key(
             string,
             &plan->foreign_keys[index],
-            index + 1U == plan->foreign_key_count
+            is_last_constraint
         );
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_check_constraints(
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->check_constraint_count; ++index) {
+        const struct mylite_catalog_check_constraint_descriptor *check_constraint =
+            &plan->check_constraints[index].check_constraint;
+
+        rc = dynamic_string_append(string, "  CONSTRAINT ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(string, check_constraint->name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " CHECK (");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, check_constraint->check_clause);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        if (rc == MYLITE_OK && !check_constraint->is_enforced) {
+            rc = dynamic_string_append(string, " /*!80016 NOT ENFORCED */");
+        }
+        if (rc == MYLITE_OK && index + 1U < plan->check_constraint_count) {
+            rc = dynamic_string_append_char(string, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '\n');
+        }
     }
 
     return rc;
@@ -27692,6 +28214,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
     case MYLITE_SQL_AST_FOREIGN_KEY_PART_LIST:
+    case MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION:
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED:
+    case MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED:
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
@@ -28059,6 +28584,12 @@ static int plan_create_table_items(
     if (rc == MYLITE_OK) {
         rc = apply_create_table_foreign_key_definitions(database, item_list, out_plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = apply_create_table_check_constraint_definitions(database, item_list, out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_create_table_deinit(out_plan);
+    }
 
     return rc;
 }
@@ -28106,7 +28637,8 @@ static int plan_create_table_item(
 
     if (item->kind == MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION ||
-        item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION) {
+        item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION ||
+        item->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
         return MYLITE_OK;
     }
 
@@ -28159,7 +28691,8 @@ static int validate_create_table_item_list(
             item->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION &&
             item->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
-            item->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION) {
+            item->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION &&
+            item->kind != MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
@@ -28543,6 +29076,1005 @@ static int apply_create_table_foreign_key_definition(
     foreign_key_column_names_deinit(&names);
     planned_foreign_key_deinit(&planned);
     return rc;
+}
+
+static int apply_create_table_check_constraint_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *item_list,
+    struct planned_create_table *plan
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (item_list == NULL || plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    item = child_at(item_list, 0U);
+    while (rc == MYLITE_OK && item != NULL) {
+        if (item->kind == MYLITE_SQL_AST_COLUMN_DEFINITION) {
+            if (column_index >= plan->column_count) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
+            rc = apply_create_table_column_check_constraint_definitions(
+                database,
+                plan,
+                item,
+                column_index
+            );
+            ++column_index;
+        } else if (item->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
+            const struct create_table_check_constraint_definition definition = {
+                .check_constraint = item,
+                .inline_enforcement = NULL,
+                .inline_column = NULL,
+                .inline_column_index = 0U,
+            };
+
+            rc = apply_create_table_check_constraint_definition(database, plan, &definition);
+        }
+        item = item->next_sibling;
+    }
+
+    return rc;
+}
+
+static int apply_create_table_column_check_constraint_definitions(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *column_definition,
+    size_t column_index
+) {
+    const struct mylite_sql_ast_node *attribute = child_at(column_definition, 2U);
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK && attribute != NULL) {
+        if (attribute->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
+            const struct mylite_sql_ast_node *next_attribute = attribute->next_sibling;
+            const bool next_attribute_is_enforcement =
+                check_constraint_node_is_enforcement(next_attribute);
+            const struct mylite_sql_ast_node *inline_enforcement = NULL;
+            struct create_table_check_constraint_definition definition = {
+                .check_constraint = attribute,
+                .inline_enforcement = NULL,
+                .inline_column = &plan->columns[column_index],
+                .inline_column_index = column_index,
+            };
+
+            if (next_attribute_is_enforcement) {
+                inline_enforcement = next_attribute;
+                definition.inline_enforcement = inline_enforcement;
+            }
+
+            rc = apply_create_table_check_constraint_definition(database, plan, &definition);
+            if (inline_enforcement != NULL) {
+                attribute = inline_enforcement;
+            }
+        } else if (check_constraint_node_is_enforcement(attribute)) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        attribute = attribute->next_sibling;
+    }
+
+    return rc;
+}
+
+static int apply_create_table_check_constraint_definition(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct create_table_check_constraint_definition *definition
+) {
+    const struct mylite_sql_ast_node *check_constraint = NULL;
+    const struct mylite_sql_ast_node *expression = child_at(check_constraint, 0U);
+    const struct mylite_sql_ast_node *child = child_at(check_constraint, 1U);
+    const struct mylite_sql_ast_node *name_node = NULL;
+    int64_t generated_ordinal = next_planned_check_constraint_generated_ordinal(plan);
+    struct planned_check_constraint planned = {
+        .generated_ordinal = generated_ordinal,
+        .ordinal_position = (int64_t)plan->check_constraint_count + 1,
+        .is_enforced = true,
+        .name_is_generated = false,
+    };
+    int rc = MYLITE_OK;
+
+    if (definition != NULL) {
+        check_constraint = definition->check_constraint;
+        expression = child_at(check_constraint, 0U);
+        child = child_at(check_constraint, 1U);
+    }
+
+    if (definition == NULL || check_constraint == NULL ||
+        check_constraint->kind != MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION ||
+        expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            name_node = child;
+        } else if (check_constraint_node_is_not_enforced(child)) {
+            planned.is_enforced = false;
+        }
+        child = child->next_sibling;
+    }
+    if (check_constraint_node_is_not_enforced(definition->inline_enforcement)) {
+        planned.is_enforced = false;
+    }
+
+    rc = plan_create_table_check_constraint_name(database, plan, name_node, &planned);
+    if (rc == MYLITE_OK) {
+        rc = render_check_constraint_expression(
+            database,
+            plan,
+            definition->inline_column,
+            definition->inline_column_index,
+            expression,
+            planned.check_clause,
+            sizeof(planned.check_clause),
+            planned.sqlite_expression,
+            sizeof(planned.sqlite_expression)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_check_constraints(database, plan, plan->check_constraint_count + 1U);
+    }
+    if (rc == MYLITE_OK) {
+        plan->check_constraints[plan->check_constraint_count] = planned;
+        ++plan->check_constraint_count;
+    }
+
+    return rc;
+}
+
+static int64_t next_planned_check_constraint_generated_ordinal(
+    const struct planned_create_table *plan
+) {
+    int64_t ordinal = 1;
+
+    if (plan == NULL) {
+        return ordinal;
+    }
+    for (size_t index = 0U; index < plan->check_constraint_count; ++index) {
+        if (plan->check_constraints[index].name_is_generated &&
+            plan->check_constraints[index].generated_ordinal >= ordinal) {
+            ordinal = plan->check_constraints[index].generated_ordinal + 1;
+        }
+    }
+    return ordinal;
+}
+
+static int plan_create_table_check_constraint_name(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *name_node,
+    struct planned_check_constraint *check_constraint
+) {
+    int rc = MYLITE_OK;
+
+    check_constraint->name_is_generated = name_node == NULL;
+    if (name_node == NULL) {
+        rc = generate_create_table_check_constraint_name(
+            database,
+            plan,
+            check_constraint->generated_ordinal,
+            check_constraint->name,
+            sizeof(check_constraint->name)
+        );
+    } else {
+        rc = copy_identifier_text(
+            name_node,
+            check_constraint->name,
+            sizeof(check_constraint->name),
+            database
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (planned_check_constraint_name_is_used(plan, check_constraint->name)) {
+        set_duplicate_check_constraint_error(database, check_constraint->name);
+        return MYLITE_ERROR;
+    }
+
+    return reject_duplicate_schema_check_constraint_name(database, plan, check_constraint->name);
+}
+
+static int generate_create_table_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t generated_ordinal,
+    char *destination,
+    size_t destination_size
+) {
+    int written = snprintf(
+        destination,
+        destination_size,
+        "%s_chk_%" PRId64,
+        plan->target.table_name,
+        generated_ordinal
+    );
+
+    if (written < 0 || (size_t)written >= destination_size) {
+        set_runtime_error(database, "generated CHECK constraint name is too long");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool planned_check_constraint_name_is_used(
+    const struct planned_create_table *plan,
+    const char *check_constraint_name
+) {
+    for (size_t index = 0U; index < plan->check_constraint_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                plan->check_constraints[index].name,
+                check_constraint_name
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int reject_duplicate_schema_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const char *check_constraint_name
+) {
+    struct find_check_constraint_name_context context = {
+        .name = check_constraint_name,
+        .found = false,
+    };
+    int rc = mylite_catalog_for_each_check_constraint_in_schema(
+        database,
+        plan->target.schema.schema_id,
+        reject_duplicate_schema_check_constraint_name_callback,
+        &context
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read CHECK constraint descriptors");
+        return rc;
+    }
+    if (context.found) {
+        set_duplicate_check_constraint_error(database, check_constraint_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_duplicate_schema_check_constraint_name_callback(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
+) {
+    struct find_check_constraint_name_context *context = user_data;
+
+    if (check_constraint == NULL || context == NULL || context->name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (text_equals_ascii_case_insensitive(check_constraint->name, context->name)) {
+        context->found = true;
+    }
+    return MYLITE_OK;
+}
+
+static int render_check_constraint_expression(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_column *inline_column,
+    size_t inline_column_index,
+    const struct mylite_sql_ast_node *expression,
+    char *check_clause,
+    size_t check_clause_size,
+    char *sqlite_expression,
+    size_t sqlite_expression_size
+) {
+    struct dynamic_string check_string;
+    struct dynamic_string sqlite_string;
+    struct check_expression_render_context context = {
+        .database = database,
+        .plan = plan,
+        .inline_column = inline_column,
+        .inline_column_index = inline_column_index,
+        .check_clause = &check_string,
+        .sqlite_expression = &sqlite_string,
+    };
+    bool is_boolean = false;
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&check_string);
+    dynamic_string_init(&sqlite_string);
+    rc = render_check_expression_node(&context, expression, true, &is_boolean);
+    if (rc == MYLITE_OK && !is_boolean) {
+        set_check_constraint_non_boolean_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && (check_string.length >= check_clause_size ||
+                            sqlite_string.length >= sqlite_expression_size)) {
+        set_unsupported_error(database, "CHECK constraint expression is too long");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(check_clause, check_string.text, check_string.length + 1U);
+        memcpy(sqlite_expression, sqlite_string.text, sqlite_string.length + 1U);
+    }
+
+    dynamic_string_deinit(&check_string);
+    dynamic_string_deinit(&sqlite_string);
+    return rc;
+}
+
+static int render_check_expression_node(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean,
+    bool *out_is_boolean
+) {
+    struct check_expression_render_work_item *items = NULL;
+    size_t item_count = 0U;
+    bool root_seen = false;
+    int rc = MYLITE_OK;
+
+    *out_is_boolean = false;
+
+    rc = append_check_expression_render_node(
+        context->database,
+        &items,
+        &item_count,
+        node,
+        require_boolean
+    );
+    while (rc == MYLITE_OK && item_count != 0U) {
+        bool item_is_boolean = false;
+        struct check_expression_render_work_item item = items[--item_count];
+
+        rc =
+            render_check_expression_work_item(context, item, &items, &item_count, &item_is_boolean);
+        if (rc == MYLITE_OK && !root_seen && item.kind == CHECK_EXPRESSION_RENDER_NODE) {
+            *out_is_boolean = item_is_boolean;
+            root_seen = true;
+        }
+    }
+    free(items);
+    return rc;
+}
+
+static int render_check_expression_work_item(
+    struct check_expression_render_context *context,
+    struct check_expression_render_work_item item,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_expression(item.node);
+    int rc = MYLITE_OK;
+
+    *out_is_boolean = false;
+    switch (item.kind) {
+    case CHECK_EXPRESSION_RENDER_TEXT:
+        rc = dynamic_string_append(context->check_clause, item.text);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(context->sqlite_expression, item.text);
+        }
+        return rc;
+    case CHECK_EXPRESSION_RENDER_CHAR:
+        rc = dynamic_string_append_char(context->check_clause, item.character);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(context->sqlite_expression, item.character);
+        }
+        return rc;
+    case CHECK_EXPRESSION_RENDER_OPERATOR:
+        rc = dynamic_string_append(
+            context->check_clause,
+            check_expression_check_clause_operator_sql(item.operator_kind)
+        );
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(
+                context->sqlite_expression,
+                check_expression_sqlite_operator_sql(item.operator_kind)
+            );
+        }
+        return rc;
+    case CHECK_EXPRESSION_RENDER_NODE:
+        break;
+    }
+
+    if (node == NULL) {
+        set_parse_error(context->database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_IDENTIFIER:
+        return render_check_expression_column(context, node);
+    case MYLITE_SQL_AST_LITERAL:
+        return render_check_expression_literal(context, node, item.require_boolean, out_is_boolean);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return render_check_expression_unary(context, node, items, item_count, out_is_boolean);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return render_check_expression_binary(context, node, items, item_count, out_is_boolean);
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+        set_check_constraint_subquery_error(context->database);
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        set_check_constraint_variable_error(context->database);
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
+        set_check_constraint_function_error(context->database);
+        return MYLITE_ERROR;
+    default:
+        break;
+    }
+
+    if (is_scalar_function_projection_expression(node)) {
+        set_check_constraint_function_error(context->database);
+        return MYLITE_ERROR;
+    }
+
+    set_unsupported_error(
+        context->database,
+        "CHECK constraints support only integer columns, integer literals, boolean comparisons, "
+        "IS NULL, IS NOT NULL, AND, OR, and NOT"
+    );
+    return MYLITE_ERROR;
+}
+
+static int render_check_expression_column(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = copy_identifier_text(node, column_name, sizeof(column_name), context->database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_planned_column_index(
+        context->plan->columns,
+        context->plan->column_count,
+        column_name,
+        &column_index
+    );
+    if (rc != MYLITE_OK) {
+        set_check_constraint_unknown_column_error(context->database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (context->inline_column != NULL && column_index != context->inline_column_index) {
+        set_check_constraint_column_ref_error(context->database, "", column_name);
+        return MYLITE_ERROR;
+    }
+    if (context->plan->columns[column_index].is_auto_increment) {
+        set_check_constraint_auto_increment_error(context->database);
+        return MYLITE_ERROR;
+    }
+    if (context->plan->columns[column_index].physical_type == NULL ||
+        strcmp(context->plan->columns[column_index].physical_type, "INTEGER") != 0 ||
+        planned_column_is_year(&context->plan->columns[column_index]) ||
+        planned_column_is_bit(&context->plan->columns[column_index])) {
+        set_unsupported_error(
+            context->database,
+            "CHECK constraints support only integer descriptor columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append_mysql_quoted_identifier(
+        context->check_clause,
+        context->plan->columns[column_index].name
+    );
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(
+            context->sqlite_expression,
+            context->plan->columns[column_index].name
+        );
+    }
+    return rc;
+}
+
+static int render_check_expression_literal(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean,
+    bool *out_is_boolean
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(node);
+
+    *out_is_boolean = false;
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_is_boolean = true;
+        if (dynamic_string_append(context->check_clause, "TRUE") != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append(context->sqlite_expression, "1");
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_is_boolean = true;
+        if (dynamic_string_append(context->check_clause, "FALSE") != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append(context->sqlite_expression, "0");
+    }
+    if (require_boolean) {
+        set_check_constraint_non_boolean_error(context->database);
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        if (append_check_expression_span_text(context->database, context->check_clause, node) !=
+            MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return append_check_expression_span_text(
+            context->database,
+            context->sqlite_expression,
+            node
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (dynamic_string_append(context->check_clause, "NULL") != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append(context->sqlite_expression, "NULL");
+    }
+
+    set_unsupported_error(
+        context->database,
+        "CHECK constraints support only integer and boolean literals"
+    );
+    return MYLITE_ERROR;
+}
+
+static int render_check_expression_unary(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(node);
+    const char *operator_sql = NULL;
+    int rc = MYLITE_OK;
+
+    *out_is_boolean = false;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        operator_sql = "+";
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            operator_sql = "-";
+        }
+        rc = append_check_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U),
+            false
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_check_expression_render_text(
+                context->database,
+                items,
+                item_count,
+                operator_sql
+            );
+        }
+        return rc;
+    }
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        set_unsupported_error(
+            context->database,
+            "CHECK constraints support only +, -, and NOT unary operators"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = append_check_expression_render_char(context->database, items, item_count, ')');
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U),
+            true
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_text(context->database, items, item_count, "(NOT ");
+    }
+    if (rc == MYLITE_OK) {
+        *out_is_boolean = true;
+    }
+    return rc;
+}
+
+static int render_check_expression_binary(
+    struct check_expression_render_context *context,
+    const struct mylite_sql_ast_node *node,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    bool *out_is_boolean
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(node);
+    bool require_child_boolean =
+        check_expression_binary_operator_requires_boolean_children(operator_kind);
+    int rc = MYLITE_OK;
+
+    *out_is_boolean = false;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR) {
+        set_unsupported_error(context->database, "CHECK constraints do not yet support XOR");
+        return MYLITE_ERROR;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_IS_TRUE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_IS_FALSE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) {
+        set_unsupported_error(
+            context->database,
+            "CHECK constraints support only IS NULL and IS NOT NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!check_expression_binary_operator_is_boolean(operator_kind) &&
+        !check_expression_binary_operator_is_arithmetic(operator_kind)) {
+        set_unsupported_error(
+            context->database,
+            "CHECK constraints do not support this binary operator"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = append_check_expression_render_char(context->database, items, item_count, ')');
+    if (rc == MYLITE_OK) {
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
+            operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+            rc = append_check_expression_render_text(context->database, items, item_count, "NULL");
+        } else {
+            rc = append_check_expression_render_node(
+                context->database,
+                items,
+                item_count,
+                child_at(node, 1U),
+                require_child_boolean
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_text(context->database, items, item_count, " ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_operator(
+            context->database,
+            items,
+            item_count,
+            operator_kind
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_text(context->database, items, item_count, " ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_node(
+            context->database,
+            items,
+            item_count,
+            child_at(node, 0U),
+            require_child_boolean
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_check_expression_render_char(context->database, items, item_count, '(');
+    }
+    if (rc == MYLITE_OK && check_expression_binary_operator_is_boolean(operator_kind)) {
+        *out_is_boolean = true;
+    }
+    return rc;
+}
+
+static bool check_expression_binary_operator_is_boolean(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool check_expression_binary_operator_is_arithmetic(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool check_expression_binary_operator_requires_boolean_children(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static const char *check_expression_check_clause_operator_sql(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "=";
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "<=>";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "<>";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "<";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "<=";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return ">";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return ">=";
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+        return "IS";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        return "IS NOT";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+        return "AND";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        return "OR";
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return "+";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return "-";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return "*";
+    default:
+        return "";
+    }
+}
+
+static const char *check_expression_sqlite_operator_sql(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "=";
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "IS";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "<>";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "<";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "<=";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return ">";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return ">=";
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+        return "IS";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        return "IS NOT";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+        return "AND";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        return "OR";
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return "+";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return "-";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return "*";
+    default:
+        return "";
+    }
+}
+
+static int append_check_expression_span_text(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->span.text == NULL || node->span.length == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < node->span.length; ++index) {
+        int rc = dynamic_string_append_char(string, node->span.text[index]);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int append_check_expression_render_node(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node,
+    bool require_boolean
+) {
+    return append_check_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct check_expression_render_work_item){
+            .kind = CHECK_EXPRESSION_RENDER_NODE,
+            .node = node,
+            .require_boolean = require_boolean,
+        }
+    );
+}
+
+static int append_check_expression_render_text(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    const char *text
+) {
+    return append_check_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct check_expression_render_work_item){
+            .kind = CHECK_EXPRESSION_RENDER_TEXT,
+            .text = text,
+        }
+    );
+}
+
+static int append_check_expression_render_char(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    char character
+) {
+    return append_check_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct check_expression_render_work_item){
+            .kind = CHECK_EXPRESSION_RENDER_CHAR,
+            .character = character,
+        }
+    );
+}
+
+static int append_check_expression_render_operator(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return append_check_expression_render_work_item(
+        database,
+        items,
+        item_count,
+        (struct check_expression_render_work_item){
+            .kind = CHECK_EXPRESSION_RENDER_OPERATOR,
+            .operator_kind = operator_kind,
+        }
+    );
+}
+
+static int append_check_expression_render_work_item(
+    struct mylite_db *database,
+    struct check_expression_render_work_item **items,
+    size_t *item_count,
+    struct check_expression_render_work_item item
+) {
+    struct check_expression_render_work_item *grown_items = NULL;
+    size_t required_count = *item_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(*items, required_count * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    *items = grown_items;
+    (*items)[*item_count] = item;
+    *item_count = required_count;
+
+    return MYLITE_OK;
+}
+
+static bool check_constraint_node_is_not_enforced(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+    return node->kind == MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED;
+}
+
+static bool check_constraint_node_is_enforcement(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED) {
+        return true;
+    }
+    return node->kind == MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED;
+}
+
+static int reserve_planned_check_constraints(
+    struct mylite_db *database,
+    struct planned_create_table *plan,
+    size_t requested_capacity
+) {
+    enum { initial_check_constraint_capacity = 4 };
+
+    struct planned_check_constraint *checks = NULL;
+    size_t capacity = 0U;
+
+    if (requested_capacity <= plan->check_constraint_capacity) {
+        return MYLITE_OK;
+    }
+    capacity = plan->check_constraint_capacity == 0U ? initial_check_constraint_capacity
+                                                     : plan->check_constraint_capacity;
+    while (capacity < requested_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*checks)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    checks = realloc(plan->check_constraints, capacity * sizeof(*checks));
+    if (checks == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->check_constraints = checks;
+    plan->check_constraint_capacity = capacity;
+    return MYLITE_OK;
 }
 
 static int extract_foreign_key_definition_nodes(
@@ -30178,6 +31710,9 @@ static int clone_create_table_like_columns(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = clone_create_table_like_check_constraints(database, source_table_id, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_create_table_auto_increment_columns(database, out_plan, true);
     }
 
@@ -30295,6 +31830,59 @@ static int clone_create_table_like_indexes(
     }
 
     loaded_index_infos_deinit(&indexes, &index_count);
+    return rc;
+}
+
+static int clone_create_table_like_check_constraints(
+    struct mylite_db *database,
+    int64_t source_table_id,
+    struct planned_create_table *out_plan
+) {
+    struct loaded_check_constraint_info *checks = NULL;
+    size_t check_count = 0U;
+    int rc = load_table_check_constraint_infos(database, source_table_id, &checks, &check_count);
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < check_count; ++index) {
+        const struct mylite_catalog_check_constraint_descriptor *source =
+            &checks[index].check_constraint;
+        struct planned_check_constraint target = {
+            .generated_ordinal = (int64_t)out_plan->check_constraint_count + 1,
+            .ordinal_position = (int64_t)out_plan->check_constraint_count + 1,
+            .is_enforced = source->is_enforced,
+            .name_is_generated = true,
+        };
+
+        rc = generate_create_table_check_constraint_name(
+            database,
+            out_plan,
+            target.generated_ordinal,
+            target.name,
+            sizeof(target.name)
+        );
+        if (rc == MYLITE_OK) {
+            rc = reject_duplicate_schema_check_constraint_name(database, out_plan, target.name);
+        }
+        if (rc == MYLITE_OK) {
+            snprintf(target.check_clause, sizeof(target.check_clause), "%s", source->check_clause);
+            snprintf(
+                target.sqlite_expression,
+                sizeof(target.sqlite_expression),
+                "%s",
+                source->sqlite_expression
+            );
+            rc = reserve_planned_check_constraints(
+                database,
+                out_plan,
+                out_plan->check_constraint_count + 1U
+            );
+        }
+        if (rc == MYLITE_OK) {
+            out_plan->check_constraints[out_plan->check_constraint_count] = target;
+            ++out_plan->check_constraint_count;
+        }
+    }
+
+    loaded_check_constraint_infos_deinit(&checks, &check_count);
     return rc;
 }
 
@@ -31441,6 +33029,7 @@ static void planned_create_table_deinit(struct planned_create_table *plan) {
         planned_foreign_key_deinit(&plan->foreign_keys[index]);
     }
     free(plan->foreign_keys);
+    free(plan->check_constraints);
     *plan = (struct planned_create_table){0};
 }
 
@@ -31482,6 +33071,9 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
     }
     if (rc == MYLITE_OK) {
         rc = assign_create_table_foreign_key_ids(database, &mutation, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = assign_create_table_check_constraint_ids(database, &mutation, plan);
     }
     if (rc == MYLITE_OK) {
         rc = insert_create_table_catalog_rows(
@@ -31527,6 +33119,10 @@ static int create_temporary_table_from_plan(
     }
     if (plan->foreign_key_count != 0U) {
         set_unsupported_error(database, "Temporary FOREIGN KEY tables are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (plan->check_constraint_count != 0U) {
+        set_unsupported_error(database, "Temporary CHECK constraint tables are not yet supported");
         return MYLITE_ERROR;
     }
 
@@ -31684,6 +33280,48 @@ static int assign_create_table_foreign_key_ids(
     return rc;
 }
 
+static int assign_create_table_check_constraint_ids(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_create_table *plan
+) {
+    int64_t next_check_constraint_id = 0;
+    int rc = MYLITE_OK;
+
+    if (plan->check_constraint_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_allocate_check_constraint_id_in_mutation(
+        database,
+        mutation,
+        &next_check_constraint_id
+    );
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->check_constraint_count; ++index) {
+        struct planned_check_constraint *check_constraint = &plan->check_constraints[index];
+
+        check_constraint->check_constraint_id = next_check_constraint_id;
+        rc = build_physical_check_constraint_name(
+            check_constraint->check_constraint_id,
+            check_constraint->physical_name,
+            sizeof(check_constraint->physical_name)
+        );
+        if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to build CHECK constraint physical name");
+            return MYLITE_ERROR;
+        }
+        if (index + 1U < plan->check_constraint_count) {
+            if (next_check_constraint_id == INT64_MAX) {
+                set_runtime_error(database, "CHECK constraint identifier space is exhausted");
+                return MYLITE_ERROR;
+            }
+            ++next_check_constraint_id;
+        }
+    }
+
+    return rc;
+}
+
 static int assign_create_temporary_table_index_ids(
     struct mylite_db *database,
     struct planned_create_table *plan
@@ -31789,6 +33427,9 @@ static int insert_create_table_catalog_rows(
             table_id,
             column_ids
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = insert_create_table_check_constraint_catalog_rows(database, plan, mutation, table_id);
     }
 
     free(column_ids);
@@ -31947,6 +33588,44 @@ static int insert_create_table_foreign_key_catalog_rows(
                 NULL
             );
         }
+    }
+
+    return rc;
+}
+
+static int insert_create_table_check_constraint_catalog_rows(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->check_constraint_count; ++index) {
+        const struct planned_check_constraint *check_constraint = &plan->check_constraints[index];
+
+        if (check_constraint->check_constraint_id <= 0 ||
+            check_constraint->physical_name[0] == '\0' || check_constraint->name[0] == '\0' ||
+            check_constraint->check_clause[0] == '\0' ||
+            check_constraint->sqlite_expression[0] == '\0') {
+            set_runtime_error(database, "invalid CHECK constraint descriptor");
+            return MYLITE_ERROR;
+        }
+        rc = mylite_catalog_insert_check_constraint_in_mutation(
+            database,
+            mutation,
+            check_constraint->check_constraint_id,
+            table_id,
+            check_constraint->name,
+            check_constraint->physical_name,
+            check_constraint->check_clause,
+            check_constraint->sqlite_expression,
+            check_constraint->is_enforced,
+            check_constraint->name_is_generated,
+            check_constraint->generated_ordinal,
+            check_constraint->ordinal_position,
+            NULL
+        );
     }
 
     return rc;
@@ -36478,6 +38157,13 @@ static int plan_alter_table_drop_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
+        rc = reject_check_constraint_table_alter(
+            database,
+            out_plan->table.table_id,
+            "ALTER TABLE DROP COLUMN does not yet support CHECK-constrained tables"
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -36639,6 +38325,13 @@ static int plan_alter_table_rename_column(
             "ALTER TABLE RENAME COLUMN supports only persistent base tables"
         );
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_check_constraint_table_alter(
+            database,
+            out_plan->table.table_id,
+            "ALTER TABLE RENAME COLUMN does not yet support CHECK-constrained tables"
+        );
     }
     if (rc == MYLITE_OK) {
         size_t column_count = 0U;
@@ -37445,6 +39138,13 @@ static int plan_alter_table_order_by(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_check_constraint_table_alter(
+            database,
+            out_plan->table.table_id,
+            "ALTER TABLE ORDER BY does not yet support CHECK-constrained tables"
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -37624,6 +39324,13 @@ static int plan_alter_table_force(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = reject_check_constraint_table_alter(
+            database,
+            out_plan->table.table_id,
+            "ALTER TABLE FORCE does not yet support CHECK-constrained tables"
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -37751,6 +39458,14 @@ static int resolve_alter_table_column_replacement_plan(
         database,
         out_plan->table.table_id,
         out_plan->unsupported_secondary_index_message
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = reject_check_constraint_table_alter(
+        database,
+        out_plan->table.table_id,
+        "ALTER TABLE column replacement does not yet support CHECK-constrained tables"
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -38575,8 +40290,12 @@ static int rename_table_pair_in_mutation(
         set_table_exists_error(database, plan->target.table_name);
         return MYLITE_ERROR;
     }
+    rc = reject_rename_table_check_constraint_collisions(database, &source, plan);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
-    return mylite_catalog_update_table_identity_in_mutation(
+    rc = mylite_catalog_update_table_identity_in_mutation(
         database,
         mutation,
         source.table_id,
@@ -38584,6 +40303,138 @@ static int rename_table_pair_in_mutation(
         plan->target.table_name,
         NULL
     );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_rename_generated_check_constraints_in_mutation(
+            database,
+            mutation,
+            source.table_id,
+            plan->target.table_name
+        );
+    }
+
+    return rc;
+}
+
+static int reject_rename_table_check_constraint_collisions(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *source,
+    const struct planned_rename_table *plan
+) {
+    struct loaded_check_constraint_info *checks = NULL;
+    size_t check_count = 0U;
+    char check_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = load_table_check_constraint_infos(database, source->table_id, &checks, &check_count);
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < check_count; ++index) {
+        rc = build_renamed_check_constraint_name(
+            database,
+            plan,
+            &checks[index].check_constraint,
+            check_name,
+            sizeof(check_name)
+        );
+        for (size_t previous = 0U; rc == MYLITE_OK && previous < index; ++previous) {
+            char previous_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+            rc = build_renamed_check_constraint_name(
+                database,
+                plan,
+                &checks[previous].check_constraint,
+                previous_name,
+                sizeof(previous_name)
+            );
+            if (rc == MYLITE_OK && text_equals_ascii_case_insensitive(check_name, previous_name)) {
+                set_duplicate_check_constraint_error(database, check_name);
+                rc = MYLITE_ERROR;
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = reject_rename_table_check_constraint_schema_collision(
+                database,
+                source,
+                plan,
+                check_name
+            );
+        }
+    }
+
+    loaded_check_constraint_infos_deinit(&checks, &check_count);
+    return rc;
+}
+
+static int build_renamed_check_constraint_name(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan,
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    char *destination,
+    size_t destination_size
+) {
+    int written = 0;
+
+    if (!check_constraint->name_is_generated) {
+        written = snprintf(destination, destination_size, "%s", check_constraint->name);
+    } else {
+        written = snprintf(
+            destination,
+            destination_size,
+            "%s_chk_%" PRId64,
+            plan->target.table_name,
+            check_constraint->generated_ordinal
+        );
+    }
+    if (written < 0 || (size_t)written >= destination_size) {
+        set_runtime_error(database, "renamed CHECK constraint name is too long");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_rename_table_check_constraint_schema_collision(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *source,
+    const struct planned_rename_table *plan,
+    const char *check_constraint_name
+) {
+    struct check_constraint_name_collision_context context = {
+        .name = check_constraint_name,
+        .excluded_table_id = source->table_id,
+        .found = false,
+    };
+    int rc = mylite_catalog_for_each_check_constraint_in_schema(
+        database,
+        plan->target.schema.schema_id,
+        reject_rename_table_check_constraint_schema_collision_callback,
+        &context
+    );
+
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read CHECK constraint descriptors");
+        return rc;
+    }
+    if (context.found) {
+        set_duplicate_check_constraint_error(database, check_constraint_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_rename_table_check_constraint_schema_collision_callback(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
+) {
+    struct check_constraint_name_collision_context *context = user_data;
+
+    if (check_constraint == NULL || context == NULL || context->name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (check_constraint->table_id != context->excluded_table_id &&
+        text_equals_ascii_case_insensitive(check_constraint->name, context->name)) {
+        context->found = true;
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_insert(
@@ -39564,6 +41415,23 @@ static int handle_insert_plan_constraint(
     int rc = MYLITE_OK;
 
     *out_row_complete = false;
+    if (sqlite_status_is_constraint(sqlite_step_rc)) {
+        bool was_check_violation = false;
+
+        rc = handle_check_constraint_violation(
+            database,
+            plan->table.table_id,
+            plan->ignore_errors,
+            &was_check_violation
+        );
+        if (rc != MYLITE_OK || was_check_violation) {
+            if (rc == MYLITE_OK && plan->ignore_errors) {
+                rc = reset_insert_statement_after_constraint(statement);
+                *out_row_complete = rc == MYLITE_OK;
+            }
+            return rc;
+        }
+    }
     if (plan->duplicate_update.has_clause) {
         rc = handle_insert_duplicate_key_update(
             database,
@@ -42380,6 +44248,17 @@ static int step_update_statement(
         return MYLITE_OK;
     }
     if (sqlite_status_is_constraint(sqlite_rc)) {
+        bool was_check_violation = false;
+        int rc = handle_check_constraint_violation(
+            database,
+            plan->table.table_id,
+            false,
+            &was_check_violation
+        );
+
+        if (rc != MYLITE_OK || was_check_violation) {
+            return rc;
+        }
         return handle_update_unique_key_conflict(database, executable_plan, plan, sqlite_rc);
     }
 
@@ -60429,27 +62308,45 @@ static int validate_column_attributes(
     size_t on_update_count = 0U;
     size_t charset_count = 0U;
     size_t collation_count = 0U;
+    bool previous_attribute_allows_check_enforcement = false;
 
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
             ++nullability_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (
             child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
             child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
         ) {
             ++default_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
             ++primary_key_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY) {
             /* Inline UNIQUE is lowered into a table-level unique index after column validation. */
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
             ++auto_increment_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP) {
             ++on_update_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) {
             ++charset_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) {
             ++collation_count;
+            previous_attribute_allows_check_enforcement = false;
+        } else if (child->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
+            /* Column CHECK attributes are planned after all columns are known. */
+            previous_attribute_allows_check_enforcement = true;
+        } else if (check_constraint_node_is_enforcement(child)) {
+            if (!previous_attribute_allows_check_enforcement) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
+            previous_attribute_allows_check_enforcement = false;
         } else {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
@@ -65240,6 +67137,60 @@ static void loaded_foreign_key_info_deinit(struct loaded_foreign_key_info *forei
     *foreign_key = (struct loaded_foreign_key_info){0};
 }
 
+static int load_table_check_constraint_infos(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct loaded_check_constraint_info **out_check_constraints,
+    size_t *out_check_constraint_count
+) {
+    struct load_check_constraint_infos_context context = {
+        .database = database,
+        .check_constraints = NULL,
+        .count = 0U,
+        .capacity = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_check_constraints == NULL || out_check_constraint_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_check_constraints = NULL;
+    *out_check_constraint_count = 0U;
+    if (table_id < 0) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_for_each_check_constraint_in_table(
+        database,
+        table_id,
+        append_loaded_check_constraint_info,
+        &context
+    );
+    if (rc != MYLITE_OK) {
+        loaded_check_constraint_infos_deinit(&context.check_constraints, &context.count);
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+            set_runtime_error(database, "failed to load CHECK constraint descriptors");
+        }
+        return rc;
+    }
+
+    *out_check_constraints = context.check_constraints;
+    *out_check_constraint_count = context.count;
+    return MYLITE_OK;
+}
+
+static void loaded_check_constraint_infos_deinit(
+    struct loaded_check_constraint_info **check_constraints,
+    size_t *check_constraint_count
+) {
+    if (check_constraints == NULL || check_constraint_count == NULL) {
+        return;
+    }
+    free(*check_constraints);
+    *check_constraints = NULL;
+    *check_constraint_count = 0U;
+}
+
 static int append_loaded_index_info(
     const struct mylite_catalog_index_descriptor *index,
     void *user_data
@@ -65408,6 +67359,27 @@ static int append_loaded_foreign_key_info(
         loaded_foreign_key_info_deinit(loaded);
     }
     return rc;
+}
+
+static int append_loaded_check_constraint_info(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
+) {
+    struct load_check_constraint_infos_context *context = user_data;
+    int rc = MYLITE_OK;
+
+    if (check_constraint == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = reserve_loaded_check_constraint_infos(context, context->count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    context->check_constraints[context->count] =
+        (struct loaded_check_constraint_info){.check_constraint = *check_constraint};
+    ++context->count;
+    return MYLITE_OK;
 }
 
 static int load_index_parts(
@@ -65735,6 +67707,43 @@ static int reserve_loaded_foreign_key_infos(
     return MYLITE_OK;
 }
 
+static int reserve_loaded_check_constraint_infos(
+    struct load_check_constraint_infos_context *context,
+    size_t required_capacity
+) {
+    enum { initial_loaded_check_constraint_capacity = 4 };
+
+    struct loaded_check_constraint_info *check_constraints = NULL;
+    size_t capacity = 0U;
+
+    if (required_capacity <= context->capacity) {
+        return MYLITE_OK;
+    }
+    capacity =
+        context->capacity == 0U ? initial_loaded_check_constraint_capacity : context->capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(context->database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*check_constraints)) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    check_constraints = realloc(context->check_constraints, capacity * sizeof(*check_constraints));
+    if (check_constraints == NULL) {
+        set_nomem_error(context->database);
+        return MYLITE_NOMEM;
+    }
+
+    context->check_constraints = check_constraints;
+    context->capacity = capacity;
+    return MYLITE_OK;
+}
+
 static const char *column_key_text(
     struct loaded_index_info_span indexes,
     const struct primary_key_info *primary_key,
@@ -65933,6 +67942,42 @@ static int note_secondary_index_presence(
         context->has_secondary_index = true;
     }
 
+    return MYLITE_OK;
+}
+
+static int reject_check_constraint_table_alter(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *message
+) {
+    struct check_constraint_presence_context context = {.has_check_constraint = false};
+    int rc = mylite_catalog_for_each_check_constraint_in_table(
+        database,
+        table_id,
+        note_check_constraint_presence,
+        &context
+    );
+
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to load CHECK constraint descriptors");
+        return rc;
+    }
+    if (context.has_check_constraint) {
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int note_check_constraint_presence(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    void *user_data
+) {
+    struct check_constraint_presence_context *context = user_data;
+
+    (void)check_constraint;
+    context->has_check_constraint = true;
     return MYLITE_OK;
 }
 
@@ -78372,6 +80417,21 @@ static int build_physical_index_name(int64_t index_id, char *destination, size_t
     return MYLITE_OK;
 }
 
+static int build_physical_check_constraint_name(
+    int64_t check_constraint_id,
+    char *destination,
+    size_t destination_size
+) {
+    int written =
+        snprintf(destination, destination_size, "_mylite_user_check_%" PRId64, check_constraint_id);
+
+    if (written < 0 || (size_t)written >= destination_size) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int build_create_table_sql(
     const struct planned_create_table *plan,
     const char *physical_name,
@@ -78397,6 +80457,9 @@ static int build_create_table_sql(
     }
     if (rc == MYLITE_OK) {
         rc = append_create_table_columns_sql(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_check_constraints_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -78443,6 +80506,36 @@ static int append_create_table_columns_sql(
         }
         if (rc == MYLITE_OK && !column->is_nullable) {
             rc = dynamic_string_append(string, " NOT NULL");
+        }
+    }
+
+    return rc;
+}
+
+static int append_create_table_check_constraints_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->check_constraint_count; ++index) {
+        const struct planned_check_constraint *check_constraint = &plan->check_constraints[index];
+
+        if (!check_constraint->is_enforced) {
+            continue;
+        }
+        rc = dynamic_string_append(string, ", CONSTRAINT ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, check_constraint->physical_name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " CHECK (");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, check_constraint->sqlite_expression);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
         }
     }
 
@@ -83315,6 +85408,76 @@ static int reset_insert_statement_after_constraint(sqlite3_stmt *statement) {
     return MYLITE_OK;
 }
 
+static int handle_check_constraint_violation(
+    struct mylite_db *database,
+    int64_t table_id,
+    bool ignore_errors,
+    bool *out_was_check_violation
+) {
+    const char *physical_name = NULL;
+    struct mylite_catalog_check_constraint_descriptor check_constraint = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_was_check_violation = false;
+    if (!sqlite_error_message_has_check_constraint(
+            sqlite3_errmsg(database->sqlite),
+            &physical_name
+        )) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_try_read_check_constraint_by_physical_name(
+        database,
+        table_id,
+        physical_name,
+        &check_constraint,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read CHECK constraint descriptor");
+        return rc;
+    }
+    if (!found) {
+        return MYLITE_OK;
+    }
+
+    *out_was_check_violation = true;
+    return set_or_warn_check_constraint_violation(database, &check_constraint, ignore_errors);
+}
+
+static bool sqlite_error_message_has_check_constraint(
+    const char *message,
+    const char **out_physical_name
+) {
+    static const char prefix[] = "CHECK constraint failed: ";
+    size_t prefix_length = sizeof(prefix) - 1U;
+
+    if (out_physical_name != NULL) {
+        *out_physical_name = NULL;
+    }
+    if (message == NULL || strncmp(message, prefix, prefix_length) != 0) {
+        return false;
+    }
+    if (out_physical_name != NULL) {
+        *out_physical_name = message + prefix_length;
+    }
+    return true;
+}
+
+static int set_or_warn_check_constraint_violation(
+    struct mylite_db *database,
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
+    bool ignore_errors
+) {
+    if (!ignore_errors) {
+        set_check_constraint_violated_error(database, check_constraint->name);
+        return MYLITE_ERROR;
+    }
+
+    return append_check_constraint_warning(database, check_constraint->name);
+}
+
 static int find_insert_unique_key_conflict(
     struct mylite_db *database,
     int sqlite_step_rc,
@@ -83440,6 +85603,18 @@ static int apply_insert_duplicate_key_update(
         if (sqlite_rc == SQLITE_DONE) {
             if (sqlite3_changes64(database->sqlite) > 0) {
                 counters->affected_rows += 2;
+            }
+        } else if (sqlite_status_is_constraint(sqlite_rc)) {
+            bool was_check_violation = false;
+
+            rc = handle_check_constraint_violation(
+                database,
+                plan->table.table_id,
+                false,
+                &was_check_violation
+            );
+            if (rc == MYLITE_OK && !was_check_violation) {
+                rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             }
         } else {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -87388,6 +89563,165 @@ static void set_duplicate_foreign_key_error(
         "HY000",
         message
     );
+}
+
+static void set_check_constraint_non_boolean_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_non_boolean,
+        "HY000",
+        "An expression of a check constraint is not boolean"
+    );
+}
+
+static void set_check_constraint_column_ref_error(
+    struct mylite_db *database,
+    const char *constraint_name,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column check constraint '%s' references other column '%s'",
+        constraint_name,
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_column_ref,
+        "HY000",
+        message
+    );
+}
+
+static void set_check_constraint_function_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_function,
+        "HY000",
+        "An expression of a check constraint contains disallowed function"
+    );
+}
+
+static void set_check_constraint_subquery_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_subquery,
+        "HY000",
+        "An expression of a check constraint contains a disallowed subquery"
+    );
+}
+
+static void set_check_constraint_variable_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_variable,
+        "HY000",
+        "An expression of a check constraint contains disallowed variable"
+    );
+}
+
+static void set_check_constraint_auto_increment_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_auto_increment,
+        "HY000",
+        "An expression of a check constraint cannot refer to an AUTO_INCREMENT column"
+    );
+}
+
+static void set_check_constraint_violated_error(
+    struct mylite_db *database,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Check constraint '%s' is violated.", constraint_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_violated,
+        "HY000",
+        message
+    );
+}
+
+static void set_check_constraint_unknown_column_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Check constraint contains column '%s' that does not exist",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_unknown_column,
+        "HY000",
+        message
+    );
+}
+
+static void set_duplicate_check_constraint_error(
+    struct mylite_db *database,
+    const char *check_constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Duplicate check constraint name '%s'",
+        check_constraint_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_duplicate_check_constraint,
+        "HY000",
+        message
+    );
+}
+
+static int append_check_constraint_warning(
+    struct mylite_db *database,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Check constraint '%s' is violated.", constraint_name);
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_violated,
+        "HY000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int append_duplicate_key_warning(

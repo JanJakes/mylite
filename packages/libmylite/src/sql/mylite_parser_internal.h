@@ -1275,6 +1275,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_ast_node *referenced_parts,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_check_constraint_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_token check_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *enforcement
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_check_enforcement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_node_kind kind
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_part_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *key_part

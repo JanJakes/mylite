@@ -4358,6 +4358,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     return definition;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_check_constraint_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_token check_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *enforcement
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&check_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *definition = NULL;
+
+    if (constraint_name != NULL) {
+        span = span_join(constraint_name->span, span);
+    }
+    if (enforcement != NULL) {
+        span = span_join(span, enforcement->span);
+    }
+
+    definition = make_node(state, MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION, span);
+    if (definition == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(definition, expression);
+    if (constraint_name != NULL) {
+        mylite_sql_ast_node_append_child(definition, constraint_name);
+    }
+    if (enforcement != NULL) {
+        mylite_sql_ast_node_append_child(definition, enforcement);
+    }
+    return definition;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_check_enforcement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_node_kind kind
+) {
+    return make_node(state, kind, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_part_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *key_part
@@ -5611,6 +5653,7 @@ static bool map_keyword_token(
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
+        {"ENFORCED", MYLITE_SQL_PARSE_ENFORCED},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"FULL", MYLITE_SQL_PARSE_FULL},

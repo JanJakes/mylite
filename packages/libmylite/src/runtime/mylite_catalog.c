@@ -10,7 +10,9 @@
 #include <string.h>
 
 enum {
-    catalog_table_count = 8,
+    catalog_table_count = 9,
+    pre_check_constraint_catalog_table_count = 8,
+    downgraded_catalog_with_check_constraint_table_count = 7,
     pre_foreign_key_catalog_table_count = 6,
     legacy_catalog_table_count = 4,
     catalog_schema_version_v5 = 5U,
@@ -25,6 +27,7 @@ enum {
     catalog_schema_version_v14 = 14U,
     catalog_schema_version_v15 = 15U,
     catalog_schema_version_v16 = 16U,
+    catalog_schema_version_v17 = 17U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -131,6 +134,20 @@ enum catalog_foreign_key_column_insert_bind_index {
     catalog_foreign_key_column_insert_generation_bind = 8,
 };
 
+enum catalog_check_constraint_insert_bind_index {
+    catalog_check_constraint_insert_check_constraint_id_bind = 1,
+    catalog_check_constraint_insert_table_id_bind = 2,
+    catalog_check_constraint_insert_name_bind = 3,
+    catalog_check_constraint_insert_physical_name_bind = 4,
+    catalog_check_constraint_insert_check_clause_bind = 5,
+    catalog_check_constraint_insert_sqlite_expression_bind = 6,
+    catalog_check_constraint_insert_is_enforced_bind = 7,
+    catalog_check_constraint_insert_name_is_generated_bind = 8,
+    catalog_check_constraint_insert_generated_ordinal_bind = 9,
+    catalog_check_constraint_insert_ordinal_position_bind = 10,
+    catalog_check_constraint_insert_generation_bind = 11,
+};
+
 enum catalog_table_select_column_index {
     catalog_table_select_table_id_column = 0,
     catalog_table_select_schema_id_column = 1,
@@ -220,6 +237,22 @@ enum catalog_foreign_key_column_select_column_index {
     catalog_foreign_key_column_select_updated_generation_column = 10,
 };
 
+enum catalog_check_constraint_select_column_index {
+    catalog_check_constraint_select_check_constraint_id_column = 0,
+    catalog_check_constraint_select_table_id_column = 1,
+    catalog_check_constraint_select_name_column = 2,
+    catalog_check_constraint_select_physical_name_column = 3,
+    catalog_check_constraint_select_check_clause_column = 4,
+    catalog_check_constraint_select_sqlite_expression_column = 5,
+    catalog_check_constraint_select_is_enforced_column = 6,
+    catalog_check_constraint_select_name_is_generated_column = 7,
+    catalog_check_constraint_select_generated_ordinal_column = 8,
+    catalog_check_constraint_select_ordinal_position_column = 9,
+    catalog_check_constraint_select_descriptor_version_column = 10,
+    catalog_check_constraint_select_created_generation_column = 11,
+    catalog_check_constraint_select_updated_generation_column = 12,
+};
+
 enum catalog_next_table_id_column_index {
     catalog_next_table_id_column = 0,
 };
@@ -271,6 +304,7 @@ static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite);
 static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite);
 static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite);
 static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite);
+static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -369,6 +403,7 @@ static int try_read_primary_index_by_table_id(
 static int read_next_table_id(sqlite3 *sqlite, int64_t *out_table_id);
 static int read_next_index_id(sqlite3 *sqlite, int64_t *out_index_id);
 static int read_next_foreign_key_id(sqlite3 *sqlite, int64_t *out_foreign_key_id);
+static int read_next_check_constraint_id(sqlite3 *sqlite, int64_t *out_check_constraint_id);
 static int materialize_schema(
     sqlite3_stmt *statement,
     struct mylite_catalog_schema_descriptor *out_schema
@@ -413,6 +448,10 @@ static int materialize_foreign_key_column(
     sqlite3_stmt *statement,
     struct mylite_catalog_foreign_key_column_descriptor *out_foreign_key_column
 );
+static int materialize_check_constraint(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+);
 static int insert_index_column_row(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -436,6 +475,8 @@ static int insert_foreign_key_column_row(
 );
 static int delete_foreign_keys_for_related_table(sqlite3 *sqlite, int64_t table_id);
 static int delete_foreign_keys_for_schema(sqlite3 *sqlite, int64_t schema_id);
+static int delete_check_constraints_for_table(sqlite3 *sqlite, int64_t table_id);
+static int delete_check_constraints_for_schema(sqlite3 *sqlite, int64_t schema_id);
 static int read_inserted_foreign_key(
     struct mylite_db *database,
     int64_t child_table_id,
@@ -447,6 +488,12 @@ static int read_inserted_foreign_key_column(
     int64_t foreign_key_id,
     int64_t ordinal_position,
     struct mylite_catalog_foreign_key_column_descriptor *out_foreign_key_column
+);
+static int read_inserted_check_constraint(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
 );
 static int read_inserted_index_column(
     struct mylite_db *database,
@@ -524,6 +571,7 @@ static int validate_foreign_key_callback(mylite_catalog_foreign_key_callback cal
 static int validate_foreign_key_column_callback(
     mylite_catalog_foreign_key_column_callback callback
 );
+static int validate_check_constraint_callback(mylite_catalog_check_constraint_callback callback);
 static int u64_to_i64(uint64_t value, int64_t *out_value);
 static int i64_to_u32(int64_t value, uint32_t *out_value);
 static int i64_to_u64(int64_t value, uint64_t *out_value);
@@ -539,6 +587,7 @@ static const char *catalog_indexes_table_name(void);
 static const char *catalog_index_columns_table_name(void);
 static const char *catalog_foreign_keys_table_name(void);
 static const char *catalog_foreign_key_columns_table_name(void);
+static const char *catalog_check_constraints_table_name(void);
 
 void mylite_catalog_init(struct mylite_catalog *catalog) {
     if (catalog == NULL) {
@@ -762,6 +811,30 @@ int mylite_catalog_allocate_foreign_key_id_in_mutation(
     }
 
     return read_next_foreign_key_id(database->sqlite, out_foreign_key_id);
+}
+
+int mylite_catalog_allocate_check_constraint_id_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t *out_check_constraint_id
+) {
+    int rc = MYLITE_OK;
+
+    if (out_check_constraint_id != NULL) {
+        *out_check_constraint_id = 0;
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc == MYLITE_OK) {
+        rc = validate_active_mutation(mutation);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_check_constraint_id == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return read_next_check_constraint_id(database->sqlite, out_check_constraint_id);
 }
 
 int mylite_catalog_insert_table_in_mutation(
@@ -1462,6 +1535,141 @@ int mylite_catalog_insert_foreign_key_column_in_mutation(
     );
 }
 
+int mylite_catalog_insert_check_constraint_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t check_constraint_id,
+    int64_t table_id,
+    const char *name,
+    const char *physical_name,
+    const char *check_clause,
+    const char *sqlite_expression,
+    bool is_enforced,
+    bool name_is_generated,
+    int64_t generated_ordinal,
+    int64_t ordinal_position,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_check_constraint != NULL) {
+        *out_check_constraint = (struct mylite_catalog_check_constraint_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc == MYLITE_OK) {
+        rc = validate_active_mutation(mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(check_constraint_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(check_clause, MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(sqlite_expression, MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_ordinal(generated_ordinal);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_ordinal(ordinal_position);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "INSERT INTO _mylite_catalog_check_constraints "
+        "(check_constraint_id, table_id, name, physical_name, check_clause, sqlite_expression, "
+        "is_enforced, name_is_generated, generated_ordinal, ordinal_position, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_check_constraint_insert_check_constraint_id_bind,
+            check_constraint_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_check_constraint_insert_table_id_bind, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_check_constraint_insert_name_bind, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            bind_text(statement, catalog_check_constraint_insert_physical_name_bind, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_check_constraint_insert_check_clause_bind, check_clause);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_check_constraint_insert_sqlite_expression_bind,
+            sqlite_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_check_constraint_insert_is_enforced_bind,
+            catalog_bool_value(is_enforced)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_check_constraint_insert_name_is_generated_bind,
+            catalog_bool_value(name_is_generated)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_check_constraint_insert_generated_ordinal_bind,
+            generated_ordinal
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_check_constraint_insert_ordinal_position_bind,
+            ordinal_position
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(
+            statement,
+            catalog_check_constraint_insert_generation_bind,
+            mutation->next_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc != MYLITE_OK || out_check_constraint == NULL) {
+        return rc;
+    }
+
+    return read_inserted_check_constraint(database, table_id, name, out_check_constraint);
+}
+
 static int insert_foreign_key_column_row(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -1613,6 +1821,45 @@ static int read_inserted_foreign_key_column(
 
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_foreign_key_column(statement, out_foreign_key_column);
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            if (sqlite_rc == SQLITE_DONE) {
+                rc = MYLITE_ERROR;
+            }
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_inserted_check_constraint(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_statement(
+        database->sqlite,
+        "SELECT check_constraint_id, table_id, name, physical_name, check_clause, "
+        "sqlite_expression, is_enforced, name_is_generated, generated_ordinal, "
+        "ordinal_position, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_check_constraints WHERE table_id = ?1 AND name = ?2",
+        &statement
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, name);
+    }
+    if (rc == MYLITE_OK) {
+        int sqlite_rc = sqlite3_step(statement);
+
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_check_constraint(statement, out_check_constraint);
         } else {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             if (sqlite_rc == SQLITE_DONE) {
@@ -1864,6 +2111,72 @@ int mylite_catalog_delete_foreign_key_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_delete_check_constraints_for_table_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_active_mutation(mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return delete_check_constraints_for_table(database->sqlite, table_id);
+}
+
+int mylite_catalog_rename_generated_check_constraints_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *table_name
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_active_mutation(mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_logical_object_name(table_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_check_constraints "
+        "SET name = ?1 || '_chk_' || generated_ordinal, "
+        "descriptor_version = descriptor_version + 1, updated_catalog_generation = ?2 "
+        "WHERE table_id = ?3 AND name_is_generated = 1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 2, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 3, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -1885,6 +2198,9 @@ int mylite_catalog_delete_table_in_mutation(
     }
 
     rc = delete_foreign_keys_for_related_table(database->sqlite, table_id);
+    if (rc == MYLITE_OK) {
+        rc = delete_check_constraints_for_table(database->sqlite, table_id);
+    }
 
     if (rc == MYLITE_OK) {
         rc = prepare_statement(
@@ -2254,6 +2570,9 @@ int mylite_catalog_delete_schema_in_mutation(
     }
 
     rc = delete_foreign_keys_for_schema(database->sqlite, schema_id);
+    if (rc == MYLITE_OK) {
+        rc = delete_check_constraints_for_schema(database->sqlite, schema_id);
+    }
 
     if (rc == MYLITE_OK) {
         rc = prepare_statement(
@@ -2414,6 +2733,43 @@ static int delete_foreign_keys_for_schema(sqlite3 *sqlite, int64_t schema_id) {
             &statement
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int delete_check_constraints_for_table(sqlite3 *sqlite, int64_t table_id) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_statement(
+        sqlite,
+        "DELETE FROM _mylite_catalog_check_constraints WHERE table_id = ?1",
+        &statement
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int delete_check_constraints_for_schema(sqlite3 *sqlite, int64_t schema_id) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_statement(
+        sqlite,
+        "DELETE FROM _mylite_catalog_check_constraints "
+        "WHERE table_id IN (SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1)",
+        &statement
+    );
+
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, 1, schema_id);
     }
@@ -3037,6 +3393,173 @@ int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
         rc = materialize_foreign_key_column(statement, &foreign_key_column);
         if (rc == MYLITE_OK) {
             rc = callback(&foreign_key_column, user_data);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_for_each_check_constraint_in_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    mylite_catalog_check_constraint_callback callback,
+    void *user_data
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_check_constraint_callback(callback);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "SELECT check_constraint_id, table_id, name, physical_name, check_clause, "
+        "sqlite_expression, is_enforced, name_is_generated, generated_ordinal, "
+        "ordinal_position, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_check_constraints WHERE table_id = ?1 ORDER BY name",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    while (rc == MYLITE_OK) {
+        struct mylite_catalog_check_constraint_descriptor check_constraint = {0};
+
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+
+        rc = materialize_check_constraint(statement, &check_constraint);
+        if (rc == MYLITE_OK) {
+            rc = callback(&check_constraint, user_data);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_for_each_check_constraint_in_schema(
+    struct mylite_db *database,
+    int64_t schema_id,
+    mylite_catalog_check_constraint_callback callback,
+    void *user_data
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_check_constraint_callback(callback);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "SELECT c.check_constraint_id, c.table_id, c.name, c.physical_name, c.check_clause, "
+        "c.sqlite_expression, c.is_enforced, c.name_is_generated, c.generated_ordinal, "
+        "c.ordinal_position, c.descriptor_version, c.created_catalog_generation, "
+        "c.updated_catalog_generation "
+        "FROM _mylite_catalog_check_constraints c "
+        "JOIN _mylite_catalog_tables t ON t.table_id = c.table_id "
+        "WHERE t.schema_id = ?1 ORDER BY c.name",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    while (rc == MYLITE_OK) {
+        struct mylite_catalog_check_constraint_descriptor check_constraint = {0};
+
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+
+        rc = materialize_check_constraint(statement, &check_constraint);
+        if (rc == MYLITE_OK) {
+            rc = callback(&check_constraint, user_data);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_try_read_check_constraint_by_physical_name(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *physical_name,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint,
+    bool *out_found
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (out_check_constraint != NULL) {
+        *out_check_constraint = (struct mylite_catalog_check_constraint_descriptor){0};
+    }
+    if (out_found != NULL) {
+        *out_found = false;
+    }
+    if (rc == MYLITE_OK && (out_check_constraint == NULL || out_found == NULL)) {
+        return MYLITE_MISUSE;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "SELECT check_constraint_id, table_id, name, physical_name, check_clause, "
+        "sqlite_expression, is_enforced, name_is_generated, generated_ordinal, "
+        "ordinal_position, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_check_constraints "
+        "WHERE table_id = ?1 AND physical_name = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        int sqlite_rc = sqlite3_step(statement);
+
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_check_constraint(statement, out_check_constraint);
+            *out_found = rc == MYLITE_OK;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
 
@@ -3818,7 +4341,10 @@ static int ensure_catalog_schema(struct mylite_db *database) {
         return initialize_catalog_schema(database);
     }
     if (table_count != legacy_catalog_table_count &&
-        table_count != pre_foreign_key_catalog_table_count && table_count != catalog_table_count) {
+        table_count != pre_foreign_key_catalog_table_count &&
+        table_count != downgraded_catalog_with_check_constraint_table_count &&
+        table_count != pre_check_constraint_catalog_table_count &&
+        table_count != catalog_table_count) {
         return MYLITE_ERROR;
     }
 
@@ -3934,6 +4460,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v16:
         rc = migrate_catalog_schema_v16_to_v17(sqlite);
+        next_schema_version = catalog_schema_version_v17;
+        break;
+    case catalog_schema_version_v17:
+        rc = migrate_catalog_schema_v17_to_v18(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -4499,6 +5029,40 @@ static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "CREATE TABLE IF NOT EXISTS _mylite_catalog_check_constraints ("
+        "check_constraint_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "physical_name TEXT NOT NULL,"
+        "check_clause TEXT NOT NULL,"
+        "sqlite_expression TEXT NOT NULL,"
+        "is_enforced INTEGER NOT NULL CHECK(is_enforced IN (0, 1)),"
+        "name_is_generated INTEGER NOT NULL CHECK(name_is_generated IN (0, 1)),"
+        "generated_ordinal INTEGER NOT NULL CHECK(generated_ordinal > 0),"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, name),"
+        "UNIQUE(table_id, physical_name),"
+        "UNIQUE(table_id, ordinal_position)"
+        ");"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 18, minimum_reader_schema_version = 18;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -4561,6 +5125,16 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
             "FROM _mylite_catalog_foreign_key_columns WHERE 0"
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = validate_select_shape(
+            sqlite,
+            "SELECT check_constraint_id, table_id, name, physical_name, check_clause, "
+            "sqlite_expression, is_enforced, name_is_generated, generated_ordinal, "
+            "ordinal_position, descriptor_version, created_catalog_generation, "
+            "updated_catalog_generation "
+            "FROM _mylite_catalog_check_constraints WHERE 0"
+        );
+    }
 
     return rc;
 }
@@ -4573,22 +5147,21 @@ static int validate_select_shape(sqlite3 *sqlite, const char *sql) {
 }
 
 static int initialize_catalog_schema(struct mylite_db *database) {
-    static const char *sql =
-        "BEGIN IMMEDIATE;"
+    static const char *const sql_statements[] = {
         "CREATE TABLE _mylite_catalog_state ("
         "singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),"
         "schema_version INTEGER NOT NULL,"
         "minimum_reader_schema_version INTEGER NOT NULL,"
         "catalog_generation INTEGER NOT NULL,"
         "created_with_file_format_version INTEGER NOT NULL"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_schemas ("
         "schema_id INTEGER PRIMARY KEY,"
         "name TEXT NOT NULL UNIQUE,"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_tables ("
         "table_id INTEGER PRIMARY KEY,"
         "schema_id INTEGER NOT NULL,"
@@ -4602,7 +5175,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(schema_id, name)"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_columns ("
         "column_id INTEGER PRIMARY KEY,"
         "table_id INTEGER NOT NULL,"
@@ -4625,7 +5198,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(table_id, ordinal_position),"
         "UNIQUE(table_id, name)"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
         "table_id INTEGER NOT NULL,"
@@ -4637,7 +5210,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(table_id, name)"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_index_columns ("
         "index_column_id INTEGER PRIMARY KEY,"
         "index_id INTEGER NOT NULL,"
@@ -4651,7 +5224,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(index_id, ordinal_position),"
         "UNIQUE(index_id, column_id)"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_foreign_keys ("
         "foreign_key_id INTEGER PRIMARY KEY,"
         "child_table_id INTEGER NOT NULL,"
@@ -4666,7 +5239,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(child_table_id, name)"
-        ");"
+        ");",
         "CREATE TABLE _mylite_catalog_foreign_key_columns ("
         "foreign_key_column_id INTEGER PRIMARY KEY,"
         "foreign_key_id INTEGER NOT NULL,"
@@ -4681,16 +5254,42 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(foreign_key_id, ordinal_position)"
-        ");"
+        ");",
+        "CREATE TABLE _mylite_catalog_check_constraints ("
+        "check_constraint_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "physical_name TEXT NOT NULL,"
+        "check_clause TEXT NOT NULL,"
+        "sqlite_expression TEXT NOT NULL,"
+        "is_enforced INTEGER NOT NULL CHECK(is_enforced IN (0, 1)),"
+        "name_is_generated INTEGER NOT NULL CHECK(name_is_generated IN (0, 1)),"
+        "generated_ordinal INTEGER NOT NULL CHECK(generated_ordinal > 0),"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, name),"
+        "UNIQUE(table_id, physical_name),"
+        "UNIQUE(table_id, ordinal_position)"
+        ");",
         "INSERT INTO _mylite_catalog_state "
         "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
         "created_with_file_format_version) "
         "VALUES (1, " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
-        ", " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ", 1, 1);"
-        "COMMIT;";
+        ", " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ", 1, 1);",
+    };
     struct mylite_catalog catalog = {.initialized = false};
-    int rc = execute_sql(database->sqlite, sql);
+    int rc = execute_sql(database->sqlite, "BEGIN IMMEDIATE;");
 
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(sql_statements) / sizeof(sql_statements[0U]);
+         ++index) {
+        rc = execute_sql(database->sqlite, sql_statements[index]);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sql(database->sqlite, "COMMIT;");
+    }
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(database->sqlite);
         return rc;
@@ -4714,6 +5313,7 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
         catalog_index_columns_name_bind = 6,
         catalog_foreign_keys_name_bind = 7,
         catalog_foreign_key_columns_name_bind = 8,
+        catalog_check_constraints_name_bind = 9,
     };
 
     sqlite3_stmt *statement = NULL;
@@ -4725,7 +5325,7 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
         sqlite,
         "SELECT count(*) FROM sqlite_master "
         "WHERE type = 'table' "
-        "AND name IN (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "AND name IN (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -4759,6 +5359,13 @@ static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
             statement,
             catalog_foreign_key_columns_name_bind,
             catalog_foreign_key_columns_table_name()
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_check_constraints_name_bind,
+            catalog_check_constraints_table_name()
         );
     }
     if (rc == MYLITE_OK) {
@@ -5608,6 +6215,33 @@ static int read_next_foreign_key_id(sqlite3 *sqlite, int64_t *out_foreign_key_id
     return finalize_statement(statement, rc);
 }
 
+static int read_next_check_constraint_id(sqlite3 *sqlite, int64_t *out_check_constraint_id) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT COALESCE(MAX(check_constraint_id), 0) + 1 "
+        "FROM _mylite_catalog_check_constraints",
+        &statement
+    );
+
+    *out_check_constraint_id = 0;
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = checked_column_i64(statement, 0, out_check_constraint_id);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(*out_check_constraint_id);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 static int materialize_schema(
     sqlite3_stmt *statement,
     struct mylite_catalog_schema_descriptor *out_schema
@@ -6267,6 +6901,116 @@ static int materialize_foreign_key_column(
     return rc;
 }
 
+static int materialize_check_constraint(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+) {
+    int64_t is_enforced = 0;
+    int64_t name_is_generated = 0;
+    int rc = checked_column_i64(
+        statement,
+        catalog_check_constraint_select_check_constraint_id_column,
+        &out_check_constraint->check_constraint_id
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_check_constraint_select_table_id_column,
+            &out_check_constraint->table_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_check_constraint_select_name_column,
+            out_check_constraint->name,
+            sizeof(out_check_constraint->name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_check_constraint_select_physical_name_column,
+            out_check_constraint->physical_name,
+            sizeof(out_check_constraint->physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_check_constraint_select_check_clause_column,
+            out_check_constraint->check_clause,
+            sizeof(out_check_constraint->check_clause)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_check_constraint_select_sqlite_expression_column,
+            out_check_constraint->sqlite_expression,
+            sizeof(out_check_constraint->sqlite_expression)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_check_constraint_select_is_enforced_column,
+            &is_enforced
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_catalog_bool_i64(is_enforced, &out_check_constraint->is_enforced);
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_check_constraint_select_name_is_generated_column,
+            &name_is_generated
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_catalog_bool_i64(name_is_generated, &out_check_constraint->name_is_generated);
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_check_constraint_select_generated_ordinal_column,
+            &out_check_constraint->generated_ordinal
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_check_constraint_select_ordinal_position_column,
+            &out_check_constraint->ordinal_position
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_check_constraint_select_descriptor_version_column,
+            &out_check_constraint->descriptor_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_check_constraint_select_created_generation_column,
+            &out_check_constraint->created_catalog_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_check_constraint_select_updated_generation_column,
+            &out_check_constraint->updated_catalog_generation
+        );
+    }
+
+    return rc;
+}
+
 static int checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value) {
     if (sqlite3_column_type(statement, index) != SQLITE_INTEGER) {
         return MYLITE_ERROR;
@@ -6843,6 +7587,14 @@ static int validate_foreign_key_column_callback(
     return MYLITE_OK;
 }
 
+static int validate_check_constraint_callback(mylite_catalog_check_constraint_callback callback) {
+    if (callback == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
 static int u64_to_i64(uint64_t value, int64_t *out_value) {
     if (value > INT64_MAX) {
         return MYLITE_ERROR;
@@ -6929,4 +7681,8 @@ static const char *catalog_foreign_keys_table_name(void) {
 
 static const char *catalog_foreign_key_columns_table_name(void) {
     return "_mylite_catalog_foreign_key_columns";
+}
+
+static const char *catalog_check_constraints_table_name(void) {
+    return "_mylite_catalog_check_constraints";
 }

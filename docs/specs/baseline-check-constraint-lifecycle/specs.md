@@ -45,7 +45,8 @@ The expectation script
 records runtime probes for this feature. Observed behavior shaping this slice:
 
 - `CREATE TABLE` accepts table-level and column `CHECK` constraints with
-  optional `CONSTRAINT name` and optional `ENFORCED` / `NOT ENFORCED`.
+  optional bare `CONSTRAINT`, optional `CONSTRAINT name`, and optional
+  `ENFORCED` / `NOT ENFORCED`.
 - Omitted names are generated as `<table>_chk_<n>`.
 - `CHECK` names are unique per schema across `CHECK` constraints, but they may
   match names of unique keys, foreign keys, or indexes. The same `CHECK` name
@@ -68,7 +69,8 @@ records runtime probes for this feature. Observed behavior shaping this slice:
   names from the target table name, including originally explicit names.
 - `CREATE TABLE ... SELECT` omits check constraints.
 - `RENAME TABLE` renames generated check names to the new table prefix while
-  preserving explicit names.
+  preserving explicit names. Rename fails if the resulting check names would
+  collide in the target schema.
 - `DROP TABLE` removes check metadata.
 - `SHOW CREATE TABLE` renders check constraints after key and foreign-key
   lines, sorted by logical check name in observed cases. `NOT ENFORCED`
@@ -88,9 +90,9 @@ records runtime probes for this feature. Observed behavior shaping this slice:
 Supported DDL:
 
 - persistent base tables only;
-- table-level `[CONSTRAINT name] CHECK (expr) [ENFORCED | NOT ENFORCED]`
+- table-level `[CONSTRAINT [name]] CHECK (expr) [ENFORCED | NOT ENFORCED]`
   items inside `CREATE TABLE`;
-- inline column `[CONSTRAINT name] CHECK (expr) [ENFORCED | NOT ENFORCED]`
+- inline column `[CONSTRAINT [name]] CHECK (expr) [ENFORCED | NOT ENFORCED]`
   attributes inside supported column definitions;
 - omitted-name generation as `<table>_chk_<n>`, with schema-level check-name
   duplicate detection;
@@ -104,19 +106,18 @@ Supported expression subset:
 
 - unqualified descriptor column references from the same table;
 - inline column checks may reference only the containing column;
-- supported integer-family, `DECIMAL`, approximate numeric, canonical temporal,
-  `YEAR`, `BIT`, and ASCII text descriptors may participate only where their
-  current physical storage and conversion path can be safely translated to a
-  SQLite check expression; first implementation tests focus on integer-family
-  and `NULL` values;
+- integer-family descriptor columns currently stored as SQLite `INTEGER`;
 - decimal integer literals with optional unary sign;
 - `TRUE` and `FALSE` constants;
-- `NULL` only as the right operand of `IS NULL` / `IS NOT NULL`;
+- `NULL` literals in admitted boolean expressions, including `IS NULL`,
+  `IS NOT NULL`, and comparisons where MySQL's `UNKNOWN` result should pass
+  an enforced check;
 - parentheses;
 - unary plus and unary minus on numeric terms;
 - arithmetic `+`, `-`, and `*` over admitted numeric terms;
 - comparisons `=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`;
-- `IS NULL` and `IS NOT NULL`.
+- `IS NULL` and `IS NOT NULL`;
+- `AND`, `OR`, and unary `NOT` over admitted boolean terms.
 
 Supported metadata:
 
@@ -144,11 +145,15 @@ Out of scope:
 
 - temporary tables;
 - `ALTER TABLE ADD CHECK`, `DROP CHECK`, and `ALTER CHECK ... ENFORCED`;
+- altering CHECK-bearing tables through the current table-rebuild actions
+  (`DROP COLUMN`, `RENAME COLUMN`, `MODIFY`, `CHANGE`, `ORDER BY`, and
+  `FORCE`) until those planners can rebuild or rewrite check descriptors
+  safely;
 - deterministic function support in check expressions;
 - string literals, decimal/float literals, hex/bit literals, temporal literals,
   parameters, variables, functions, stored functions, subqueries, generated
   columns, expression default reuse, collations, casts, `IN`, `BETWEEN`,
-  `LIKE`, `REGEXP`, `AND`, `OR`, `XOR`, and `NOT`;
+  `LIKE`, `REGEXP`, and `XOR`;
 - `CHECK` dependency rules for foreign-key referential actions beyond rejecting
   unsupported action forms already outside the current FK slice;
 - broad `INSERT ... SELECT`, `REPLACE ... SELECT`, or
@@ -200,13 +205,19 @@ column_attribute ::= DEFAULT default_value.
 column_attribute ::= AUTO_INCREMENT.
 column_attribute ::= PRIMARY KEY.
 column_attribute ::= UNIQUE.
-column_attribute ::= check_constraint_definition.
+column_attribute ::= column_check_constraint_definition.
+column_attribute ::= ENFORCED.
+column_attribute ::= NOT ENFORCED.
 
 check_constraint_definition ::=
-    constraint_name_opt CHECK LPAREN check_expression RPAREN check_enforcement_opt.
+    check_constraint_name_opt CHECK LPAREN check_expression RPAREN check_enforcement_opt.
 
-constraint_name_opt ::= .
-constraint_name_opt ::= CONSTRAINT identifier.
+column_check_constraint_definition ::=
+    check_constraint_name_opt CHECK LPAREN check_expression RPAREN.
+
+check_constraint_name_opt ::= .
+check_constraint_name_opt ::= CONSTRAINT.
+check_constraint_name_opt ::= CONSTRAINT identifier.
 
 check_enforcement_opt ::= .
 check_enforcement_opt ::= ENFORCED.
@@ -240,6 +251,11 @@ to `<new_table>_chk_<generated_ordinal>`, while `physical_name` remains stable
 because MyLite does not rebuild the physical SQLite table. When SQLite reports
 a physical check failure, MyLite resolves the physical name back to the current
 logical descriptor name before emitting diagnostics.
+
+Before a table rename mutates descriptors, MyLite computes every resulting
+logical check name and rejects the rename if two checks on the moved table
+would share a name or if any resulting name already exists on another table in
+the destination schema.
 
 Check names are compared using the current descriptor identifier comparison
 rules. This slice treats names as case-insensitive for deterministic MyLite
@@ -284,7 +300,7 @@ For enforced checks, MyLite emits table constraints in the generated physical
 
 ```sql
 CREATE TABLE "_mylite_user_table_<table_id>" (
-    "_mylite_column_<column_id>" ...,
+    "<descriptor_column_name>" ...,
     CONSTRAINT "<physical_check_name>" CHECK (<sqlite_expression>)
 )
 ```
@@ -293,8 +309,8 @@ CREATE TABLE "_mylite_user_table_<table_id>" (
 stored only in MyLite descriptors and metadata views.
 
 All generated SQLite identifiers are quoted. Check expressions are assembled
-only from descriptor-resolved physical column identifiers and validated literal
-tokens. No user SQL fragment is interpolated without validation. This uses
+only from descriptor-resolved column identifiers and validated literal tokens.
+No user SQL fragment is interpolated without validation. This uses
 MyLite wrapper/translation plus public SQLite prepared statements and requires
 no SQLite fork hook.
 
@@ -384,6 +400,9 @@ Supported diagnostics:
 - unsupported function in a check expression: `3814 / HY000` when the function
   name is available, otherwise a deterministic unsupported-expression
   diagnostic;
+- unsupported ALTER actions on a table that already owns check descriptors:
+  deterministic MyLite unsupported diagnostics before descriptor or physical
+  mutation;
 - unsupported literal or expression kind: deterministic MyLite unsupported
   diagnostic unless a MySQL-compatible code above applies;
 - enforced check violation in plain DML: `3819 / HY000`;
@@ -416,6 +435,7 @@ payload and VFS invariants are preserved.
 Tests must cover:
 
 - table-level and inline column checks with explicit and generated names;
+- table-level and inline column checks with bare `CONSTRAINT CHECK` syntax;
 - `ENFORCED`, omitted enforcement, and `NOT ENFORCED`;
 - `SHOW CREATE TABLE` rendering, including generated names, explicit names,
   sorted output, and `NOT ENFORCED`;
@@ -430,6 +450,9 @@ Tests must cover:
 - `CREATE TABLE ... LIKE` check cloning and target-generated names;
 - `CREATE TABLE ... SELECT` omission of checks;
 - table rename generated-name updates and explicit-name preservation;
+- table rename target-schema and generated-name collision rejection;
+- deterministic rejection of current table-rebuild ALTER actions on
+  CHECK-bearing tables;
 - drop-table metadata cleanup;
 - duplicate check names in one schema, same names in different schemas, and
   names matching non-check constraints;

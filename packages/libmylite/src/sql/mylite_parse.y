@@ -38,7 +38,7 @@
 %left BITWISE_XOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
-%fallback IDENTIFIER SAVEPOINT.
+%fallback IDENTIFIER SAVEPOINT ENFORCED.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -3863,9 +3863,6 @@ identifier(A) ::= ROLLBACK(T). {
 identifier(A) ::= ANALYZE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
-identifier(A) ::= CHECK(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
-}
 identifier(A) ::= OPTIMIZE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -3919,6 +3916,9 @@ create_table_item(A) ::= unique_index_definition(B). {
 create_table_item(A) ::= foreign_key_definition(B). {
     A = B;
 }
+create_table_item(A) ::= check_constraint_definition(B). {
+    A = B;
+}
 
 primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
@@ -3954,6 +3954,38 @@ foreign_key_definition(A) ::=
     constraint_name_opt(N) FOREIGN(F) KEY LPAREN foreign_key_part_list(C) RPAREN
     REFERENCES table_name(P) LPAREN foreign_key_part_list(RL) RPAREN(R). {
     A = mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R);
+}
+
+check_constraint_definition(A) ::=
+    check_constraint_name_opt(N) CHECK(C) LPAREN expression(E) RPAREN(R) check_enforcement_opt(O). {
+    A = mylite_sql_parser_make_check_constraint_definition(state, N, C, E, R, O);
+}
+
+column_check_constraint_definition(A) ::=
+    check_constraint_name_opt(N) CHECK(C) LPAREN expression(E) RPAREN(R). {
+    A = mylite_sql_parser_make_check_constraint_definition(state, N, C, E, R, NULL);
+}
+
+check_constraint_name_opt(A) ::= . {
+    A = NULL;
+}
+check_constraint_name_opt(A) ::= CONSTRAINT. {
+    A = NULL;
+}
+check_constraint_name_opt(A) ::= CONSTRAINT identifier(B). {
+    A = B;
+}
+
+check_enforcement_opt(A) ::= . {
+    A = NULL;
+}
+check_enforcement_opt(A) ::= ENFORCED(E). {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, E, MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED);
+}
+check_enforcement_opt(A) ::= NOT(N) ENFORCED. {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, N, MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED);
 }
 
 constraint_name_opt(A) ::= . {
@@ -4054,6 +4086,17 @@ column_attribute(A) ::= UNIQUE(U) KEY(K). {
 }
 column_attribute(A) ::= AUTO_INCREMENT(T). {
     A = mylite_sql_parser_make_column_auto_increment(state, T);
+}
+column_attribute(A) ::= column_check_constraint_definition(B). {
+    A = B;
+}
+column_attribute(A) ::= ENFORCED(E). {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, E, MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED);
+}
+column_attribute(A) ::= NOT(N) ENFORCED. {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, N, MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED);
 }
 
 column_type(A) ::= integer_type(T). {

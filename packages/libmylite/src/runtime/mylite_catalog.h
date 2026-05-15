@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 17
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 17
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 18
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 18
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -24,6 +24,7 @@ enum {
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 1024,
     MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY = 1024,
+    MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY = 4096,
 };
 
 #define MYLITE_CATALOG_DEFAULT_TABLE_CHARSET "utf8mb4"
@@ -168,6 +169,22 @@ struct mylite_catalog_foreign_key_column_descriptor {
     uint64_t updated_catalog_generation;
 };
 
+struct mylite_catalog_check_constraint_descriptor {
+    int64_t check_constraint_id;
+    int64_t table_id;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char check_clause[MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY];
+    char sqlite_expression[MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY];
+    bool is_enforced;
+    bool name_is_generated;
+    int64_t generated_ordinal;
+    int64_t ordinal_position;
+    uint64_t descriptor_version;
+    uint64_t created_catalog_generation;
+    uint64_t updated_catalog_generation;
+};
+
 struct mylite_catalog_mutation {
     bool active;
     uint64_t next_generation;
@@ -199,6 +216,10 @@ typedef int (*mylite_catalog_foreign_key_callback)(
 );
 typedef int (*mylite_catalog_foreign_key_column_callback)(
     const struct mylite_catalog_foreign_key_column_descriptor *foreign_key_column,
+    void *user_data
+);
+typedef int (*mylite_catalog_check_constraint_callback)(
+    const struct mylite_catalog_check_constraint_descriptor *check_constraint,
     void *user_data
 );
 
@@ -238,6 +259,11 @@ int mylite_catalog_allocate_foreign_key_id_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
     int64_t *out_foreign_key_id
+);
+int mylite_catalog_allocate_check_constraint_id_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t *out_check_constraint_id
 );
 int mylite_catalog_insert_table_in_mutation(
     struct mylite_db *database,
@@ -319,6 +345,21 @@ int mylite_catalog_insert_foreign_key_column_in_mutation(
     int64_t position_in_unique_constraint,
     struct mylite_catalog_foreign_key_column_descriptor *out_foreign_key_column
 );
+int mylite_catalog_insert_check_constraint_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t check_constraint_id,
+    int64_t table_id,
+    const char *name,
+    const char *physical_name,
+    const char *check_clause,
+    const char *sqlite_expression,
+    bool is_enforced,
+    bool name_is_generated,
+    int64_t generated_ordinal,
+    int64_t ordinal_position,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint
+);
 int mylite_catalog_delete_index_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -342,6 +383,17 @@ int mylite_catalog_delete_foreign_key_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t child_table_id,
     int64_t foreign_key_id
+);
+int mylite_catalog_delete_check_constraints_for_table_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
+);
+int mylite_catalog_rename_generated_check_constraints_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *table_name
 );
 int mylite_catalog_delete_table_in_mutation(
     struct mylite_db *database,
@@ -459,6 +511,25 @@ int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     int64_t foreign_key_id,
     mylite_catalog_foreign_key_column_callback callback,
     void *user_data
+);
+int mylite_catalog_for_each_check_constraint_in_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    mylite_catalog_check_constraint_callback callback,
+    void *user_data
+);
+int mylite_catalog_for_each_check_constraint_in_schema(
+    struct mylite_db *database,
+    int64_t schema_id,
+    mylite_catalog_check_constraint_callback callback,
+    void *user_data
+);
+int mylite_catalog_try_read_check_constraint_by_physical_name(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *physical_name,
+    struct mylite_catalog_check_constraint_descriptor *out_check_constraint,
+    bool *out_found
 );
 int mylite_catalog_try_read_primary_index_by_table_id(
     struct mylite_db *database,

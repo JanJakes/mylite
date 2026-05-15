@@ -1243,7 +1243,7 @@ static int test_primary_key_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only unqualified key columns",
+            .message_part = "near '.'",
         }
     );
     failures += expect_statement_ok(
@@ -1292,7 +1292,7 @@ static int test_primary_key_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "PRIMARY KEY supports only unqualified key columns",
+            .message_part = "near '.'",
         }
     );
     failures += execute_error(

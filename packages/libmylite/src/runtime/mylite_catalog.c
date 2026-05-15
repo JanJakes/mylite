@@ -24,6 +24,7 @@ enum {
     catalog_schema_version_v13 = 13U,
     catalog_schema_version_v14 = 14U,
     catalog_schema_version_v15 = 15U,
+    catalog_schema_version_v16 = 16U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -102,7 +103,8 @@ enum catalog_index_column_insert_bind_index {
     catalog_index_column_insert_column_id_bind = 3,
     catalog_index_column_insert_ordinal_position_bind = 4,
     catalog_index_column_insert_prefix_length_bind = 5,
-    catalog_index_column_insert_generation_bind = 6,
+    catalog_index_column_insert_sort_direction_bind = 6,
+    catalog_index_column_insert_generation_bind = 7,
 };
 
 enum catalog_foreign_key_insert_bind_index {
@@ -183,9 +185,10 @@ enum catalog_index_column_select_column_index {
     catalog_index_column_select_column_id_column = 3,
     catalog_index_column_select_ordinal_position_column = 4,
     catalog_index_column_select_prefix_length_column = 5,
-    catalog_index_column_select_descriptor_version_column = 6,
-    catalog_index_column_select_created_generation_column = 7,
-    catalog_index_column_select_updated_generation_column = 8,
+    catalog_index_column_select_sort_direction_column = 6,
+    catalog_index_column_select_descriptor_version_column = 7,
+    catalog_index_column_select_created_generation_column = 8,
+    catalog_index_column_select_updated_generation_column = 9,
 };
 
 enum catalog_foreign_key_select_column_index {
@@ -267,6 +270,7 @@ static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite);
 static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite);
 static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite);
 static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite);
+static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -416,7 +420,8 @@ static int insert_index_column_row(
     int64_t table_id,
     int64_t column_id,
     int64_t ordinal_position,
-    const int64_t *prefix_length
+    const int64_t *prefix_length,
+    enum mylite_catalog_index_sort_direction sort_direction
 );
 static int insert_foreign_key_column_row(
     struct mylite_db *database,
@@ -1103,6 +1108,7 @@ int mylite_catalog_insert_index_column_in_mutation(
     int64_t column_id,
     int64_t ordinal_position,
     const int64_t *prefix_length,
+    enum mylite_catalog_index_sort_direction sort_direction,
     struct mylite_catalog_index_column_descriptor *out_index_column
 ) {
     int rc = MYLITE_OK;
@@ -1140,6 +1146,10 @@ int mylite_catalog_insert_index_column_in_mutation(
             return rc;
         }
     }
+    if (sort_direction != MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC &&
+        sort_direction != MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+        return MYLITE_MISUSE;
+    }
 
     rc = insert_index_column_row(
         database,
@@ -1148,7 +1158,8 @@ int mylite_catalog_insert_index_column_in_mutation(
         table_id,
         column_id,
         ordinal_position,
-        prefix_length
+        prefix_length,
+        sort_direction
     );
     if (rc != MYLITE_OK || out_index_column == NULL) {
         return rc;
@@ -1164,7 +1175,8 @@ static int insert_index_column_row(
     int64_t table_id,
     int64_t column_id,
     int64_t ordinal_position,
-    const int64_t *prefix_length
+    const int64_t *prefix_length,
+    enum mylite_catalog_index_sort_direction sort_direction
 ) {
     sqlite3_stmt *statement = NULL;
     bool has_prefix_length = prefix_length != NULL;
@@ -1178,9 +1190,9 @@ static int insert_index_column_row(
     rc = prepare_statement(
         database->sqlite,
         "INSERT INTO _mylite_catalog_index_columns "
-        "(index_id, table_id, column_id, ordinal_position, prefix_length, descriptor_version, "
-        "created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+        "(index_id, table_id, column_id, ordinal_position, prefix_length, sort_direction, "
+        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -1205,6 +1217,13 @@ static int insert_index_column_row(
             catalog_index_column_insert_prefix_length_bind,
             has_prefix_length,
             prefix_length_value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_index_column_insert_sort_direction_bind,
+            (int64_t)sort_direction
         );
     }
     if (rc == MYLITE_OK) {
@@ -1233,7 +1252,7 @@ static int read_inserted_index_column(
     rc = prepare_statement(
         database->sqlite,
         "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
-        "prefix_length, "
+        "prefix_length, sort_direction, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_index_columns "
         "WHERE index_id = ?1 AND ordinal_position = ?2",
@@ -2773,7 +2792,7 @@ int mylite_catalog_for_each_index_column_in_index(
     rc = prepare_statement(
         database->sqlite,
         "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
-        "prefix_length, "
+        "prefix_length, sort_direction, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_index_columns "
         "WHERE index_id = ?1 ORDER BY ordinal_position",
@@ -3853,6 +3872,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v15:
         rc = migrate_catalog_schema_v15_to_v16(sqlite);
+        next_schema_version = catalog_schema_version_v16;
+        break;
+    case catalog_schema_version_v16:
+        rc = migrate_catalog_schema_v16_to_v17(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -4400,6 +4423,24 @@ static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite) {
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "ALTER TABLE _mylite_catalog_index_columns "
+                             "ADD COLUMN sort_direction INTEGER NOT NULL DEFAULT 1 "
+                             "CHECK(sort_direction IN (1, 2));"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 17, minimum_reader_schema_version = 17;"
+                             "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -4439,7 +4480,7 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
-            "prefix_length, "
+            "prefix_length, sort_direction, "
             "descriptor_version, created_catalog_generation, updated_catalog_generation "
             "FROM _mylite_catalog_index_columns WHERE 0"
         );
@@ -4546,6 +4587,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "column_id INTEGER NOT NULL,"
         "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
         "prefix_length INTEGER CHECK(prefix_length IS NULL OR prefix_length > 0),"
+        "sort_direction INTEGER NOT NULL CHECK(sort_direction IN (1, 2)),"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -5946,6 +5988,22 @@ static int materialize_index_column(
             catalog_index_column_select_prefix_length_column,
             &out_index_column->prefix_length
         );
+    }
+    if (rc == MYLITE_OK) {
+        int64_t sort_direction = 0;
+
+        rc = checked_column_i64(
+            statement,
+            catalog_index_column_select_sort_direction_column,
+            &sort_direction
+        );
+        if (rc == MYLITE_OK && (sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC ||
+                                sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC)) {
+            out_index_column->sort_direction =
+                (enum mylite_catalog_index_sort_direction)sort_direction;
+        } else if (rc == MYLITE_OK) {
+            rc = MYLITE_ERROR;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = checked_column_u64(

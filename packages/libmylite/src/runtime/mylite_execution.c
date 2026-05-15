@@ -1400,6 +1400,7 @@ struct planned_secondary_index_part {
     size_t column_index;
     bool has_prefix_length;
     int64_t prefix_length;
+    enum mylite_catalog_index_sort_direction sort_direction;
 };
 
 struct planned_secondary_index {
@@ -1414,6 +1415,7 @@ struct planned_secondary_index {
 
 struct planned_primary_key_part {
     size_t column_index;
+    enum mylite_catalog_index_sort_direction sort_direction;
 };
 
 struct planned_foreign_key_part {
@@ -7611,7 +7613,8 @@ static int append_alter_table_primary_key_part(
     struct planned_alter_table_add_primary_key *plan,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    const char *column_name
+    const char *column_name,
+    enum mylite_catalog_index_sort_direction sort_direction
 );
 static int reserve_alter_table_primary_key_parts(
     struct mylite_db *database,
@@ -11049,10 +11052,14 @@ static const struct mylite_sql_ast_node *secondary_index_part_column_node(
 static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
     const struct mylite_sql_ast_node *part
 );
+static enum mylite_catalog_index_sort_direction index_part_sort_direction(
+    const struct mylite_sql_ast_node *part
+);
 static int mark_primary_key_column(
     struct mylite_db *database,
     struct planned_create_table *plan,
-    size_t column_index
+    size_t column_index,
+    enum mylite_catalog_index_sort_direction sort_direction
 );
 static int reserve_planned_primary_key_parts(
     struct mylite_db *database,
@@ -22187,6 +22194,9 @@ static int append_information_schema_statistics_base_index_row(
         const struct loaded_index_part *part = &index->parts[part_index];
         char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const char *collation =
+            part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
+                                                                                          : "A";
         const char *prefix_value = NULL;
 
         if (part->column.is_nullable) {
@@ -22213,7 +22223,7 @@ static int append_information_schema_statistics_base_index_row(
             index->index.name,
             sequence,
             part->column.name,
-            "A",
+            collation,
             cardinality,
             prefix_value,
             NULL,
@@ -26907,6 +26917,10 @@ static int append_show_create_table_index_part(
             rc = dynamic_string_append_char(string, ')');
         }
     }
+    if (rc == MYLITE_OK &&
+        part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+        rc = dynamic_string_append(string, " DESC");
+    }
 
     return rc;
 }
@@ -28029,7 +28043,12 @@ static int apply_create_table_inline_primary_key(
         return MYLITE_ERROR;
     }
 
-    return mark_primary_key_column(database, plan, column_index);
+    return mark_primary_key_column(
+        database,
+        plan,
+        column_index,
+        MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC
+    );
 }
 
 static int apply_create_table_primary_key_definition(
@@ -28056,11 +28075,14 @@ static int apply_create_table_primary_key_definition(
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
         size_t column_index = 0U;
 
-        if (part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
+        enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
+
+        if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
             set_unsupported_error(database, "PRIMARY KEY supports only unqualified key columns");
             return MYLITE_ERROR;
         }
-        rc = copy_identifier_text(part, column_name, sizeof(column_name), database);
+        rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -28085,7 +28107,7 @@ static int apply_create_table_primary_key_definition(
             set_primary_key_part_null_error(database);
             return MYLITE_ERROR;
         }
-        rc = mark_primary_key_column(database, plan, column_index);
+        rc = mark_primary_key_column(database, plan, column_index, sort_direction);
         part = part->next_sibling;
     }
     if (rc == MYLITE_OK) {
@@ -28143,6 +28165,7 @@ static int apply_create_table_inline_unique_indexes(
                     .column_index = column_index,
                     .has_prefix_length = false,
                     .prefix_length = 0,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
                 };
                 index->part_count = 1U;
             }
@@ -28968,6 +28991,7 @@ static int add_create_table_foreign_key_child_index(
             .column_index = foreign_key->parts[part_index].child_column_index,
             .has_prefix_length = false,
             .prefix_length = 0,
+            .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
         };
         ++index.part_count;
     }
@@ -29048,6 +29072,7 @@ static int append_planned_secondary_index_part(
 ) {
     const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
     const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
+    enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int64_t prefix_length = 0;
     size_t column_index = 0U;
@@ -29115,6 +29140,7 @@ static int append_planned_secondary_index_part(
             .column_index = column_index,
             .has_prefix_length = prefix_node != NULL,
             .prefix_length = prefix_length,
+            .sort_direction = sort_direction,
         };
         ++index->part_count;
     }
@@ -29610,13 +29636,45 @@ static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
     if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
         return NULL;
     }
-    return child_at(part, 1U);
+    for (size_t child_index = 1U;; ++child_index) {
+        const struct mylite_sql_ast_node *child = child_at(part, child_index);
+
+        if (child == NULL) {
+            return NULL;
+        }
+        if (child->kind == MYLITE_SQL_AST_LITERAL) {
+            return child;
+        }
+    }
+}
+
+static enum mylite_catalog_index_sort_direction index_part_sort_direction(
+    const struct mylite_sql_ast_node *part
+) {
+    if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
+    }
+    for (size_t child_index = 1U;; ++child_index) {
+        const struct mylite_sql_ast_node *child = child_at(part, child_index);
+
+        if (child == NULL) {
+            return MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
+        }
+        if (child->kind != MYLITE_SQL_AST_ORDER_DIRECTION) {
+            continue;
+        }
+        if (mylite_sql_ast_node_order_direction(child) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            return MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC;
+        }
+        return MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
+    }
 }
 
 static int mark_primary_key_column(
     struct mylite_db *database,
     struct planned_create_table *plan,
-    size_t column_index
+    size_t column_index,
+    enum mylite_catalog_index_sort_direction sort_direction
 ) {
     int rc = MYLITE_OK;
 
@@ -29639,7 +29697,10 @@ static int mark_primary_key_column(
     }
 
     plan->has_primary_key = true;
-    plan->primary_key_parts[plan->primary_key_part_count].column_index = column_index;
+    plan->primary_key_parts[plan->primary_key_part_count] = (struct planned_primary_key_part){
+        .column_index = column_index,
+        .sort_direction = sort_direction,
+    };
     ++plan->primary_key_part_count;
     plan->columns[column_index].is_primary_key = true;
     plan->columns[column_index].is_nullable = false;
@@ -29954,8 +30015,11 @@ static int clone_create_table_like_columns(
                 out_plan->primary_key_part_count + 1U
             );
             if (rc == MYLITE_OK) {
-                out_plan->primary_key_parts[out_plan->primary_key_part_count].column_index =
-                    column_index;
+                out_plan->primary_key_parts[out_plan->primary_key_part_count] =
+                    (struct planned_primary_key_part){
+                        .column_index = column_index,
+                        .sort_direction = primary_key.parts[part_index].index_column.sort_direction,
+                    };
                 ++out_plan->primary_key_part_count;
                 out_plan->columns[column_index].is_primary_key = true;
                 out_plan->columns[column_index].is_nullable = false;
@@ -30076,6 +30140,7 @@ static int clone_create_table_like_indexes(
                 .column_index = source_part->column_index,
                 .has_prefix_length = source_part->index_column.has_prefix_length,
                 .prefix_length = source_part->index_column.prefix_length,
+                .sort_direction = source_part->index_column.sort_direction,
             };
             ++target_index->part_count;
         }
@@ -31632,6 +31697,7 @@ static int insert_create_table_index_catalog_rows(
             column_ids[column_index],
             (int64_t)part_index + 1,
             NULL,
+            plan->primary_key_parts[part_index].sort_direction,
             NULL
         );
     }
@@ -31674,6 +31740,7 @@ static int insert_create_table_index_catalog_rows(
                 column_ids[part->column_index],
                 (int64_t)part_index + 1,
                 prefix_length,
+                part->sort_direction,
                 NULL
             );
         }
@@ -32019,6 +32086,7 @@ static int append_temporary_primary_index_descriptor(
             .table_id = table_id,
             .column_id = column_ids[column_index],
             .ordinal_position = (int64_t)part_index + 1,
+            .sort_direction = plan->primary_key_parts[part_index].sort_direction,
         };
     }
 
@@ -32077,6 +32145,7 @@ static int append_temporary_secondary_index_descriptor(
             .ordinal_position = (int64_t)part_index + 1,
             .has_prefix_length = planned_part->has_prefix_length,
             .prefix_length = planned_part->prefix_length,
+            .sort_direction = planned_part->sort_direction,
         };
     }
 
@@ -32839,14 +32908,16 @@ static int plan_alter_table_add_primary_key(
     }
     part = child_at(part_list, 0U);
     while (rc == MYLITE_OK && part != NULL) {
+        const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
+        enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 
-        if (part->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
             set_unsupported_error(database, "PRIMARY KEY supports only unqualified key columns");
             rc = MYLITE_ERROR;
             break;
         }
-        rc = copy_identifier_text(part, column_name, sizeof(column_name), database);
+        rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
         if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(column_name)) {
             set_reserved_name_error(database, "column", column_name);
             rc = MYLITE_ERROR;
@@ -32857,7 +32928,8 @@ static int plan_alter_table_add_primary_key(
                 out_plan,
                 columns,
                 column_count,
-                column_name
+                column_name,
+                sort_direction
             );
         }
         part = part->next_sibling;
@@ -32918,7 +32990,8 @@ static int append_alter_table_primary_key_part(
     struct planned_alter_table_add_primary_key *plan,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    const char *column_name
+    const char *column_name,
+    enum mylite_catalog_index_sort_direction sort_direction
 ) {
     size_t column_index = 0U;
     int rc = find_column_index(columns, column_count, column_name, &column_index);
@@ -32960,6 +33033,7 @@ static int append_alter_table_primary_key_part(
             {
                 .column_id = columns[column_index].column_id,
                 .ordinal_position = (int64_t)plan->part_count + 1,
+                .sort_direction = sort_direction,
             },
         .column = columns[column_index],
         .column_index = column_index,
@@ -33107,6 +33181,7 @@ static int alter_table_add_primary_key_from_plan(
             plan->parts[part_index].column.column_id,
             (int64_t)part_index + 1,
             NULL,
+            plan->parts[part_index].index_column.sort_direction,
             NULL
         );
     }
@@ -33676,6 +33751,7 @@ static int append_loaded_add_index_part(
 ) {
     const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
     const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
+    enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int64_t prefix_length = 0;
     size_t column_index = 0U;
@@ -33732,6 +33808,7 @@ static int append_loaded_add_index_part(
                     .ordinal_position = (int64_t)plan->part_count + 1,
                     .has_prefix_length = prefix_node != NULL,
                     .prefix_length = prefix_length,
+                    .sort_direction = sort_direction,
                 },
             .column = columns[column_index],
             .column_index = column_index,
@@ -34088,6 +34165,7 @@ static int add_secondary_index_from_plan(
             part->column.column_id,
             (int64_t)part_index + 1,
             prefix_length,
+            part->index_column.sort_direction,
             NULL
         );
     }
@@ -34504,6 +34582,7 @@ static int alter_table_add_foreign_key_from_plan(
             plan->child_index_plan.parts[part_index].column.column_id,
             (int64_t)part_index + 1,
             NULL,
+            plan->child_index_plan.parts[part_index].index_column.sort_direction,
             NULL
         );
     }
@@ -34610,6 +34689,7 @@ static int prepare_alter_table_foreign_key_child_index_plan(
                     .ordinal_position = (int64_t)part_index + 1,
                     .has_prefix_length = false,
                     .prefix_length = 0,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
                 },
             .column = plan->parts[part_index].child_column,
             .column_index = plan->parts[part_index].child_column_index,
@@ -39238,6 +39318,7 @@ static int validate_insert_ignore_row_foreign_key(
                     .ordinal_position = (int64_t)part_index + 1,
                     .has_prefix_length = false,
                     .prefix_length = 0,
+                    .sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC,
                 },
             .column = foreign_key_part->parent_column,
             .column_index = part_index,
@@ -77016,6 +77097,9 @@ static int append_show_index(
         const struct loaded_index_part *part = &index->parts[part_index];
         char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const char *collation =
+            part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
+                                                                                          : "A";
         const char *prefix_value = NULL;
 
         if (part->column.is_nullable) {
@@ -77039,7 +77123,7 @@ static int append_show_index(
             index->index.name,
             sequence,
             part->column.name,
-            "A",
+            collation,
             cardinality,
             prefix_value,
             NULL,
@@ -77640,6 +77724,10 @@ static int append_create_table_primary_key_sql(
         if (rc == MYLITE_OK) {
             rc = append_planned_key_part_sql(string, &plan->columns[column_index]);
         }
+        if (rc == MYLITE_OK && plan->primary_key_parts[part_index].sort_direction ==
+                                   MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+            rc = dynamic_string_append(string, " DESC");
+        }
     }
     if (rc == MYLITE_OK) {
         rc = append_create_table_index_sql_close(string);
@@ -77742,14 +77830,14 @@ static int append_planned_secondary_key_part_sql(
     int rc = MYLITE_OK;
 
     if (!part->has_prefix_length) {
-        return append_planned_key_part_sql(string, column);
+        rc = append_planned_key_part_sql(string, column);
+    } else {
+        rc = dynamic_string_append(string, "substr(");
     }
-
-    rc = dynamic_string_append(string, "substr(");
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = dynamic_string_append_quoted_identifier(string, column->name);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && part->has_prefix_length) {
         int written = snprintf(prefix_text, sizeof(prefix_text), "%" PRId64, part->prefix_length);
 
         if (written < 0 || (size_t)written >= sizeof(prefix_text)) {
@@ -77757,14 +77845,17 @@ static int append_planned_secondary_key_part_sql(
         }
         rc = dynamic_string_append(string, ", 1, ");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = dynamic_string_append(string, prefix_text);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = append_string_key_collation_sql(string);
+    }
+    if (rc == MYLITE_OK && part->sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+        rc = dynamic_string_append(string, " DESC");
     }
 
     return rc;
@@ -78162,8 +78253,17 @@ static int build_alter_table_add_primary_key_index_sql(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " (");
     }
-    if (rc == MYLITE_OK) {
-        rc = append_alter_table_primary_key_expression_list_sql(&string, plan);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(&string, &plan->parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK && plan->parts[part_index].index_column.sort_direction ==
+                                   MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+            rc = dynamic_string_append(&string, " DESC");
+        }
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -78215,6 +78315,10 @@ static int build_add_index_sql(
         }
         if (rc == MYLITE_OK) {
             rc = append_loaded_key_part_sql(&string, &plan->parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK && plan->parts[part_index].index_column.sort_direction ==
+                                   MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+            rc = dynamic_string_append(&string, " DESC");
         }
     }
     if (rc == MYLITE_OK) {

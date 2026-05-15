@@ -200,3 +200,11 @@ expect_error \
     "near '.a DESC))'" \
     "CREATE TABLE qualified_part (a INT, KEY k (qualified_part.a DESC));" \
     "$DATABASE"
+
+expect_error \
+    "qualified descending primary key part is syntax error" \
+    1064 \
+    42000 \
+    "near '.a DESC))'" \
+    "CREATE TABLE qualified_primary_part (a INT, PRIMARY KEY (qualified_primary_part.a DESC));" \
+    "$DATABASE"

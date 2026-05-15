@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 16
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 16
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 17
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 17
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -52,6 +52,12 @@ enum mylite_catalog_index_kind {
     MYLITE_CATALOG_INDEX_KIND_INVALID = 0,
     MYLITE_CATALOG_INDEX_KIND_PRIMARY = 1,
     MYLITE_CATALOG_INDEX_KIND_SECONDARY = 2,
+};
+
+enum mylite_catalog_index_sort_direction {
+    MYLITE_CATALOG_INDEX_SORT_DIRECTION_INVALID = 0,
+    MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC = 1,
+    MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC = 2,
 };
 
 struct mylite_db;
@@ -127,6 +133,7 @@ struct mylite_catalog_index_column_descriptor {
     int64_t ordinal_position;
     bool has_prefix_length;
     int64_t prefix_length;
+    enum mylite_catalog_index_sort_direction sort_direction;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -283,6 +290,7 @@ int mylite_catalog_insert_index_column_in_mutation(
     int64_t column_id,
     int64_t ordinal_position,
     const int64_t *prefix_length,
+    enum mylite_catalog_index_sort_direction sort_direction,
     struct mylite_catalog_index_column_descriptor *out_index_column
 );
 int mylite_catalog_insert_foreign_key_in_mutation(

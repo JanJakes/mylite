@@ -3910,8 +3910,8 @@ primary_key_part_list(A) ::= primary_key_part_list(B) COMMA primary_key_part(C).
     A = mylite_sql_parser_append_primary_key_part(state, B, C);
 }
 
-primary_key_part(A) ::= qualified_identifier(B). {
-    A = B;
+primary_key_part(A) ::= identifier(B) index_key_direction_opt(D). {
+    A = mylite_sql_parser_make_secondary_index_part(state, B, NULL, D);
 }
 
 secondary_index_definition(A) ::= KEY(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
@@ -3963,14 +3963,27 @@ secondary_index_part_list(A) ::= secondary_index_part_list(B) COMMA secondary_in
     A = mylite_sql_parser_append_secondary_index_part(state, B, C);
 }
 
-secondary_index_part(A) ::= identifier(B). {
-    A = mylite_sql_parser_make_secondary_index_part(state, B, NULL);
+secondary_index_part(A) ::= identifier(B) index_key_direction_opt(D). {
+    A = mylite_sql_parser_make_secondary_index_part(state, B, NULL, D);
 }
-secondary_index_part(A) ::= identifier(B) LPAREN INTEGER(L) RPAREN. {
+secondary_index_part(A) ::= identifier(B) LPAREN INTEGER(L) RPAREN index_key_direction_opt(D). {
     A = mylite_sql_parser_make_secondary_index_part(
         state,
         B,
-        mylite_sql_parser_make_literal(state, L, MYLITE_SQL_AST_LITERAL_INTEGER));
+        mylite_sql_parser_make_literal(state, L, MYLITE_SQL_AST_LITERAL_INTEGER),
+        D);
+}
+
+index_key_direction_opt(A) ::= . {
+    A = NULL;
+}
+index_key_direction_opt(A) ::= ASC(T). {
+    A = mylite_sql_parser_make_order_direction(
+        state, T, MYLITE_SQL_AST_ORDER_DIRECTION_ASC);
+}
+index_key_direction_opt(A) ::= DESC(T). {
+    A = mylite_sql_parser_make_order_direction(
+        state, T, MYLITE_SQL_AST_ORDER_DIRECTION_DESC);
 }
 
 column_definition(A) ::= identifier(N) column_type(T) column_attribute_list_opt(L). {

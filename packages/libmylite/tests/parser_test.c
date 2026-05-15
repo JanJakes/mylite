@@ -10827,24 +10827,25 @@ static int test_create_table_primary_key_statements(void) {
     primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
     key_parts = child_at(primary_key, 0U);
     failures += expect_child_count(key_parts, 2U, "composite pk parser part count");
-    failures += expect_span_text(child_at(key_parts, 0U), "a", "composite pk first part");
-    failures += expect_span_text(child_at(key_parts, 1U), "`b`", "composite pk second part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "a", "composite pk first part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 1U), 0U), "`b`", "composite pk second part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "CREATE TABLE parser_qualified_pk (id INT, PRIMARY KEY (parser_qualified_pk.id));",
-        MYLITE_SQL_PARSE_OK,
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
-    primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
-    key_parts = child_at(primary_key, 0U);
-    failures += expect_node(
-        child_at(key_parts, 0U),
-        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
-        "qualified pk parser part"
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE parser_qualified_pk_desc (id INT, PRIMARY KEY (parser_qualified_pk_desc.id "
+        "DESC));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
-    failures +=
-        expect_span_text(child_at(key_parts, 0U), "parser_qualified_pk.id", "qualified pk span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -10976,9 +10977,24 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_secondary_order (id INT, KEY k (id DESC));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE secondary_desc (id INT, v VARCHAR(20), KEY k (id DESC), "
+        "KEY k_v (v(4) ASC));",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 2U);
+    key_parts = child_at(key_parts, 1U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "secondary desc key part"
+    );
+    key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 3U);
+    key_parts = child_at(key_parts, 1U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 2U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "secondary prefix asc key part"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -10997,9 +11013,16 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_pk_order (id INT, PRIMARY KEY (id DESC));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE pk_order (id INT, PRIMARY KEY (id DESC));",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "primary key desc parser part"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -11132,24 +11155,53 @@ static int test_alter_table_add_primary_key_statements(void) {
     );
     primary_key = child_at(statement, 1U);
     key_parts = child_at(primary_key, 0U);
-    failures +=
-        expect_span_text(child_at(key_parts, 0U), "`id`", "quoted alter add primary key part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "`id`",
+        "quoted alter add primary key part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
         parse_sql("ALTER TABLE add_pk ADD PRIMARY KEY (id, other);", MYLITE_SQL_PARSE_OK, &result);
     key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
     failures += expect_child_count(key_parts, 2U, "alter add composite pk parser part count");
-    failures += expect_span_text(child_at(key_parts, 1U), "other", "alter add composite pk part");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 1U), 0U),
+        "other",
+        "alter add composite pk part"
+    );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("ALTER TABLE add_pk ADD PRIMARY KEY (add_pk.id);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (add_pk.id);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (add_pk.id DESC);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (id DESC, other ASC);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     key_parts = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
-    failures += expect_node(
-        child_at(key_parts, 0U),
-        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
-        "alter add qualified pk parser part"
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "alter add primary key desc part"
+    );
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 1U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "alter add primary key asc part"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -11247,10 +11299,12 @@ static int test_create_index_statements(void) {
         expect_span_text(child_at(child_at(key_parts, 0U), 1U), "4", "create index prefix length");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "CREATE INDEX k_v ON create_idx (v DESC);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures += parse_sql("CREATE INDEX k_v ON create_idx (v DESC);", MYLITE_SQL_PARSE_OK, &result);
+    key_parts = child_at(child_at(result.root, 0U), 2U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "create index desc part"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -11472,10 +11526,14 @@ static int test_alter_table_add_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "ALTER TABLE add_idx ADD INDEX k_v (v DESC);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("ALTER TABLE add_idx ADD INDEX k_v (v DESC);", MYLITE_SQL_PARSE_OK, &result);
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    key_parts = child_at(secondary_index, 1U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "alter add index desc part"
     );
     mylite_sql_parse_result_deinit(&result);
 

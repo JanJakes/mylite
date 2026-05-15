@@ -1289,7 +1289,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_secondary_index_part(
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *prefix_length
+    struct mylite_sql_ast_node *prefix_length,
+    struct mylite_sql_ast_node *direction
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_inline_primary_key(
     struct mylite_sql_parser_state *state,

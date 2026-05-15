@@ -4395,7 +4395,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_secondary_index_part(
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *prefix_length
+    struct mylite_sql_ast_node *prefix_length,
+    struct mylite_sql_ast_node *direction
 ) {
     struct mylite_sql_source_span span =
         column == NULL ? (struct mylite_sql_source_span){0} : column->span;
@@ -4403,6 +4404,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
 
     if (prefix_length != NULL) {
         span = span_join(span, prefix_length->span);
+    }
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
     }
 
     part = make_node(state, MYLITE_SQL_AST_SECONDARY_INDEX_PART, span);
@@ -4413,6 +4417,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part(
     mylite_sql_ast_node_append_child(part, column);
     if (prefix_length != NULL) {
         mylite_sql_ast_node_append_child(part, prefix_length);
+    }
+    if (direction != NULL) {
+        mylite_sql_ast_node_append_child(part, direction);
     }
     return part;
 }

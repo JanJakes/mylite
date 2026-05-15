@@ -9,7 +9,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | Default schema | ❌ | Current schema state |
 | SQL mode scalar value | 🟡 | Limited session-local `@@sql_mode`, `@@SESSION.sql_mode`, `@@LOCAL.sql_mode`, `SET sql_mode`, and `SHOW VARIABLES` support with fixed MySQL 8.4.9 default/global readback, canonical assigned mode strings, and behavioral effects for `ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`, `NO_AUTO_VALUE_ON_ZERO`, `REAL_AS_FLOAT`, plus the current canonical `DATE` / `DATETIME` / `TIMESTAMP` zero-temporal subset for `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`, `NO_ZERO_DATE`, `NO_ZERO_IN_DATE`, and `ALLOW_INVALID_DATES`; no mutable global state, full strict/non-strict conversion coverage, or broader mode behavior |
 | Connection character set state | 🟡 | Fixed `utf8mb4` / `utf8mb4_0900_ai_ci` baseline with limited scalar reads and no-op `SET NAMES` / `SET CHARACTER SET` forms that preserve that baseline; no mutable conversion state |
-| Time zone state | ❌ | Time zone variables and conversion |
+| Time zone state | ❌ | Designed fixed embedded `system_time_zone = UTC`, fixed global `time_zone = SYSTEM`, and session-local `SET time_zone` subset for `DEFAULT`, `SYSTEM`, `UTC`, and signed UTC offsets; implementation pending in `baseline-time-zone-system-variable` |
 | Autocommit state | 🟡 | Limited scalar `@@autocommit` reads and fixed no-op `SET autocommit = 1` forms report/preserve visible value `1`; explicit user transactions are supported through `START TRANSACTION` / `BEGIN` while visible autocommit remains enabled; no mutable `SET autocommit = 0`, protocol status flags, or full autocommit side effects |
 | Last insert id | ❌ | Insert-id state and packets |
 | Affected rows | ❌ | Found/changed row counts |

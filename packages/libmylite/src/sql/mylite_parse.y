@@ -3802,6 +3802,15 @@ column_attribute(A) ::= column_default(B). {
 column_attribute(A) ::= ON(O) UPDATE current_timestamp_value(T). {
     A = mylite_sql_parser_make_column_on_update_current_timestamp(state, O, T);
 }
+column_attribute(A) ::= CHARACTER(C) SET option_name(N). {
+    A = mylite_sql_parser_make_column_charset_attribute(state, C, N);
+}
+column_attribute(A) ::= CHARSET(C) option_name(N). {
+    A = mylite_sql_parser_make_column_charset_attribute(state, C, N);
+}
+column_attribute(A) ::= COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_column_collation_attribute(state, C, N);
+}
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
 }

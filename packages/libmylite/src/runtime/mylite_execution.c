@@ -629,6 +629,8 @@ struct planned_column {
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
+    char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
 struct planned_secondary_index_part {
@@ -6116,6 +6118,7 @@ static int information_schema_format_i64(
 );
 static int information_schema_character_metadata_for_descriptor(
     struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column,
     char *character_length_text,
     size_t character_length_text_size,
@@ -6367,6 +6370,12 @@ static int validate_create_table_select_source_columns(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count
+);
+static void copy_create_table_select_column_character_metadata(
+    const struct mylite_catalog_table_descriptor *source_table,
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct planned_create_table *target_table,
+    struct planned_column *out_column
 );
 static int copy_create_table_select_column_name(
     struct mylite_db *database,
@@ -9495,8 +9504,15 @@ static int build_show_create_table_sql(
 static int append_show_create_table_column_definition(
     struct mylite_db *database,
     struct dynamic_string *string,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column,
     bool is_last_column
+);
+static int append_show_create_table_column_charset_collation(
+    struct dynamic_string *string,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_national
 );
 static int append_show_create_table_column_default(
     struct mylite_db *database,
@@ -10144,6 +10160,25 @@ static int validate_column_attributes(
     const struct mylite_sql_ast_node *column_node,
     const struct planned_column *column
 );
+static int apply_column_charset_collation_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+);
+static int copy_column_charset_attribute_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *charset_attribute,
+    char *charset_name,
+    size_t charset_name_size
+);
+static int copy_column_collation_attribute_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *collation_attribute,
+    char *collation_name,
+    size_t collation_name_size
+);
+static bool planned_column_allows_charset_collation_attributes(const struct planned_column *column);
+static bool planned_column_is_national_char_or_varchar(const struct planned_column *column);
 static int validate_column_default(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *default_node,
@@ -12887,8 +12922,19 @@ static void apply_result_column_descriptor_flags(
     const struct result_column_metadata_context *metadata_context,
     struct mylite_result_column_descriptor *descriptor
 );
-static uint32_t result_metadata_utf8mb4_collation_id(struct mylite_db *database);
-static bool table_default_collation_is_binary(const struct mylite_catalog_table_descriptor *table);
+static const char *column_effective_character_set_name(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+);
+static const char *column_effective_collation_name(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool column_effective_collation_is_binary(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+);
+static uint32_t result_metadata_utf8mb4_collation_id(const char *collation_name);
 static bool result_metadata_integer_descriptor(
     const char *logical_type,
     enum mylite_result_logical_type *out_type,
@@ -14726,6 +14772,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
     case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
+    case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
+    case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -19728,6 +19776,7 @@ static int append_information_schema_columns_base_column_row(
     if (rc == MYLITE_OK) {
         rc = information_schema_character_metadata_for_descriptor(
             database,
+            table,
             column,
             character_length_text,
             sizeof(character_length_text),
@@ -21888,6 +21937,7 @@ static int information_schema_format_i64(
 
 static int information_schema_character_metadata_for_descriptor(
     struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column,
     char *character_length_text,
     size_t character_length_text_size,
@@ -22005,12 +22055,9 @@ static int information_schema_character_metadata_for_descriptor(
         return rc;
     }
 
-    const char *character_set_name = "utf8mb4";
-    const char *collation_name = "utf8mb4_0900_ai_ci";
-    if (column_descriptor_is_national_char_or_varchar(column)) {
-        character_set_name = national_character_set_name;
-        collation_name = national_collation_name;
-    }
+    const char *character_set_name = column_effective_character_set_name(table, column);
+    const char *collation_name = column_effective_collation_name(table, column);
+
     *out_metadata = (struct information_schema_character_metadata){
         .character_maximum_length = character_length_text,
         .character_octet_length = character_octet_text,
@@ -24539,6 +24586,7 @@ static int build_show_create_table_sql(
         rc = append_show_create_table_column_definition(
             database,
             &string,
+            &plan->table,
             &plan->columns[column_index],
             (plan->index_count == 0U && plan->foreign_key_count == 0U &&
              column_index + 1U == plan->column_count) != 0
@@ -24567,6 +24615,7 @@ static int build_show_create_table_sql(
 static int append_show_create_table_column_definition(
     struct mylite_db *database,
     struct dynamic_string *string,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column,
     bool is_last_column
 ) {
@@ -24593,17 +24642,8 @@ static int append_show_create_table_column_definition(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, type_text);
     }
-    if (rc == MYLITE_OK && is_national) {
-        rc = dynamic_string_append(string, " CHARACTER SET ");
-    }
-    if (rc == MYLITE_OK && is_national) {
-        rc = dynamic_string_append(string, national_character_set_name);
-    }
-    if (rc == MYLITE_OK && is_national) {
-        rc = dynamic_string_append(string, " COLLATE ");
-    }
-    if (rc == MYLITE_OK && is_national) {
-        rc = dynamic_string_append(string, national_collation_name);
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_column_charset_collation(string, table, column, is_national);
     }
     if (rc == MYLITE_OK && !column->is_nullable) {
         rc = dynamic_string_append(string, " NOT NULL");
@@ -24618,6 +24658,62 @@ static int append_show_create_table_column_definition(
         rc = append_show_create_table_column_suffix(string, column, is_last_column);
     }
 
+    return rc;
+}
+
+static int append_show_create_table_column_charset_collation(
+    struct dynamic_string *string,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_national
+) {
+    const bool has_explicit_attribute =
+        (column->character_set_name[0] != '\0' || column->collation_name[0] != '\0') != 0;
+    const char *effective_collation = NULL;
+    int rc = MYLITE_OK;
+
+    if (is_national) {
+        rc = dynamic_string_append(string, " CHARACTER SET ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, national_character_set_name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " COLLATE ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, national_collation_name);
+        }
+        return rc;
+    }
+    if (!column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+
+    effective_collation = column_effective_collation_name(table, column);
+    if (has_explicit_attribute) {
+        rc = dynamic_string_append(string, " CHARACTER SET ");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, column_effective_character_set_name(table, column));
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " COLLATE ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, effective_collation);
+        }
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(
+            effective_collation,
+            MYLITE_CATALOG_DEFAULT_TABLE_COLLATION
+        )) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " COLLATE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, effective_collation);
+    }
     return rc;
 }
 
@@ -25616,6 +25712,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST:
     case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
     case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
+    case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
+    case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -28342,6 +28440,12 @@ static int infer_create_table_select_columns(
                 NULL,
                 column
             );
+            copy_create_table_select_column_character_metadata(
+                &plan->source.table,
+                &plan->source.columns[column_index],
+                &plan->create_table,
+                column
+            );
             column->is_visible = true;
             rc =
                 copy_create_table_select_column_name(database, &plan->source, column_index, column);
@@ -28396,6 +28500,38 @@ static int validate_create_table_select_source_columns(
     }
 
     return MYLITE_OK;
+}
+
+static void copy_create_table_select_column_character_metadata(
+    const struct mylite_catalog_table_descriptor *source_table,
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct planned_create_table *target_table,
+    struct planned_column *out_column
+) {
+    const char *character_set_name =
+        column_effective_character_set_name(source_table, source_column);
+    const char *collation_name = column_effective_collation_name(source_table, source_column);
+
+    if (source_column->character_set_name[0] != '\0' || source_column->collation_name[0] != '\0') {
+        return;
+    }
+    if (character_set_name != NULL &&
+        strcmp(character_set_name, target_table->default_charset) != 0) {
+        snprintf(
+            out_column->character_set_name,
+            sizeof(out_column->character_set_name),
+            "%s",
+            character_set_name
+        );
+    }
+    if (collation_name != NULL && strcmp(collation_name, target_table->default_collation) != 0) {
+        snprintf(
+            out_column->collation_name,
+            sizeof(out_column->collation_name),
+            "%s",
+            collation_name
+        );
+    }
 }
 
 static int copy_create_table_select_column_name(
@@ -29580,6 +29716,8 @@ static int insert_create_table_catalog_rows(
             column->default_integer,
             column->default_text,
             column->on_update_current_timestamp,
+            column->character_set_name,
+            column->collation_name,
             &inserted_column
         );
         if (rc == MYLITE_OK) {
@@ -29889,6 +30027,18 @@ static int build_temporary_table_column_descriptors(
             sizeof(descriptor->default_text),
             "%s",
             column->default_text
+        );
+        snprintf(
+            descriptor->character_set_name,
+            sizeof(descriptor->character_set_name),
+            "%s",
+            column->character_set_name
+        );
+        snprintf(
+            descriptor->collation_name,
+            sizeof(descriptor->collation_name),
+            "%s",
+            column->collation_name
         );
     }
     if (rc != MYLITE_OK) {
@@ -30720,6 +30870,8 @@ static int alter_table_add_column_from_plan(
             plan->column.default_integer,
             plan->column.default_text,
             plan->column.on_update_current_timestamp,
+            plan->column.character_set_name,
+            plan->column.collation_name,
             NULL
         );
     }
@@ -31081,7 +31233,9 @@ static int alter_table_add_primary_key_from_plan(
             default_kind,
             default_integer,
             default_text,
-            column->on_update_current_timestamp
+            column->on_update_current_timestamp,
+            column->character_set_name,
+            column->collation_name
         );
     }
     if (rc == MYLITE_OK) {
@@ -34593,7 +34747,9 @@ static int alter_table_set_default_from_plan(
             plan->column.default_kind,
             plan->column.default_integer,
             plan->column.default_text,
-            plan->original_column.on_update_current_timestamp
+            plan->original_column.on_update_current_timestamp,
+            plan->original_column.character_set_name,
+            plan->original_column.collation_name
         );
     }
     if (rc == MYLITE_OK) {
@@ -34711,7 +34867,9 @@ static int alter_table_drop_default_from_plan(
             MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT,
             0,
             NULL,
-            plan->column.on_update_current_timestamp
+            plan->column.on_update_current_timestamp,
+            plan->column.character_set_name,
+            plan->column.collation_name
         );
     }
     if (rc == MYLITE_OK) {
@@ -35288,6 +35446,18 @@ static void planned_column_from_catalog_descriptor(
         "%s",
         descriptor->default_text
     );
+    snprintf(
+        out_column->character_set_name,
+        sizeof(out_column->character_set_name),
+        "%s",
+        descriptor->character_set_name
+    );
+    snprintf(
+        out_column->collation_name,
+        sizeof(out_column->collation_name),
+        "%s",
+        descriptor->collation_name
+    );
 }
 
 static int resolve_alter_table_column_replacement_plan(
@@ -35459,6 +35629,12 @@ static bool modify_column_definition_matches(
         replacement_column->on_update_current_timestamp) {
         return false;
     }
+    if (strcmp(original_column->character_set_name, replacement_column->character_set_name) != 0) {
+        return false;
+    }
+    if (strcmp(original_column->collation_name, replacement_column->collation_name) != 0) {
+        return false;
+    }
     if (original_column->default_kind != replacement_column->default_kind) {
         return false;
     }
@@ -35567,7 +35743,9 @@ static int alter_table_modify_column_from_plan(
             plan->column.default_kind,
             plan->column.default_integer,
             plan->column.default_text,
-            plan->column.on_update_current_timestamp
+            plan->column.on_update_current_timestamp,
+            plan->column.character_set_name,
+            plan->column.collation_name
         );
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
@@ -57264,6 +57442,9 @@ static int plan_column(
         out_column->is_nullable = false;
     }
     if (rc == MYLITE_OK) {
+        rc = apply_column_charset_collation_attributes(database, column_node, out_column);
+    }
+    if (rc == MYLITE_OK) {
         out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);
         if (out_column->default_node == NULL) {
             out_column->default_node =
@@ -57291,6 +57472,8 @@ static int validate_column_attributes(
     size_t primary_key_count = 0U;
     size_t auto_increment_count = 0U;
     size_t on_update_count = 0U;
+    size_t charset_count = 0U;
+    size_t collation_count = 0U;
 
     while (child != NULL) {
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
@@ -57308,6 +57491,10 @@ static int validate_column_attributes(
             ++auto_increment_count;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP) {
             ++on_update_count;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) {
+            ++charset_count;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) {
+            ++collation_count;
         } else {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
@@ -57316,7 +57503,8 @@ static int validate_column_attributes(
     }
 
     if (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
-        auto_increment_count > 1U || on_update_count > 1U) {
+        auto_increment_count > 1U || on_update_count > 1U || charset_count > 1U ||
+        collation_count > 1U) {
         set_unsupported_error(database, "duplicate column attributes are not supported");
         return MYLITE_ERROR;
     }
@@ -57330,6 +57518,154 @@ static int validate_column_attributes(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int apply_column_charset_collation_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *charset_attribute =
+        child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE);
+    const struct mylite_sql_ast_node *collation_attribute =
+        child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE);
+    char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    bool has_charset = charset_attribute != NULL;
+    bool has_collation = collation_attribute != NULL;
+    int rc = MYLITE_OK;
+
+    column->character_set_name[0] = '\0';
+    column->collation_name[0] = '\0';
+    if (!has_charset && !has_collation) {
+        return MYLITE_OK;
+    }
+    if (planned_column_is_national_char_or_varchar(column)) {
+        set_unsupported_error(
+            database,
+            "NATIONAL character columns do not support explicit column charset or collation"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!planned_column_allows_charset_collation_attributes(column)) {
+        set_unsupported_error(
+            database,
+            "column charset and collation attributes support only CHAR, VARCHAR, and TEXT columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (has_charset) {
+        rc = copy_column_charset_attribute_name(
+            database,
+            charset_attribute,
+            charset_name,
+            sizeof(charset_name)
+        );
+    }
+    if (rc == MYLITE_OK && has_collation) {
+        rc = copy_column_collation_attribute_name(
+            database,
+            collation_attribute,
+            collation_name,
+            sizeof(collation_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_table_charset_collation_option_values(
+            database,
+            has_charset,
+            charset_name,
+            has_collation,
+            collation_name
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (has_charset) {
+        memcpy(
+            column->character_set_name,
+            MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
+            sizeof(MYLITE_CATALOG_DEFAULT_TABLE_CHARSET)
+        );
+    }
+    if (has_collation) {
+        const struct utf8mb4_collation_descriptor *collation =
+            utf8mb4_collation_by_name(collation_name);
+
+        if (collation == NULL) {
+            set_unknown_collation_error(database, collation_name);
+            return MYLITE_ERROR;
+        }
+        snprintf(column->collation_name, sizeof(column->collation_name), "%s", collation->name);
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_column_charset_attribute_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *charset_attribute,
+    char *charset_name,
+    size_t charset_name_size
+) {
+    if (charset_attribute == NULL ||
+        charset_attribute->kind != MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return copy_table_option_name_text(
+        database,
+        child_at(charset_attribute, 0U),
+        charset_name,
+        charset_name_size,
+        (struct table_option_name_policy){
+            .identifier_kind = "character set",
+            .nul_message = "column character set names do not support NUL bytes",
+        }
+    );
+}
+
+static int copy_column_collation_attribute_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *collation_attribute,
+    char *collation_name,
+    size_t collation_name_size
+) {
+    if (collation_attribute == NULL ||
+        collation_attribute->kind != MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return copy_table_option_name_text(
+        database,
+        child_at(collation_attribute, 0U),
+        collation_name,
+        collation_name_size,
+        (struct table_option_name_policy){
+            .identifier_kind = "collation",
+            .nul_message = "column collation names do not support NUL bytes",
+        }
+    );
+}
+
+static bool planned_column_allows_charset_collation_attributes(
+    const struct planned_column *column
+) {
+    return (planned_column_is_char(column) || planned_column_is_varchar(column) ||
+            planned_column_is_text_family(column)) != 0;
+}
+
+static bool planned_column_is_national_char_or_varchar(const struct planned_column *column) {
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    if (strcmp(column->physical_type, "TEXT") != 0) {
+        return false;
+    }
+    return logical_type_is_national_char_or_varchar(column->logical_type);
 }
 
 static int validate_column_default(
@@ -69846,10 +70182,11 @@ static int populate_string_result_column_descriptor(
         descriptor->charset_id = mysql_collation_utf8mb3_general_ci_id;
         descriptor->collation_id = mysql_collation_utf8mb3_general_ci_id;
     } else {
-        descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+        descriptor->charset_id =
+            result_metadata_utf8mb4_collation_id(column_effective_collation_name(table, column));
         descriptor->collation_id = descriptor->charset_id;
     }
-    if (!is_national && table_default_collation_is_binary(table)) {
+    if (!is_national && column_effective_collation_is_binary(table, column)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
     }
     if (column_descriptor_is_char(column)) {
@@ -69922,12 +70259,13 @@ static int populate_enum_result_column_descriptor(
     }
 
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
-    descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+    descriptor->charset_id =
+        result_metadata_utf8mb4_collation_id(column_effective_collation_name(table, column));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length =
         (uint64_t)info.max_label_character_length * utf8mb4_max_bytes_per_character;
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_ENUM;
-    if (table_default_collation_is_binary(table)) {
+    if (column_effective_collation_is_binary(table, column)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
     }
     *out_matched = true;
@@ -69959,12 +70297,13 @@ static int populate_set_result_column_descriptor(
     }
 
     descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_STRING;
-    descriptor->charset_id = result_metadata_utf8mb4_collation_id(database);
+    descriptor->charset_id =
+        result_metadata_utf8mb4_collation_id(column_effective_collation_name(table, column));
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length =
         (uint64_t)info.max_display_character_length * utf8mb4_max_bytes_per_character;
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_SET;
-    if (table_default_collation_is_binary(table)) {
+    if (column_effective_collation_is_binary(table, column)) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BINARY;
     }
     *out_matched = true;
@@ -70126,14 +70465,67 @@ static void apply_result_column_descriptor_flags(
     }
 }
 
-static uint32_t result_metadata_utf8mb4_collation_id(struct mylite_db *database) {
+static const char *column_effective_character_set_name(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_national_char_or_varchar(column)) {
+        return national_character_set_name;
+    }
+    if (column == NULL ||
+        (!column_descriptor_is_string_family(column) && !column_descriptor_is_enum(column) &&
+         !column_descriptor_is_set(column))) {
+        return NULL;
+    }
+    if (column->character_set_name[0] != '\0' || column->collation_name[0] != '\0') {
+        return MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+    }
+    if (table != NULL && table->default_charset[0] != '\0') {
+        return table->default_charset;
+    }
+    return MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+}
+
+static const char *column_effective_collation_name(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_national_char_or_varchar(column)) {
+        return national_collation_name;
+    }
+    if (column == NULL ||
+        (!column_descriptor_is_string_family(column) && !column_descriptor_is_enum(column) &&
+         !column_descriptor_is_set(column))) {
+        return NULL;
+    }
+    if (column->collation_name[0] != '\0') {
+        return column->collation_name;
+    }
+    if (column->character_set_name[0] != '\0') {
+        return MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+    }
+    if (table != NULL && table->default_collation[0] != '\0') {
+        return table->default_collation;
+    }
+    return MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+}
+
+static bool column_effective_collation_is_binary(
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *collation_name = column_effective_collation_name(table, column);
+
+    return (collation_name != NULL &&
+            text_equals_ascii_case_insensitive(collation_name, "utf8mb4_bin")) != 0;
+}
+
+static uint32_t result_metadata_utf8mb4_collation_id(const char *collation_name) {
     const struct utf8mb4_collation_descriptor *collation = NULL;
     struct mylite_sql_source_span id_span = {0};
     uint64_t id = 0U;
 
-    if (database != NULL) {
-        collation = utf8mb4_collation_by_name(database->session.collation_connection);
-    }
+    collation = utf8mb4_collation_by_name(collation_name);
     if (collation == NULL) {
         return mysql_collation_utf8mb4_0900_ai_ci_id;
     }
@@ -70146,13 +70538,6 @@ static uint32_t result_metadata_utf8mb4_collation_id(struct mylite_db *database)
         return mysql_collation_utf8mb4_0900_ai_ci_id;
     }
     return (uint32_t)id;
-}
-
-static bool table_default_collation_is_binary(const struct mylite_catalog_table_descriptor *table) {
-    if (table == NULL) {
-        return false;
-    }
-    return text_equals_ascii_case_insensitive(table->default_collation, "utf8mb4_bin");
 }
 
 static bool result_metadata_integer_descriptor(
@@ -73752,13 +74137,7 @@ static const char *show_column_collation_text(
 ) {
     if (column_descriptor_is_string_family(column) || column_descriptor_is_enum(column) ||
         column_descriptor_is_set(column)) {
-        if (column_descriptor_is_national_char_or_varchar(column)) {
-            return national_collation_name;
-        }
-        if (table != NULL && table->default_collation[0] != '\0') {
-            return table->default_collation;
-        }
-        return MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+        return column_effective_collation_name(table, column);
     }
 
     return NULL;

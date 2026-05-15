@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 15
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 15
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 16
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 16
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -100,6 +100,8 @@ struct mylite_catalog_column_descriptor {
     int64_t default_integer;
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
     bool on_update_current_timestamp;
+    char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -258,6 +260,8 @@ int mylite_catalog_insert_column_in_mutation(
     int64_t default_integer,
     const char *default_text,
     bool on_update_current_timestamp,
+    const char *character_set_name,
+    const char *collation_name,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_insert_index_in_mutation(
@@ -357,7 +361,9 @@ int mylite_catalog_replace_column_in_mutation(
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer,
     const char *default_text,
-    bool on_update_current_timestamp
+    bool on_update_current_timestamp,
+    const char *character_set_name,
+    const char *collation_name
 );
 int mylite_catalog_set_column_visibility_in_mutation(
     struct mylite_db *database,
@@ -511,6 +517,8 @@ int mylite_catalog_create_column(
     int64_t default_integer,
     const char *default_text,
     bool on_update_current_timestamp,
+    const char *character_set_name,
+    const char *collation_name,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

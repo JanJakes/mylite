@@ -89,6 +89,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_column_charset_collation_attribute_statements(void);
 static int test_empty_insert_values_statements(void);
 static int test_table_maintenance_statements(void);
 static int test_temporary_table_lifecycle_statements(void);
@@ -339,6 +340,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_column_charset_collation_attribute_statements();
     failures += test_empty_insert_values_statements();
     failures += test_table_maintenance_statements();
     failures += test_temporary_table_lifecycle_statements();
@@ -8052,6 +8054,96 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_column_charset_collation_attribute_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *charset_option = NULL;
+    const struct mylite_sql_ast_node *collation_option = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE column_charset ("
+        "v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE 'utf8mb4_bin', "
+        "t TEXT CHARSET `utf8mb4`, "
+        "c CHAR(2) COLLATE utf8mb4_unicode_ci NOT NULL"
+        ");",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    charset_option = child_at(column, 2U);
+    collation_option = child_at(column, 3U);
+    failures += expect_node(
+        charset_option,
+        MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE,
+        "column charset attribute"
+    );
+    failures += expect_span_text(child_at(charset_option, 0U), "utf8mb4", "column charset name");
+    failures += expect_node(
+        collation_option,
+        MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE,
+        "column collation attribute"
+    );
+    failures += expect_literal(
+        child_at(collation_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "column string collation"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_charset_equal (v VARCHAR(10) CHARACTER SET=utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_collation_equal (v VARCHAR(10) COLLATE=utf8mb4_bin);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_collation_before_charset ("
+        "v VARCHAR(10) COLLATE utf8mb4_bin CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_charset_after_nullability ("
+        "v VARCHAR(10) NOT NULL CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_charset_after_unique ("
+        "v VARCHAR(10) UNIQUE CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_collation_after_unique_key ("
+        "v VARCHAR(10) UNIQUE KEY COLLATE utf8mb4_bin);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

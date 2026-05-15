@@ -196,6 +196,8 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             0,
             NULL,
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_OK,
@@ -418,6 +420,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_OK,
@@ -437,6 +441,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "2024-01-01",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_OK,
@@ -455,6 +461,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "1.00",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_OK,
@@ -473,6 +481,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_MISUSE,
@@ -491,6 +501,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_MISUSE,
@@ -509,6 +521,8 @@ static int test_catalog_default_text_validation(void) {
             0,
             "abc",
             false,
+            "",
+            "",
             &column
         ),
         MYLITE_MISUSE,

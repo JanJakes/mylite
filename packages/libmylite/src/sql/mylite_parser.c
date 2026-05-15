@@ -29,9 +29,12 @@ struct mylite_sql_parse_error {
 };
 
 struct column_attribute_positions {
+    size_t charset;
+    size_t collation;
     size_t nullability;
     size_t default_value;
     size_t primary_key;
+    size_t unique_key;
     size_t auto_increment;
 };
 
@@ -99,6 +102,13 @@ static int record_column_attribute_position(
 static int validate_legacy_column_attribute_order(
     struct mylite_sql_parser_state *state,
     const struct column_attribute_positions *positions
+);
+static size_t column_charset_collation_position_limit(
+    const struct column_attribute_positions *positions
+);
+static bool legacy_column_attribute_precedes_charset_collation(
+    const struct column_attribute_positions *positions,
+    size_t charset_collation_limit
 );
 static bool column_attribute_position_is_set(size_t position);
 
@@ -4392,6 +4402,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_on_update_current_time
     return on_update;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_charset_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token charset_token,
+    struct mylite_sql_ast_node *charset_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&charset_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (charset_name != NULL) {
+        span = span_join(span, charset_name->span);
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(attribute, charset_name);
+    return attribute;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_collation_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token collate_token,
+    struct mylite_sql_ast_node *collation_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&collate_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (collation_name != NULL) {
+        span = span_join(span, collation_name->span);
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(attribute, collation_name);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -4486,15 +4538,24 @@ static int scan_column_attribute_positions(
     int rc = MYLITE_SQL_PARSE_OK;
 
     *out_positions = (struct column_attribute_positions){
+        .charset = (size_t)-1,
+        .collation = (size_t)-1,
         .nullability = (size_t)-1,
         .default_value = (size_t)-1,
         .primary_key = (size_t)-1,
+        .unique_key = (size_t)-1,
         .auto_increment = (size_t)-1,
     };
 
     attribute = attributes == NULL ? NULL : attributes->first_child;
     while (rc == MYLITE_SQL_PARSE_OK && attribute != NULL) {
         switch (attribute->kind) {
+        case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
+            rc = record_column_attribute_position(state, &out_positions->charset, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
+            rc = record_column_attribute_position(state, &out_positions->collation, position);
+            break;
         case MYLITE_SQL_AST_NULLABILITY:
             rc = record_column_attribute_position(state, &out_positions->nullability, position);
             break;
@@ -4504,6 +4565,9 @@ static int scan_column_attribute_positions(
             break;
         case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
             rc = record_column_attribute_position(state, &out_positions->primary_key, position);
+            break;
+        case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
+            rc = record_column_attribute_position(state, &out_positions->unique_key, position);
             break;
         case MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT:
             rc = record_column_attribute_position(state, &out_positions->auto_increment, position);
@@ -4538,7 +4602,26 @@ static int validate_legacy_column_attribute_order(
     const struct column_attribute_positions *positions
 ) {
     bool invalid_order = false;
+    size_t charset_collation_limit = column_charset_collation_position_limit(positions);
 
+    if (column_attribute_position_is_set(positions->auto_increment)) {
+        if (!column_attribute_position_is_set(positions->charset) &&
+            !column_attribute_position_is_set(positions->collation)) {
+            return MYLITE_SQL_PARSE_OK;
+        }
+    }
+    if (column_attribute_position_is_set(positions->charset) &&
+        column_attribute_position_is_set(positions->collation) &&
+        positions->charset > positions->collation) {
+        invalid_order = true;
+    }
+    if (legacy_column_attribute_precedes_charset_collation(positions, charset_collation_limit)) {
+        invalid_order = true;
+    }
+    if (invalid_order) {
+        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
     if (column_attribute_position_is_set(positions->auto_increment)) {
         return MYLITE_SQL_PARSE_OK;
     }
@@ -4558,6 +4641,42 @@ static int validate_legacy_column_attribute_order(
     }
 
     return MYLITE_SQL_PARSE_OK;
+}
+
+static size_t column_charset_collation_position_limit(
+    const struct column_attribute_positions *positions
+) {
+    size_t limit = (size_t)-1;
+
+    if (column_attribute_position_is_set(positions->charset)) {
+        limit = positions->charset;
+    }
+    if (column_attribute_position_is_set(positions->collation) &&
+        (!column_attribute_position_is_set(limit) || positions->collation > limit)) {
+        limit = positions->collation;
+    }
+
+    return limit;
+}
+
+static bool legacy_column_attribute_precedes_charset_collation(
+    const struct column_attribute_positions *positions,
+    size_t charset_collation_limit
+) {
+    if (!column_attribute_position_is_set(charset_collation_limit)) {
+        return false;
+    }
+
+    return ((column_attribute_position_is_set(positions->nullability) &&
+             positions->nullability < charset_collation_limit) ||
+            (column_attribute_position_is_set(positions->default_value) &&
+             positions->default_value < charset_collation_limit) ||
+            (column_attribute_position_is_set(positions->primary_key) &&
+             positions->primary_key < charset_collation_limit) ||
+            (column_attribute_position_is_set(positions->unique_key) &&
+             positions->unique_key < charset_collation_limit) ||
+            (column_attribute_position_is_set(positions->auto_increment) &&
+             positions->auto_increment < charset_collation_limit)) != 0;
 }
 
 static bool column_attribute_position_is_set(size_t position) {

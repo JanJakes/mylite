@@ -811,6 +811,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_auto_increment";
     case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
         return "column_on_update_current_timestamp";
+    case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
+        return "column_charset_attribute";
+    case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
+        return "column_collation_attribute";
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
         return "table_auto_increment_option";
     case MYLITE_SQL_AST_NULLABILITY:

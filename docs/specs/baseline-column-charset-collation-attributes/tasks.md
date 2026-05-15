@@ -8,21 +8,21 @@
 - [x] Write the independently authored feature specification.
 - [x] Add a MySQL-runtime expectation script for the supported and explicitly
       deferred behavior.
-- [ ] Add parser/AST support for the narrow column charset/collation attribute
+- [x] Add parser/AST support for the narrow column charset/collation attribute
       grammar with MySQL-compatible ordering limits.
-- [ ] Bump the catalog schema and persist explicit column charset/collation
+- [x] Bump the catalog schema and persist explicit column charset/collation
       descriptor fields.
-- [ ] Implement runtime validation, canonicalization, descriptor derivation,
+- [x] Implement runtime validation, canonicalization, descriptor derivation,
       cloning, CTAS inference, and ALTER replacement behavior.
-- [ ] Render effective metadata in `SHOW CREATE TABLE`, `SHOW COLUMNS`,
+- [x] Render effective metadata in `SHOW CREATE TABLE`, `SHOW COLUMNS`,
       `SHOW FULL COLUMNS`, `INFORMATION_SCHEMA.COLUMNS`, and public result
       metadata.
-- [ ] Preserve physical SQLite storage and generated SQL boundaries without
+- [x] Preserve physical SQLite storage and generated SQL boundaries without
       adding SQLite collation hooks.
-- [ ] Update compatibility docs with limited wording.
-- [ ] Add focused fast C parser/runtime/result metadata tests and register any
+- [x] Update compatibility docs with limited wording.
+- [x] Add focused fast C parser/runtime/result metadata tests and register any
       new test binary.
-- [ ] Run focused MySQL expectations, build, focused CTest entries, and full
+- [x] Run focused MySQL expectations, build, focused CTest entries, and full
       `cmake --workflow --preset check`.
-- [ ] Review, amend if needed, commit, push, and continue to the next priority
+- [x] Review, amend if needed, commit, push, and continue to the next priority
       baseline slice.

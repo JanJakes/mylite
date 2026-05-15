@@ -519,13 +519,13 @@ static int test_descriptor_result_column_metadata(void) {
                 .origin_column_name = "v",
                 .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
                 .flags = indexed_varchar_flags,
-                .charset_id = mysql_collation_utf8mb4_bin_id,
-                .collation_id = mysql_collation_utf8mb4_bin_id,
+                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
                 .display_length = mysql_varchar_20_display_length,
                 .decimals = 0U,
                 .nullable = 0,
             },
-            "connection collation metadata"
+            "descriptor collation metadata"
         );
     }
     mylite_result_free(result);
@@ -550,8 +550,8 @@ static int test_descriptor_result_column_metadata(void) {
                 .origin_column_name = "v",
                 .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
                 .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY,
-                .charset_id = mysql_collation_utf8mb4_0900_ai_ci_id,
-                .collation_id = mysql_collation_utf8mb4_0900_ai_ci_id,
+                .charset_id = mysql_collation_utf8mb4_bin_id,
+                .collation_id = mysql_collation_utf8mb4_bin_id,
                 .display_length = mysql_varchar_10_display_length,
                 .decimals = 0U,
                 .nullable = 1,

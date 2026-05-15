@@ -10,14 +10,13 @@ storage, descriptor-backed `SELECT ... WHERE ... ORDER BY ... LIMIT`,
 `INSERT ... SELECT`, and the current no-key `REPLACE ... VALUES` /
 `REPLACE ... SET` paths.
 
-This is not full MySQL `REPLACE ... SELECT`. MyLite currently has no user
-primary-key or unique-key descriptors, so there is no supported duplicate-key
-surface where MySQL would delete old rows before inserting new rows. For this
-baseline, `REPLACE [INTO] target [(columns)] SELECT ... FROM source` is
-supported only for the no-key case, where MySQL is insert-equivalent. Future
-key-descriptor work must extend this feature before MyLite can claim
-delete-before-insert replacement semantics or affected-row counts that include
-deleted rows.
+This is not full MySQL `REPLACE ... SELECT`. This baseline remains no-key-only:
+`REPLACE [INTO] target [(columns)] SELECT ... FROM source` is supported only
+where MySQL is insert-equivalent. Key-bearing `REPLACE ... VALUES` and
+`REPLACE ... SET` behavior is specified in
+`docs/specs/baseline-replace-key-lifecycle/specs.md`; key-bearing
+`REPLACE ... SELECT` remains deferred because source streaming and replacement
+retry semantics need a separate design.
 
 ## Sources
 

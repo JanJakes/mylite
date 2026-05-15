@@ -8,13 +8,10 @@ scaffolding, shifted `.mylite` storage, durable catalog descriptors,
 create/drop/rename table lifecycle, row-value inserts, descriptor-driven
 selects, single-table deletes, and single-table updates.
 
-This is not full MySQL `REPLACE`. The current MyLite catalog has no user
-primary-key or unique-key descriptors, so there is no supported duplicate-key
-surface where MySQL would delete old rows before inserting new rows. For this
-baseline, `REPLACE [INTO] table [(columns)] VALUES ...` is supported only for
-the no-key case, where MySQL behaves like `INSERT`. Future key descriptors must
-extend this feature before MyLite can claim duplicate-key replacement
-semantics.
+This historical baseline specified the initial no-key `REPLACE ... VALUES`
+slice. Key-bearing duplicate-key delete-insert behavior for the current
+primary-key and unique-index descriptor subset is specified separately in
+`docs/specs/baseline-replace-key-lifecycle/specs.md`.
 
 ## Sources
 

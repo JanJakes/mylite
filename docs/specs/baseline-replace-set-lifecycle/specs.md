@@ -9,11 +9,10 @@ create/drop/rename table lifecycle, row-value inserts, descriptor-driven
 `INSERT ... SET`, `REPLACE ... VALUES`, descriptor-driven selects,
 single-table deletes, and single-table updates.
 
-This is not full MySQL `REPLACE`. MyLite currently has no user primary-key or
-unique-key descriptors, so this baseline supports only the no-key behavior
-where MySQL `REPLACE` is insert-equivalent. Future key descriptors must extend
-this feature before MyLite can claim delete-before-insert replacement
-semantics.
+This historical baseline specified the initial no-key `REPLACE ... SET` slice.
+Key-bearing duplicate-key delete-insert behavior for the current primary-key
+and unique-index descriptor subset is specified separately in
+`docs/specs/baseline-replace-key-lifecycle/specs.md`.
 
 ## Sources
 

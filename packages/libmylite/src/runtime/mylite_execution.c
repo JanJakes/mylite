@@ -1921,6 +1921,7 @@ struct planned_insert {
     struct planned_insert_row *rows;
     size_t row_count;
     bool ignore_errors;
+    bool replace_existing_rows;
     bool has_primary_key;
     size_t primary_key_column_index;
     bool has_auto_increment;
@@ -12148,6 +12149,37 @@ static int execute_insert_plan_rows(
     const struct planned_insert *plan,
     struct insert_execution_counters *counters
 );
+static int execute_insert_plan_row_with_retries(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+);
+static int finish_successful_insert_plan_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+);
+static int handle_insert_plan_constraint(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    size_t *replace_attempt_count,
+    struct insert_execution_counters *counters,
+    bool *out_row_complete
+);
+static int handle_replace_insert_constraint(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    size_t *replace_attempt_count,
+    struct insert_execution_counters *counters
+);
 static int validate_insert_ignore_row_foreign_keys(
     struct mylite_db *database,
     const struct planned_insert *plan,
@@ -14802,6 +14834,49 @@ static int handle_insert_duplicate_key_update(
     const struct planned_insert *plan,
     size_t row_index,
     struct insert_execution_counters *counters
+);
+static int handle_replace_unique_key_conflict(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *insert_statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+);
+static int replace_conflicting_row_matches_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    bool *out_matches
+);
+static int build_replace_conflicting_row_select_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+);
+static int compare_replace_conflicting_row(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_matches
+);
+static bool sqlite_column_matches_planned_value(
+    sqlite3_stmt *statement,
+    int column_index,
+    const struct planned_value *value
+);
+static int delete_replace_conflicting_row(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    size_t row_index,
+    sqlite3_int64 *out_deleted_rows
+);
+static int build_replace_conflicting_row_delete_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
 );
 static int step_insert_row(sqlite3_stmt *statement, int *out_sqlite_rc);
 static bool sqlite_status_is_constraint(int sqlite_rc);
@@ -38526,6 +38601,7 @@ static int plan_insert(
     *out_plan = (struct planned_insert){0};
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
+    out_plan->replace_existing_rows = statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT;
     rc = resolve_visible_table_reference(
         database,
         child_at(statement, 0U),
@@ -38554,10 +38630,6 @@ static int plan_insert(
         if (primary_key.part_count == 1U) {
             out_plan->primary_key_column_index = primary_key.parts[0].column_index;
         }
-        if (statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT) {
-            set_unsupported_error(database, "REPLACE into primary-key tables is not supported");
-            rc = MYLITE_ERROR;
-        }
     }
     if (rc == MYLITE_OK) {
         rc = load_table_index_infos(
@@ -38571,14 +38643,6 @@ static int plan_insert(
     }
     if (rc == MYLITE_OK) {
         rc = load_insert_target_foreign_key_infos(database, out_plan);
-    }
-    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT &&
-        table_has_unique_secondary_index((struct loaded_index_info_span){
-            .indexes = out_plan->indexes,
-            .count = out_plan->index_count,
-        })) {
-        set_unsupported_error(database, "REPLACE into unique-index tables is not supported");
-        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = initialize_insert_auto_increment_plan(database, out_plan);
@@ -38643,6 +38707,7 @@ static int plan_insert_set(
     *out_plan = (struct planned_insert){0};
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
+    out_plan->replace_existing_rows = statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT;
     rc = resolve_visible_table_reference(
         database,
         child_at(statement, 0U),
@@ -38671,10 +38736,6 @@ static int plan_insert_set(
         if (primary_key.part_count == 1U) {
             out_plan->primary_key_column_index = primary_key.parts[0].column_index;
         }
-        if (statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
-            set_unsupported_error(database, "REPLACE into primary-key tables is not supported");
-            rc = MYLITE_ERROR;
-        }
     }
     if (rc == MYLITE_OK) {
         rc = load_table_index_infos(
@@ -38688,14 +38749,6 @@ static int plan_insert_set(
     }
     if (rc == MYLITE_OK) {
         rc = load_insert_target_foreign_key_infos(database, out_plan);
-    }
-    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT &&
-        table_has_unique_secondary_index((struct loaded_index_info_span){
-            .indexes = out_plan->indexes,
-            .count = out_plan->index_count,
-        })) {
-        set_unsupported_error(database, "REPLACE into unique-index tables is not supported");
-        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = initialize_insert_auto_increment_plan(database, out_plan);
@@ -39423,7 +39476,6 @@ static int execute_insert_plan_rows(
     int rc = MYLITE_OK;
 
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < plan->row_count; ++row_index) {
-        int sqlite_step_rc = SQLITE_OK;
         bool skip_row = false;
 
         if (plan->ignore_errors && plan->foreign_key_count != 0U) {
@@ -39433,48 +39485,150 @@ static int execute_insert_plan_rows(
             continue;
         }
         if (rc == MYLITE_OK) {
-            rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
-        }
-        if (rc == MYLITE_OK) {
-            ++counters->affected_rows;
-            record_inserted_generated_auto_increment(plan, row_index, counters);
-            if (plan->has_auto_increment) {
-                rc = advance_auto_increment_after_insert_row(
-                    plan,
-                    row_index,
-                    &counters->auto_increment_next_after_rows
-                );
-            }
-        } else if (sqlite_status_is_constraint(sqlite_step_rc)) {
-            if (plan->duplicate_update.has_clause) {
-                rc = handle_insert_duplicate_key_update(
-                    database,
-                    sqlite_step_rc,
-                    statement,
-                    plan,
-                    row_index,
-                    counters
-                );
-                if (rc == MYLITE_OK && plan->has_auto_increment) {
-                    rc = advance_auto_increment_after_duplicate_attempt(
-                        plan,
-                        row_index,
-                        &counters->auto_increment_next_after_rows
-                    );
-                }
-            } else {
-                rc = handle_insert_unique_key_conflict(
-                    database,
-                    sqlite_step_rc,
-                    statement,
-                    plan,
-                    row_index
-                );
-            }
+            rc = execute_insert_plan_row_with_retries(
+                database,
+                statement,
+                plan,
+                row_index,
+                counters
+            );
         }
     }
 
     return rc;
+}
+
+static int execute_insert_plan_row_with_retries(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    size_t replace_attempt_count = 0U;
+    bool row_complete = false;
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK && !row_complete) {
+        int sqlite_step_rc = SQLITE_OK;
+
+        rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
+        if (rc == MYLITE_OK) {
+            row_complete = true;
+            rc = finish_successful_insert_plan_row(plan, row_index, counters);
+        } else if (sqlite_status_is_constraint(sqlite_step_rc)) {
+            rc = handle_insert_plan_constraint(
+                database,
+                sqlite_step_rc,
+                statement,
+                plan,
+                row_index,
+                &replace_attempt_count,
+                counters,
+                &row_complete
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int finish_successful_insert_plan_row(
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    ++counters->affected_rows;
+    record_inserted_generated_auto_increment(plan, row_index, counters);
+    if (!plan->has_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    return advance_auto_increment_after_insert_row(
+        plan,
+        row_index,
+        &counters->auto_increment_next_after_rows
+    );
+}
+
+static int handle_insert_plan_constraint(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    size_t *replace_attempt_count,
+    struct insert_execution_counters *counters,
+    bool *out_row_complete
+) {
+    int rc = MYLITE_OK;
+
+    *out_row_complete = false;
+    if (plan->duplicate_update.has_clause) {
+        rc = handle_insert_duplicate_key_update(
+            database,
+            sqlite_step_rc,
+            statement,
+            plan,
+            row_index,
+            counters
+        );
+        *out_row_complete = rc == MYLITE_OK;
+        if (rc == MYLITE_OK && plan->has_auto_increment) {
+            rc = advance_auto_increment_after_duplicate_attempt(
+                plan,
+                row_index,
+                &counters->auto_increment_next_after_rows
+            );
+        }
+        return rc;
+    }
+    if (plan->replace_existing_rows) {
+        return handle_replace_insert_constraint(
+            database,
+            sqlite_step_rc,
+            statement,
+            plan,
+            row_index,
+            replace_attempt_count,
+            counters
+        );
+    }
+
+    rc = handle_insert_unique_key_conflict(database, sqlite_step_rc, statement, plan, row_index);
+    *out_row_complete = rc == MYLITE_OK;
+    return rc;
+}
+
+static int handle_replace_insert_constraint(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    size_t *replace_attempt_count,
+    struct insert_execution_counters *counters
+) {
+    int rc = MYLITE_OK;
+
+    if (*replace_attempt_count >= plan->index_count) {
+        rc = reset_insert_statement_after_constraint(statement);
+        if (rc == MYLITE_OK) {
+            set_runtime_error(database, "REPLACE conflict retry limit exceeded");
+            rc = MYLITE_ERROR;
+        }
+        return rc;
+    }
+
+    ++(*replace_attempt_count);
+    return handle_replace_unique_key_conflict(
+        database,
+        sqlite_step_rc,
+        statement,
+        plan,
+        row_index,
+        counters
+    );
 }
 
 static int validate_insert_ignore_row_foreign_keys(
@@ -39755,6 +39909,344 @@ static int handle_insert_duplicate_key_update(
         );
     }
 
+    return rc;
+}
+
+static int handle_replace_unique_key_conflict(
+    struct mylite_db *database,
+    int sqlite_step_rc,
+    sqlite3_stmt *insert_statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    struct insert_execution_counters *counters
+) {
+    char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY] = "";
+    sqlite3_int64 deleted_rows = 0;
+    const struct loaded_index_info *conflicting_index = NULL;
+    bool exact_replacement = false;
+    int rc = find_insert_unique_key_conflict(
+        database,
+        sqlite_step_rc,
+        plan,
+        row_index,
+        &conflicting_index,
+        value_text,
+        sizeof(value_text)
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (conflicting_index == NULL) {
+        return mylite_sqlite_status_to_mylite(sqlite_step_rc);
+    }
+
+    rc = reset_insert_statement_after_constraint(insert_statement);
+    if (rc == MYLITE_OK) {
+        rc = replace_conflicting_row_matches_plan(
+            database,
+            plan,
+            row_index,
+            conflicting_index,
+            &exact_replacement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = delete_replace_conflicting_row(
+            database,
+            plan,
+            conflicting_index,
+            row_index,
+            &deleted_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
+    }
+    if (rc == MYLITE_OK && !exact_replacement) {
+        counters->affected_rows += (int64_t)deleted_rows;
+    }
+
+    return rc;
+}
+
+static int replace_conflicting_row_matches_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    bool *out_matches
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    rc = build_replace_conflicting_row_select_sql(plan, conflicting_index, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_unique_key_tuple_parameters(
+            statement,
+            conflicting_index,
+            plan->rows[row_index].values,
+            plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = compare_replace_conflicting_row(statement, plan, row_index, out_matches);
+        } else if (sqlite_rc == SQLITE_DONE) {
+            set_runtime_error(database, "REPLACE conflicting row disappeared before delete");
+            rc = MYLITE_ERROR;
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_replace_conflicting_row_select_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    if (conflicting_index == NULL || conflicting_index->part_count == 0U) {
+        dynamic_string_deinit(&string);
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = append_insert_column_names(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < conflicting_index->part_count;
+         ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(&string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(&string, &conflicting_index->parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_parameter_sql(
+                &string,
+                &conflicting_index->parts[part_index],
+                part_index + 1U
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int compare_replace_conflicting_row(
+    sqlite3_stmt *statement,
+    const struct planned_insert *plan,
+    size_t row_index,
+    bool *out_matches
+) {
+    *out_matches = false;
+    if (row_index >= plan->row_count) {
+        return MYLITE_ERROR;
+    }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (column_index >= (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        if (!sqlite_column_matches_planned_value(
+                statement,
+                (int)column_index,
+                &plan->rows[row_index].values[column_index]
+            )) {
+            return MYLITE_OK;
+        }
+    }
+
+    *out_matches = true;
+    return MYLITE_OK;
+}
+
+static bool sqlite_column_matches_planned_value(
+    sqlite3_stmt *statement,
+    int column_index,
+    const struct planned_value *value
+) {
+    int sqlite_type = sqlite3_column_type(statement, column_index);
+
+    if (value == NULL) {
+        return false;
+    }
+    if (value->is_null) {
+        return sqlite_type == SQLITE_NULL;
+    }
+    if (sqlite_type == SQLITE_NULL) {
+        return false;
+    }
+    if (value->is_blob) {
+        int byte_count = sqlite3_column_bytes(statement, column_index);
+        const void *bytes = sqlite3_column_blob(statement, column_index);
+
+        if (byte_count < 0 || (size_t)byte_count != value->text_length) {
+            return false;
+        }
+        if (value->text_length != 0U && (bytes == NULL || value->text == NULL)) {
+            return false;
+        }
+        if (value->text_length == 0U) {
+            return true;
+        }
+        return memcmp(bytes, value->text, value->text_length) == 0;
+    }
+    if (value->is_text) {
+        int byte_count = sqlite3_column_bytes(statement, column_index);
+        const unsigned char *text = sqlite3_column_text(statement, column_index);
+
+        if (byte_count < 0 || (size_t)byte_count != value->text_length) {
+            return false;
+        }
+        if (value->text_length != 0U && (text == NULL || value->text == NULL)) {
+            return false;
+        }
+        if (value->text_length == 0U) {
+            return true;
+        }
+        return memcmp(text, value->text, value->text_length) == 0;
+    }
+    if (value->is_real) {
+        return sqlite3_column_double(statement, column_index) == value->real;
+    }
+
+    return sqlite3_column_int64(statement, column_index) == (sqlite3_int64)value->integer;
+}
+
+static int delete_replace_conflicting_row(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    size_t row_index,
+    sqlite3_int64 *out_deleted_rows
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_deleted_rows = 0;
+    rc = build_replace_conflicting_row_delete_sql(plan, conflicting_index, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_unique_key_tuple_parameters(
+            statement,
+            conflicting_index,
+            plan->rows[row_index].values,
+            plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            *out_deleted_rows = sqlite3_changes64(database->sqlite);
+            if (*out_deleted_rows <= 0) {
+                set_runtime_error(database, "REPLACE failed to delete conflicting row");
+                rc = MYLITE_ERROR;
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_replace_conflicting_row_delete_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    if (conflicting_index == NULL || conflicting_index->part_count == 0U) {
+        dynamic_string_deinit(&string);
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(&string, "DELETE FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < conflicting_index->part_count;
+         ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(&string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(&string, &conflicting_index->parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_parameter_sql(
+                &string,
+                &conflicting_index->parts[part_index],
+                part_index + 1U
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
     return rc;
 }
 

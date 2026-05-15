@@ -1352,15 +1352,7 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "ALTER TABLE FORCE does not yet support primary-key tables",
         }
     );
-    failures += execute_error(
-        database,
-        "REPLACE INTO keyed VALUES (1, 11)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REPLACE into primary-key tables is not supported",
-        }
-    );
+    failures += expect_dml_ok(database, "REPLACE INTO keyed VALUES (1, 11)", 2);
     failures += execute_error(
         database,
         "INSERT INTO keyed SELECT id, v FROM keyed",
@@ -1368,6 +1360,15 @@ static int test_primary_key_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "INSERT ... SELECT into primary-key tables is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO keyed SELECT id, v FROM keyed",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REPLACE ... SELECT into primary-key tables is not supported",
         }
     );
     failures += execute_error(

@@ -177,6 +177,30 @@ child_restrict	parent_id	parent_id
 child_symbol	parent_idx	parent_id" \
     "$statistics"
 
+expect_error \
+    "duplicate FK index symbol is a duplicate key name" \
+    1061 \
+    "42000" \
+    "Duplicate key name 'dup_idx'" \
+    "USE ${DATABASE};
+     CREATE TABLE duplicate_symbol(
+       a INT,
+       b INT,
+       FOREIGN KEY dup_idx(a) REFERENCES parent(id),
+       FOREIGN KEY dup_idx(b) REFERENCES parent(id)
+     ) ENGINE=InnoDB;"
+
+expect_error \
+    "PRIMARY FK index symbol is invalid" \
+    1280 \
+    "42000" \
+    "Incorrect index name 'PRIMARY'" \
+    "USE ${DATABASE};
+     CREATE TABLE primary_symbol(
+       a INT,
+       FOREIGN KEY \`PRIMARY\`(a) REFERENCES parent(id)
+     ) ENGINE=InnoDB;"
+
 cascade_rows=$(run_mysql \
     "USE ${DATABASE};
      INSERT INTO parent VALUES (1),(2),(3),(4);
@@ -216,6 +240,51 @@ expect_value "direct composite delete cascade rows" \
 2	1
 NULL	2" \
     "$composite_rows"
+
+expect_error \
+    "cascade validates mutated child foreign keys" \
+    1452 \
+    "23000" \
+    "Cannot add or update a child row" \
+    "USE ${DATABASE};
+     CREATE TABLE validate_parent(id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB;
+     CREATE TABLE validate_other(id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB;
+     CREATE TABLE validate_child(
+       id INT NOT NULL PRIMARY KEY,
+       parent_id INT,
+       FOREIGN KEY(parent_id) REFERENCES validate_parent(id) ON UPDATE CASCADE,
+       FOREIGN KEY(parent_id) REFERENCES validate_other(id)
+     ) ENGINE=InnoDB;
+     INSERT INTO validate_parent VALUES (1);
+     INSERT INTO validate_other VALUES (1);
+     INSERT INTO validate_child VALUES (1,1);
+     UPDATE validate_parent SET id = 2 WHERE id = 1;"
+
+rollback_rows=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT id FROM validate_parent ORDER BY id;
+     SELECT parent_id FROM validate_child ORDER BY id;")
+expect_value "cascade child validation rollback rows" \
+    "1
+1" \
+    "$rollback_rows"
+
+expect_error \
+    "cascade unique child conflict diagnostic" \
+    1761 \
+    "23000" \
+    "would lead to a duplicate entry" \
+    "USE ${DATABASE};
+     CREATE TABLE unique_parent(id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB;
+     CREATE TABLE unique_child(
+       id INT NOT NULL PRIMARY KEY,
+       parent_id INT,
+       UNIQUE KEY u_parent(parent_id),
+       FOREIGN KEY(parent_id) REFERENCES unique_parent(id) ON UPDATE CASCADE
+     ) ENGINE=InnoDB;
+     INSERT INTO unique_parent VALUES (1),(2);
+     INSERT INTO unique_child VALUES (1,1),(2,2);
+     UPDATE unique_parent SET id = 2 WHERE id = 1;"
 
 run_mysql "USE ${DATABASE}; INSERT INTO child_restrict VALUES (3);" >/dev/null
 expect_error \

@@ -202,9 +202,13 @@ Child-index naming:
 
 - If a matching child index already exists, reuse it.
 - If no matching child index exists and the FK has an explicit constraint name,
-  create a child secondary index named after the constraint name.
+  create a child secondary index named after the constraint name. That name is
+  exact: `PRIMARY` and collisions with planned indexes are rejected instead of
+  generating a suffix.
 - If no matching child index exists and the FK has no explicit constraint name
-  but has an FK index symbol, create the child index with that symbol.
+  but has an FK index symbol, create the child index with that symbol. That
+  symbol is exact: `PRIMARY` and collisions with planned indexes are rejected
+  instead of generating a suffix.
 - If neither an explicit constraint name nor an FK index symbol exists, use the
   existing generated child-index default based on the first child column.
 
@@ -241,14 +245,16 @@ Before updating parent rows, MyLite applies each direct `ON UPDATE CASCADE`
 descriptor whose referenced parent key columns are changed by the supported
 single-table `UPDATE` plan:
 
-1. Build a statement-local temporary mapping table containing old parent key
-   tuples and their new key tuples for the exact parent rows that will be
-   changed, including admitted `WHERE`, `ORDER BY`, `LIMIT`, and changed-row
-   filtering.
-2. Execute the parent update.
-3. Update direct child rows from matching old key tuples to the corresponding
-   new key tuple with descriptor-built set-based SQLite `UPDATE` statements.
-4. Run existing child-side and parent-side validation as a safety check.
+1. Build a descriptor-owned parent-row subquery for the exact parent rows that
+   will change, including admitted `WHERE`, `ORDER BY`, `LIMIT`, and
+   changed-row filtering.
+2. Update matching direct child rows from the old parent key tuple to the new
+   key tuple with a descriptor-built set-based SQLite `UPDATE` statement.
+3. Execute the parent update.
+4. Validate the mutated child tables' own FK descriptors after the parent rows
+   have their new key values, so child-side FK failures roll back both the
+   child cascade and the parent update.
+5. Run existing child-side and parent-side validation as a safety check.
 
 If a parent `UPDATE` does not mutate any referenced key column for a given FK,
 no cascade is required for that FK and the current validation path remains
@@ -291,6 +297,8 @@ Supported diagnostics:
   `1451 / 23000`;
 - child-side missing parent rows after direct cascades return existing
   `1452 / 23000` if validation finds an inconsistency;
+- child unique-key conflicts caused by a direct update cascade return
+  `1761 / 23000`;
 - recursive/self-referential cascade shapes not yet supported return
   deterministic unsupported diagnostics before mutation;
 - allocation and physical SQLite failures use existing runtime conventions.
@@ -298,11 +306,11 @@ Supported diagnostics:
 ## Performance
 
 Cascades must stay set-based. Direct child deletion/update uses SQLite
-`EXISTS` and statement-local mapping tables over physical MyLite-owned tables.
-MyLite must not materialize parent or child tables into process memory to
-decide cascade side effects. Existing generated child indexes remain ordinary
-SQLite indexes and should support child lookups where SQLite's planner can use
-them.
+`EXISTS`, correlated parent-row subqueries, and descriptor-built assignments
+over physical MyLite-owned tables. MyLite must not materialize parent or child
+tables into process memory to decide cascade side effects. Existing generated
+child indexes remain ordinary SQLite indexes and should support child lookups
+where SQLite's planner can use them.
 
 No SQLite fork patch is required for this phase. If later recursive cascades,
 deeper optimizer integration, or lower-overhead statement hooks need an
@@ -317,6 +325,7 @@ for:
 - `CREATE TABLE ... FOREIGN KEY index_name (...) REFERENCES ...`;
 - explicit `CONSTRAINT name FOREIGN KEY index_name (...)` child-index naming;
 - existing child index reuse when an FK index symbol is present;
+- duplicate requested FK index symbols and `PRIMARY` FK index symbols;
 - `ALTER TABLE ... ADD FOREIGN KEY index_name (...) REFERENCES ...`;
 - `ALTER TABLE ... ADD CONSTRAINT name FOREIGN KEY ... ON DELETE/UPDATE ...`;
 - `ON DELETE CASCADE`, `ON UPDATE CASCADE`, both together, both orderings, and
@@ -326,6 +335,8 @@ for:
 - direct delete cascade over one-column and composite integer FKs;
 - direct update cascade over one-column integer FKs and a representative
   composite integer FK where supported update assignment shapes allow it;
+- child-side FK validation and child unique-key conflicts after update
+  cascades, including rollback of parent and child rows;
 - nullable child rows, parent row counts, warning counts, result shape, and
   persistence after reopen;
 - unsupported `SET NULL`, `SET DEFAULT`, `MATCH`, duplicate action timings, and

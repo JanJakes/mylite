@@ -24,8 +24,10 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_foreign_key_definition = 1239,
+    mysql_error_incorrect_index_name = 1280,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
+    mysql_error_foreign_key_cascade_duplicate = 1761,
     mysql_error_failed_to_open_referenced_table = 1824,
     mysql_error_duplicate_foreign_key = 1826,
     mysql_error_foreign_key_column_incompatible = 3780,
@@ -54,6 +56,8 @@ struct expected_dml_status {
 static int test_create_table_foreign_key_lifecycle(void);
 static int test_composite_foreign_key_lifecycle(void);
 static int test_alter_table_add_foreign_key_lifecycle(void);
+static int test_foreign_key_symbol_action_metadata(void);
+static int test_foreign_key_cascade_actions(void);
 static int test_alter_table_drop_foreign_key_lifecycle(void);
 static int test_foreign_key_diagnostics(void);
 static int test_drop_foreign_key_diagnostics(void);
@@ -103,6 +107,8 @@ int main(void) {
     failures += test_create_table_foreign_key_lifecycle();
     failures += test_composite_foreign_key_lifecycle();
     failures += test_alter_table_add_foreign_key_lifecycle();
+    failures += test_foreign_key_symbol_action_metadata();
+    failures += test_foreign_key_cascade_actions();
     failures += test_alter_table_drop_foreign_key_lifecycle();
     failures += test_foreign_key_diagnostics();
     failures += test_drop_foreign_key_diagnostics();
@@ -632,6 +638,407 @@ static int test_alter_table_add_foreign_key_lifecycle(void) {
     return failures;
 }
 
+static int test_foreign_key_symbol_action_metadata(void) {
+    static const char *const create_symbol_statistics[] = {"fk_idx", "1", "parent_id"};
+    static const char *const create_symbol_referential[] = {
+        "child_symbol_ibfk_1",
+        "NO ACTION",
+        "NO ACTION",
+    };
+    static const char *const create_action_statistics[] = {"fk_action", "1", "parent_id"};
+    static const char *const create_action_referential[] = {
+        "fk_action",
+        "CASCADE",
+        "RESTRICT",
+    };
+    static const char *const create_reverse_action_referential[] = {
+        "fk_reverse_action",
+        "RESTRICT",
+        "CASCADE",
+    };
+    static const char *const create_no_action_referential[] = {
+        "fk_no_action",
+        "NO ACTION",
+        "NO ACTION",
+    };
+    static const char *const alter_symbol_statistics[] = {"idx_pid", "1", "parent_id"};
+    static const char *const alter_symbol_referential[] = {
+        "child_alter_symbol_ibfk_1",
+        "NO ACTION",
+        "CASCADE",
+    };
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_symbol (id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY fk_idx (parent_id) REFERENCES parent (id))"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_symbol", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "KEY `fk_idx` (`parent_id`)",
+            "SHOW CREATE unnamed foreign-key index symbol"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "CONSTRAINT `child_symbol_ibfk_1` FOREIGN KEY",
+            "SHOW CREATE unnamed foreign-key generated constraint"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_symbol' AND "
+            "INDEX_NAME = 'fk_idx'",
+            create_symbol_statistics,
+            1U,
+            3U,
+            "unnamed foreign-key index symbol statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_symbol'",
+            create_symbol_referential,
+            1U,
+            3U,
+            "unnamed foreign-key default referential actions",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_action (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_action FOREIGN KEY ignored_idx (parent_id) REFERENCES parent (id) "
+        "ON UPDATE CASCADE ON DELETE RESTRICT)"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_action", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "KEY `fk_action` (`parent_id`)",
+            "SHOW CREATE explicit constraint names generated child index"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "ON DELETE RESTRICT ON UPDATE CASCADE",
+            "SHOW CREATE renders non-default foreign-key actions"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_action' AND "
+            "INDEX_NAME = 'fk_action'",
+            create_action_statistics,
+            1U,
+            3U,
+            "explicit foreign-key generated child index statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_action'",
+            create_action_referential,
+            1U,
+            3U,
+            "explicit foreign-key action metadata",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_reverse_action (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_reverse_action FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON DELETE CASCADE ON UPDATE RESTRICT)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_reverse_action'",
+            create_reverse_action_referential,
+            1U,
+            3U,
+            "reverse-order foreign-key action metadata",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_no_action (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_no_action FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON UPDATE NO ACTION ON DELETE NO ACTION)"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_no_action", &show_create_result);
+    if (failures == 0) {
+        failures += expect_not_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "NO ACTION",
+            "SHOW CREATE omits explicit NO ACTION"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_no_action'",
+            create_no_action_referential,
+            1U,
+            3U,
+            "explicit NO ACTION metadata",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE child_alter_symbol (id INT, parent_id INT)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE child_alter_symbol ADD FOREIGN KEY idx_pid (parent_id) "
+        "REFERENCES parent (id) ON DELETE CASCADE"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_alter_symbol", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "KEY `idx_pid` (`parent_id`)",
+            "SHOW CREATE alter foreign-key index symbol"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "CONSTRAINT `child_alter_symbol_ibfk_1` FOREIGN KEY",
+            "SHOW CREATE alter generated foreign-key constraint"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "ON DELETE CASCADE",
+            "SHOW CREATE alter delete cascade action"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+            "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_alter_symbol' AND "
+            "INDEX_NAME = 'idx_pid'",
+            alter_symbol_statistics,
+            1U,
+            3U,
+            "alter foreign-key index symbol statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_alter_symbol'",
+            alter_symbol_referential,
+            1U,
+            3U,
+            "alter foreign-key action metadata",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_cascade_actions(void) {
+    static const char *const delete_limited_values[] = {
+        "10",
+        "1",
+        "12",
+        NULL,
+        "13",
+        "3",
+    };
+    static const char *const delete_final_values[] = {"10", "1", "12", NULL};
+    static const char *const update_values[] = {"20", "11", "21", "2", "22", NULL};
+    static const char *const composite_update_values[] = {"30", "5", "2", "31", NULL, "2"};
+    static const char *const child_validation_values[] = {"40", "1"};
+    static const char *const unique_conflict_values[] = {"50", "1", "51", "2"};
+    mylite_db *database = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(database, "CREATE TABLE pdel (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cdel (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_cdel_parent FOREIGN KEY (parent_id) REFERENCES pdel (id) "
+        "ON DELETE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO pdel VALUES (1), (2), (3)", 3);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO cdel VALUES (10,1), (11,2), (12,NULL), (13,3)", 4);
+    failures += expect_dml_ok(database, "DELETE FROM pdel WHERE id >= 2 ORDER BY id LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM cdel ORDER BY id",
+            delete_limited_values,
+            3U,
+            2U,
+            "limited parent DELETE cascades matching child rows",
+        }
+    );
+    failures += expect_dml_ok(database, "DELETE FROM pdel WHERE id = 3", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM cdel ORDER BY id",
+            delete_final_values,
+            2U,
+            2U,
+            "parent DELETE cascade leaves nullable child rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE pupd (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cupd (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_cupd_parent FOREIGN KEY (parent_id) REFERENCES pupd (id) "
+        "ON UPDATE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO pupd VALUES (1), (2)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO cupd VALUES (20,1), (21,2), (22,NULL)", 3);
+    failures += expect_dml_ok(database, "UPDATE pupd SET id = 11 WHERE id = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM cupd ORDER BY id",
+            update_values,
+            3U,
+            2U,
+            "parent UPDATE cascades matching child rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE ppair (a INT, b INT, PRIMARY KEY (a,b))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cpair (id INT PRIMARY KEY, a INT NULL, b INT NULL, "
+        "CONSTRAINT fk_cpair_parent FOREIGN KEY (a,b) REFERENCES ppair (a,b) "
+        "ON UPDATE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO ppair VALUES (1,2), (3,4)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO cpair VALUES (30,1,2), (31,NULL,2)", 2);
+    failures += expect_dml_ok(database, "UPDATE ppair SET a = 5 WHERE a = 1 AND b = 2", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, a, b FROM cpair ORDER BY id",
+            composite_update_values,
+            2U,
+            3U,
+            "parent UPDATE cascades composite child rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE pvalidate (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(database, "CREATE TABLE qvalidate (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cvalidate (id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES pvalidate (id) ON UPDATE CASCADE, "
+        "FOREIGN KEY (parent_id) REFERENCES qvalidate (id))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO pvalidate VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO qvalidate VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO cvalidate VALUES (40,1)", 1);
+    failures += execute_error(
+        database,
+        "UPDATE pvalidate SET id = 2 WHERE id = 1",
+        (struct expected_sql_error){mysql_error_no_referenced_row, "23000", "child row"}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM cvalidate ORDER BY id",
+            child_validation_values,
+            1U,
+            2U,
+            "failed cascade rolls back child-side foreign-key violation",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE puniq (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cuniq (id INT PRIMARY KEY, parent_id INT, UNIQUE KEY u_parent(parent_id), "
+        "FOREIGN KEY (parent_id) REFERENCES puniq (id) ON UPDATE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO puniq VALUES (1), (2)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO cuniq VALUES (50,1), (51,2)", 2);
+    failures += execute_error(
+        database,
+        "UPDATE puniq SET id = 2 WHERE id = 1",
+        (struct expected_sql_error){
+            mysql_error_foreign_key_cascade_duplicate,
+            "23000",
+            "would lead to a duplicate entry",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM cuniq ORDER BY id",
+            unique_conflict_values,
+            2U,
+            2U,
+            "failed cascade unique conflict rolls back child rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE prestrict (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE crestrict (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_restrict FOREIGN KEY (parent_id) REFERENCES prestrict (id) "
+        "ON DELETE RESTRICT ON UPDATE RESTRICT)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO prestrict VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO crestrict VALUES (1,1)", 1);
+    failures += execute_error(
+        database,
+        "DELETE FROM prestrict WHERE id = 1",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+    failures += execute_error(
+        database,
+        "UPDATE prestrict SET id = 2 WHERE id = 1",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_alter_table_drop_foreign_key_lifecycle(void) {
     static const char *const zero_rows[] = {"0"};
     static const char *const one_row[] = {"1"};
@@ -895,11 +1302,29 @@ static int test_foreign_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE parent_signed ADD FOREIGN KEY (id) REFERENCES parent_signed (id)",
+        "CREATE TABLE child_duplicate_fk_index_symbol (a INT, b INT, "
+        "FOREIGN KEY fk_idx (a) REFERENCES parent_signed (id), "
+        "FOREIGN KEY fk_idx (b) REFERENCES parent_signed (id))",
+        (struct expected_sql_error){mysql_error_duplicate_key_name, "42000", "Duplicate key"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE child_primary_fk_index_symbol (a INT, "
+        "FOREIGN KEY `PRIMARY` (a) REFERENCES parent_signed (id))",
+        (struct expected_sql_error){
+            mysql_error_incorrect_index_name,
+            "42000",
+            "Incorrect index name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE parent_signed ADD FOREIGN KEY (id) REFERENCES parent_signed (id) "
+        "ON UPDATE CASCADE ON UPDATE RESTRICT",
         (struct expected_sql_error){
             mysql_error_parse,
             "42000",
-            "FOREIGN",
+            "ON UPDATE",
         }
     );
     failures += expect_statement_ok(
@@ -977,6 +1402,8 @@ static int test_drop_foreign_key_diagnostics(void) {
 static int test_foreign_key_persistence(void) {
     static const char *const values[] = {"10", "2", "11", "2"};
     static const char *const composite_values[] = {"20", "1", "2", "21", "3", "4"};
+    static const char *const action_values[] = {"30", "9"};
+    static const char *const action_rules[] = {"fk_action_persist", "CASCADE", "CASCADE"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1009,6 +1436,15 @@ static int test_foreign_key_persistence(void) {
     );
     failures += expect_dml_ok(database, "INSERT INTO parent_pair VALUES (1,2), (3,4)", 2);
     failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (20,1,2)", 1);
+    failures += expect_statement_ok(database, "CREATE TABLE parent_action (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_action_persist (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_action_persist FOREIGN KEY (parent_id) REFERENCES parent_action (id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO parent_action VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO child_action_persist VALUES (30,1)", 1);
     mylite_close(database);
     database = NULL;
 
@@ -1016,6 +1452,7 @@ static int test_foreign_key_persistence(void) {
     failures += expect_statement_ok(database, "USE app");
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (11, 2)", 1);
     failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (21,3,4)", 1);
+    failures += expect_dml_ok(database, "UPDATE parent_action SET id = 9 WHERE id = 1", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -1034,6 +1471,28 @@ static int test_foreign_key_persistence(void) {
             2U,
             3U,
             "composite foreign key rows after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM child_action_persist ORDER BY id",
+            action_values,
+            1U,
+            2U,
+            "foreign-key actions persist after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_action_persist'",
+            action_rules,
+            1U,
+            3U,
+            "foreign-key action metadata persists after reopen",
         }
     );
 

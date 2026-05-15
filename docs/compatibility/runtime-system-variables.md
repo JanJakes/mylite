@@ -194,7 +194,7 @@ Performance Schema variable tables remain unsupported.
 | `external_user` | ❌ | Value, scope, SET, diagnostics |
 | `flush` | ❌ | Value, scope, SET, diagnostics |
 | `flush_time` | ❌ | Value, scope, SET, diagnostics |
-| `foreign_key_checks` | 🟡 | Limited scalar `SELECT @@foreign_key_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; no mutable global/session state, disabled-enforcement mode, cascades, broader dependency toggling, or Performance Schema variable tables |
+| `foreign_key_checks` | 🟡 | Limited scalar `SELECT @@foreign_key_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; no mutable global/session state, disabled-enforcement mode, broader dependency toggling, or Performance Schema variable tables |
 | `ft_boolean_syntax` | ❌ | Value, scope, SET, diagnostics |
 | `ft_max_word_len` | ❌ | Value, scope, SET, diagnostics |
 | `ft_min_word_len` | ❌ | Value, scope, SET, diagnostics |

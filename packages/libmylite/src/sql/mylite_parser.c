@@ -4410,10 +4410,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,
     struct mylite_sql_token foreign_token,
+    struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *child_parts,
     struct mylite_sql_ast_node *referenced_table,
     struct mylite_sql_ast_node *referenced_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *actions
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&foreign_token), span_from_token(&right_paren));
@@ -4421,6 +4423,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
 
     if (constraint_name != NULL) {
         span = span_join(constraint_name->span, span);
+    }
+    if (actions != NULL) {
+        span = span_join(span, actions->span);
     }
 
     definition = make_node(state, MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION, span);
@@ -4431,9 +4436,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     if (constraint_name != NULL) {
         mylite_sql_ast_node_append_child(definition, constraint_name);
     }
+    if (index_name != NULL) {
+        mylite_sql_ast_node_append_child(definition, index_name);
+    }
     mylite_sql_ast_node_append_child(definition, child_parts);
     mylite_sql_ast_node_append_child(definition, referenced_table);
     mylite_sql_ast_node_append_child(definition, referenced_parts);
+    if (actions != NULL) {
+        mylite_sql_ast_node_append_child(definition, actions);
+    }
     return definition;
 }
 
@@ -4508,6 +4519,67 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_foreign_key_part(
         mylite_sql_ast_node_set_span(list, span_join(list->span, key_part->span));
     }
     return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_index_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *identifier
+) {
+    struct mylite_sql_source_span span =
+        identifier == NULL ? (struct mylite_sql_source_span){0} : identifier->span;
+    struct mylite_sql_ast_node *index_name =
+        make_node(state, MYLITE_SQL_AST_FOREIGN_KEY_INDEX_NAME, span);
+    if (index_name == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(index_name, identifier);
+    return index_name;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *action
+) {
+    struct mylite_sql_source_span span =
+        action == NULL ? (struct mylite_sql_source_span){0} : action->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_FOREIGN_KEY_ACTION_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, action);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_foreign_key_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *action
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, action);
+    if (action != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, action->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token,
+    enum mylite_sql_ast_node_kind kind
+) {
+    return make_node(
+        state,
+        kind,
+        span_join(span_from_token(&first_token), span_from_token(&last_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
@@ -5734,8 +5806,11 @@ static bool map_keyword_token(
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
+        {"ACTION", MYLITE_SQL_PARSE_ACTION},
+        {"CASCADE", MYLITE_SQL_PARSE_CASCADE},
         {"ENFORCED", MYLITE_SQL_PARSE_ENFORCED},
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
+        {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
@@ -5835,6 +5910,7 @@ static bool map_keyword_token(
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"SYSTEM", MYLITE_SQL_PARSE_SYSTEM},
         {"ON", MYLITE_SQL_PARSE_ON},
+        {"NO", MYLITE_SQL_PARSE_NO},
         {"OFF", MYLITE_SQL_PARSE_OFF},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},

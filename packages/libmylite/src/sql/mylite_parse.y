@@ -38,7 +38,7 @@
 %left BITWISE_XOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
-%fallback IDENTIFIER SAVEPOINT ENFORCED.
+%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -1118,14 +1118,8 @@ alter_table_add_index_statement(A) ::=
 }
 
 alter_table_add_foreign_key_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD CONSTRAINT identifier(N) FOREIGN(F) KEY LPAREN
-    foreign_key_part_list(C) RPAREN REFERENCES table_name(P) LPAREN foreign_key_part_list(RL)
-    RPAREN(R). {
-    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(
-        state,
-        A1,
-        T,
-        mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R));
+    ALTER(A1) TABLE table_name(T) ADD foreign_key_definition(FK). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(state, A1, T, FK);
 }
 
 alter_table_drop_foreign_key_statement(A) ::=
@@ -4062,9 +4056,10 @@ unique_index_keyword_required ::= KEY.
 unique_index_keyword_required ::= INDEX.
 
 foreign_key_definition(A) ::=
-    constraint_name_opt(N) FOREIGN(F) KEY LPAREN foreign_key_part_list(C) RPAREN
-    REFERENCES table_name(P) LPAREN foreign_key_part_list(RL) RPAREN(R). {
-    A = mylite_sql_parser_make_foreign_key_definition(state, N, F, C, P, RL, R);
+    constraint_name_opt(N) FOREIGN(F) KEY foreign_key_index_name_opt(I) LPAREN
+    foreign_key_part_list(C) RPAREN REFERENCES table_name(P) LPAREN foreign_key_part_list(RL)
+    RPAREN(R) foreign_key_action_clause_list_opt(O). {
+    A = mylite_sql_parser_make_foreign_key_definition(state, N, F, I, C, P, RL, R, O);
 }
 
 check_constraint_definition(A) ::=
@@ -4120,6 +4115,52 @@ foreign_key_part_list(A) ::= identifier(B). {
 }
 foreign_key_part_list(A) ::= foreign_key_part_list(B) COMMA identifier(C). {
     A = mylite_sql_parser_append_foreign_key_part(state, B, C);
+}
+
+foreign_key_index_name_opt(A) ::= . {
+    A = NULL;
+}
+foreign_key_index_name_opt(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_foreign_key_index_name(state, B);
+}
+
+foreign_key_action_clause_list_opt(A) ::= . {
+    A = NULL;
+}
+foreign_key_action_clause_list_opt(A) ::= foreign_key_action_clause_list(B). {
+    A = B;
+}
+
+foreign_key_action_clause_list(A) ::= foreign_key_action_clause(B). {
+    A = mylite_sql_parser_make_foreign_key_action_list(state, B);
+}
+foreign_key_action_clause_list(A) ::= foreign_key_action_clause_list(B) foreign_key_action_clause(C). {
+    A = mylite_sql_parser_append_foreign_key_action(state, B, C);
+}
+
+foreign_key_action_clause(A) ::= ON(O) DELETE CASCADE(C). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, C, MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_CASCADE);
+}
+foreign_key_action_clause(A) ::= ON(O) DELETE RESTRICT(R). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, R, MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_RESTRICT);
+}
+foreign_key_action_clause(A) ::= ON(O) DELETE NO ACTION(A1). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, A1, MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_NO_ACTION);
+}
+foreign_key_action_clause(A) ::= ON(O) UPDATE CASCADE(C). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, C, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_CASCADE);
+}
+foreign_key_action_clause(A) ::= ON(O) UPDATE RESTRICT(R). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, R, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_RESTRICT);
+}
+foreign_key_action_clause(A) ::= ON(O) UPDATE NO ACTION(A1). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, A1, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_NO_ACTION);
 }
 
 index_name_opt(A) ::= . {

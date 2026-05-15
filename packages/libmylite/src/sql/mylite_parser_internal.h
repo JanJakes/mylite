@@ -1289,10 +1289,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,
     struct mylite_sql_token foreign_token,
+    struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *child_parts,
     struct mylite_sql_ast_node *referenced_table,
     struct mylite_sql_ast_node *referenced_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *actions
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_check_constraint_definition(
     struct mylite_sql_parser_state *state,
@@ -1315,6 +1317,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_foreign_key_part(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,
     struct mylite_sql_ast_node *key_part
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_index_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *identifier
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_action_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *action
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_foreign_key_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *action
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token,
+    enum mylite_sql_ast_node_kind kind
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_part_list(
     struct mylite_sql_parser_state *state,

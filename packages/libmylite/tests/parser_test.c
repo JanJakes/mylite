@@ -11236,10 +11236,16 @@ static int test_create_table_primary_key_statements(void) {
 }
 
 static int test_create_table_foreign_key_statements(void) {
+    enum {
+        named_indexed_fk_child_count = 6,
+        named_indexed_fk_action_index = 5,
+    };
+
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *items = NULL;
     const struct mylite_sql_ast_node *foreign_key = NULL;
+    const struct mylite_sql_ast_node *actions = NULL;
     const struct mylite_sql_ast_node *child_parts = NULL;
     const struct mylite_sql_ast_node *parent_parts = NULL;
     int failures = 0;
@@ -11287,6 +11293,24 @@ static int test_create_table_foreign_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE child (parent_id INT, FOREIGN KEY parent_idx (`parent_id`) "
+        "REFERENCES app.parent (`id`));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    foreign_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    failures += expect_child_count(foreign_key, 4U, "indexed create foreign key child count");
+    failures += expect_node(
+        child_at(foreign_key, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_INDEX_NAME,
+        "fk index name wrapper"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(foreign_key, 0U), 0U), "parent_idx", "fk index name");
+    failures += expect_span_text(child_at(foreign_key, 2U), "app.parent", "indexed fk parent");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE child (a INT, b INT, FOREIGN KEY (a, b) REFERENCES parent (a, b));",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -11308,6 +11332,56 @@ static int test_create_table_foreign_key_statements(void) {
     failures += parse_sql(
         "CREATE TABLE child (parent_id INT, FOREIGN KEY (parent_id) REFERENCES parent (id) "
         "ON DELETE CASCADE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    foreign_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    failures += expect_child_count(foreign_key, 4U, "create foreign key action child count");
+    actions = child_at(foreign_key, 3U);
+    failures += expect_node(actions, MYLITE_SQL_AST_FOREIGN_KEY_ACTION_LIST, "fk action list");
+    failures += expect_child_count(actions, 1U, "fk action count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_CASCADE,
+        "delete cascade action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE child (parent_id INT, CONSTRAINT fk FOREIGN KEY idx_parent (parent_id) "
+        "REFERENCES parent (id) ON UPDATE RESTRICT ON DELETE NO ACTION);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    foreign_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    failures += expect_child_count(
+        foreign_key,
+        named_indexed_fk_child_count,
+        "named indexed create fk action child count"
+    );
+    failures += expect_span_text(child_at(foreign_key, 0U), "fk", "named indexed fk name");
+    failures += expect_node(
+        child_at(foreign_key, 1U),
+        MYLITE_SQL_AST_FOREIGN_KEY_INDEX_NAME,
+        "named indexed fk index"
+    );
+    actions = child_at(foreign_key, named_indexed_fk_action_index);
+    failures += expect_child_count(actions, 2U, "named indexed fk action count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_RESTRICT,
+        "update restrict action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_NO_ACTION,
+        "delete no action action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE child (parent_id INT, FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON DELETE SET NULL);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -11740,9 +11814,15 @@ static int test_alter_table_add_index_statements(void) {
 }
 
 static int test_alter_table_add_foreign_key_statements(void) {
+    enum {
+        alter_fk_action_child_count = 5,
+        alter_fk_action_list_index = 4,
+    };
+
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *foreign_key = NULL;
+    const struct mylite_sql_ast_node *actions = NULL;
     const struct mylite_sql_ast_node *child_parts = NULL;
     const struct mylite_sql_ast_node *parent_parts = NULL;
     int failures = 0;
@@ -11791,14 +11871,54 @@ static int test_alter_table_add_foreign_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES parent (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = child_at(result.root, 0U);
+    foreign_key = child_at(statement, 1U);
+    failures += expect_child_count(foreign_key, 3U, "unnamed alter fk definition child count");
+    failures += expect_span_text(child_at(statement, 0U), "child", "unnamed alter fk child table");
+    failures += expect_span_text(child_at(foreign_key, 1U), "parent", "unnamed alter fk parent");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE child ADD FOREIGN KEY idx_parent (parent_id) REFERENCES parent (id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    foreign_key = child_at(statement, 1U);
+    failures += expect_child_count(foreign_key, 4U, "indexed alter fk definition child count");
+    failures += expect_node(
+        child_at(foreign_key, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_INDEX_NAME,
+        "indexed alter fk index node"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(foreign_key, 0U), 0U), "idx_parent", "alter fk index");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "ALTER TABLE child ADD CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES parent (id) "
         "ON UPDATE CASCADE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    foreign_key = child_at(statement, 1U);
+    failures +=
+        expect_child_count(foreign_key, alter_fk_action_child_count, "alter fk action child count");
+    actions = child_at(foreign_key, alter_fk_action_list_index);
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_CASCADE,
+        "alter update cascade action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE child ADD CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON UPDATE SET DEFAULT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

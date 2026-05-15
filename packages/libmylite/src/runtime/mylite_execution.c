@@ -5865,6 +5865,13 @@ struct scalar_decimal_places {
     uint64_t magnitude;
 };
 
+struct scalar_text_conversion_messages {
+    const char *unsupported;
+    const char *signed_value;
+    const char *string_unsupported;
+    const char *embedded_nul;
+};
+
 struct field_scalar_argument {
     enum planned_row_scalar_field_domain domain;
     bool is_null;
@@ -10043,7 +10050,7 @@ static int cast_binary_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
-static int cast_binary_input_value(
+static int convert_binary_type_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -10051,6 +10058,17 @@ static int cast_binary_input_value(
 static int convert_using_binary_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int convert_using_charset_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_text_conversion_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_text_conversion_messages *messages,
     struct session_scalar_cell *out_cell
 );
 static int date_add_second_value(
@@ -11065,7 +11083,13 @@ static bool is_string_length_projection_expression(const struct mylite_sql_ast_n
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_convert_binary_type_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_convert_using_binary_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_convert_using_charset_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -17307,7 +17331,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -29989,7 +30015,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -54326,8 +54354,12 @@ static int session_scalar_value(
         return truncate_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return cast_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+        return convert_binary_type_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
         return convert_using_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return convert_using_charset_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
         return date_add_second_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -59752,6 +59784,13 @@ static int cast_binary_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    static const struct scalar_text_conversion_messages messages = {
+        .unsupported = "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        .signed_value = "CAST AS BINARY supports only signed integer values",
+        .string_unsupported = "CAST AS BINARY supports only string literals",
+        .embedded_nul = "CAST AS BINARY does not support embedded NUL bytes",
+    };
+
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
@@ -59764,104 +59803,48 @@ static int cast_binary_value(
         return MYLITE_ERROR;
     }
 
-    return cast_binary_input_value(database, child_at(expression, 0U), out_cell);
+    return scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &messages,
+        out_cell
+    );
 }
 
-static int cast_binary_input_value(
+static int convert_binary_type_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    const struct mylite_sql_ast_node *literal = expression;
-    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
-    bool is_negative = false;
-    bool has_sign = false;
+    static const struct scalar_text_conversion_messages messages = {
+        .unsupported =
+            "CONVERT(value, BINARY) supports only string, integer, boolean, and NULL values",
+        .signed_value = "CONVERT(value, BINARY) supports only signed integer values",
+        .string_unsupported = "CONVERT(value, BINARY) supports only string literals",
+        .embedded_nul = "CONVERT(value, BINARY) does not support embedded NUL bytes",
+    };
 
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_cell = (struct session_scalar_cell){0};
+
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
         set_unsupported_error(
             database,
-            "CAST AS BINARY supports only string, integer, boolean, and NULL values"
-        );
-        return MYLITE_ERROR;
-    }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
-
-        has_sign = true;
-        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-            is_negative = true;
-        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-            set_unsupported_error(database, "CAST AS BINARY supports only signed integer values");
-            return MYLITE_ERROR;
-        }
-        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
-    }
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
-        set_unsupported_error(
-            database,
-            "CAST AS BINARY supports only string, integer, boolean, and NULL values"
+            "CONVERT(value, BINARY) supports only CONVERT(value, BINARY)"
         );
         return MYLITE_ERROR;
     }
 
-    literal_kind = mylite_sql_ast_node_literal_kind(literal);
-    if (has_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "CAST AS BINARY supports only signed integer values");
-        return MYLITE_ERROR;
-    }
-    switch (literal_kind) {
-    case MYLITE_SQL_AST_LITERAL_STRING: {
-        size_t text_length = 0U;
-        int rc = decode_sql_string_literal(
-            database,
-            literal,
-            "CAST AS BINARY supports only string literals",
-            "CAST AS BINARY does not support embedded NUL bytes",
-            &out_cell->owned_text,
-            &text_length
-        );
-        (void)text_length;
-        if (rc == MYLITE_OK) {
-            out_cell->value = out_cell->owned_text;
-        }
-        return rc;
-    }
-    case MYLITE_SQL_AST_LITERAL_INTEGER: {
-        int rc = normalize_decimal_integer_literal(
-            database,
-            &literal->span,
-            is_negative,
-            out_cell->literal_text,
-            sizeof(out_cell->literal_text)
-        );
-
-        if (rc == MYLITE_OK) {
-            out_cell->value = out_cell->literal_text;
-        }
-        return rc;
-    }
-    case MYLITE_SQL_AST_LITERAL_TRUE:
-        out_cell->value = "1";
-        return MYLITE_OK;
-    case MYLITE_SQL_AST_LITERAL_FALSE:
-        out_cell->value = "0";
-        return MYLITE_OK;
-    case MYLITE_SQL_AST_LITERAL_NULL:
-        out_cell->value = NULL;
-        return MYLITE_OK;
-    default:
-        break;
-    }
-
-    set_unsupported_error(
+    return scalar_text_conversion_input_value(
         database,
-        "CAST AS BINARY supports only string, integer, boolean, and NULL values"
+        child_at(expression, 0U),
+        &messages,
+        out_cell
     );
-    return MYLITE_ERROR;
 }
 
 static int convert_using_binary_value(
@@ -59908,6 +59891,154 @@ static int convert_using_binary_value(
         out_cell->value = out_cell->owned_text;
     }
     return rc;
+}
+
+static int convert_using_charset_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *charset = NULL;
+    bool charset_is_utf8mb4 = true;
+    static const char expected_charset[] = "utf8mb4";
+    static const struct scalar_text_conversion_messages messages = {
+        .unsupported =
+            "CONVERT USING utf8mb4 supports only string, integer, boolean, and NULL values",
+        .signed_value = "CONVERT USING utf8mb4 supports only signed integer values",
+        .string_unsupported = "CONVERT USING utf8mb4 supports only string literals",
+        .embedded_nul = "CONVERT USING utf8mb4 does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(
+            database,
+            "CONVERT USING charset supports only CONVERT(value USING utf8mb4)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    charset = child_at(expression, 1U);
+    if (charset == NULL || charset->kind != MYLITE_SQL_AST_IDENTIFIER ||
+        charset->span.text == NULL || charset->span.length != sizeof(expected_charset) - 1U) {
+        set_unsupported_error(database, "CONVERT USING charset supports only utf8mb4");
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < sizeof(expected_charset) - 1U; ++index) {
+        if (ascii_lower((unsigned char)charset->span.text[index]) != expected_charset[index]) {
+            charset_is_utf8mb4 = false;
+            break;
+        }
+    }
+    if (!charset_is_utf8mb4) {
+        set_unsupported_error(database, "CONVERT USING charset supports only utf8mb4");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &messages,
+        out_cell
+    );
+}
+
+static int scalar_text_conversion_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_text_conversion_messages *messages,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (messages == NULL) {
+        return MYLITE_MISUSE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        has_sign = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, messages->signed_value);
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (has_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, messages->signed_value);
+        return MYLITE_ERROR;
+    }
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING: {
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal(
+            database,
+            literal,
+            messages->string_unsupported,
+            messages->embedded_nul,
+            &out_cell->owned_text,
+            &text_length
+        );
+        (void)text_length;
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->owned_text;
+        }
+        return rc;
+    }
+    case MYLITE_SQL_AST_LITERAL_INTEGER: {
+        int rc = normalize_decimal_integer_literal(
+            database,
+            &literal->span,
+            is_negative,
+            out_cell->literal_text,
+            sizeof(out_cell->literal_text)
+        );
+
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->literal_text;
+        }
+        return rc;
+    }
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_cell->value = "1";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_cell->value = "0";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(database, messages->unsupported);
+    return MYLITE_ERROR;
 }
 
 static int date_format_function_value(
@@ -65671,7 +65802,13 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_cast_binary_projection_expression(expression)) {
         return true;
     }
+    if (is_convert_binary_type_projection_expression(expression)) {
+        return true;
+    }
     if (is_convert_using_binary_projection_expression(expression)) {
+        return true;
+    }
+    if (is_convert_using_charset_projection_expression(expression)) {
         return true;
     }
     if (is_date_add_second_projection_expression(expression)) {
@@ -66013,6 +66150,17 @@ static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_nod
     return mylite_sql_ast_node_child_count(expression) == 1U;
 }
 
+static bool is_convert_binary_type_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION) {
+        return false;
+    }
+    return mylite_sql_ast_node_child_count(expression) == 1U;
+}
+
 static bool is_convert_using_binary_projection_expression(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -66022,6 +66170,17 @@ static bool is_convert_using_binary_projection_expression(
         return false;
     }
     return mylite_sql_ast_node_child_count(expression) == 1U;
+}
+
+static bool is_convert_using_charset_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
+        return false;
+    }
+    return mylite_sql_ast_node_child_count(expression) == 2U;
 }
 
 static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -66492,7 +66651,9 @@ static bool is_scalar_value_projection_attempt_expression(
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:

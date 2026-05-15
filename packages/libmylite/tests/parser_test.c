@@ -1974,6 +1974,8 @@ static int test_cast_binary_expression(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
     const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -2059,10 +2061,90 @@ static int test_cast_binary_expression(void) {
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "convert from dual");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT CONVERT('ABC', BINARY);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SELECT CONVERT('ABC', BINARY) AS binary, (CONVERT('x', BINARY)), "
+        "CONVERT(+123 USING utf8mb4) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_item = child_at(select_list, 0U);
+    first_expression = child_at(first_item, 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION,
+        "convert binary type expression"
+    );
+    failures +=
+        expect_span_text(first_expression, "CONVERT('ABC', BINARY)", "convert binary type span");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "convert binary type string input"
+    );
+    failures += expect_node(child_at(first_item, 1U), MYLITE_SQL_AST_IDENTIFIER, "binary alias");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION,
+        "parenthesized convert binary type expression"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
+        "convert using charset expression"
+    );
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "convert using charset signed input"
+    );
+    failures += expect_node(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "convert using charset identifier"
+    );
+    failures += expect_span_text(
+        child_at(third_expression, 1U),
+        "utf8mb4",
+        "convert using charset identifier span"
+    );
+    failures += expect_node(
+        child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_DUAL,
+        "convert syntax expansion from dual"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO CONVERT(NULL, BINARY), CONVERT(FALSE USING utf8mb4);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "convert syntax do statement");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION,
+        "convert binary type do expression"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
+        "convert using charset do expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CONVERT('ABC', BINARY(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT('ABC', CHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
-        parse_sql("SELECT CONVERT('ABC' USING utf8mb4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("SELECT CONVERT('ABC', BINARY, 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("CREATE TABLE t (cast INT); SELECT cast FROM t;", MYLITE_SQL_PARSE_OK, &result);

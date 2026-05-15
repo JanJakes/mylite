@@ -22,8 +22,12 @@ enum {
     operand_column_count = 5,
     cast_binary_column_count = 7,
     cast_binary_label_column_count = 3,
+    convert_binary_type_column_count = 7,
+    convert_binary_type_label_column_count = 4,
     convert_using_binary_column_count = 2,
     convert_using_binary_label_column_count = 3,
+    convert_using_charset_column_count = 7,
+    convert_integer_boundary_column_count = 2,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
 };
@@ -160,6 +164,24 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "(CAST('x' AS BINARY))",
     };
     static const char *const cast_binary_label_values[] = {"ABC", "ABC", "x"};
+    static const char *const convert_binary_type_columns[] = {
+        "binary",
+        "CONVERT('', BINARY)",
+        "CONVERT(NULL, BINARY)",
+        "CONVERT(123, BINARY)",
+        "CONVERT(-7, BINARY)",
+        "CONVERT(TRUE, BINARY)",
+        "CONVERT(FALSE, BINARY)",
+    };
+    static const char *const convert_binary_type_values[] =
+        {"ABC", "", NULL, "123", "-7", "1", "0"};
+    static const char *const convert_binary_type_label_columns[] = {
+        "binary_value",
+        "(CONVERT('x', BINARY))",
+        "converted",
+        "(CONVERT('y' USING utf8mb4))",
+    };
+    static const char *const convert_binary_type_label_values[] = {"ABC", "x", "ABC", "y"};
     static const char *const convert_using_binary_columns[] = {
         "binary",
         "CONVERT('xyz' USING BINARY)",
@@ -171,6 +193,34 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "(CONVERT('x' USING BINARY))",
     };
     static const char *const convert_using_binary_label_values[] = {"ABC", "ABC", "x"};
+    static const char *const convert_using_charset_columns[] = {
+        "converted",
+        "CONVERT('' USING utf8mb4)",
+        "CONVERT(NULL USING utf8mb4)",
+        "CONVERT(123 USING utf8mb4)",
+        "CONVERT(-7 USING utf8mb4)",
+        "CONVERT(TRUE USING utf8mb4)",
+        "CONVERT(FALSE USING utf8mb4)",
+    };
+    static const char *const convert_using_charset_values[] = {
+        "ABC",
+        "",
+        NULL,
+        "123",
+        "-7",
+        "1",
+        "0",
+    };
+    static const char convert_integer_boundary_value[] =
+        "123456789012345678901234567890123456789012345678901234567890123456789012345678901";
+    static const char *const convert_integer_boundary_columns[] = {
+        "binary_boundary",
+        "charset_boundary",
+    };
+    static const char *const convert_integer_boundary_values[] = {
+        convert_integer_boundary_value,
+        convert_integer_boundary_value,
+    };
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"-1"};
     static const char *const do_row_count_values[] = {"0"};
@@ -272,6 +322,34 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT CONVERT('ABC', BINARY) AS binary, CONVERT('', BINARY), "
+                   "CONVERT(NULL, BINARY), CONVERT(123, BINARY), "
+                   "CONVERT(-7, BINARY), CONVERT(TRUE, BINARY), "
+                   "CONVERT(FALSE, BINARY)",
+            .columns = convert_binary_type_columns,
+            .column_count = convert_binary_type_column_count,
+            .values = convert_binary_type_values,
+            .row_count = 1U,
+            .context = "convert binary type scalar values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC', BINARY) AS binary_value, "
+                   "(CONVERT('x', BINARY)), "
+                   "CONVERT('ABC' USING utf8mb4) AS converted, "
+                   "(CONVERT('y' USING utf8mb4)) FROM DUAL",
+            .columns = convert_binary_type_label_columns,
+            .column_count = convert_binary_type_label_column_count,
+            .values = convert_binary_type_label_values,
+            .row_count = 1U,
+            .context = "convert binary type and charset labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT CONVERT('ABC' USING BINARY) AS binary, "
                    "CONVERT('xyz' USING BINARY)",
             .columns = convert_using_binary_columns,
@@ -292,6 +370,39 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .values = convert_using_binary_label_values,
             .row_count = 1U,
             .context = "convert using binary labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC' USING utf8mb4) AS converted, "
+                   "CONVERT('' USING utf8mb4), CONVERT(NULL USING utf8mb4), "
+                   "CONVERT(123 USING utf8mb4), CONVERT(-7 USING utf8mb4), "
+                   "CONVERT(TRUE USING utf8mb4), CONVERT(FALSE USING utf8mb4)",
+            .columns = convert_using_charset_columns,
+            .column_count = convert_using_charset_column_count,
+            .values = convert_using_charset_values,
+            .row_count = 1U,
+            .context = "convert using utf8mb4 scalar values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT "
+                   "CONVERT("
+                   "1234567890123456789012345678901234567890123456789012345678901234567890123456789"
+                   "01, BINARY) "
+                   "AS binary_boundary, "
+                   "CONVERT("
+                   "1234567890123456789012345678901234567890123456789012345678901234567890123456789"
+                   "01 "
+                   "USING UTF8MB4) AS charset_boundary FROM DUAL",
+            .columns = convert_integer_boundary_columns,
+            .column_count = convert_integer_boundary_column_count,
+            .values = convert_integer_boundary_values,
+            .row_count = 1U,
+            .context = "convert integer boundary and mixed-case charset",
         }
     );
 
@@ -319,6 +430,33 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             mylite_result_warning_count(result),
             0U,
             "convert using binary do warnings"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "DO CONVERT('ABC', BINARY), CONVERT(NULL, BINARY), "
+        "CONVERT('ABC' USING utf8mb4)",
+        &result
+    );
+    if (result != NULL) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            0U,
+            "convert syntax expansion do columns"
+        );
+        failures +=
+            expect_size(mylite_result_row_count(result), 0U, "convert syntax expansion do rows");
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "convert syntax expansion do affected"
+        );
+        failures += expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "convert syntax expansion do warnings"
         );
     }
     mylite_result_free(result);
@@ -519,7 +657,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC', BINARY)",
+        "SELECT CONVERT('ABC', BINARY(5))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -528,11 +666,84 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC' USING utf8mb4)",
+        "SELECT CONVERT('ABC', BINARY, 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC', CHAR)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING latin1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING charset supports only utf8mb4",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING 'utf8mb4')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING charset supports only utf8mb4",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(1 + 2, BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CONVERT(value, BINARY) supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(1 + 2 USING utf8mb4)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CONVERT USING utf8mb4 supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT "
+        "CONVERT("
+        "1234567890123456789012345678901234567890123456789012345678901234567890123456789012, "
+        "BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "SELECT literal projection supports at most 81 significant decimal digits",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT "
+        "CONVERT("
+        "1234567890123456789012345678901234567890123456789012345678901234567890123456789012 "
+        "USING utf8mb4)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "SELECT literal projection supports at most 81 significant decimal digits",
         }
     );
     failures += execute_error(
@@ -556,6 +767,24 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SELECT CONVERT('ABC' USING BINARY) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC', BINARY) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING utf8mb4) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

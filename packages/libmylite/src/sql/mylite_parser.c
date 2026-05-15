@@ -3854,6 +3854,46 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_binary_expressi
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_convert_binary_type_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token convert_token,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&convert_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION, span);
+
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    return expression;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_charset_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token convert_token,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_ast_node *charset,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&convert_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION, span);
+
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    mylite_sql_ast_node_append_child(expression, charset);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,

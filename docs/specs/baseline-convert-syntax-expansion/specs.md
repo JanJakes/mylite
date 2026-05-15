@@ -96,7 +96,8 @@ phase specifies it.
 
 - participates only in no-source `SELECT`, `SELECT ... FROM DUAL`, and `DO`;
 - accepts ordinary string literals, decimal integer literals with optional unary
-  sign, `TRUE`, `FALSE`, and `NULL`;
+  sign in the current 81-significant-digit scalar literal envelope, `TRUE`,
+  `FALSE`, and `NULL`;
 - returns `NULL` when the value is `NULL`;
 - decodes ordinary string literals using the current MyLite string-literal rules
   and rejects embedded NUL bytes on the current public scalar text surface;
@@ -108,7 +109,8 @@ phase specifies it.
 
 - participates only in the same no-source/`DUAL`/`DO` scalar envelopes;
 - accepts ordinary string literals, decimal integer literals with optional unary
-  sign, `TRUE`, `FALSE`, and `NULL`;
+  sign in the current 81-significant-digit scalar literal envelope, `TRUE`,
+  `FALSE`, and `NULL`;
 - returns `NULL` when the value is `NULL`;
 - decodes ordinary string literals and rejects embedded NUL bytes on the current
   scalar text surface;
@@ -130,6 +132,7 @@ syntax itself rejects the statement before runtime:
 | `CONVERT(value, CHAR)` / `SIGNED` / `UNSIGNED` / temporal targets | syntax error or deterministic unsupported grammar rejection in this phase |
 | `CONVERT(value USING latin1)` / non-`utf8mb4` character set | deterministic unsupported runtime error |
 | `CONVERT(value USING 'utf8mb4')` | deterministic unsupported runtime error; only identifier charset names are admitted |
+| more than 81 significant decimal integer digits | deterministic unsupported runtime error from the current scalar literal envelope |
 | table-backed `SELECT CONVERT(... ) FROM t` | deterministic unsupported scalar/table-backed expression error |
 | `UPDATE t SET col = CONVERT(...)` or predicates using `CONVERT(...)` | deterministic unsupported expression error |
 | embedded NUL in scalar text operand | deterministic unsupported runtime error |

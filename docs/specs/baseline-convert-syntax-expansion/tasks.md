@@ -11,13 +11,13 @@
 - [x] Add MySQL-runtime expectation script for the selected feature surface.
 - [x] Write independently authored feature specification with MyLite grammar
   snippets, ownership boundaries, diagnostics, and known exclusions.
-- [ ] Extend parser/AST support for `CONVERT(value, BINARY)` and
+- [x] Extend parser/AST support for `CONVERT(value, BINARY)` and
   `CONVERT(value USING utf8mb4)`.
-- [ ] Implement no-source, `DUAL`, and `DO` scalar execution.
-- [ ] Add or extend parser/runtime tests under `packages/libmylite/tests/`.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
+- [x] Implement no-source, `DUAL`, and `DO` scalar execution.
+- [x] Add or extend parser/runtime tests under `packages/libmylite/tests/`.
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
   support wording.
-- [ ] Run focused parser/runtime/MySQL expectation verification.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote
+- [x] Run focused parser/runtime/MySQL expectation verification.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote
   `main`.

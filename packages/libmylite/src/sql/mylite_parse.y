@@ -2393,8 +2393,14 @@ expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
 expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
+expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY RPAREN(R). {
+    A = mylite_sql_parser_make_convert_binary_type_expression(state, T, V, R);
+}
 expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_binary_expression(state, T, V, R);
+}
+expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
+    A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
 }
 expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(

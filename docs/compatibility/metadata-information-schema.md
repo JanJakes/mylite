@@ -2,6 +2,13 @@
 
 Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB Cluster, and debug/development objects documented or shipped with MySQL 8.4.9. Each implementation should match the target build availability.
 
+Access semantics are limited but MySQL-shaped: `USE information_schema`
+succeeds, the current metadata `SELECT` subset can resolve unqualified metadata
+table names while that schema is selected, and currently supported mutating
+schema, table, index, rename, truncate, and single-table DML statements that
+target `information_schema` fail with `1044 / 42000` access denied diagnostics.
+MyLite does not implement a privilege engine or writable system views.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | ❌ | Grantable users or roles for current user or role |

@@ -3,6 +3,11 @@
 Table-shaped data modification, import, replace, and direct table access
 statements.
 
+Currently supported single-table `INSERT`, `REPLACE`, `UPDATE`, and `DELETE`
+forms that target the synthetic `information_schema` schema are rejected before
+catalog lookup with MySQL-compatible `1044 / 42000` access denied diagnostics.
+This does not imply a privilege engine or writable system views.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `DELETE` (single-table) | 🟡 | Limited persistent or shadowing session temporary base-table `DELETE FROM table` with optional baseline integer/`BIT`/`NULL` `WHERE` predicate boolean expression, including keyword `NOT`, `AND`/`&&`, `XOR`, `OR`/`\|\|`, limited `BETWEEN` range predicates, limited `IN` membership predicates, compatible `BIT` literal predicates, descriptor-column `IS [NOT] TRUE` / `FALSE` / `UNKNOWN`, limited ASCII `CHAR`, `VARCHAR`, and baseline `TEXT` family string-literal equality/null-safe equality/inequality predicates plus limited `LIKE` / `NOT LIKE` pattern predicates, and limited `YEAR` and canonical `DATE` / `TIME` / `DATETIME` / `TIMESTAMP` string-literal predicates, one unqualified integer, `BIT`, `YEAR`, `DATE`, `TIME`, `DATETIME`, or `TIMESTAMP` descriptor `ORDER BY` column, optional `ASC`/`DESC`, exact affected rows, `LIMIT row_count` using unsigned decimal literals in signed 64-bit range, and parent-side rejection for rows referenced by supported foreign-key descriptors; admitted string comparisons use MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation, and `TIME` range predicates and ordering use signed total-second semantics; no aliases, partitions, modifiers, joined deletes, `USING`, string ranges/membership predicates outside the current `LIKE` subset, non-ASCII string predicate literals, full ordering, offset forms, triggers, cascades, or privilege semantics |

@@ -30,6 +30,7 @@
 enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
+    mysql_error_database_access_denied = 1044,
     mysql_error_database_exists = 1007,
     mysql_error_cant_drop_database = 1008,
     mysql_error_unknown_database = 1049,
@@ -11293,13 +11294,30 @@ static int resolve_table_name(
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
 );
+static int resolve_writable_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+);
 static int resolve_visible_table_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution,
     struct mylite_catalog_table_descriptor *out_table
 );
+static int resolve_visible_writable_table_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    struct mylite_catalog_table_descriptor *out_table
+);
 static int resolve_table_name_allow_missing_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    bool *out_missing_schema
+);
+static int resolve_writable_table_name_allow_missing_schema(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution,
@@ -11328,6 +11346,11 @@ static int resolve_truncate_table_name(
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
 );
+static int resolve_writable_truncate_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+);
 static int require_selected_schema_for_unqualified_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node
@@ -11348,6 +11371,16 @@ static int collect_identifier_parts(
     size_t *part_count,
     struct mylite_db *database
 );
+static int reject_information_schema_write_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node
+);
+static int reject_information_schema_schema_write_name(
+    struct mylite_db *database,
+    const char *schema_name
+);
+static bool selected_schema_is_information_schema(const struct mylite_db *database);
+static bool schema_name_is_information_schema(const char *schema_name);
 static int copy_identifier_text(
     const struct mylite_sql_ast_node *node,
     char *destination,
@@ -16086,6 +16119,7 @@ static void set_native_function_parameter_count_error(
     const char *function_name
 );
 static void set_no_database_error(struct mylite_db *database);
+static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name);
 static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
 static int append_database_exists_note(struct mylite_db *database, const char *schema_name);
 static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
@@ -17043,18 +17077,28 @@ static int execute_use_statement(
     struct mylite_catalog_schema_descriptor schema = {0};
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     mylite_result *result = NULL;
+    bool use_information_schema = false;
     int written = 0;
     int rc =
         copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
 
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+    if (rc == MYLITE_OK) {
+        use_information_schema = schema_name_is_information_schema(schema_name);
+    }
+    if (rc == MYLITE_OK && use_information_schema) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK && result == NULL && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && result == NULL) {
         rc = resolve_schema_name(database, schema_name, &schema);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && result == NULL) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
@@ -17068,7 +17112,7 @@ static int execute_use_statement(
         database->session.selected_schema,
         sizeof(database->session.selected_schema),
         "%s",
-        schema.name
+        use_information_schema ? "information_schema" : schema.name
     );
     if (written < 0 || (size_t)written >= sizeof(database->session.selected_schema)) {
         mylite_result_free(result);
@@ -19645,6 +19689,9 @@ static int maybe_finish_create_schema_if_not_exists_noop(
     }
 
     rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+    if (rc == MYLITE_OK) {
+        rc = reject_information_schema_schema_write_name(database, schema_name);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
         rc = MYLITE_ERROR;
@@ -19813,7 +19860,7 @@ static int plan_drop_table_target(
     bool found = false;
     int rc = MYLITE_OK;
 
-    rc = resolve_table_name_allow_missing_schema(
+    rc = resolve_writable_table_name_allow_missing_schema(
         database,
         target_node,
         &target->target,
@@ -20254,6 +20301,9 @@ static int maybe_finish_drop_schema_if_exists_noop(
     }
 
     rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+    if (rc == MYLITE_OK) {
+        rc = reject_information_schema_schema_write_name(database, schema_name);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
         rc = MYLITE_ERROR;
@@ -21654,15 +21704,11 @@ static int select_statement_targets_information_schema(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (part_count == 2U && text_equals_ascii_case_insensitive(parts[0], "information_schema")) {
+    if (part_count == 2U && schema_name_is_information_schema(parts[0])) {
         *out_matches = true;
         return MYLITE_OK;
     }
-    if (part_count == 1U && database != NULL && database->session.has_selected_schema &&
-        text_equals_ascii_case_insensitive(
-            database->session.selected_schema,
-            "information_schema"
-        )) {
+    if (part_count == 1U && selected_schema_is_information_schema(database)) {
         *out_matches = true;
     }
 
@@ -24704,6 +24750,7 @@ static int information_schema_resolve_source(
     struct information_schema_query *out_query
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *table_name = NULL;
     size_t part_count = 0U;
     int rc = MYLITE_OK;
 
@@ -24725,7 +24772,11 @@ static int information_schema_resolve_source(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (part_count != 2U || !text_equals_ascii_case_insensitive(parts[0], "information_schema")) {
+    if (part_count == 2U && schema_name_is_information_schema(parts[0])) {
+        table_name = parts[1];
+    } else if (part_count == 1U && selected_schema_is_information_schema(database)) {
+        table_name = parts[0];
+    } else {
         set_unsupported_error(
             database,
             "INFORMATION_SCHEMA SELECT requires a schema-qualified metadata table"
@@ -24733,9 +24784,9 @@ static int information_schema_resolve_source(
         return MYLITE_ERROR;
     }
 
-    out_query->definition = find_information_schema_table_definition(parts[1]);
+    out_query->definition = find_information_schema_table_definition(table_name);
     if (out_query->definition == NULL) {
-        set_unknown_information_schema_table_error(database, parts[1]);
+        set_unknown_information_schema_table_error(database, table_name);
         return MYLITE_ERROR;
     }
     if (child_at(from_clause, 1U) != NULL) {
@@ -29021,7 +29072,7 @@ static int plan_create_table(
         MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
         sizeof(MYLITE_CATALOG_DEFAULT_TABLE_COLLATION)
     );
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -32116,7 +32167,10 @@ static int plan_create_table_like(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_create_table_like){0};
-    rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->source);
+    rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->source);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
         set_reserved_name_error(database, "table", out_plan->source.table_name);
         rc = MYLITE_ERROR;
@@ -32442,7 +32496,10 @@ static int plan_create_table_select(
         MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
         sizeof(MYLITE_CATALOG_DEFAULT_TABLE_COLLATION)
     );
-    rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+    rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+    if (rc == MYLITE_OK) {
+        rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+    }
     if (rc == MYLITE_OK) {
         out_plan->source_locking_clause =
             mylite_sql_ast_node_select_locking_clause(child_at(statement, 1U));
@@ -34554,6 +34611,9 @@ static int create_schema_from_statement(
     int rc =
         copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
 
+    if (rc == MYLITE_OK) {
+        rc = reject_information_schema_schema_write_name(database, schema_name);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
         rc = MYLITE_ERROR;
@@ -34595,6 +34655,9 @@ static int plan_drop_schema(
         copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
 
     *out_plan = (struct planned_drop_schema){0};
+    if (rc == MYLITE_OK) {
+        rc = reject_information_schema_schema_write_name(database, schema_name);
+    }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
         set_reserved_name_error(database, "database", schema_name);
         rc = MYLITE_ERROR;
@@ -34756,7 +34819,7 @@ static int plan_truncate_table(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_truncate_table){0};
-    rc = resolve_truncate_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_truncate_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -34903,13 +34966,13 @@ static int plan_rename_table_pair(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_table_name(database, child_at(pair_node, 0U), &out_pair->source);
+    rc = resolve_writable_table_name(database, child_at(pair_node, 0U), &out_pair->source);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_pair->source.table_name)) {
         set_reserved_name_error(database, "table", out_pair->source.table_name);
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(pair_node, 1U), &out_pair->target);
+        rc = resolve_writable_table_name(database, child_at(pair_node, 1U), &out_pair->target);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_pair->target.table_name)) {
         set_reserved_name_error(database, "table", out_pair->target.table_name);
@@ -34966,14 +35029,14 @@ static int plan_alter_table_rename(
     *out_plan = (struct planned_rename_table){0};
     rc = require_selected_schema_for_unqualified_table_name(database, child_at(statement, 1U));
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->source);
+        rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->source);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
         set_reserved_name_error(database, "table", out_plan->source.table_name);
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->target);
+        rc = resolve_writable_table_name(database, child_at(statement, 1U), &out_plan->target);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -35006,7 +35069,7 @@ static int plan_alter_table_add_column(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_column){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -35203,7 +35266,7 @@ static int plan_alter_table_add_primary_key(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -35778,7 +35841,7 @@ static int plan_alter_table_add_index(
         out_plan->is_unique = nodes.is_unique;
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+        rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -35925,7 +35988,7 @@ static int plan_create_index(
     }
     rc = extract_create_index_nodes(database, statement, &nodes);
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, nodes.table_name_node, &out_plan->target);
+        rc = resolve_writable_table_name(database, nodes.table_name_node, &out_plan->target);
     }
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -36659,7 +36722,7 @@ static int plan_alter_table_add_foreign_key_target(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_foreign_key *out_plan
 ) {
-    int rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    int rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
 
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -37181,7 +37244,7 @@ static int plan_alter_table_drop_foreign_key(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_drop_foreign_key){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -37787,7 +37850,7 @@ static int plan_drop_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_drop_index){0};
-    rc = resolve_table_name(database, nodes.table_name_node, &out_plan->target);
+    rc = resolve_writable_table_name(database, nodes.table_name_node, &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -37943,7 +38006,7 @@ static int plan_alter_table_rename_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_rename_index){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -38219,7 +38282,7 @@ static int plan_alter_table_check_target(
     const struct mylite_sql_ast_node *table_node,
     struct planned_alter_table_check_constraint *out_plan
 ) {
-    int rc = resolve_table_name(database, table_node, &out_plan->target);
+    int rc = resolve_writable_table_name(database, table_node, &out_plan->target);
 
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -38998,7 +39061,7 @@ static int plan_alter_table_drop_primary_key(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_drop_primary_key){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39210,7 +39273,7 @@ static int plan_alter_table_auto_increment(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_auto_increment){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39439,7 +39502,7 @@ static int plan_alter_table_drop_column(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_drop_column){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39597,7 +39660,7 @@ static int plan_alter_table_rename_column(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_rename_column){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39804,7 +39867,7 @@ static int plan_alter_table_modify_column(
         "too many rows to validate for ALTER TABLE MODIFY COLUMN";
     out_plan->failure_message = "failed to modify table column";
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39867,7 +39930,7 @@ static int plan_alter_table_change_column(
         "too many rows to validate for ALTER TABLE CHANGE COLUMN";
     out_plan->failure_message = "failed to change table column";
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -39926,7 +39989,7 @@ static int plan_alter_table_set_default(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_set_default){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -40055,7 +40118,7 @@ static int plan_alter_table_drop_default(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_drop_default){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -40178,7 +40241,7 @@ static int plan_alter_table_column_visibility(
     *out_plan = (struct planned_alter_table_column_visibility){0};
     out_plan->is_visible = mylite_sql_ast_node_column_visibility(statement) ==
                            MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -40290,7 +40353,7 @@ static int plan_alter_table_default_charset_collation(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_default_charset_collation){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -40418,7 +40481,7 @@ static int plan_alter_table_order_by(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_order_by){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -40607,7 +40670,7 @@ static int plan_alter_table_force(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_force){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         rc = MYLITE_ERROR;
@@ -41881,7 +41944,7 @@ static int plan_insert(
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     out_plan->replace_existing_rows = statement->kind == MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT;
-    rc = resolve_visible_table_reference(
+    rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
         &out_plan->target,
@@ -41987,7 +42050,7 @@ static int plan_insert_set(
     out_plan->ignore_errors =
         child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     out_plan->replace_existing_rows = statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT;
-    rc = resolve_visible_table_reference(
+    rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
         &out_plan->target,
@@ -43557,7 +43620,7 @@ static int plan_insert_select(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
-    rc = resolve_visible_table_reference(
+    rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
         &out_plan->target.target,
@@ -44953,7 +45016,7 @@ static int plan_update(
         optional_clause = optional_clause->next_sibling;
     }
 
-    rc = resolve_visible_table_reference(
+    rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
         &out_plan->target,
@@ -63980,7 +64043,7 @@ static int plan_delete(
         optional_clause = optional_clause->next_sibling;
     }
 
-    rc = resolve_visible_table_reference(
+    rc = resolve_visible_writable_table_reference(
         database,
         child_at(statement, 0U),
         &out_plan->target,
@@ -64104,6 +64167,20 @@ static int execute_delete_from_plan(
     return MYLITE_OK;
 }
 
+static int resolve_writable_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+) {
+    int rc = reject_information_schema_write_target(database, node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return resolve_table_name(database, node, out_resolution);
+}
+
 static int resolve_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -64148,6 +64225,21 @@ static int resolve_table_name(
     return MYLITE_ERROR;
 }
 
+static int resolve_visible_writable_table_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int rc = reject_information_schema_write_target(database, node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return resolve_visible_table_reference(database, node, out_resolution, out_table);
+}
+
 static int resolve_visible_table_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -64166,6 +64258,26 @@ static int resolve_visible_table_reference(
         rc = resolve_readable_table(database, out_resolution, missing_schema, out_table);
     }
     return rc;
+}
+
+static int resolve_writable_table_name_allow_missing_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution,
+    bool *out_missing_schema
+) {
+    int rc = reject_information_schema_write_target(database, node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return resolve_table_name_allow_missing_schema(
+        database,
+        node,
+        out_resolution,
+        out_missing_schema
+    );
 }
 
 static int resolve_table_name_allow_missing_schema(
@@ -64368,6 +64480,20 @@ static int copy_show_columns_explicit_table_name(
     return MYLITE_OK;
 }
 
+static int resolve_writable_truncate_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+) {
+    int rc = reject_information_schema_write_target(database, node);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return resolve_truncate_table_name(database, node, out_resolution);
+}
+
 static int resolve_truncate_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -64413,6 +64539,56 @@ static int resolve_truncate_table_name(
     set_parse_error(database, NULL);
 
     return MYLITE_ERROR;
+}
+
+static int reject_information_schema_write_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_identifier_parts(
+        database == NULL ? NULL : node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if ((part_count == 2U && schema_name_is_information_schema(parts[0])) ||
+        (part_count == 1U && selected_schema_is_information_schema(database))) {
+        set_database_access_denied_error(database, "information_schema");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int reject_information_schema_schema_write_name(
+    struct mylite_db *database,
+    const char *schema_name
+) {
+    if (schema_name_is_information_schema(schema_name)) {
+        set_database_access_denied_error(database, "information_schema");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool selected_schema_is_information_schema(const struct mylite_db *database) {
+    if (database == NULL || !database->session.has_selected_schema) {
+        return false;
+    }
+
+    return schema_name_is_information_schema(database->session.selected_schema);
+}
+
+static bool schema_name_is_information_schema(const char *schema_name) {
+    return text_equals_ascii_case_insensitive(schema_name, "information_schema");
 }
 
 static int require_selected_schema_for_unqualified_table_name(
@@ -91179,6 +91355,26 @@ static void set_no_database_error(struct mylite_db *database) {
         mysql_error_no_database_selected,
         "3D000",
         "No database selected"
+    );
+}
+
+static void set_database_access_denied_error(struct mylite_db *database, const char *schema_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Access denied for user 'root'@'%%' to database '%s'",
+        schema_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_database_access_denied,
+        "42000",
+        message
     );
 }
 

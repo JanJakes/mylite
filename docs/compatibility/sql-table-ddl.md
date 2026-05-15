@@ -5,6 +5,12 @@ actions.
 
 ## Statement surface
 
+Currently supported table DDL, index DDL, `TRUNCATE`, and rename forms that
+target the synthetic `information_schema` schema are rejected before catalog
+lookup with MySQL-compatible `1044 / 42000` access denied diagnostics. This is
+an access-diagnostic baseline only; MyLite does not implement writable system
+views or a privilege engine.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]`, append-only `ALTER TABLE ... ADD [COLUMN]`, `ALTER TABLE ... ADD PRIMARY KEY (column[, ...])`, `ALTER TABLE ... ADD UNIQUE [INDEX\|KEY] [name] (column[, ...])`, `ALTER TABLE ... ADD INDEX\|KEY [name] (key_part[, ...])`, named integer-family `ALTER TABLE ... ADD CONSTRAINT name FOREIGN KEY (child_column[, ...]) REFERENCES parent(parent_column[, ...])`, `ALTER TABLE ... DROP FOREIGN KEY name`, `ALTER TABLE ... DROP PRIMARY KEY`, `ALTER TABLE ... DROP INDEX\|KEY index_name`, `ALTER TABLE ... RENAME INDEX\|KEY old_name TO new_name`, `ALTER TABLE ... AUTO_INCREMENT [=] N`, single-column `ALTER TABLE ... DROP [COLUMN]`, single-column `ALTER TABLE ... RENAME COLUMN ... TO ...`, single-column `ALTER TABLE ... MODIFY [COLUMN] ...`, single-column `ALTER TABLE ... CHANGE [COLUMN] old_col new_col ...`, single-column `ALTER TABLE ... ALTER [COLUMN] ... SET DEFAULT ...` / `DROP DEFAULT`, single-column `ALTER TABLE ... ALTER [COLUMN] ... SET VISIBLE\|INVISIBLE`, descriptor metadata `ALTER TABLE ... [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4` plus admitted `utf8mb4` `COLLATE` values, physical row-order rebuild `ALTER TABLE ... ORDER BY ...`, and physical table rebuild `ALTER TABLE ... FORCE` forms only; see [ALTER TABLE actions](#alter-table-actions) |

@@ -861,6 +861,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_count_function";
     case MYLITE_SQL_AST_BIT_COUNT_ARGUMENT_COUNT_ERROR:
         return "bit_count_argument_count_error";
+    case MYLITE_SQL_AST_CRC32_FUNCTION:
+        return "crc32_function";
+    case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
+        return "crc32_argument_count_error";
+    case MYLITE_SQL_AST_FORMAT_FUNCTION:
+        return "format_function";
+    case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
+        return "format_locale_unsupported";
+    case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
+        return "format_argument_count_error";
+    case MYLITE_SQL_AST_TRUNCATE_FUNCTION:
+        return "truncate_function";
+    case MYLITE_SQL_AST_TRUNCATE_ARGUMENT_COUNT_ERROR:
+        return "truncate_argument_count_error";
     case MYLITE_SQL_AST_LENGTH_FUNCTION:
         return "length_function";
     case MYLITE_SQL_AST_LENGTH_ARGUMENT_COUNT_ERROR:

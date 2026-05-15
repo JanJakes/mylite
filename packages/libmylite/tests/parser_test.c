@@ -60,6 +60,7 @@ static int test_sign_function(void);
 static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
+static int test_numeric_format_truncate_crc32_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
 static int test_pi_function(void);
@@ -320,6 +321,7 @@ int main(void) {
     failures += test_rounding_functions();
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
+    failures += test_numeric_format_truncate_crc32_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
     failures += test_pi_function();
@@ -3014,6 +3016,117 @@ static int test_bit_count_function(void) {
     failures += parse_sql("CREATE TABLE bit_count (bit_count INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "bit_count identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_numeric_format_truncate_crc32_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CRC32('MySQL'), FORMAT(12332.123456,4), TRUNCATE(-1.999,1) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CRC32_FUNCTION, "crc32 function");
+    failures += expect_span_text(expression, "CRC32('MySQL')", "crc32 span");
+    failures += expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "crc32");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_FORMAT_FUNCTION, "format function");
+    failures += expect_child_count(second_expression, 2U, "format argument count");
+    failures += expect_literal(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_DECIMAL,
+        "format value"
+    );
+    failures += expect_literal(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "format places"
+    );
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_TRUNCATE_FUNCTION, "truncate function");
+    failures += expect_operator(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "truncate signed value"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "numeric functions dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT crc32 (X'616263'), format(+1, -1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CRC32_FUNCTION, "spaced crc32");
+    failures += expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_HEX, "crc32 hex");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_FORMAT_FUNCTION, "lower format");
+    failures += expect_operator(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "format positive value"
+    );
+    failures += expect_operator(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "format negative places"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CRC32();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR,
+        "crc32 empty argument count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FORMAT(1);", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR,
+        "format one argument count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FORMAT(1,2,'de_DE');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED,
+        "format locale unsupported"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TRUNCATE(1);", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_TRUNCATE_ARGUMENT_COUNT_ERROR,
+        "truncate one argument count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE numeric_names (crc32 INT, format INT, truncate INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "numeric function identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

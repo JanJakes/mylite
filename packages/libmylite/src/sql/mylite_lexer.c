@@ -373,6 +373,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"COT", 0U},
         {"COUNT", 0U},
         {"CPU", 0U},
+        {"CRC32", 0U},
         {"CREATE", MYLITE_SQL_KEYWORD_RESERVED},
         {"CROSS", MYLITE_SQL_KEYWORD_RESERVED},
         {"CUBE", 0U},

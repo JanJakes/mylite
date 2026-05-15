@@ -23,5 +23,5 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review the final diff for architecture boundaries, MySQL evidence,
       diagnostics, performance, docs accuracy, and test relevance.
-- [ ] Commit, push `main`, review with a subagent, amend if needed, then
+- [x] Commit, push `main`, review with a subagent, amend if needed, then
       continue to the next baseline slice.

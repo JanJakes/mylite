@@ -4002,6 +4002,9 @@ create_table_item(A) ::= secondary_index_definition(B). {
 create_table_item(A) ::= unique_index_definition(B). {
     A = B;
 }
+create_table_item(A) ::= named_unique_constraint_definition(B). {
+    A = B;
+}
 create_table_item(A) ::= foreign_key_definition(B). {
     A = B;
 }
@@ -4035,9 +4038,28 @@ unique_index_definition(A) ::= UNIQUE(U) unique_index_keyword_opt index_name_opt
     A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
 }
 
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier(N) UNIQUE(U) unique_index_keyword_opt LPAREN
+    secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT UNIQUE(U) unique_index_keyword_opt index_name_opt(N) LPAREN
+    secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier UNIQUE(U) unique_index_keyword_required identifier(N) LPAREN
+    secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
 unique_index_keyword_opt ::= .
 unique_index_keyword_opt ::= KEY.
 unique_index_keyword_opt ::= INDEX.
+
+unique_index_keyword_required ::= KEY.
+unique_index_keyword_required ::= INDEX.
 
 foreign_key_definition(A) ::=
     constraint_name_opt(N) FOREIGN(F) KEY LPAREN foreign_key_part_list(C) RPAREN

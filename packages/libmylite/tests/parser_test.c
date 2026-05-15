@@ -11069,6 +11069,88 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE named_unique_constraints ("
+        "a INT, b INT, c VARCHAR(20), body TEXT, "
+        "CONSTRAINT uq_a UNIQUE (a), "
+        "CONSTRAINT uq_b UNIQUE KEY (b DESC), "
+        "CONSTRAINT UNIQUE INDEX uq_c (c(3), body(2)));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+
+    enum {
+        named_unique_constraint_item_count = 7U,
+        named_unique_key_item_index = 5U,
+        named_unique_explicit_item_index = 6U,
+    };
+
+    failures += expect_child_count(
+        items,
+        named_unique_constraint_item_count,
+        "named unique constraint item count"
+    );
+    failures += expect_node(
+        child_at(items, 4U),
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "named unique constraint definition"
+    );
+    failures += expect_span_text(child_at(child_at(items, 4U), 0U), "uq_a", "named unique name");
+    key_parts = child_at(child_at(items, 4U), 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "a", "named unique key part");
+    failures += expect_span_text(
+        child_at(child_at(items, named_unique_key_item_index), 0U),
+        "uq_b",
+        "named unique key name"
+    );
+    key_parts = child_at(child_at(items, named_unique_key_item_index), 1U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "named unique desc key part"
+    );
+    failures += expect_span_text(
+        child_at(child_at(items, named_unique_explicit_item_index), 0U),
+        "uq_c",
+        "constraint unique index explicit name"
+    );
+    key_parts = child_at(child_at(items, named_unique_explicit_item_index), 1U);
+    failures += expect_child_count(key_parts, 2U, "constraint unique prefix part count");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 1U),
+        "3",
+        "constraint unique first prefix"
+    );
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 1U), 1U),
+        "2",
+        "constraint unique second prefix"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE explicit_named_unique (a INT, CONSTRAINT ignored UNIQUE KEY visible (a));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        child_at(child_at(items, 1U), 0U),
+        "visible",
+        "constraint unique explicit visible index name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE deferred_named_unique (a INT, CONSTRAINT c UNIQUE visible (a));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE secondary_prefix (id INT, name VARCHAR(20), KEY k_name (name(4)));",
         MYLITE_SQL_PARSE_OK,
         &result

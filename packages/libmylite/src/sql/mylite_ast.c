@@ -695,6 +695,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "binary_expression";
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return "cast_binary_expression";
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return "convert_using_binary_expression";
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
         return "date_add_function";
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:

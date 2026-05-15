@@ -3816,6 +3816,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_binary_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token convert_token,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&convert_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *expression =
+        make_node(state, MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION, span);
+
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token left_paren,
@@ -5692,6 +5711,7 @@ static bool map_keyword_token(
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AS", MYLITE_SQL_PARSE_AS},
         {"CAST", MYLITE_SQL_PARSE_CAST},
+        {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},
@@ -5704,6 +5724,7 @@ static bool map_keyword_token(
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
+        {"USING", MYLITE_SQL_PARSE_USING},
         {"BIT", MYLITE_SQL_PARSE_BIT},
         {"BIN", MYLITE_SQL_PARSE_BIN},
         {"BIT_LENGTH", MYLITE_SQL_PARSE_BIT_LENGTH},
@@ -6306,6 +6327,7 @@ static bool span_text_matches_ignore_space_function_name(
         "BIT_OR",
         "BIT_XOR",
         "CAST",
+        "CONVERT",
         "COUNT",
         "CURDATE",
         "CURTIME",

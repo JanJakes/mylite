@@ -22,6 +22,8 @@ enum {
     operand_column_count = 5,
     cast_binary_column_count = 7,
     cast_binary_label_column_count = 3,
+    convert_using_binary_column_count = 2,
+    convert_using_binary_label_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
 };
@@ -158,6 +160,17 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         "(CAST('x' AS BINARY))",
     };
     static const char *const cast_binary_label_values[] = {"ABC", "ABC", "x"};
+    static const char *const convert_using_binary_columns[] = {
+        "binary",
+        "CONVERT('xyz' USING BINARY)",
+    };
+    static const char *const convert_using_binary_values[] = {"ABC", "xyz"};
+    static const char *const convert_using_binary_label_columns[] = {
+        "CONVERT('ABC' USING BINARY)",
+        "binary",
+        "(CONVERT('x' USING BINARY))",
+    };
+    static const char *const convert_using_binary_label_values[] = {"ABC", "ABC", "x"};
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"-1"};
     static const char *const do_row_count_values[] = {"0"};
@@ -256,6 +269,31 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .context = "cast binary labels",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC' USING BINARY) AS binary, "
+                   "CONVERT('xyz' USING BINARY)",
+            .columns = convert_using_binary_columns,
+            .column_count = convert_using_binary_column_count,
+            .values = convert_using_binary_values,
+            .row_count = 1U,
+            .context = "convert using binary scalar values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONVERT('ABC' USING BINARY), "
+                   "CONVERT('ABC' USING BINARY) AS binary, "
+                   "(CONVERT('x' USING BINARY)) FROM DUAL",
+            .columns = convert_using_binary_label_columns,
+            .column_count = convert_using_binary_label_column_count,
+            .values = convert_using_binary_label_values,
+            .row_count = 1U,
+            .context = "convert using binary labels",
+        }
+    );
 
     failures += execute_ok(database, "DO CAST('ABC' AS BINARY), CAST(NULL AS BINARY)", &result);
     if (result != NULL) {
@@ -263,6 +301,25 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
         failures += expect_size(mylite_result_row_count(result), 0U, "cast binary do rows");
         failures += expect_int64(mylite_result_affected_rows(result), 0, "cast binary do affected");
         failures += expect_size(mylite_result_warning_count(result), 0U, "cast binary do warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "DO CONVERT('ABC' USING BINARY)", &result);
+    if (result != NULL) {
+        failures +=
+            expect_size(mylite_result_column_count(result), 0U, "convert using binary do columns");
+        failures +=
+            expect_size(mylite_result_row_count(result), 0U, "convert using binary do rows");
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "convert using binary do affected"
+        );
+        failures += expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "convert using binary do warnings"
+        );
     }
     mylite_result_free(result);
     result = NULL;
@@ -274,7 +331,7 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .column_count = 1U,
             .values = do_row_count_values,
             .row_count = 1U,
-            .context = "row count after cast binary do",
+            .context = "row count after scalar do",
         }
     );
 
@@ -417,7 +474,61 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC' USING BINARY)",
+        "SELECT CONVERT(123 USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(NULL USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(TRUE USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(X'41' USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT((SELECT 1) USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC', BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC' USING utf8mb4)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -444,12 +555,30 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT CONVERT('ABC' USING BINARY) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "DO CAST(1 + 2 AS BINARY)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
                 "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO CONVERT(123 USING BINARY)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "CONVERT USING BINARY supports only string literals",
         }
     );
     failures += execute_error(
@@ -531,12 +660,20 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
 }
 
 static int test_scalar_expression_projection_independent_handles(void) {
-    static const char *const first_columns[] =
-        {"first_result", "ISNULL(NULL)", "CAST('A' AS BINARY)"};
-    static const char *const first_values[] = {"2", "1", "A"};
-    static const char *const second_columns[] =
-        {"second_result", "NULLIF(1,1)", "CAST('B' AS BINARY)"};
-    static const char *const second_values[] = {"4", NULL, "B"};
+    static const char *const first_columns[] = {
+        "first_result",
+        "ISNULL(NULL)",
+        "CAST('A' AS BINARY)",
+        "CONVERT('first' USING BINARY)",
+    };
+    static const char *const first_values[] = {"2", "1", "A", "first"};
+    static const char *const second_columns[] = {
+        "second_result",
+        "NULLIF(1,1)",
+        "CAST('B' AS BINARY)",
+        "CONVERT('second' USING BINARY)",
+    };
+    static const char *const second_values[] = {"4", NULL, "B", "second"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -546,9 +683,10 @@ static int test_scalar_expression_projection_independent_handles(void) {
     failures += expect_query(
         first,
         (struct expected_query){
-            .sql = "SELECT IF(1,2,3) AS first_result, ISNULL(NULL), CAST('A' AS BINARY)",
+            .sql = "SELECT IF(1,2,3) AS first_result, ISNULL(NULL), CAST('A' AS BINARY), "
+                   "CONVERT('first' USING BINARY)",
             .columns = first_columns,
-            .column_count = 3U,
+            .column_count = 4U,
             .values = first_values,
             .row_count = 1U,
             .context = "first handle mixed scalar",
@@ -557,9 +695,10 @@ static int test_scalar_expression_projection_independent_handles(void) {
     failures += expect_query(
         second,
         (struct expected_query){
-            .sql = "SELECT IFNULL(NULL,4) AS second_result, NULLIF(1,1), CAST('B' AS BINARY)",
+            .sql = "SELECT IFNULL(NULL,4) AS second_result, NULLIF(1,1), "
+                   "CAST('B' AS BINARY), CONVERT('second' USING BINARY)",
             .columns = second_columns,
-            .column_count = 3U,
+            .column_count = 4U,
             .values = second_values,
             .row_count = 1U,
             .context = "second handle mixed scalar",

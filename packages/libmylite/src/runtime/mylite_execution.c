@@ -17486,7 +17486,7 @@ static int resolve_exists_column_reference(
 );
 static int resolve_exists_column_reference_in_source(
     struct mylite_db *database,
-    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const char *column_name,
     const struct select_source_context *source_context,

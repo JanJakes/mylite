@@ -45,6 +45,7 @@ struct mylite_sql_char_type_tokens {
 
 struct mylite_sql_text_type_tokens {
     struct mylite_sql_token type_token;
+    struct mylite_sql_token end_token;
     enum mylite_sql_ast_text_type text_type;
 };
 

@@ -4808,8 +4808,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_text_type_tokens tokens
 ) {
-    struct mylite_sql_ast_node *type =
-        make_node(state, MYLITE_SQL_AST_TEXT_TYPE, span_from_token(&tokens.type_token));
+    struct mylite_sql_source_span span = span_from_token(&tokens.type_token);
+    struct mylite_sql_ast_node *type = NULL;
+
+    if (tokens.end_token.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.end_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_TEXT_TYPE, span);
     if (type == NULL) {
         return NULL;
     }
@@ -5588,6 +5594,7 @@ static bool map_keyword_token(
         {"BLOB", MYLITE_SQL_PARSE_BLOB},
         {"MEDIUMBLOB", MYLITE_SQL_PARSE_MEDIUMBLOB},
         {"LONGBLOB", MYLITE_SQL_PARSE_LONGBLOB},
+        {"LONG", MYLITE_SQL_PARSE_LONG},
         {"VARYING", MYLITE_SQL_PARSE_VARYING},
         {"TINYTEXT", MYLITE_SQL_PARSE_TINYTEXT},
         {"TEXT", MYLITE_SQL_PARSE_TEXT},

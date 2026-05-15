@@ -3503,6 +3503,9 @@ identifier(A) ::= TEMPORARY(T). {
 identifier(A) ::= TEXT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= LONG(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= JSON(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -4119,6 +4122,19 @@ text_type_name(A) ::= LONGTEXT(T). {
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
     };
 }
+text_type_name(A) ::= LONG(T). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+    };
+}
+text_type_name(A) ::= LONG(T) VARCHAR(V). {
+    A = (struct mylite_sql_text_type_tokens){
+        .type_token = T,
+        .end_token = V,
+        .text_type = MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+    };
+}
 
 json_type(A) ::= JSON(T). {
     A = mylite_sql_parser_make_json_type(state, T);
@@ -4261,6 +4277,14 @@ binary_string_type_name(A) ::= LONGBLOB(T). {
         .type_token = T,
         .end_token = T,
         .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB,
+        .has_length = 0,
+    };
+}
+binary_string_type_name(A) ::= LONG(T) VARBINARY(V). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = V,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB,
         .has_length = 0,
     };
 }

@@ -236,6 +236,11 @@ static int expect_text_type(
     enum mylite_sql_ast_text_type expected,
     const char *context
 );
+static int expect_binary_string_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_binary_string_type expected,
+    const char *context
+);
 static int expect_bit_type(
     const struct mylite_sql_ast_node *node,
     const char *expected_length,
@@ -8957,6 +8962,48 @@ static int test_text_type_statements(void) {
         expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT, "longtext column type");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "CREATE TABLE long_aliases (a LONG, b LONG VARCHAR NOT NULL, c LONG VARBINARY);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "long alias column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "a", "long alias column name");
+    failures += expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "long alias mediumtext type"
+    );
+    failures += expect_span_text(column_type, "LONG", "long alias span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "b", "long varchar alias column name");
+    failures += expect_text_type(
+        column_type,
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "long varchar alias mediumtext type"
+    );
+    failures += expect_span_text(column_type, "LONG VARCHAR", "long varchar alias span");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "long varchar alias not null"
+    );
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_span_text(child_at(column, 0U), "c", "long varbinary alias column name");
+    failures += expect_binary_string_type(
+        column_type,
+        MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB,
+        "long varbinary alias mediumblob type"
+    );
+    failures += expect_span_text(column_type, "LONG VARBINARY", "long varbinary alias span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE TABLE text (text INT, body TEXT);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_span_text(child_at(statement, 0U), "text", "nonreserved text table name");
@@ -8976,6 +9023,28 @@ static int test_text_type_statements(void) {
         child_at(column, 1U),
         MYLITE_SQL_AST_TEXT_TYPE_TEXT,
         "nonreserved text body type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE long (long INT, body LONG);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "long", "nonreserved long table name");
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 2U, "nonreserved long identifier columns");
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "long", "nonreserved long column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "nonreserved long column integer type"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "body", "nonreserved long body name");
+    failures += expect_text_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
+        "nonreserved long body alias type"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -9038,6 +9107,30 @@ static int test_text_type_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE invalid_text_length (body TEXT(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_long_varchar_length (body LONG VARCHAR(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_long_varbinary_length (body LONG VARBINARY(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_long_text (body LONG TEXT);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_long_binary (body LONG BINARY);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -17970,6 +18063,32 @@ static int expect_text_type(
             context,
             mylite_sql_ast_text_type_name(expected),
             mylite_sql_ast_text_type_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_binary_string_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_binary_string_type expected,
+    const char *context
+) {
+    enum mylite_sql_ast_binary_string_type actual = MYLITE_SQL_AST_BINARY_STRING_TYPE_NONE;
+
+    if (expect_node(node, MYLITE_SQL_AST_BINARY_STRING_TYPE, context) != 0) {
+        return 1;
+    }
+
+    actual = mylite_sql_ast_node_binary_string_type(node);
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected binary string type %s, got %s\n",
+            context,
+            mylite_sql_ast_binary_string_type_name(expected),
+            mylite_sql_ast_binary_string_type_name(actual)
         );
         return 1;
     }

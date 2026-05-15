@@ -4040,6 +4040,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp_keyword(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_date_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_date_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        span_from_token(&current_date_token)
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_time_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_time_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        span_from_token(&current_time_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column
@@ -5264,9 +5286,13 @@ static bool map_keyword_token(
         {"CROSS", MYLITE_SQL_PARSE_CROSS},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
+        {"CURDATE", MYLITE_SQL_PARSE_CURDATE},
+        {"CURRENT_DATE", MYLITE_SQL_PARSE_CURRENT_DATE},
         {"CURRENT_ROLE", MYLITE_SQL_PARSE_CURRENT_ROLE},
+        {"CURRENT_TIME", MYLITE_SQL_PARSE_CURRENT_TIME},
         {"CURRENT_TIMESTAMP", MYLITE_SQL_PARSE_CURRENT_TIMESTAMP},
         {"CURRENT_USER", MYLITE_SQL_PARSE_CURRENT_USER},
+        {"CURTIME", MYLITE_SQL_PARSE_CURTIME},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
@@ -5800,6 +5826,8 @@ static bool span_text_matches_ignore_space_function_name(
         "BIT_XOR",
         "CAST",
         "COUNT",
+        "CURDATE",
+        "CURTIME",
         "DATE_ADD",
         "GROUP_CONCAT",
         "MAX",

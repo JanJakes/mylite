@@ -6,11 +6,11 @@
 - [x] Specify the independently authored MyLite grammar and runtime semantics.
 - [x] Add MySQL expectation script coverage for the supported and deferred
       user-visible behavior.
-- [ ] Extend lexer/parser/AST support for `CURDATE`, `CURRENT_DATE`,
+- [x] Extend lexer/parser/AST support for `CURDATE`, `CURRENT_DATE`,
       `CURTIME`, and `CURRENT_TIME`.
-- [ ] Add runtime scalar formatting and compatible `DATE` / `TIME` DML value
+- [x] Add runtime scalar formatting and compatible `DATE` / `TIME` DML value
       conversion.
-- [ ] Add parser and runtime C tests.
-- [ ] Update compatibility documentation with limited wording.
-- [ ] Run focused build/tests plus `cmake --workflow --preset check`.
-- [ ] Review, commit, and push the completed slice.
+- [x] Add parser and runtime C tests.
+- [x] Update compatibility documentation with limited wording.
+- [x] Run focused build/tests plus `cmake --workflow --preset check`.
+- [x] Review, commit, and push the completed slice.

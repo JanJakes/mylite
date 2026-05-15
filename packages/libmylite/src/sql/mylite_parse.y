@@ -1480,6 +1480,12 @@ insert_value(A) ::= BIT_LITERAL(T). {
 insert_value(A) ::= current_timestamp_value(T). {
     A = T;
 }
+insert_value(A) ::= current_date_value(T). {
+    A = T;
+}
+insert_value(A) ::= current_time_value(T). {
+    A = T;
+}
 insert_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
@@ -1542,6 +1548,12 @@ update_value(A) ::= BIT_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 update_value(A) ::= current_timestamp_value(T). {
+    A = T;
+}
+update_value(A) ::= current_date_value(T). {
+    A = T;
+}
+update_value(A) ::= current_time_value(T). {
     A = T;
 }
 update_value(A) ::= DEFAULT(T). {
@@ -2214,6 +2226,12 @@ expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN
 expression(A) ::= current_timestamp_value(T). {
     A = T;
 }
+expression(A) ::= current_date_value(T). {
+    A = T;
+}
+expression(A) ::= current_time_value(T). {
+    A = T;
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
@@ -2287,6 +2305,28 @@ current_timestamp_value(A) ::= LOCALTIMESTAMP(T) LPAREN RPAREN(R). {
 current_timestamp_value(A) ::= LOCALTIMESTAMP(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR, B, R);
+}
+current_date_value(A) ::= CURRENT_DATE(T). {
+    A = mylite_sql_parser_make_current_date_keyword(state, T);
+}
+current_date_value(A) ::= CURRENT_DATE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_DATE_VALUE, R);
+}
+current_date_value(A) ::= CURDATE(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_CURRENT_DATE_VALUE, R);
+}
+current_time_value(A) ::= CURRENT_TIME(T). {
+    A = mylite_sql_parser_make_current_time_keyword(state, T);
+}
+current_time_value(A) ::= CURRENT_TIME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_TIME_VALUE, R);
+}
+current_time_value(A) ::= CURTIME(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_CURRENT_TIME_VALUE, R);
 }
 expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -3327,6 +3367,12 @@ identifier(A) ::= RAND(T). {
 }
 identifier(A) ::= NOW(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CURDATE(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= CURTIME(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= ABS(T). {
     A = mylite_sql_parser_make_identifier(state, T);

@@ -107,6 +107,7 @@ static int test_date_type_statements(void);
 static int test_datetime_type_statements(void);
 static int test_time_type_statements(void);
 static int test_timestamp_type_statements(void);
+static int test_current_date_time_function_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_foreign_key_statements(void);
 static int test_create_index_statements(void);
@@ -356,6 +357,7 @@ int main(void) {
     failures += test_datetime_type_statements();
     failures += test_time_type_statements();
     failures += test_timestamp_type_statements();
+    failures += test_current_date_time_function_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_foreign_key_statements();
     failures += test_create_index_statements();
@@ -10207,6 +10209,127 @@ static int test_timestamp_type_statements(void) {
         "CREATE TABLE timestamp_fractional (ts TIMESTAMP(3));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_current_date_time_function_statements(void) {
+    enum {
+        curdate_item_index = 0U,
+        current_date_item_index = 1U,
+        current_date_call_item_index = 2U,
+        curtime_item_index = 3U,
+        current_time_item_index = 4U,
+        current_time_call_item_index = 5U,
+        ignore_space_curtime_item_index = 1U,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CURDATE(), CURRENT_DATE, CURRENT_DATE(), CURTIME(), CURRENT_TIME, CURRENT_TIME();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, curdate_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        "CURDATE select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, current_date_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        "CURRENT_DATE select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, current_date_call_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        "CURRENT_DATE() select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, curtime_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        "CURTIME select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, current_time_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        "CURRENT_TIME select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, current_time_call_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        "CURRENT_TIME() select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO t VALUES (CURDATE(), CURRENT_TIME);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "INSERT INTO t SET d = CURDATE(), tm = CURRENT_TIME;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("REPLACE INTO t VALUES (CURRENT_DATE, CURTIME());", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "REPLACE INTO t SET d = CURRENT_DATE, tm = CURTIME();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE t SET d = CURRENT_DATE, tm = CURTIME();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        "current date update assignment"
+    );
+    assignment = child_at(child_at(statement, 1U), 1U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        "current time update assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURDATE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURRENT_DATE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURTIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURRENT_TIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURDATE ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CURTIME ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("SELECT CURDATE (), CURTIME ();", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, curdate_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_DATE_VALUE,
+        "ignore_space CURDATE select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, ignore_space_curtime_item_index), 0U),
+        MYLITE_SQL_AST_CURRENT_TIME_VALUE,
+        "ignore_space CURTIME select item"
     );
     mylite_sql_parse_result_deinit(&result);
 

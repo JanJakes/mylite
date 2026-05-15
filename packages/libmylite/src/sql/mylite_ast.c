@@ -705,6 +705,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "current_timestamp_value";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         return "current_timestamp_argument_count_error";
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+        return "current_date_value";
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+        return "current_time_value";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:

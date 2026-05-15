@@ -88,20 +88,52 @@ expect_output \
 expect_output \
     "current date and time DML assignment" \
     "1	0
-1	2023-11-14	22:14:20
+1	2023-11-14	22:18:20
 2	2023-11-14	22:14:20
+3	2023-11-14	22:15:20
+4	2023-11-14	22:16:20
+5	2023-11-14	22:17:20
+1	2023-11-14	22:18:20
+2	2023-11-14	22:18:20
+3	2023-11-14	22:18:20
+4	2023-11-14	22:18:20
+5	2023-11-14	22:18:20
 0	0" \
     "SET time_zone = '+00:00'; "\
-"CREATE TABLE current_values (id INT PRIMARY KEY, d DATE, tm TIME); "\
+"CREATE TABLE current_values (id INT, d DATE, tm TIME); "\
 "SET timestamp = 1700000000; "\
 "INSERT INTO current_values VALUES (1, CURDATE(), CURTIME()); "\
 "SET timestamp = 1700000060; "\
 "INSERT INTO current_values VALUES (2, CURRENT_DATE, CURRENT_TIME); "\
+"SET timestamp = 1700000120; "\
+"INSERT INTO current_values SET id = 3, d = CURDATE(), tm = CURTIME(); "\
+"SET timestamp = 1700000180; "\
+"REPLACE INTO current_values VALUES (4, CURRENT_DATE, CURRENT_TIME); "\
+"SET timestamp = 1700000240; "\
+"REPLACE INTO current_values SET id = 5, d = CURDATE(), tm = CURTIME(); "\
+"SET timestamp = 1700000300; "\
 "UPDATE current_values SET d = CURDATE(), tm = CURTIME() WHERE id = 1; "\
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SELECT id, d, tm FROM current_values ORDER BY id; "\
+"SELECT id, CURRENT_DATE, CURRENT_TIME FROM current_values ORDER BY id; "\
 "UPDATE current_values SET tm = CURTIME() WHERE id = 1; "\
 "SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
+    "ignore_space accepts whitespace after curdate and curtime" \
+    "2023-11-14	22:13:20" \
+    "SET time_zone = '+00:00'; SET timestamp = 1700000000; "\
+"SET SESSION sql_mode = 'IGNORE_SPACE'; "\
+"SELECT CURDATE (), CURTIME ();" \
+    "$DATABASE"
+
+expect_error \
+    "default mode rejects whitespace after curdate" \
+    1630 \
+    "42000" \
+    "FUNCTION ${DATABASE}.CURDATE does not exist" \
+    "SET SESSION sql_mode = ''; SELECT CURDATE ();" \
     "$DATABASE"
 
 expect_output \

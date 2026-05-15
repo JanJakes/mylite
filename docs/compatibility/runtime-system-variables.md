@@ -977,7 +977,7 @@ Performance Schema variable tables remain unsupported.
 | `thread_pool_transaction_delay` | ❌ | Value, scope, SET, diagnostics |
 | `thread_stack` | ❌ | Value, scope, SET, diagnostics |
 | `time_zone` | ❌ | Value, scope, SET, diagnostics |
-| `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, and `DEFAULT` values. The value controls the current statement timestamp used by `NOW()` / `CURRENT_TIMESTAMP` and automatic temporal defaults; no global scope, fractional values, time-zone conversion, persisted state, or broader temporal-variable behavior |
+| `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, and `DEFAULT` values. The value controls the current statement date/time/timestamp used by `CURDATE()` / `CURRENT_DATE`, `CURTIME()` / `CURRENT_TIME`, `NOW()` / `CURRENT_TIMESTAMP`, and automatic temporal defaults; no global scope, fractional values, time-zone conversion, persisted state, or broader temporal-variable behavior |
 | `tls_certificates_enforced_validation` | ❌ | Value, scope, SET, diagnostics |
 | `tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
 | `tls_version` | ❌ | Value, scope, SET, diagnostics |

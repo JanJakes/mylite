@@ -8120,6 +8120,14 @@ static int current_timestamp_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell
 );
+static int current_date_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+);
+static int current_time_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+);
 static int string_length_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11595,12 +11603,17 @@ static int make_current_timestamp_value(
     struct mylite_db *database,
     struct planned_value *out_value
 );
+static int make_current_date_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_current_time_value(struct mylite_db *database, struct planned_value *out_value);
 static int64_t current_timestamp_epoch(const struct mylite_db *database);
 static int format_current_timestamp_text(
     struct mylite_db *database,
     char *buffer,
     size_t buffer_size
 );
+static int format_current_date_text(struct mylite_db *database, char *buffer, size_t buffer_size);
+static int format_current_time_text(struct mylite_db *database, char *buffer, size_t buffer_size);
+static int current_timestamp_utc_parts(struct mylite_db *database, struct tm *out_time_parts);
 static int make_zero_approximate_value(struct planned_value *out_value);
 static int parse_approximate_literal_value(
     struct mylite_db *database,
@@ -12775,6 +12788,9 @@ static bool row_scalar_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool row_scalar_expression_contains_row_function(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_statement_time_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
@@ -14664,6 +14680,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -25538,6 +25556,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
@@ -43095,7 +43115,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
     select_item = child_at(select_list, 0U);
     while (select_item != NULL) {
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            row_scalar_expression_contains_row_function(child_at(select_item, 0U))) {
+            (row_scalar_expression_contains_row_function(child_at(select_item, 0U)) ||
+             row_scalar_expression_contains_statement_time_function(child_at(select_item, 0U)))) {
             return true;
         }
         select_item = select_item->next_sibling;
@@ -45877,6 +45898,10 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+        return current_date_scalar_value(database, out_cell);
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+        return current_time_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
@@ -46072,6 +46097,48 @@ static int current_timestamp_scalar_value(
     }
     *out_cell = (struct session_scalar_cell){0};
     rc = format_current_timestamp_text(
+        database,
+        out_cell->datetime_text,
+        sizeof(out_cell->datetime_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->datetime_text;
+    }
+    return rc;
+}
+
+static int current_date_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = format_current_date_text(
+        database,
+        out_cell->datetime_text,
+        sizeof(out_cell->datetime_text)
+    );
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->datetime_text;
+    }
+    return rc;
+}
+
+static int current_time_scalar_value(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = format_current_time_text(
         database,
         out_cell->datetime_text,
         sizeof(out_cell->datetime_text)
@@ -46284,6 +46351,10 @@ static int string_length_session_scalar_argument_value(
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+        return current_date_scalar_value(database, out_cell);
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+        return current_time_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -54798,6 +54869,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
@@ -63664,6 +63741,20 @@ static int convert_insert_value(
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, ignore_errors, out_value);
     }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE) {
+        if (column_descriptor_is_date(column)) {
+            return make_current_date_value(database, out_value);
+        }
+        set_unsupported_error(database, "CURRENT_DATE values are supported only for DATE columns");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) {
+        if (column_descriptor_is_time(column)) {
+            return make_current_time_value(database, out_value);
+        }
+        set_unsupported_error(database, "CURRENT_TIME values are supported only for TIME columns");
+        return MYLITE_ERROR;
+    }
     if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
         if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
             return make_current_timestamp_value(database, out_value);
@@ -66107,6 +66198,26 @@ static int make_current_timestamp_value(
     return copy_text_value(database, timestamp_text, out_value);
 }
 
+static int make_current_date_value(struct mylite_db *database, struct planned_value *out_value) {
+    char date_text[date_text_length + 1U];
+    int rc = format_current_date_text(database, date_text, sizeof(date_text));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return copy_text_value(database, date_text, out_value);
+}
+
+static int make_current_time_value(struct mylite_db *database, struct planned_value *out_value) {
+    char time_text[time_text_minimum_length + 1U];
+    int rc = format_current_time_text(database, time_text, sizeof(time_text));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return copy_text_value(database, time_text, out_value);
+}
+
 static int64_t current_timestamp_epoch(const struct mylite_db *database) {
     time_t fallback = 0;
 
@@ -66128,7 +66239,6 @@ static int format_current_timestamp_text(
     char *buffer,
     size_t buffer_size
 ) {
-    time_t epoch = (time_t)current_timestamp_epoch(database);
     struct tm time_parts;
     int written = 0;
 
@@ -66136,17 +66246,9 @@ static int format_current_timestamp_text(
         set_runtime_error(database, "invalid current timestamp buffer");
         return MYLITE_ERROR;
     }
-#ifdef _WIN32
-    if (gmtime_s(&time_parts, &epoch) != 0) {
-        set_runtime_error(database, "failed to format current timestamp");
+    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
         return MYLITE_ERROR;
     }
-#else
-    if (gmtime_r(&epoch, &time_parts) == NULL) {
-        set_runtime_error(database, "failed to format current timestamp");
-        return MYLITE_ERROR;
-    }
-#endif
     written = snprintf(
         buffer,
         buffer_size,
@@ -66162,6 +66264,78 @@ static int format_current_timestamp_text(
         set_runtime_error(database, "failed to format current timestamp");
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int format_current_date_text(struct mylite_db *database, char *buffer, size_t buffer_size) {
+    struct tm time_parts;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_runtime_error(database, "invalid current date buffer");
+        return MYLITE_ERROR;
+    }
+    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%04d-%02d-%02d",
+        time_parts.tm_year + 1900,
+        time_parts.tm_mon + 1,
+        time_parts.tm_mday
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format current date");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int format_current_time_text(struct mylite_db *database, char *buffer, size_t buffer_size) {
+    struct tm time_parts;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_runtime_error(database, "invalid current time buffer");
+        return MYLITE_ERROR;
+    }
+    if (current_timestamp_utc_parts(database, &time_parts) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%02d:%02d:%02d",
+        time_parts.tm_hour,
+        time_parts.tm_min,
+        time_parts.tm_sec
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format current time");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int current_timestamp_utc_parts(struct mylite_db *database, struct tm *out_time_parts) {
+    time_t epoch = (time_t)current_timestamp_epoch(database);
+
+    if (out_time_parts == NULL) {
+        return MYLITE_MISUSE;
+    }
+#ifdef _WIN32
+    if (gmtime_s(out_time_parts, &epoch) != 0) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
+#else
+    if (gmtime_r(&epoch, out_time_parts) == NULL) {
+        set_runtime_error(database, "failed to format current timestamp");
+        return MYLITE_ERROR;
+    }
+#endif
     return MYLITE_OK;
 }
 
@@ -67913,6 +68087,8 @@ static int plan_row_scalar_non_concat_expression(
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE ||
         expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE ||
         expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return plan_row_scalar_session_value(database, expression, out_expression);
     }
@@ -68941,6 +69117,19 @@ static bool row_scalar_expression_contains_row_function(
     scalar_arithmetic_node_stack_deinit(&stack);
 
     return found;
+}
+
+static bool row_scalar_expression_contains_statement_time_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE ||
+            expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR ||
+            expression->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE ||
+            expression->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) != 0;
 }
 
 static int plan_select_columns(
@@ -72253,6 +72442,8 @@ static bool update_assignment_value_is_multi_constant_supported(
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
         return true;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return update_assignment_unary_value_is_multi_constant_supported(value_node);
@@ -72456,6 +72647,20 @@ static int convert_update_value_for_column(
     *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return materialize_dml_default_value(database, column, false, out_value);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE) {
+        if (column_descriptor_is_date(column)) {
+            return make_current_date_value(database, out_value);
+        }
+        set_unsupported_error(database, "CURRENT_DATE values are supported only for DATE columns");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) {
+        if (column_descriptor_is_time(column)) {
+            return make_current_time_value(database, out_value);
+        }
+        set_unsupported_error(database, "CURRENT_TIME values are supported only for TIME columns");
+        return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
         if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {

@@ -3504,11 +3504,8 @@ static int test_rand_function(void) {
     select_list = child_at(child_at(result.root, 0U), 0U);
     first_expression = child_at(child_at(select_list, 0U), 0U);
     second_expression = child_at(child_at(select_list, 1U), 0U);
-    failures += expect_node(
-        first_expression,
-        MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED,
-        "rand seed unsupported"
-    );
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_RAND_SEED_FUNCTION, "rand seed function");
     failures += expect_child_count(first_expression, 1U, "rand seed argument count");
     failures += expect_node(
         second_expression,
@@ -3524,8 +3521,7 @@ static int test_rand_function(void) {
     first_expression = child_at(child_at(statement, 0U), 0U);
     second_expression = child_at(child_at(statement, 0U), 1U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_RAND_FUNCTION, "do rand function");
-    failures +=
-        expect_node(second_expression, MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED, "do rand seed");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_RAND_SEED_FUNCTION, "do rand seed");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE rand (rand INT);", MYLITE_SQL_PARSE_OK, &result);

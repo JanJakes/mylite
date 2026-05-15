@@ -330,6 +330,12 @@ enum {
     crc32_bits_per_byte = 8,
     rand_double_value_bits = 53,
     rand_double_discard_bits = scalar_bitwise_integer_bits - rand_double_value_bits,
+    rand_seed_state_modulus = 0x3fffffff,
+    rand_seed_first_multiplier = 0x10001,
+    rand_seed_second_multiplier = 0x10000001,
+    rand_seed_first_addend = 55555555,
+    rand_seed_step_multiplier = 3,
+    rand_seed_step_addend = 33,
     double_format_error_capacity = 80,
     float_text_max_significant_digits = 6,
     approximate_numeric_text_capacity = 48,
@@ -9485,7 +9491,21 @@ static int rand_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int rand_seed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed
+);
+static int rand_seed_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint32_t *out_seed
+);
 static double random_unit_double(void);
+static double seeded_random_unit_double(uint32_t seed);
+static double rand_seed_next_unit_double(uint32_t *seed1, uint32_t *seed2);
+static uint32_t rand_seed_initial_word(uint32_t seed, uint32_t multiplier, uint32_t addend);
 static int current_timestamp_scalar_value(
     struct mylite_db *database,
     struct session_scalar_cell *out_cell
@@ -17148,7 +17168,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_RAND_FUNCTION:
-    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
     case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
@@ -29140,7 +29160,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PI_FUNCTION:
     case MYLITE_SQL_AST_PI_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_RAND_FUNCTION:
-    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
     case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SQRT_FUNCTION:
     case MYLITE_SQL_AST_SQRT_ARGUMENT_COUNT_ERROR:
@@ -30357,7 +30377,7 @@ static int render_check_expression_work_item(
         set_check_constraint_variable_error(context->database);
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_RAND_FUNCTION:
-    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
     case MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR:
         set_check_constraint_function_error(context->database);
         return MYLITE_ERROR;
@@ -53203,10 +53223,8 @@ static int session_scalar_value(
         out_cell->value = scalar_pi_text;
         return MYLITE_OK;
     case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
         return rand_function_value(database, expression, out_cell);
-    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
-        set_unsupported_error(database, "RAND(seed) is not supported");
-        return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return current_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
@@ -53381,29 +53399,154 @@ static int rand_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    size_t child_count = 0U;
+    uint32_t seed = 0U;
+    double value = 0.0;
     int rc = MYLITE_OK;
 
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_RAND_FUNCTION ||
-        mylite_sql_ast_node_child_count(expression) != 0U) {
-        set_unsupported_error(database, "RAND() supports only zero arguments");
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || (expression->kind != MYLITE_SQL_AST_RAND_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
         return MYLITE_ERROR;
     }
 
-    rc = format_double_text(
-        database,
-        random_unit_double(),
-        "RAND",
-        out_cell->double_text,
-        sizeof(out_cell->double_text)
-    );
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
+        value = random_unit_double();
+    } else if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
+        rc = rand_seed_value(database, child_at(expression, 0U), &seed);
+        if (rc == MYLITE_OK) {
+            value = seeded_random_unit_double(seed);
+        }
+    } else {
+        set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = format_double_text(
+            database,
+            value,
+            "RAND",
+            out_cell->double_text,
+            sizeof(out_cell->double_text)
+        );
+    }
     if (rc == MYLITE_OK) {
         out_cell->value = out_cell->double_text;
     }
     return rc;
+}
+
+static int rand_seed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint32_t *out_seed
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    bool has_unary_sign = false;
+    bool is_negative = false;
+
+    if (out_seed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_seed = 0U;
+    if (literal == NULL) {
+        set_unsupported_error(
+            database,
+            "RAND(seed) supports only integer, boolean, and NULL seed literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(literal);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_unsupported_error(
+                database,
+                "RAND(seed) supports only integer, boolean, and NULL seed literals"
+            );
+            return MYLITE_ERROR;
+        }
+        has_unary_sign = true;
+        is_negative = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE;
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "RAND(seed) supports only integer, boolean, and NULL seed literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (has_unary_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "RAND(seed) supports only integer, boolean, and NULL seed literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_seed = 0U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_seed = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_seed = 0U;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "RAND(seed) supports only integer, boolean, and NULL seed literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return rand_seed_literal_value(database, literal, is_negative, out_seed);
+}
+
+static int rand_seed_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint32_t *out_seed
+) {
+    uint64_t magnitude = 0U;
+    uint32_t truncated = 0U;
+
+    if (out_seed == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_seed = 0U;
+    if (literal == NULL ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_unsupported_error(database, "RAND(seed) integer literal is out of range");
+        return MYLITE_ERROR;
+    }
+
+    truncated = (uint32_t)magnitude;
+    if (is_negative) {
+        *out_seed = (uint32_t)(0U - truncated);
+    } else {
+        *out_seed = truncated;
+    }
+
+    return MYLITE_OK;
 }
 
 static double random_unit_double(void) {
@@ -53412,6 +53555,36 @@ static double random_unit_double(void) {
     sqlite3_randomness((int)sizeof(random_bits), &random_bits);
     random_bits >>= rand_double_discard_bits;
     return ldexp((double)random_bits, -rand_double_value_bits);
+}
+
+static double seeded_random_unit_double(uint32_t seed) {
+    uint32_t seed1 =
+        rand_seed_initial_word(seed, rand_seed_first_multiplier, rand_seed_first_addend);
+    uint32_t seed2 = rand_seed_initial_word(seed, rand_seed_second_multiplier, 0U);
+
+    return rand_seed_next_unit_double(&seed1, &seed2);
+}
+
+static double rand_seed_next_unit_double(uint32_t *seed1, uint32_t *seed2) {
+    uint64_t next_seed1 = 0U;
+    uint64_t next_seed2 = 0U;
+
+    if (seed1 == NULL || seed2 == NULL) {
+        return 0.0;
+    }
+
+    next_seed1 = ((uint64_t)(*seed1) * rand_seed_step_multiplier) + *seed2;
+    *seed1 = (uint32_t)(next_seed1 % rand_seed_state_modulus);
+    next_seed2 = (uint64_t)(*seed1) + *seed2 + rand_seed_step_addend;
+    *seed2 = (uint32_t)(next_seed2 % rand_seed_state_modulus);
+
+    return (double)(*seed1) / (double)rand_seed_state_modulus;
+}
+
+static uint32_t rand_seed_initial_word(uint32_t seed, uint32_t multiplier, uint32_t addend) {
+    uint32_t overflowed = (uint32_t)(((uint64_t)seed * multiplier) + addend);
+
+    return overflowed % rand_seed_state_modulus;
 }
 
 static int current_timestamp_scalar_value(
@@ -53670,10 +53843,8 @@ static int string_length_session_scalar_argument_value(
         out_cell->value = scalar_pi_text;
         return MYLITE_OK;
     case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
         return rand_function_value(database, expression, out_cell);
-    case MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED:
-        set_unsupported_error(database, "RAND(seed) is not supported");
-        return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return current_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
@@ -53744,6 +53915,9 @@ static bool string_length_scalar_argument_is_admitted(
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
         return false;
     }
     if (is_session_scalar_expression(expression)) {
@@ -63289,7 +63463,7 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION) {
         return true;
     }
-    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED) {
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
@@ -77041,7 +77215,7 @@ static int plan_row_scalar_string_length_argument(
         );
     }
     if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
-                       expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED)) {
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
         set_unsupported_error(
             database,
             "string length functions do not support RAND() arguments in table-backed SELECT"
@@ -77221,7 +77395,7 @@ static int plan_row_scalar_string_case_argument(
         );
     }
     if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
-                       expression->kind == MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED)) {
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
         set_unsupported_error(
             database,
             "string case functions do not support RAND() arguments in table-backed SELECT"

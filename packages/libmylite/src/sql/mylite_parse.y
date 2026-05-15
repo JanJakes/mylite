@@ -2568,7 +2568,7 @@ expression(A) ::= RAND(T) LPAREN RPAREN(R). {
 }
 expression(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
-        state, T, MYLITE_SQL_AST_RAND_SEED_UNSUPPORTED, B, R);
+        state, T, MYLITE_SQL_AST_RAND_SEED_FUNCTION, B, R);
 }
 expression(A) ::= RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
     (void)B;

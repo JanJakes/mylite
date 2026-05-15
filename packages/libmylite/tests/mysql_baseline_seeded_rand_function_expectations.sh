@@ -101,12 +101,11 @@ expect_mixed_seeded_unseeded() {
 
     output=$(run_mysql "$sql" "$@")
     printf '%s\n' "$output" | awk -F '\t' '
-        NF != 6 { exit 1 }
+        NF != 5 { exit 1 }
         $1 != "0.40540353712197724" { exit 1 }
         $3 != "0.40540353712197724" { exit 1 }
         $4 != "0" { exit 1 }
         $5 != "0" { exit 1 }
-        $6 != "1" { exit 1 }
         $2 !~ /^[0-9]+([.][0-9]+)?$/ { exit 1 }
         {
             value = $2 + 0
@@ -159,7 +158,7 @@ expect_header_and_output \
 
 expect_mixed_seeded_unseeded \
     "mixed seeded and unseeded RAND" \
-    "DO 0; SELECT RAND(1), RAND(), RAND(1), @@warning_count, ROW_COUNT(), RAND(0) = RAND(NULL);" \
+    "DO 0; SELECT RAND(1), RAND(), RAND(1), @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
 expect_output \

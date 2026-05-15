@@ -17,6 +17,9 @@
 enum {
     test_path_capacity = 1024,
     rand_core_column_count = 7,
+    rand_seed_column_count = 13,
+    rand_seed_dual_column_count = 2,
+    rand_seed_mixed_column_count = 3,
     rand_alias_column_count = 2,
     rand_mixed_column_count = 3,
     diagnostic_column_count = 2,
@@ -96,6 +99,52 @@ static int test_rand_values_and_file_safety(void) {
     };
     static const char *const rand_core_values[] = {NULL, NULL, NULL, NULL, NULL, "0", "0"};
     static const bool rand_core_ranges[] = {true, true, true, true, true, false, false};
+    static const char *const rand_seed_columns[] = {
+        "RAND(0)",
+        "RAND(1)",
+        "RAND(2)",
+        "RAND(3)",
+        "RAND(NULL)",
+        "RAND(TRUE)",
+        "RAND(FALSE)",
+        "RAND(-1)",
+        "RAND(4294967295)",
+        "RAND(4294967296)",
+        "RAND(4294967297)",
+        "RAND(18446744073709551615)",
+        "RAND((1))",
+    };
+    static const char *const rand_seed_values[] = {
+        "0.15522042769493574",
+        "0.40540353712197724",
+        "0.6555866465490187",
+        "0.9057697559760601",
+        "0.15522042769493574",
+        "0.40540353712197724",
+        "0.15522042769493574",
+        "0.9050373219931845",
+        "0.9050373219931845",
+        "0.15522042769493574",
+        "0.40540353712197724",
+        "0.9050373219931845",
+        "0.40540353712197724",
+    };
+    static const char *const rand_seed_dual_columns[] = {"RAND (1)", "r"};
+    static const char *const rand_seed_dual_values[] = {
+        "0.40540353712197724",
+        "0.15522042769493574",
+    };
+    static const char *const rand_seed_mixed_columns[] = {
+        "RAND(1)",
+        "RAND()",
+        "RAND(1)",
+    };
+    static const char *const rand_seed_mixed_values[] = {
+        "0.40540353712197724",
+        NULL,
+        "0.40540353712197724",
+    };
+    static const bool rand_seed_mixed_ranges[] = {false, true, false};
     static const char *const rand_alias_columns[] = {"r", "q"};
     static const char *const rand_alias_values[] = {NULL, NULL};
     static const bool rand_alias_ranges[] = {true, true};
@@ -138,6 +187,50 @@ static int test_rand_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "core rand values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND(0),RAND(1),RAND(2),RAND(3),RAND(NULL),RAND(TRUE),"
+                   "RAND(FALSE),RAND(-1),RAND(4294967295),RAND(4294967296),"
+                   "RAND(4294967297),RAND(18446744073709551615),RAND((1))",
+            .columns = rand_seed_columns,
+            .column_count = rand_seed_column_count,
+            .values = rand_seed_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand exact values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND (1), RAND(NULL) AS r FROM DUAL",
+            .columns = rand_seed_dual_columns,
+            .column_count = rand_seed_dual_column_count,
+            .values = rand_seed_dual_values,
+            .range_columns = NULL,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand dual values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT RAND(1),RAND(),RAND(1)",
+            .columns = rand_seed_mixed_columns,
+            .column_count = rand_seed_mixed_column_count,
+            .values = rand_seed_mixed_values,
+            .range_columns = rand_seed_mixed_ranges,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "seeded rand mixed values",
         }
     );
     failures += expect_query(
@@ -201,7 +294,7 @@ static int test_rand_do_and_independent_handles(void) {
     int failures = 0;
 
     failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open rand do handle");
-    failures += execute_ok(database, "DO RAND(), rand()", &result);
+    failures += execute_ok(database, "DO RAND(), rand(), RAND(1), RAND(NULL), RAND(-1)", &result);
     failures += expect_size(mylite_result_column_count(result), 0U, "rand DO column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "rand DO row count");
     failures += expect_size(mylite_result_warning_count(result), 0U, "rand DO warnings");
@@ -293,29 +386,56 @@ static int test_rand_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT RAND(1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "RAND(seed) is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DO RAND(1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "RAND(seed) is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT RAND(1, 2)",
         (struct expected_sql_error){
             .code = mysql_error_native_function_arity,
             .sqlstate = "42000",
             .message_part = "Incorrect parameter count in the call to native function 'RAND'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND('1')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND(1.5)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND(1+0)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND(+TRUE)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) supports only integer, boolean, and NULL seed literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT RAND(18446744073709551616)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RAND(seed) integer literal is out of range",
         }
     );
     failures += execute_error(
@@ -338,6 +458,15 @@ static int test_rand_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT RAND(1) FROM t ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT 1+RAND()",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -352,6 +481,33 @@ static int test_rand_errors_and_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ABS() supports",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ABS(RAND(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ABS() supports",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT LENGTH(RAND(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string length functions support",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT LOWER(RAND(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string case functions support",
         }
     );
 

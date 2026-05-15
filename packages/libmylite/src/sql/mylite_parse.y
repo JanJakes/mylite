@@ -215,6 +215,9 @@ statement(A) ::= alter_table_drop_foreign_key_statement(B). {
 statement(A) ::= alter_table_drop_index_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_rename_index_statement(B). {
+    A = B;
+}
 statement(A) ::= drop_index_statement(B). {
     A = B;
 }
@@ -1127,6 +1130,24 @@ alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP INDEX
 
 alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP KEY identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I);
+}
+
+alter_table_rename_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) RENAME INDEX old_identifier(O) TO new_identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N);
+}
+
+alter_table_rename_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) RENAME KEY old_identifier(O) TO new_identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N);
+}
+
+old_identifier(A) ::= identifier(B). {
+    A = B;
+}
+
+new_identifier(A) ::= identifier(B). {
+    A = B;
 }
 
 alter_table_drop_primary_key_statement(A) ::=

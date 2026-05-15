@@ -72,6 +72,7 @@ enum {
     mysql_error_blob_key_without_length = 1170,
     mysql_error_json_used_as_key = 3152,
     mysql_error_primary_key_part_null = 1171,
+    mysql_error_key_does_not_exist = 1176,
     mysql_error_incorrect_foreign_key_definition = 1239,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
@@ -1581,6 +1582,13 @@ struct planned_drop_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct loaded_index_info index;
+};
+
+struct planned_rename_index {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct loaded_index_info index;
+    char new_index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
 struct alter_table_add_index_nodes {
@@ -6424,6 +6432,11 @@ static int execute_alter_table_drop_index_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_rename_index_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -7900,6 +7913,22 @@ static int plan_drop_index(
 );
 static void planned_drop_index_deinit(struct planned_drop_index *plan);
 static int drop_index_from_plan(struct mylite_db *database, const struct planned_drop_index *plan);
+static int plan_alter_table_rename_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_index *out_plan
+);
+static void planned_rename_index_deinit(struct planned_rename_index *plan);
+static int rename_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_index *plan
+);
+static bool loaded_index_name_is_used_by_other(
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const struct loaded_index_info *skipped_index,
+    const char *index_name
+);
 static int find_loaded_index_by_name(
     const struct loaded_index_info *indexes,
     size_t index_count,
@@ -15334,6 +15363,11 @@ static void set_invalid_use_of_null_error(struct mylite_db *database);
 static void set_primary_key_part_null_error(struct mylite_db *database);
 static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name);
 static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name);
+static void set_key_does_not_exist_in_table_error(
+    struct mylite_db *database,
+    const char *index_name,
+    const char *table_name
+);
 static void set_storage_engine_cant_index_column_error(
     struct mylite_db *database,
     const char *column_name
@@ -15761,6 +15795,8 @@ static int execute_parsed_statement(
         return execute_alter_table_drop_foreign_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return execute_alter_table_drop_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+        return execute_alter_table_rename_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
         return execute_alter_table_drop_primary_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -17040,6 +17076,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
@@ -19614,6 +19651,35 @@ static int execute_alter_table_drop_index_statement(
     }
 
     planned_drop_index_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_rename_index_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_rename_index plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_rename_index(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = rename_index_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_rename_index_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    planned_rename_index_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -27457,6 +27523,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
@@ -35577,6 +35644,190 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
+}
+
+static int plan_alter_table_rename_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_index *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    char old_index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    size_t resolved_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_rename_index){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            old_index_name,
+            sizeof(old_index_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 2U),
+            out_plan->new_index_name,
+            sizeof(out_plan->new_index_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->new_index_name)) {
+        set_reserved_name_error(database, "index", out_plan->new_index_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE RENAME INDEX supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_loaded_index_by_name(indexes, index_count, old_index_name, &resolved_index);
+        if (rc != MYLITE_OK) {
+            set_key_does_not_exist_in_table_error(
+                database,
+                old_index_name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK &&
+        indexes[resolved_index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        set_incorrect_index_name_error(database, old_index_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        indexes[resolved_index].index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        set_unsupported_error(database, "ALTER TABLE RENAME INDEX supports only secondary indexes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        text_equals_ascii_case_insensitive(out_plan->new_index_name, "PRIMARY")) {
+        set_incorrect_index_name_error(database, out_plan->new_index_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && loaded_index_name_is_used_by_other(
+                               indexes,
+                               index_count,
+                               &indexes[resolved_index],
+                               out_plan->new_index_name
+                           )) {
+        set_duplicate_key_name_error(database, out_plan->new_index_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->index = indexes[resolved_index];
+        indexes[resolved_index] = (struct loaded_index_info){0};
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static void planned_rename_index_deinit(struct planned_rename_index *plan) {
+    if (plan == NULL) {
+        return;
+    }
+    loaded_index_info_deinit(&plan->index);
+    *plan = (struct planned_rename_index){0};
+}
+
+static int rename_index_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_index *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_rename_index_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->index.index.index_id,
+            plan->new_index_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to rename index");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool loaded_index_name_is_used_by_other(
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    const struct loaded_index_info *skipped_index,
+    const char *index_name
+) {
+    for (size_t index = 0U; index < index_count; ++index) {
+        if (&indexes[index] == skipped_index) {
+            continue;
+        }
+        if (text_equals_ascii_case_insensitive(indexes[index].index.name, index_name)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int find_loaded_index_by_name(
@@ -86387,6 +86638,31 @@ static void set_incorrect_index_name_error(struct mylite_db *database, const cha
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_incorrect_index_name,
+        "42000",
+        message
+    );
+}
+
+static void set_key_does_not_exist_in_table_error(
+    struct mylite_db *database,
+    const char *index_name,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Key '%s' doesn't exist in table '%s'",
+        index_name,
+        table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_key_does_not_exist,
         "42000",
         message
     );

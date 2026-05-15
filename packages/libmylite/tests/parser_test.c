@@ -120,6 +120,7 @@ static int test_alter_table_add_index_statements(void);
 static int test_alter_table_add_foreign_key_statements(void);
 static int test_alter_table_drop_foreign_key_statements(void);
 static int test_alter_table_drop_index_statements(void);
+static int test_alter_table_rename_index_statements(void);
 static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
@@ -378,6 +379,7 @@ int main(void) {
     failures += test_alter_table_add_foreign_key_statements();
     failures += test_alter_table_drop_foreign_key_statements();
     failures += test_alter_table_drop_index_statements();
+    failures += test_alter_table_rename_index_statements();
     failures += test_alter_table_drop_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
@@ -11728,6 +11730,126 @@ static int test_alter_table_drop_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE drop_idx DROP INDEX k_v, ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_rename_index_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT,
+        "alter rename index statement"
+    );
+    failures += expect_child_count(statement, 3U, "alter rename index child count");
+    failures += expect_span_text(child_at(statement, 0U), "rename_idx", "alter rename index table");
+    failures += expect_span_text(child_at(statement, 1U), "k_old", "alter rename old name");
+    failures += expect_span_text(child_at(statement, 2U), "k_new", "alter rename new name");
+    failures += expect_span_text(
+        statement,
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new",
+        "alter rename index span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.rename_idx RENAME KEY `k_old` TO `k_new`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.rename_idx",
+        "schema-qualified alter rename index table"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "`k_old`", "quoted rename old name");
+    failures += expect_span_text(child_at(statement, 2U), "`k_new`", "quoted rename new name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX `PRIMARY` TO `renamed`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 1U), "`PRIMARY`", "quoted primary old name");
+    failures += expect_span_text(child_at(statement, 2U), "`renamed`", "quoted renamed name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO `PRIMARY`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 2U), "`PRIMARY`", "quoted primary new name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX PRIMARY TO k_new;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO PRIMARY;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX rename_idx.k_old TO k_new;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO rename_idx.k_new;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old k_new;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, RENAME INDEX k2 TO k3;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, ALGORITHM=INPLACE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, LOCK=NONE;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

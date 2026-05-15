@@ -45,6 +45,10 @@ int mylite_diagnostics_append_warning(
     const char *sqlstate,
     const char *message
 );
+int mylite_diagnostics_reserve_warning_capacity(
+    struct mylite_diagnostics *diagnostics,
+    size_t required_capacity
+);
 int mylite_diagnostics_append_note(
     struct mylite_diagnostics *diagnostics,
     int code,

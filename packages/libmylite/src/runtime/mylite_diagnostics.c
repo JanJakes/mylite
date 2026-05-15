@@ -137,6 +137,28 @@ int mylite_diagnostics_append_warning(
     return append_warning_with_level(diagnostics, "Warning", code, sqlstate, message);
 }
 
+int mylite_diagnostics_reserve_warning_capacity(
+    struct mylite_diagnostics *diagnostics,
+    size_t required_capacity
+) {
+    int rc = MYLITE_OK;
+
+    if (diagnostics == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = reserve_warnings(diagnostics, required_capacity);
+    if (rc != MYLITE_OK) {
+        mylite_diagnostics_set_error(
+            diagnostics,
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory while recording warning"
+        );
+    }
+    return rc;
+}
+
 int mylite_diagnostics_append_note(
     struct mylite_diagnostics *diagnostics,
     int code,

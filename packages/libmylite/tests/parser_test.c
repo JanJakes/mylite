@@ -16302,6 +16302,7 @@ static int test_update_statement(void) {
 static int test_transaction_control_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *characteristics = NULL;
     int failures = 0;
 
     failures += parse_sql("START TRANSACTION;", MYLITE_SQL_PARSE_OK, &result);
@@ -16313,6 +16314,78 @@ static int test_transaction_control_statements(void) {
     );
     failures += expect_child_count(statement, 0U, "start transaction children");
     failures += expect_span_text(statement, "START TRANSACTION", "start transaction span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("START TRANSACTION READ WRITE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 0U);
+    failures += expect_child_count(statement, 1U, "start transaction read write children");
+    failures += expect_span_text(
+        statement,
+        "START TRANSACTION READ WRITE",
+        "start transaction read write span"
+    );
+    failures += expect_node(
+        characteristics,
+        MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST,
+        "start transaction characteristic list"
+    );
+    failures += expect_child_count(characteristics, 1U, "start transaction read write count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE,
+        "start transaction read write"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 0U);
+    failures += expect_child_count(characteristics, 2U, "start transaction mixed count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT,
+        "start transaction consistent snapshot"
+    );
+    failures += expect_node(
+        child_at(characteristics, 1U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+        "start transaction read only"
+    );
+    failures += expect_span_text(
+        child_at(characteristics, 0U),
+        "WITH CONSISTENT SNAPSHOT",
+        "consistent snapshot span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "START TRANSACTION READ ONLY, READ ONLY, WITH CONSISTENT SNAPSHOT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    characteristics = child_at(statement, 0U);
+    failures += expect_child_count(characteristics, 3U, "start transaction repeated count");
+    failures += expect_node(
+        child_at(characteristics, 0U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+        "start transaction first repeated read only"
+    );
+    failures += expect_node(
+        child_at(characteristics, 1U),
+        MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY,
+        "start transaction second repeated read only"
+    );
+    failures += expect_node(
+        child_at(characteristics, 2U),
+        MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT,
+        "start transaction repeated snapshot"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("BEGIN;", MYLITE_SQL_PARSE_OK, &result);
@@ -16412,7 +16485,13 @@ static int test_transaction_control_statements(void) {
     failures += expect_span_text(child_at(statement, 0U), "transaction", "transaction table");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("START TRANSACTION READ WRITE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "START TRANSACTION ISOLATION LEVEL READ COMMITTED;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN READ ONLY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

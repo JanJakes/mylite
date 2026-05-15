@@ -291,33 +291,33 @@ statement(A) ::= do_statement(B). {
     A = B;
 }
 
-transaction_control_statement(A) ::= START(S) TRANSACTION(T). {
+transaction_control_statement(A) ::= START(S) TRANSACTION(T) start_transaction_characteristics_opt(C). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, S, T);
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, S, T, C);
 }
 transaction_control_statement(A) ::= BEGIN(B). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, B);
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, B, NULL);
 }
 transaction_control_statement(A) ::= BEGIN(B) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, W);
+        state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, W, NULL);
 }
 transaction_control_statement(A) ::= COMMIT(C). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, C);
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, C, NULL);
 }
 transaction_control_statement(A) ::= COMMIT(C) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, W);
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, W, NULL);
 }
 transaction_control_statement(A) ::= ROLLBACK(R). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, R);
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, R, NULL);
 }
 transaction_control_statement(A) ::= ROLLBACK(R) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
-        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, W);
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, W, NULL);
 }
 transaction_control_statement(A) ::= SAVEPOINT(S) identifier(N). {
     A = mylite_sql_parser_make_savepoint_control_statement(
@@ -330,6 +330,28 @@ transaction_control_statement(A) ::= ROLLBACK(R) rollback_work_opt TO rollback_s
 transaction_control_statement(A) ::= RELEASE(R) SAVEPOINT identifier(N). {
     A = mylite_sql_parser_make_savepoint_control_statement(
         state, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, R, N);
+}
+
+start_transaction_characteristics_opt(A) ::= . {
+    A = NULL;
+}
+start_transaction_characteristics_opt(A) ::= start_transaction_characteristics(C). {
+    A = C;
+}
+
+start_transaction_characteristics(A) ::= start_transaction_characteristic(C). {
+    A = mylite_sql_parser_make_transaction_characteristic_list(state, C);
+}
+start_transaction_characteristics(A) ::= start_transaction_characteristics(L) COMMA start_transaction_characteristic(C). {
+    A = mylite_sql_parser_append_transaction_characteristic(state, L, C);
+}
+
+start_transaction_characteristic(A) ::= WITH(W) CONSISTENT SNAPSHOT(S). {
+    A = mylite_sql_parser_make_transaction_characteristic(
+        state, MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT, W, S);
+}
+start_transaction_characteristic(A) ::= set_transaction_access_mode(C). {
+    A = C;
 }
 
 set_transaction_statement(A) ::= SET(S) TRANSACTION set_transaction_characteristics(C). {
@@ -3797,6 +3819,12 @@ identifier(A) ::= START(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TRANSACTION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CONSISTENT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SNAPSHOT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= BEGIN(T). {

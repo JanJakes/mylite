@@ -1141,6 +1141,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "transaction_access_read_write";
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
         return "transaction_access_read_only";
+    case MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT:
+        return "transaction_consistent_snapshot";
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
         return "commit_statement";
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:

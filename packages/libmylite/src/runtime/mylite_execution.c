@@ -88,6 +88,7 @@ enum {
     mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
     mysql_error_truncated_wrong_value_for_field = 1366,
+    mysql_warning_consistent_snapshot_ignored = 138,
     mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_found_rows_deprecated = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
@@ -1328,8 +1329,9 @@ struct mylite_statement_transaction {
 
 struct transaction_characteristics {
     bool has_isolation;
-    enum mylite_transaction_isolation isolation;
     bool has_access_mode;
+    bool has_consistent_snapshot;
+    enum mylite_transaction_isolation isolation;
     enum mylite_transaction_access_mode access_mode;
 };
 
@@ -5988,6 +5990,7 @@ static int execute_set_transaction_statement(
 );
 static int execute_start_transaction_statement(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
 static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
@@ -6186,6 +6189,15 @@ static int apply_next_transaction_characteristics(
 static enum mylite_transaction_access_mode current_transaction_access_mode(
     const struct mylite_db *database
 );
+static enum mylite_transaction_isolation current_transaction_isolation(
+    const struct mylite_db *database
+);
+static enum mylite_transaction_access_mode effective_start_transaction_access_mode(
+    const struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+);
+static int reserve_consistent_snapshot_ignored_warning(struct mylite_db *database);
+static int append_consistent_snapshot_ignored_warning(struct mylite_db *database);
 static void clear_next_transaction_characteristics(struct mylite_db *database);
 static void clear_active_transaction_characteristics(struct mylite_db *database);
 static void clear_next_transaction_characteristics_before_statement(
@@ -15688,7 +15700,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
         return execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
-        return execute_start_transaction_statement(database, out_result);
+        return execute_start_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
         return execute_commit_statement(database, out_result);
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
@@ -16091,6 +16103,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
+    case MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
@@ -16233,8 +16246,9 @@ static int apply_set_transaction_statement(
     const struct mylite_sql_ast_node *characteristic_list = first_child;
     struct transaction_characteristics characteristics = {
         .has_isolation = false,
-        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
         .has_access_mode = false,
+        .has_consistent_snapshot = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
         .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
     };
     char scope_text[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -16277,8 +16291,9 @@ static int collect_transaction_characteristics(
 
     *out_characteristics = (struct transaction_characteristics){
         .has_isolation = false,
-        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
         .has_access_mode = false,
+        .has_consistent_snapshot = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
         .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
     };
     if (list == NULL || list->kind != MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC_LIST) {
@@ -16306,12 +16321,25 @@ static int collect_transaction_characteristics(
             out_characteristics->isolation = MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE;
             break;
         case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
+            if (out_characteristics->has_access_mode &&
+                out_characteristics->access_mode != MYLITE_TRANSACTION_ACCESS_READ_WRITE) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
             out_characteristics->has_access_mode = true;
             out_characteristics->access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
             break;
         case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
+            if (out_characteristics->has_access_mode &&
+                out_characteristics->access_mode != MYLITE_TRANSACTION_ACCESS_READ_ONLY) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
             out_characteristics->has_access_mode = true;
             out_characteristics->access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+            break;
+        case MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT:
+            out_characteristics->has_consistent_snapshot = true;
             break;
         default:
             set_parse_error(database, NULL);
@@ -16373,6 +16401,47 @@ static enum mylite_transaction_access_mode current_transaction_access_mode(
         return database->session.next_transaction_access_mode;
     }
     return database->session.session_transaction_access_mode;
+}
+
+static enum mylite_transaction_isolation current_transaction_isolation(
+    const struct mylite_db *database
+) {
+    if (database->session.has_next_transaction_isolation) {
+        return database->session.next_transaction_isolation;
+    }
+    return database->session.session_transaction_isolation;
+}
+
+static enum mylite_transaction_access_mode effective_start_transaction_access_mode(
+    const struct mylite_db *database,
+    const struct transaction_characteristics *characteristics
+) {
+    if (characteristics->has_access_mode) {
+        return characteristics->access_mode;
+    }
+    return current_transaction_access_mode(database);
+}
+
+static int reserve_consistent_snapshot_ignored_warning(struct mylite_db *database) {
+    struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
+    size_t warning_count = mylite_diagnostics_warning_count(diagnostics);
+
+    if (warning_count == SIZE_MAX) {
+        mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    return mylite_diagnostics_reserve_warning_capacity(diagnostics, warning_count + 1U);
+}
+
+static int append_consistent_snapshot_ignored_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_consistent_snapshot_ignored,
+        "HY000",
+        "InnoDB: WITH CONSISTENT SNAPSHOT was ignored because this phrase can only be used "
+        "with REPEATABLE READ isolation level."
+    );
 }
 
 static void clear_next_transaction_characteristics(struct mylite_db *database) {
@@ -16465,14 +16534,54 @@ static int table_resolution_is_temporary(
 
 static int execute_start_transaction_statement(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    const struct mylite_sql_ast_node *characteristic_list = child_at(statement, 0U);
+    struct transaction_characteristics characteristics = {
+        .has_isolation = false,
+        .has_access_mode = false,
+        .has_consistent_snapshot = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
+        .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+    };
+    enum mylite_transaction_isolation effective_isolation =
+        MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    enum mylite_transaction_access_mode effective_access_mode =
+        MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+    bool needs_consistent_snapshot_warning = false;
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
+    }
+
+    if (characteristic_list != NULL) {
+        rc = collect_transaction_characteristics(database, characteristic_list, &characteristics);
+        if (rc != MYLITE_OK) {
+            mylite_result_free(result);
+            return rc;
+        }
+    }
+    if (characteristics.has_isolation) {
+        effective_isolation = characteristics.isolation;
+    } else {
+        effective_isolation = current_transaction_isolation(database);
+    }
+    effective_access_mode = effective_start_transaction_access_mode(database, &characteristics);
+    if (characteristics.has_consistent_snapshot) {
+        if (effective_isolation != MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ) {
+            needs_consistent_snapshot_warning = true;
+        }
+    }
+    if (needs_consistent_snapshot_warning) {
+        rc = reserve_consistent_snapshot_ignored_warning(database);
+        if (rc != MYLITE_OK) {
+            mylite_result_free(result);
+            return rc;
+        }
     }
 
     clear_session_table_locks(database);
@@ -16492,11 +16601,17 @@ static int execute_start_transaction_statement(
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = true;
             database->session.active_transaction_read_only =
-                current_transaction_access_mode(database) == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+                effective_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
             clear_next_transaction_characteristics(database);
         }
     }
+    if (rc == MYLITE_OK && needs_consistent_snapshot_warning) {
+        rc = append_consistent_snapshot_ignored_warning(database);
+    }
     if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
         mylite_result_free(result);
         return rc;
     }
@@ -27613,6 +27728,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TRANSACTION_ISOLATION_SERIALIZABLE:
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
+    case MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:

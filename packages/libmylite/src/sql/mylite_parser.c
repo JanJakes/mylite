@@ -543,12 +543,24 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_node_kind statement_kind,
     struct mylite_sql_token first_token,
-    struct mylite_sql_token last_token
+    struct mylite_sql_token last_token,
+    struct mylite_sql_ast_node *characteristics
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&first_token), span_from_token(&last_token));
+    struct mylite_sql_ast_node *statement = NULL;
 
-    return make_node(state, statement_kind, span);
+    if (characteristics != NULL) {
+        span = span_join(span, characteristics->span);
+    }
+
+    statement = make_node(state, statement_kind, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, characteristics);
+    return statement;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_transaction_statement(
@@ -5632,6 +5644,9 @@ static bool map_keyword_token(
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"START", MYLITE_SQL_PARSE_START},
         {"TRANSACTION", MYLITE_SQL_PARSE_TRANSACTION},
+        {"WITH", MYLITE_SQL_PARSE_WITH},
+        {"CONSISTENT", MYLITE_SQL_PARSE_CONSISTENT},
+        {"SNAPSHOT", MYLITE_SQL_PARSE_SNAPSHOT},
         {"BEGIN", MYLITE_SQL_PARSE_BEGIN},
         {"WORK", MYLITE_SQL_PARSE_WORK},
         {"COMMIT", MYLITE_SQL_PARSE_COMMIT},

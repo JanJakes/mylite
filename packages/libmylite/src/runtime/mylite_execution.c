@@ -10149,6 +10149,11 @@ static int validate_column_default(
     const struct mylite_sql_ast_node *default_node,
     const struct planned_column *column
 );
+static int validate_column_default_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *default_node,
+    const struct planned_column *column
+);
 static int finalize_planned_column_defaults(
     struct mylite_db *database,
     struct planned_column *columns,
@@ -10209,6 +10214,12 @@ static int finalize_planned_column_set_default(
 static int finalize_planned_column_integer_expression_default(
     struct mylite_db *database,
     struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
+static bool column_default_value_is_current_date_expression(
+    const struct mylite_sql_ast_node *value_node
+);
+static bool column_default_value_is_current_time_expression(
     const struct mylite_sql_ast_node *value_node
 );
 static void planned_column_descriptor_for_default(
@@ -19795,6 +19806,12 @@ static int column_default_display_text(
     case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP:
         *out_default_text = "CURRENT_TIMESTAMP";
         return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE:
+        *out_default_text = "curdate()";
+        return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME:
+        *out_default_text = "curtime()";
+        return MYLITE_OK;
     case MYLITE_CATALOG_COLUMN_DEFAULT_NONE:
     case MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT:
         return MYLITE_OK;
@@ -19840,7 +19857,9 @@ static bool column_default_is_generated_extra(
     const struct mylite_catalog_column_descriptor *column
 ) {
     return (column_default_kind_is_expression(column->default_kind) ||
-            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) != 0;
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) != 0;
 }
 
 static int append_information_schema_columns_numeric_metadata(
@@ -24624,6 +24643,12 @@ static int append_show_create_table_column_default(
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
         return dynamic_string_append(string, " DEFAULT CURRENT_TIMESTAMP");
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE) {
+        return dynamic_string_append(string, " DEFAULT (curdate())");
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        return dynamic_string_append(string, " DEFAULT (curtime())");
     }
     if (column_default_kind_is_expression(column->default_kind)) {
         int rc = dynamic_string_append(string, " DEFAULT (");
@@ -57316,29 +57341,7 @@ static int validate_column_default(
         return MYLITE_OK;
     }
     if (default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
-        const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
-
-        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
-            if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
-                return MYLITE_OK;
-            }
-            set_invalid_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-        if (planned_column_is_text_family(column) ||
-            planned_column_is_binary_string_family(column)) {
-            set_invalid_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-        if (planned_column_is_json(column)) {
-            if (column_default_value_is_parenthesized_expression(default_node)) {
-                set_unsupported_error(database, "JSON expression defaults are not yet supported");
-                return MYLITE_ERROR;
-            }
-            set_json_cant_have_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-        return MYLITE_OK;
+        return validate_column_default_value(database, default_node, column);
     }
     if (default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
         set_parse_error(database, NULL);
@@ -57349,6 +57352,49 @@ static int validate_column_default(
         return MYLITE_ERROR;
     }
 
+    return MYLITE_OK;
+}
+
+static int validate_column_default_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *default_node,
+    const struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
+
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
+        if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_default_value_is_current_date_expression(value_node)) {
+        if (planned_column_is_date(column)) {
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_default_value_is_current_time_expression(value_node)) {
+        if (planned_column_is_time(column)) {
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_text_family(column) || planned_column_is_binary_string_family(column)) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_json(column)) {
+        if (column_default_value_is_parenthesized_expression(default_node)) {
+            set_unsupported_error(database, "JSON expression defaults are not yet supported");
+            return MYLITE_ERROR;
+        }
+        set_json_cant_have_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 
@@ -57389,6 +57435,22 @@ static int finalize_planned_column_default(
     if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
         if (planned_column_is_datetime(column) || planned_column_is_timestamp(column)) {
             column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP;
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_default_value_is_current_date_expression(value_node)) {
+        if (planned_column_is_date(column)) {
+            column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE;
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_default_value_is_current_time_expression(value_node)) {
+        if (planned_column_is_time(column)) {
+            column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME;
             return MYLITE_OK;
         }
         set_invalid_default_error(database, column->name);
@@ -57944,6 +58006,20 @@ static int finalize_planned_column_set_default(
     }
 
     return rc;
+}
+
+static bool column_default_value_is_current_date_expression(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE) != 0;
+}
+
+static bool column_default_value_is_current_time_expression(
+    const struct mylite_sql_ast_node *value_node
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_CURRENT_TIME_VALUE) != 0;
 }
 
 static void planned_column_descriptor_for_default(
@@ -60090,7 +60166,9 @@ static bool column_default_kind_materializes_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
-            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) != 0;
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) != 0;
 }
 
 static bool column_descriptor_is_varchar(const struct mylite_catalog_column_descriptor *column) {
@@ -63647,6 +63725,12 @@ static int allocate_insert_column_value(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
         return make_current_timestamp_value(database, out_value);
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE) {
+        return make_current_date_value(database, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        return make_current_time_value(database, out_value);
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         if (!plan->ignore_errors || column->is_nullable) {
             out_value->is_null = true;
@@ -64061,6 +64145,12 @@ static int materialize_dml_default_value(
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
         return make_current_timestamp_value(database, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE) {
+        return make_current_date_value(database, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        return make_current_time_value(database, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         return convert_null_insert_value(database, column, ignore_errors, out_value);
@@ -75160,6 +75250,24 @@ static int append_alter_table_add_column_explicit_default(
             return rc;
         }
         return append_quoted_sql_text(string, timestamp_text);
+    }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE) {
+        char date_text[date_text_length + 1U];
+        int rc = format_current_date_text(database, date_text, sizeof(date_text));
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return append_quoted_sql_text(string, date_text);
+    }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        char time_text[time_text_minimum_length + 1U];
+        int rc = format_current_time_text(database, time_text, sizeof(time_text));
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return append_quoted_sql_text(string, time_text);
     }
     if (planned_column_is_bit(&plan->column) &&
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {

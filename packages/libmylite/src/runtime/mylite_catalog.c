@@ -22,6 +22,7 @@ enum {
     catalog_schema_version_v11 = 11U,
     catalog_schema_version_v12 = 12U,
     catalog_schema_version_v13 = 13U,
+    catalog_schema_version_v14 = 14U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -255,6 +256,7 @@ static int migrate_catalog_schema_v10_to_v11(sqlite3 *sqlite);
 static int migrate_catalog_schema_v11_to_v12(sqlite3 *sqlite);
 static int migrate_catalog_schema_v12_to_v13(sqlite3 *sqlite);
 static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite);
+static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -472,6 +474,8 @@ static int validate_catalog_column_default_value(const struct catalog_column_val
 static int validate_catalog_current_timestamp_default_value(
     const struct catalog_column_values *values
 );
+static int validate_catalog_current_date_default_value(const struct catalog_column_values *values);
+static int validate_catalog_current_time_default_value(const struct catalog_column_values *values);
 static int catalog_default_text_length(const char *default_text, size_t *out_text_length);
 static int validate_catalog_text_default_value(
     const struct catalog_column_values *values,
@@ -483,6 +487,8 @@ static bool catalog_default_kind_stores_integer(
 static bool catalog_default_kind_stores_text(enum mylite_catalog_column_default_kind default_kind);
 static bool catalog_logical_type_accepts_integer_expression_default(const char *logical_type);
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type);
+static bool catalog_logical_type_accepts_current_date(const char *logical_type);
+static bool catalog_logical_type_accepts_current_time(const char *logical_type);
 static bool catalog_logical_type_accepts_text_default(const char *logical_type);
 static bool catalog_logical_type_is_bit(const char *logical_type);
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
@@ -3816,6 +3822,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v13:
         rc = migrate_catalog_schema_v13_to_v14(sqlite);
+        next_schema_version = catalog_schema_version_v14;
+        break;
+    case catalog_schema_version_v14:
+        rc = migrate_catalog_schema_v14_to_v15(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -4295,6 +4305,55 @@ static int migrate_catalog_schema_v13_to_v14(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v14_to_v15(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v14;"
+        "CREATE TABLE _mylite_catalog_columns ("
+        "column_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "name TEXT NOT NULL,"
+        "logical_type TEXT NOT NULL,"
+        "physical_type TEXT NOT NULL,"
+        "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
+        "is_auto_increment INTEGER NOT NULL CHECK(is_auto_increment IN (0, 1)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),"
+        "default_integer INTEGER,"
+        "default_text TEXT,"
+        "on_update_current_timestamp INTEGER NOT NULL "
+        "CHECK(on_update_current_timestamp IN (0, 1)),"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, ordinal_position),"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_columns "
+        "(column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
+        "default_text, on_update_current_timestamp, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_columns_v14;"
+        "DROP TABLE _mylite_catalog_columns_v14;"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 15, minimum_reader_schema_version = 15;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -4409,7 +4468,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
         "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
         "is_auto_increment INTEGER NOT NULL CHECK(is_auto_increment IN (0, 1)),"
-        "default_kind INTEGER NOT NULL CHECK(default_kind IN (0, 1, 2, 3, 4, 5, 6, 7)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),"
         "default_integer INTEGER,"
         "default_text TEXT,"
         "on_update_current_timestamp INTEGER NOT NULL "
@@ -6160,7 +6219,9 @@ static int validate_column_default_kind(enum mylite_catalog_column_default_kind 
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT &&
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION &&
         kind != MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION &&
-        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP &&
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE &&
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
         return MYLITE_MISUSE;
     }
 
@@ -6207,6 +6268,12 @@ static int validate_catalog_column_default_value(const struct catalog_column_val
     if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
         return validate_catalog_current_timestamp_default_value(values);
     }
+    if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE) {
+        return validate_catalog_current_date_default_value(values);
+    }
+    if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        return validate_catalog_current_time_default_value(values);
+    }
     if (values->on_update_current_timestamp &&
         !catalog_logical_type_accepts_current_timestamp(values->logical_type)) {
         return MYLITE_MISUSE;
@@ -6226,6 +6293,26 @@ static int validate_catalog_current_timestamp_default_value(
     const struct catalog_column_values *values
 ) {
     if (!catalog_logical_type_accepts_current_timestamp(values->logical_type)) {
+        return MYLITE_MISUSE;
+    }
+    if (values->default_text != NULL && values->default_text[0] != '\0') {
+        return MYLITE_MISUSE;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_catalog_current_date_default_value(const struct catalog_column_values *values) {
+    if (!catalog_logical_type_accepts_current_date(values->logical_type)) {
+        return MYLITE_MISUSE;
+    }
+    if (values->default_text != NULL && values->default_text[0] != '\0') {
+        return MYLITE_MISUSE;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_catalog_current_time_default_value(const struct catalog_column_values *values) {
+    if (!catalog_logical_type_accepts_current_time(values->logical_type)) {
         return MYLITE_MISUSE;
     }
     if (values->default_text != NULL && values->default_text[0] != '\0') {
@@ -6319,6 +6406,14 @@ static bool catalog_logical_type_accepts_integer_expression_default(const char *
 static bool catalog_logical_type_accepts_current_timestamp(const char *logical_type) {
     return (catalog_logical_type_equals(logical_type, "DATETIME") ||
             catalog_logical_type_equals(logical_type, "TIMESTAMP")) != 0;
+}
+
+static bool catalog_logical_type_accepts_current_date(const char *logical_type) {
+    return catalog_logical_type_equals(logical_type, "DATE");
+}
+
+static bool catalog_logical_type_accepts_current_time(const char *logical_type) {
+    return catalog_logical_type_equals(logical_type, "TIME");
 }
 
 static bool catalog_logical_type_accepts_text_default(const char *logical_type) {

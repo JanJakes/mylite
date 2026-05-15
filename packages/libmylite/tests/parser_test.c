@@ -121,6 +121,7 @@ static int test_alter_table_add_foreign_key_statements(void);
 static int test_alter_table_drop_foreign_key_statements(void);
 static int test_alter_table_drop_index_statements(void);
 static int test_alter_table_rename_index_statements(void);
+static int test_alter_table_check_constraint_statements(void);
 static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
 static int test_create_table_like_statements(void);
@@ -380,6 +381,7 @@ int main(void) {
     failures += test_alter_table_drop_foreign_key_statements();
     failures += test_alter_table_drop_index_statements();
     failures += test_alter_table_rename_index_statements();
+    failures += test_alter_table_check_constraint_statements();
     failures += test_alter_table_drop_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
     failures += test_create_table_like_statements();
@@ -11850,6 +11852,114 @@ static int test_alter_table_rename_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, LOCK=NONE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_check_constraint_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *check = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE checked ADD CHECK (a > 0);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    check = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT,
+        "alter add check statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter add check child count");
+    failures += expect_span_text(child_at(statement, 0U), "checked", "alter add check table");
+    failures += expect_node(check, MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION, "added CHECK");
+    failures += expect_span_text(statement, "ALTER TABLE checked ADD CHECK (a > 0)", "add span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.checked ADD CONSTRAINT positive CHECK ((a > 0) AND (b IS NOT NULL)) "
+        "NOT ENFORCED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    check = child_at(statement, 1U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.checked",
+        "schema-qualified alter add check table"
+    );
+    failures += expect_span_text(child_at(check, 1U), "positive", "explicit alter CHECK name");
+    failures += expect_node(
+        child_at(check, 2U),
+        MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED,
+        "alter CHECK not enforced"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE checked DROP CHECK positive;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT,
+        "alter drop check statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter drop check child count");
+    failures += expect_span_text(child_at(statement, 1U), "positive", "alter drop check name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE checked ALTER CHECK positive NOT ENFORCED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT,
+        "alter alter check statement"
+    );
+    failures += expect_child_count(statement, 3U, "alter alter check child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED,
+        "alter check not enforced"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE checked ALTER CHECK positive ENFORCED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED,
+        "alter check enforced"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE checked DROP CONSTRAINT positive;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE checked ALTER CHECK positive;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE checked ADD CHECK (a > 0), ADD CHECK (b > 0);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

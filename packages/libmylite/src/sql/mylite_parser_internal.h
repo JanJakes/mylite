@@ -642,6 +642,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     struct mylite_sql_ast_node *old_index_name,
     struct mylite_sql_ast_node *new_index_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_constraint
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_name,
+    struct mylite_sql_ast_node *enforcement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

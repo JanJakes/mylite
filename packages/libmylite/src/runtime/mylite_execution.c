@@ -120,6 +120,7 @@ enum {
     mysql_error_check_constraint_auto_increment = 3818,
     mysql_error_check_constraint_violated = 3819,
     mysql_error_check_constraint_unknown_column = 3820,
+    mysql_error_check_constraint_not_found = 3821,
     mysql_error_duplicate_check_constraint = 3822,
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
@@ -1487,6 +1488,7 @@ struct check_expression_render_context {
     const struct planned_create_table *plan;
     const struct planned_column *inline_column;
     size_t inline_column_index;
+    const char *alter_check_constraint_name;
     struct dynamic_string *check_clause;
     struct dynamic_string *sqlite_expression;
 };
@@ -1630,6 +1632,27 @@ struct planned_alter_table_add_foreign_key {
     size_t part_capacity;
     struct planned_alter_table_add_index child_index_plan;
     bool create_child_index;
+};
+
+enum planned_alter_table_check_constraint_action {
+    PLANNED_ALTER_TABLE_CHECK_ADD = 0,
+    PLANNED_ALTER_TABLE_CHECK_DROP = 1,
+    PLANNED_ALTER_TABLE_CHECK_ALTER = 2,
+};
+
+struct planned_alter_table_check_constraint {
+    enum planned_alter_table_check_constraint_action action;
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct planned_create_table rebuild;
+    int64_t target_check_constraint_id;
+    size_t check_constraint_index;
+    bool has_check_constraint_index;
+    bool target_enforced;
+    bool catalog_change_required;
+    bool physical_rebuild_required;
+    bool validating_rebuild;
+    int64_t affected_rows;
 };
 
 struct planned_alter_table_drop_foreign_key {
@@ -6522,6 +6545,21 @@ static int execute_alter_table_rename_index_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_add_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_drop_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_alter_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8043,6 +8081,99 @@ static int rename_index_from_plan(
     struct mylite_db *database,
     const struct planned_rename_index *plan
 );
+static int plan_alter_table_add_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int plan_alter_table_drop_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int plan_alter_table_alter_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int plan_alter_table_check_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int populate_alter_table_check_rebuild_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int copy_alter_table_check_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int copy_alter_table_check_indexes(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int copy_alter_table_check_primary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int copy_alter_table_check_secondary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int copy_alter_table_check_constraints(
+    struct mylite_db *database,
+    const struct loaded_check_constraint_info *check_constraints,
+    size_t check_constraint_count,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int plan_alter_table_add_check_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *check_constraint,
+    struct planned_alter_table_check_constraint *out_plan
+);
+static int next_available_planned_check_constraint_generated_ordinal(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t *out_ordinal
+);
+static int find_planned_check_constraint_by_name(
+    const struct planned_create_table *plan,
+    const char *check_constraint_name,
+    size_t *out_index
+);
+static void remove_planned_check_constraint_at(struct planned_create_table *plan, size_t index);
+static int alter_table_check_constraint_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_check_constraint *plan
+);
+static int insert_alter_table_check_constraint_catalog_row(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_alter_table_check_constraint *plan
+);
+static int execute_physical_alter_table_check_constraint(
+    struct mylite_db *database,
+    const struct planned_alter_table_check_constraint *plan,
+    uint64_t sqlite_schema_generation,
+    int64_t *out_affected_rows
+);
+static int execute_alter_table_check_copy_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_check_constraint *plan,
+    const char *sql,
+    int64_t *out_affected_rows,
+    bool *out_copy_failed
+);
+static void planned_alter_table_check_constraint_deinit(
+    struct planned_alter_table_check_constraint *plan
+);
 static bool loaded_index_name_is_used_by_other(
     const struct loaded_index_info *indexes,
     size_t index_count,
@@ -8234,6 +8365,26 @@ static int alter_table_force_from_plan(
 static int execute_physical_alter_table_force(
     struct mylite_db *database,
     const struct planned_alter_table_force *plan
+);
+static int build_alter_table_check_temporary_physical_name(
+    const struct planned_alter_table_check_constraint *plan,
+    uint64_t sqlite_schema_generation,
+    char *destination,
+    size_t destination_size
+);
+static int build_alter_table_check_create_sql(
+    const struct planned_alter_table_check_constraint *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int build_alter_table_check_copy_sql(
+    const struct planned_alter_table_check_constraint *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int append_alter_table_check_column_list(
+    struct dynamic_string *string,
+    const struct planned_alter_table_check_constraint *plan
 );
 static void planned_column_from_catalog_descriptor(
     const struct mylite_catalog_column_descriptor *descriptor,
@@ -14477,6 +14628,23 @@ static int build_create_table_sql(
     bool temporary,
     char **out_sql
 );
+static int build_create_table_definition_sql(
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    bool temporary,
+    char **out_sql
+);
+static int append_create_table_definition_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    bool temporary
+);
+static int build_create_table_indexes_sql(
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    char **out_sql
+);
 static int append_create_table_columns_sql(
     struct dynamic_string *string,
     const struct planned_create_table *plan
@@ -15832,9 +16000,18 @@ static void set_check_constraint_violated_error(
     struct mylite_db *database,
     const char *constraint_name
 );
+static void set_check_constraint_not_found_error(
+    struct mylite_db *database,
+    const char *constraint_name
+);
 static void set_check_constraint_unknown_column_error(
     struct mylite_db *database,
     const char *column_name
+);
+static void set_alter_check_constraint_unknown_column_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *constraint_name
 );
 static void set_duplicate_check_constraint_error(
     struct mylite_db *database,
@@ -16238,6 +16415,12 @@ static int execute_parsed_statement(
         return execute_alter_table_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
         return execute_alter_table_rename_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
+        return execute_alter_table_add_check_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
+        return execute_alter_table_drop_check_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
+        return execute_alter_table_alter_check_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
         return execute_alter_table_drop_primary_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -17521,6 +17704,9 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
@@ -20124,6 +20310,93 @@ static int execute_alter_table_rename_index_statement(
 
     mylite_result_set_affected_rows(result, 0);
     planned_rename_index_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_add_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_check_constraint plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_add_check(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_check_constraint_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_check_constraint_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_drop_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_check_constraint plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_drop_check(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_check_constraint_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_check_constraint_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_alter_check_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_check_constraint plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_alter_check(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_check_constraint_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_check_constraint_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -28087,6 +28360,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
@@ -29545,7 +29821,15 @@ static int render_check_expression_column(
         &column_index
     );
     if (rc != MYLITE_OK) {
-        set_check_constraint_unknown_column_error(context->database, column_name);
+        if (context->alter_check_constraint_name != NULL) {
+            set_alter_check_constraint_unknown_column_error(
+                context->database,
+                column_name,
+                context->alter_check_constraint_name
+            );
+        } else {
+            set_check_constraint_unknown_column_error(context->database, column_name);
+        }
         return MYLITE_ERROR;
     }
     if (context->inline_column != NULL && column_index != context->inline_column_index) {
@@ -37566,6 +37850,800 @@ static int rename_index_from_plan(
     return MYLITE_OK;
 }
 
+static int plan_alter_table_add_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_check_constraint){
+        .action = PLANNED_ALTER_TABLE_CHECK_ADD,
+    };
+    rc = plan_alter_table_check_target(database, child_at(statement, 0U), out_plan);
+    if (rc == MYLITE_OK) {
+        rc = plan_alter_table_add_check_definition(database, child_at(statement, 1U), out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_drop_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    char check_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t check_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_check_constraint){
+        .action = PLANNED_ALTER_TABLE_CHECK_DROP,
+    };
+    rc = plan_alter_table_check_target(database, child_at(statement, 0U), out_plan);
+    if (rc == MYLITE_OK) {
+        rc =
+            copy_identifier_text(child_at(statement, 1U), check_name, sizeof(check_name), database);
+    }
+    if (rc == MYLITE_OK &&
+        find_planned_check_constraint_by_name(&out_plan->rebuild, check_name, &check_index) !=
+            MYLITE_OK) {
+        set_check_constraint_not_found_error(database, check_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->target_check_constraint_id =
+            out_plan->rebuild.check_constraints[check_index].check_constraint_id;
+        out_plan->check_constraint_index = check_index;
+        out_plan->has_check_constraint_index = true;
+        out_plan->catalog_change_required = true;
+        out_plan->physical_rebuild_required =
+            out_plan->rebuild.check_constraints[check_index].is_enforced;
+        remove_planned_check_constraint_at(&out_plan->rebuild, check_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_alter_check(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    const struct mylite_sql_ast_node *enforcement = child_at(statement, 2U);
+    char check_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t check_index = 0U;
+    bool target_enforced = true;
+    bool source_enforced = false;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_check_constraint){
+        .action = PLANNED_ALTER_TABLE_CHECK_ALTER,
+    };
+    rc = plan_alter_table_check_target(database, child_at(statement, 0U), out_plan);
+    if (rc == MYLITE_OK) {
+        rc =
+            copy_identifier_text(child_at(statement, 1U), check_name, sizeof(check_name), database);
+    }
+    if (rc == MYLITE_OK &&
+        find_planned_check_constraint_by_name(&out_plan->rebuild, check_name, &check_index) !=
+            MYLITE_OK) {
+        set_check_constraint_not_found_error(database, check_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        if (enforcement == NULL || !check_constraint_node_is_enforcement(enforcement)) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+        } else {
+            target_enforced = enforcement->kind == MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        source_enforced = out_plan->rebuild.check_constraints[check_index].is_enforced;
+        out_plan->target_check_constraint_id =
+            out_plan->rebuild.check_constraints[check_index].check_constraint_id;
+        out_plan->check_constraint_index = check_index;
+        out_plan->has_check_constraint_index = true;
+        out_plan->target_enforced = target_enforced;
+        out_plan->catalog_change_required = source_enforced != target_enforced;
+        out_plan->physical_rebuild_required = source_enforced != target_enforced;
+        out_plan->validating_rebuild = false;
+        if (!source_enforced) {
+            if (target_enforced) {
+                out_plan->validating_rebuild = true;
+            }
+        }
+        out_plan->rebuild.check_constraints[check_index].is_enforced = target_enforced;
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_check_constraint_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_check_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    int rc = resolve_table_name(database, table_node, &out_plan->target);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "ALTER TABLE CHECK supports only persistent base tables");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = populate_alter_table_check_rebuild_plan(database, out_plan);
+    }
+
+    return rc;
+}
+
+static int populate_alter_table_check_rebuild_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    struct loaded_check_constraint_info *check_constraints = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    size_t check_constraint_count = 0U;
+    int rc = MYLITE_OK;
+
+    out_plan->rebuild.target = out_plan->target;
+    out_plan->rebuild.auto_increment_next = out_plan->table.auto_increment_next;
+    snprintf(
+        out_plan->rebuild.default_charset,
+        sizeof(out_plan->rebuild.default_charset),
+        "%s",
+        out_plan->table.default_charset
+    );
+    snprintf(
+        out_plan->rebuild.default_collation,
+        sizeof(out_plan->rebuild.default_collation),
+        "%s",
+        out_plan->table.default_collation
+    );
+
+    rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = copy_alter_table_check_columns(database, columns, column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_alter_table_check_indexes(database, indexes, index_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_check_constraint_infos(
+            database,
+            out_plan->table.table_id,
+            &check_constraints,
+            &check_constraint_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_alter_table_check_constraints(
+            database,
+            check_constraints,
+            check_constraint_count,
+            out_plan
+        );
+    }
+
+    loaded_check_constraint_infos_deinit(&check_constraints, &check_constraint_count);
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int copy_alter_table_check_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    if (column_count > SIZE_MAX / sizeof(*out_plan->rebuild.columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_plan->rebuild.columns = calloc(column_count, sizeof(*out_plan->rebuild.columns));
+    if (out_plan->rebuild.columns == NULL && column_count != 0U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->rebuild.column_count = column_count;
+    for (size_t index = 0U; index < column_count; ++index) {
+        planned_column_from_catalog_descriptor(
+            &columns[index],
+            NULL,
+            &out_plan->rebuild.columns[index]
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_alter_table_check_indexes(
+    struct mylite_db *database,
+    const struct loaded_index_info *indexes,
+    size_t index_count,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+            rc = copy_alter_table_check_primary_index(database, &indexes[index], out_plan);
+        } else if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+            rc = copy_alter_table_check_secondary_index(database, &indexes[index], out_plan);
+        }
+    }
+
+    return rc;
+}
+
+static int copy_alter_table_check_primary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    int rc = reserve_planned_primary_key_parts(database, &out_plan->rebuild, index->part_count);
+
+    if (rc == MYLITE_OK) {
+        out_plan->rebuild.has_primary_key = true;
+        out_plan->rebuild.primary_key_index_id = index->index.index_id;
+        snprintf(
+            out_plan->rebuild.primary_key_physical_name,
+            sizeof(out_plan->rebuild.primary_key_physical_name),
+            "%s",
+            index->index.physical_name
+        );
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        size_t column_index = index->parts[part_index].column_index;
+
+        out_plan->rebuild.primary_key_parts[out_plan->rebuild.primary_key_part_count] =
+            (struct planned_primary_key_part){
+                .column_index = column_index,
+                .sort_direction = index->parts[part_index].index_column.sort_direction,
+            };
+        ++out_plan->rebuild.primary_key_part_count;
+        out_plan->rebuild.columns[column_index].is_primary_key = true;
+        out_plan->rebuild.columns[column_index].is_nullable = false;
+    }
+
+    return rc;
+}
+
+static int copy_alter_table_check_secondary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    struct planned_secondary_index *target = NULL;
+    int rc = reserve_planned_secondary_indexes(
+        database,
+        &out_plan->rebuild,
+        out_plan->rebuild.secondary_index_count + 1U
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    target = &out_plan->rebuild.secondary_indexes[out_plan->rebuild.secondary_index_count];
+    *target = (struct planned_secondary_index){0};
+    target->index_id = index->index.index_id;
+    target->is_unique = index->index.is_unique;
+    snprintf(target->name, sizeof(target->name), "%s", index->index.name);
+    snprintf(
+        target->physical_name,
+        sizeof(target->physical_name),
+        "%s",
+        index->index.physical_name
+    );
+    rc = reserve_planned_secondary_index_parts(database, target, index->part_count);
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        target->parts[target->part_count] = (struct planned_secondary_index_part){
+            .column_index = index->parts[part_index].column_index,
+            .has_prefix_length = index->parts[part_index].index_column.has_prefix_length,
+            .prefix_length = index->parts[part_index].index_column.prefix_length,
+            .sort_direction = index->parts[part_index].index_column.sort_direction,
+        };
+        ++target->part_count;
+    }
+    if (rc == MYLITE_OK) {
+        ++out_plan->rebuild.secondary_index_count;
+    } else {
+        free(target->parts);
+        *target = (struct planned_secondary_index){0};
+    }
+
+    return rc;
+}
+
+static int copy_alter_table_check_constraints(
+    struct mylite_db *database,
+    const struct loaded_check_constraint_info *check_constraints,
+    size_t check_constraint_count,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    if (check_constraint_count == 0U) {
+        return MYLITE_OK;
+    }
+    rc = reserve_planned_check_constraints(database, &out_plan->rebuild, check_constraint_count);
+    for (size_t index = 0U; rc == MYLITE_OK && index < check_constraint_count; ++index) {
+        const struct mylite_catalog_check_constraint_descriptor *source =
+            &check_constraints[index].check_constraint;
+        struct planned_check_constraint *target =
+            &out_plan->rebuild.check_constraints[out_plan->rebuild.check_constraint_count];
+
+        *target = (struct planned_check_constraint){
+            .check_constraint_id = source->check_constraint_id,
+            .generated_ordinal = source->generated_ordinal,
+            .ordinal_position = source->ordinal_position,
+            .is_enforced = source->is_enforced,
+            .name_is_generated = source->name_is_generated,
+        };
+        snprintf(target->name, sizeof(target->name), "%s", source->name);
+        snprintf(target->physical_name, sizeof(target->physical_name), "%s", source->physical_name);
+        snprintf(target->check_clause, sizeof(target->check_clause), "%s", source->check_clause);
+        snprintf(
+            target->sqlite_expression,
+            sizeof(target->sqlite_expression),
+            "%s",
+            source->sqlite_expression
+        );
+        ++out_plan->rebuild.check_constraint_count;
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_add_check_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *check_constraint,
+    struct planned_alter_table_check_constraint *out_plan
+) {
+    const struct mylite_sql_ast_node *expression = child_at(check_constraint, 0U);
+    const struct mylite_sql_ast_node *child = child_at(check_constraint, 1U);
+    const struct mylite_sql_ast_node *name_node = NULL;
+    struct planned_check_constraint planned = {
+        .generated_ordinal = next_planned_check_constraint_generated_ordinal(&out_plan->rebuild),
+        .ordinal_position = (int64_t)out_plan->rebuild.check_constraint_count + 1,
+        .is_enforced = true,
+    };
+    int rc = MYLITE_OK;
+
+    if (check_constraint == NULL ||
+        check_constraint->kind != MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION ||
+        expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            name_node = child;
+        } else if (check_constraint_node_is_not_enforced(child)) {
+            planned.is_enforced = false;
+        }
+        child = child->next_sibling;
+    }
+
+    if (name_node == NULL) {
+        rc = next_available_planned_check_constraint_generated_ordinal(
+            database,
+            &out_plan->rebuild,
+            &planned.generated_ordinal
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_create_table_check_constraint_name(
+            database,
+            &out_plan->rebuild,
+            name_node,
+            &planned
+        );
+    }
+    if (rc == MYLITE_OK) {
+        struct dynamic_string check_string;
+        struct dynamic_string sqlite_string;
+        struct check_expression_render_context context = {
+            .database = database,
+            .plan = &out_plan->rebuild,
+            .inline_column = NULL,
+            .inline_column_index = 0U,
+            .alter_check_constraint_name = planned.name,
+            .check_clause = &check_string,
+            .sqlite_expression = &sqlite_string,
+        };
+        bool is_boolean = false;
+
+        dynamic_string_init(&check_string);
+        dynamic_string_init(&sqlite_string);
+        rc = render_check_expression_node(&context, expression, true, &is_boolean);
+        if (rc == MYLITE_OK && !is_boolean) {
+            set_check_constraint_non_boolean_error(database);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK && (check_string.length >= sizeof(planned.check_clause) ||
+                                sqlite_string.length >= sizeof(planned.sqlite_expression))) {
+            set_unsupported_error(database, "CHECK constraint expression is too long");
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            memcpy(planned.check_clause, check_string.text, check_string.length + 1U);
+            memcpy(planned.sqlite_expression, sqlite_string.text, sqlite_string.length + 1U);
+        }
+        dynamic_string_deinit(&check_string);
+        dynamic_string_deinit(&sqlite_string);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reserve_planned_check_constraints(
+            database,
+            &out_plan->rebuild,
+            out_plan->rebuild.check_constraint_count + 1U
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->check_constraint_index = out_plan->rebuild.check_constraint_count;
+        out_plan->has_check_constraint_index = true;
+        out_plan->catalog_change_required = true;
+        out_plan->physical_rebuild_required = planned.is_enforced;
+        out_plan->validating_rebuild = planned.is_enforced;
+        out_plan->rebuild.check_constraints[out_plan->rebuild.check_constraint_count] = planned;
+        ++out_plan->rebuild.check_constraint_count;
+    }
+
+    return rc;
+}
+
+static int next_available_planned_check_constraint_generated_ordinal(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    int64_t *out_ordinal
+) {
+    if (out_ordinal == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_ordinal = 0;
+    if (plan == NULL) {
+        *out_ordinal = 1;
+        return MYLITE_OK;
+    }
+
+    for (int64_t ordinal = 1; ordinal < INT64_MAX; ++ordinal) {
+        bool ordinal_is_used = false;
+
+        for (size_t index = 0U; index < plan->check_constraint_count; ++index) {
+            const struct planned_check_constraint *check_constraint =
+                &plan->check_constraints[index];
+
+            if (check_constraint->name_is_generated &&
+                check_constraint->generated_ordinal == ordinal) {
+                ordinal_is_used = true;
+                break;
+            }
+        }
+        if (!ordinal_is_used) {
+            *out_ordinal = ordinal;
+            return MYLITE_OK;
+        }
+    }
+
+    set_runtime_error(database, "generated CHECK constraint ordinal is too large");
+    return MYLITE_ERROR;
+}
+
+static int find_planned_check_constraint_by_name(
+    const struct planned_create_table *plan,
+    const char *check_constraint_name,
+    size_t *out_index
+) {
+    if (out_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_index = 0U;
+    if (plan == NULL || check_constraint_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < plan->check_constraint_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                plan->check_constraints[index].name,
+                check_constraint_name
+            )) {
+            *out_index = index;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static void remove_planned_check_constraint_at(struct planned_create_table *plan, size_t index) {
+    if (plan == NULL || index >= plan->check_constraint_count) {
+        return;
+    }
+    if (index + 1U < plan->check_constraint_count) {
+        memmove(
+            &plan->check_constraints[index],
+            &plan->check_constraints[index + 1U],
+            (plan->check_constraint_count - index - 1U) * sizeof(plan->check_constraints[0])
+        );
+    }
+    --plan->check_constraint_count;
+}
+
+static int alter_table_check_constraint_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_check_constraint *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (!plan->catalog_change_required) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK && plan->action == PLANNED_ALTER_TABLE_CHECK_ADD) {
+        rc = insert_alter_table_check_constraint_catalog_row(database, &mutation, plan);
+    } else if (rc == MYLITE_OK && plan->action == PLANNED_ALTER_TABLE_CHECK_DROP) {
+        rc = mylite_catalog_delete_check_constraint_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->target_check_constraint_id
+        );
+    } else if (rc == MYLITE_OK && plan->action == PLANNED_ALTER_TABLE_CHECK_ALTER) {
+        rc = mylite_catalog_update_check_constraint_enforcement_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->target_check_constraint_id,
+            plan->target_enforced
+        );
+    }
+    if (rc == MYLITE_OK && plan->physical_rebuild_required) {
+        rc = execute_physical_alter_table_check_constraint(
+            database,
+            plan,
+            mylite_catalog_mutation_generation(&mutation),
+            &plan->affected_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to alter CHECK constraint");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    if (plan->physical_rebuild_required) {
+        ++database->session.sqlite_schema_generation;
+    }
+
+    return MYLITE_OK;
+}
+
+static int insert_alter_table_check_constraint_catalog_row(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    struct planned_alter_table_check_constraint *plan
+) {
+    struct planned_check_constraint *check_constraint =
+        &plan->rebuild.check_constraints[plan->check_constraint_index];
+    int64_t check_constraint_id = 0;
+    int rc = mylite_catalog_allocate_check_constraint_id_in_mutation(
+        database,
+        mutation,
+        &check_constraint_id
+    );
+
+    if (rc == MYLITE_OK) {
+        check_constraint->check_constraint_id = check_constraint_id;
+        rc = build_physical_check_constraint_name(
+            check_constraint_id,
+            check_constraint->physical_name,
+            sizeof(check_constraint->physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_insert_check_constraint_in_mutation(
+            database,
+            mutation,
+            check_constraint->check_constraint_id,
+            plan->table.table_id,
+            check_constraint->name,
+            check_constraint->physical_name,
+            check_constraint->check_clause,
+            check_constraint->sqlite_expression,
+            check_constraint->is_enforced,
+            check_constraint->name_is_generated,
+            check_constraint->generated_ordinal,
+            check_constraint->ordinal_position,
+            NULL
+        );
+    }
+
+    return rc;
+}
+
+static int execute_physical_alter_table_check_constraint(
+    struct mylite_db *database,
+    const struct planned_alter_table_check_constraint *plan,
+    uint64_t sqlite_schema_generation,
+    int64_t *out_affected_rows
+) {
+    char temporary_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char *sql = NULL;
+    bool copy_failed = false;
+    int64_t affected_rows = 0;
+    int rc = build_alter_table_check_temporary_physical_name(
+        plan,
+        sqlite_schema_generation,
+        temporary_physical_name,
+        sizeof(temporary_physical_name)
+    );
+
+    *out_affected_rows = 0;
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_check_create_sql(plan, temporary_physical_name, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_check_copy_sql(plan, temporary_physical_name, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_alter_table_check_copy_rows(database, plan, sql, &affected_rows, &copy_failed);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_drop_table(database, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_rename_physical_table_sql(
+            temporary_physical_name,
+            plan->table.physical_name,
+            &sql
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = build_create_table_indexes_sql(&plan->rebuild, plan->table.physical_name, &sql);
+    }
+    if (rc == MYLITE_OK && sql != NULL) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+
+    if (rc != MYLITE_OK && rc != MYLITE_NOMEM && copy_failed &&
+        mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+    }
+    if (rc == MYLITE_OK && plan->validating_rebuild) {
+        *out_affected_rows = affected_rows;
+    }
+
+    return rc;
+}
+
+static int execute_alter_table_check_copy_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_check_constraint *plan,
+    const char *sql,
+    int64_t *out_affected_rows,
+    bool *out_copy_failed
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_sqlite_statement(database, sql, &statement);
+
+    *out_affected_rows = 0;
+    *out_copy_failed = false;
+    if (rc == MYLITE_OK) {
+        int sqlite_rc = sqlite3_step(statement);
+
+        if (sqlite_rc == SQLITE_DONE) {
+            *out_affected_rows = (int64_t)sqlite3_changes64(database->sqlite);
+        } else {
+            bool was_check_violation = false;
+
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            if (sqlite_status_is_constraint(sqlite_rc)) {
+                int check_rc = handle_check_constraint_violation(
+                    database,
+                    plan->table.table_id,
+                    false,
+                    &was_check_violation
+                );
+
+                if (check_rc != MYLITE_OK || was_check_violation) {
+                    rc = check_rc;
+                }
+            }
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    if (rc != MYLITE_OK) {
+        *out_copy_failed = true;
+    }
+
+    return rc;
+}
+
+static void planned_alter_table_check_constraint_deinit(
+    struct planned_alter_table_check_constraint *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    planned_create_table_deinit(&plan->rebuild);
+    *plan = (struct planned_alter_table_check_constraint){0};
+}
+
 static bool loaded_index_name_is_used_by_other(
     const struct loaded_index_info *indexes,
     size_t index_count,
@@ -40183,6 +41261,111 @@ static int execute_physical_alter_table_force(
     }
     if (rc == MYLITE_OK) {
         ++database->session.sqlite_schema_generation;
+    }
+
+    return rc;
+}
+
+static int build_alter_table_check_temporary_physical_name(
+    const struct planned_alter_table_check_constraint *plan,
+    uint64_t sqlite_schema_generation,
+    char *destination,
+    size_t destination_size
+) {
+    int written = 0;
+
+    if (plan == NULL || destination == NULL || destination_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        destination,
+        destination_size,
+        "_mylite_user_table_%" PRId64 "_check_%" PRIu64,
+        plan->table.table_id,
+        sqlite_schema_generation
+    );
+    if (written < 0 || (size_t)written >= destination_size) {
+        return MYLITE_NOMEM;
+    }
+
+    return MYLITE_OK;
+}
+
+static int build_alter_table_check_create_sql(
+    const struct planned_alter_table_check_constraint *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+) {
+    return build_create_table_definition_sql(
+        &plan->rebuild,
+        temporary_physical_name,
+        false,
+        out_sql
+    );
+}
+
+static int build_alter_table_check_copy_sql(
+    const struct planned_alter_table_check_constraint *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, temporary_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_alter_table_check_column_list(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") SELECT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_alter_table_check_column_list(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_alter_table_check_column_list(
+    struct dynamic_string *string,
+    const struct planned_alter_table_check_constraint *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->rebuild.column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(
+                string,
+                plan->rebuild.columns[column_index].name
+            );
+        }
     }
 
     return rc;
@@ -80439,31 +81622,12 @@ static int build_create_table_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    const char *create_prefix = "CREATE TABLE ";
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
     dynamic_string_init(&string);
 
-    if (temporary) {
-        create_prefix = "CREATE TEMPORARY TABLE ";
-    }
-    rc = dynamic_string_append(&string, create_prefix);
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, physical_name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " (");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_create_table_columns_sql(&string, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_create_table_check_constraints_sql(&string, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_char(&string, ')');
-    }
+    rc = append_create_table_definition_sql(&string, plan, physical_name, temporary);
     if (rc == MYLITE_OK && plan->has_primary_key) {
         rc = append_create_table_primary_key_sql(&string, plan, physical_name);
     }
@@ -80479,6 +81643,91 @@ static int build_create_table_sql(
 
     dynamic_string_deinit(&string);
 
+    return rc;
+}
+
+static int build_create_table_definition_sql(
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    bool temporary,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = append_create_table_definition_sql(&string, plan, physical_name, temporary);
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_create_table_definition_sql(
+    struct dynamic_string *string,
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    bool temporary
+) {
+    const char *create_prefix = "CREATE TABLE ";
+    int rc = MYLITE_OK;
+
+    if (temporary) {
+        create_prefix = "CREATE TEMPORARY TABLE ";
+    }
+    rc = dynamic_string_append(string, create_prefix);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_columns_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_check_constraints_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int build_create_table_indexes_sql(
+    const struct planned_create_table *plan,
+    const char *physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    if (plan->has_primary_key) {
+        rc = append_create_table_primary_key_sql(&string, plan, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_secondary_indexes_sql(&string, plan, physical_name);
+    }
+    if (rc == MYLITE_OK && string.length != 0U) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
     return rc;
 }
 
@@ -89654,6 +90903,29 @@ static void set_check_constraint_violated_error(
     );
 }
 
+static void set_check_constraint_not_found_error(
+    struct mylite_db *database,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Check constraint '%s' is not found in the table.",
+        constraint_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_check_constraint_not_found,
+        "HY000",
+        message
+    );
+}
+
 static void set_check_constraint_unknown_column_error(
     struct mylite_db *database,
     const char *column_name
@@ -89673,6 +90945,31 @@ static void set_check_constraint_unknown_column_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_unknown_column,
         "HY000",
+        message
+    );
+}
+
+static void set_alter_check_constraint_unknown_column_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Unknown column '%s' in 'check constraint %s expression'",
+        column_name,
+        constraint_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_column,
+        "42S22",
         message
     );
 }

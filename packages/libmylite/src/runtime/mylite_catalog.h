@@ -360,6 +360,19 @@ int mylite_catalog_insert_check_constraint_in_mutation(
     int64_t ordinal_position,
     struct mylite_catalog_check_constraint_descriptor *out_check_constraint
 );
+int mylite_catalog_delete_check_constraint_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t check_constraint_id
+);
+int mylite_catalog_update_check_constraint_enforcement_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t check_constraint_id,
+    bool is_enforced
+);
 int mylite_catalog_delete_index_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

@@ -2155,6 +2155,85 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_constraint
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (check_constraint != NULL) {
+        span = span_join(span, check_constraint->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, check_constraint);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (check_name != NULL) {
+        span = span_join(span, check_name->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, check_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_check_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *check_name,
+    struct mylite_sql_ast_node *enforcement
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (enforcement != NULL) {
+        span = span_join(span, enforcement->span);
+    } else if (check_name != NULL) {
+        span = span_join(span, check_name->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, check_name);
+    mylite_sql_ast_node_append_child(statement, enforcement);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

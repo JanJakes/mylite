@@ -218,6 +218,15 @@ statement(A) ::= alter_table_drop_index_statement(B). {
 statement(A) ::= alter_table_rename_index_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_add_check_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_table_drop_check_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_table_alter_check_statement(B). {
+    A = B;
+}
 statement(A) ::= drop_index_statement(B). {
     A = B;
 }
@@ -1140,6 +1149,21 @@ alter_table_rename_index_statement(A) ::=
 alter_table_rename_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) RENAME KEY old_identifier(O) TO new_identifier(N). {
     A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N);
+}
+
+alter_table_add_check_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD check_constraint_definition(C). {
+    A = mylite_sql_parser_make_alter_table_add_check_statement(state, A1, T, C);
+}
+
+alter_table_drop_check_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DROP CHECK identifier(C). {
+    A = mylite_sql_parser_make_alter_table_drop_check_statement(state, A1, T, C);
+}
+
+alter_table_alter_check_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER CHECK identifier(C) check_enforcement_required(E). {
+    A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, T, C, E);
 }
 
 old_identifier(A) ::= identifier(B). {
@@ -3984,6 +4008,15 @@ check_enforcement_opt(A) ::= ENFORCED(E). {
         state, E, MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED);
 }
 check_enforcement_opt(A) ::= NOT(N) ENFORCED. {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, N, MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED);
+}
+
+check_enforcement_required(A) ::= ENFORCED(E). {
+    A = mylite_sql_parser_make_check_enforcement(
+        state, E, MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED);
+}
+check_enforcement_required(A) ::= NOT(N) ENFORCED. {
     A = mylite_sql_parser_make_check_enforcement(
         state, N, MYLITE_SQL_AST_CHECK_ENFORCEMENT_NOT_ENFORCED);
 }

@@ -101,6 +101,8 @@ int main(void) {
 
 static int test_transaction_control_and_dml(void) {
     static const char *const one_committed[] = {"1", "10"};
+    static const char *const begin_immediate_one[] = {"1", "10"};
+    static const char *const begin_immediate_nested[] = {"1", "10", "2", "20"};
     static const char *const nested_rows[] = {"10", "100"};
     static const char *const ddl_rows[] = {"10", "100", "30", "300"};
     static const char *const unique_rows[] = {"1", "2", "3"};
@@ -162,6 +164,53 @@ static int test_transaction_control_and_dml(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "rolled back update",
+        }
+    );
+
+    failures +=
+        expect_nonquery(database, "CREATE TABLE begin_immediate_t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_row_count_zero(database);
+    failures += expect_nonquery(database, "INSERT INTO begin_immediate_t VALUES (1, 10)", 1);
+    failures += expect_nonquery(database, "COMMIT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM begin_immediate_t ORDER BY id",
+            .values = begin_immediate_one,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "BEGIN IMMEDIATE committed insert",
+        }
+    );
+
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_nonquery(database, "UPDATE begin_immediate_t SET v = 11 WHERE id = 1", 1);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM begin_immediate_t ORDER BY id",
+            .values = begin_immediate_one,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "BEGIN IMMEDIATE rolled back update",
+        }
+    );
+
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_nonquery(database, "INSERT INTO begin_immediate_t VALUES (2, 20)", 1);
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_nonquery(database, "INSERT INTO begin_immediate_t VALUES (3, 30)", 1);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM begin_immediate_t ORDER BY id",
+            .values = begin_immediate_nested,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "nested BEGIN IMMEDIATE commits previous transaction",
         }
     );
 
@@ -362,6 +411,17 @@ static int test_set_transaction_lifecycle(void) {
     failures += expect_error_details(
         database,
         "DELETE FROM t WHERE id = 1",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "SET TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (11, 110)",
         mysql_error_read_only_transaction,
         "25006",
         "Cannot execute statement in a READ ONLY transaction."
@@ -1129,6 +1189,24 @@ static int test_file_close_rolls_back_transaction(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "close rolls back active transaction",
+        }
+    );
+
+    failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
+    failures += expect_nonquery(database, "INSERT INTO persisted VALUES (3, 30)", 1);
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen begin immediate file");
+    failures += expect_nonquery(database, "USE app", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM persisted ORDER BY id",
+            .values = committed_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "close rolls back active BEGIN IMMEDIATE transaction",
         }
     );
     mylite_close(database);

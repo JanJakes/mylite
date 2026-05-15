@@ -311,6 +311,9 @@ transaction_control_statement(A) ::= BEGIN(B). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, B, NULL);
 }
+transaction_control_statement(A) ::= BEGIN(B) IDENTIFIER(I). {
+    A = mylite_sql_parser_make_begin_immediate_statement(state, B, I);
+}
 transaction_control_statement(A) ::= BEGIN(B) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, B, W, NULL);

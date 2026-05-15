@@ -539,6 +539,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_begin_immediate_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token begin_token,
+    struct mylite_sql_token immediate_token
+) {
+    if (!token_text_equals(&immediate_token, "IMMEDIATE")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, immediate_token);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_transaction_control_statement(
+        state,
+        MYLITE_SQL_AST_START_TRANSACTION_STATEMENT,
+        begin_token,
+        immediate_token,
+        NULL
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_node_kind statement_kind,

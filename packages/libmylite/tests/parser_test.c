@@ -17143,6 +17143,20 @@ static int test_transaction_control_statements(void) {
     failures += expect_span_text(statement, "BEGIN", "begin span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("BEGIN IMMEDIATE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "begin immediate");
+    failures += expect_span_text(statement, "BEGIN IMMEDIATE", "begin immediate span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("begin immediate;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "lower begin immediate");
+    failures += expect_span_text(statement, "begin immediate", "lower begin immediate span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("BEGIN WORK;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_START_TRANSACTION_STATEMENT, "begin work");
@@ -17219,7 +17233,7 @@ static int test_transaction_control_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE transaction ("
-        "begin INT, commit INT, rollback INT, work INT, savepoint INT, "
+        "begin INT, immediate INT, commit INT, rollback INT, work INT, savepoint INT, "
         "isolation INT, level INT, committed INT, uncommitted INT, repeatable INT, "
         "serializable INT, only INT);",
         MYLITE_SQL_PARSE_OK,
@@ -17242,9 +17256,23 @@ static int test_transaction_control_statements(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("BEGIN READ ONLY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN DEFERRED;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN EXCLUSIVE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("BEGIN IMMEDIATE TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("END TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("COMMIT TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("ROLLBACK RELEASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("ROLLBACK TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("ROLLBACK TO 'sp';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

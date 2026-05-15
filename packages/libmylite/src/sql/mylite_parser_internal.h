@@ -211,6 +211,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     struct mylite_sql_token last_token,
     struct mylite_sql_ast_node *characteristics
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_begin_immediate_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token begin_token,
+    struct mylite_sql_token immediate_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_transaction_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,

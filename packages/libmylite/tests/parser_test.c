@@ -63,6 +63,7 @@ static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
+static int test_string_slice_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -324,6 +325,7 @@ int main(void) {
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
+    failures += test_string_slice_functions();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -3421,6 +3423,98 @@ static int test_string_case_functions(void) {
     select = child_at(result.root, 0U);
     failures +=
         expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "string case identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_slice_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    const struct mylite_sql_ast_node *from_join = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LEFT(v, 2), RIGHT('abc', +1), LEFT(DATABASE(), 6) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LEFT_FUNCTION, "left function");
+    failures += expect_span_text(expression, "LEFT(v, 2)", "left span");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "left column");
+    failures +=
+        expect_literal(child_at(expression, 1U), MYLITE_SQL_AST_LITERAL_INTEGER, "left length");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_RIGHT_FUNCTION, "right function");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "right literal");
+    failures += expect_operator(
+        child_at(expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "right signed length"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LEFT_FUNCTION, "database left");
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_DATABASE_FUNCTION,
+        "left database argument"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "string slice from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LEFT ('abc', 1), (RIGHT('abc', 1)) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LEFT_FUNCTION, "spaced left");
+    failures += expect_span_text(expression, "LEFT ('abc', 1)", "spaced left span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized right");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_RIGHT_FUNCTION, "wrapped right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LEFT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT LEFT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT LEFT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT RIGHT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT RIGHT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT RIGHT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+
+    failures += parse_sql("DO LEFT('abc', 1), RIGHT('abc', 1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "string slice do");
+    failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LEFT_FUNCTION, "do left");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_RIGHT_FUNCTION, "do right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    from_join = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "left join after left function");
+    if (from_join != NULL &&
+        mylite_sql_ast_node_join_kind(from_join) != MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+        fprintf(stderr, "left join after left function: expected left outer join kind\n");
+        ++failures;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -576,6 +576,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_string_case_functions_test)
 
+  add_executable(mylite_runtime_string_slice_functions_test
+    tests/runtime_string_slice_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_string_slice_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_string_slice_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_string_slice_functions_test)
+
   add_executable(mylite_runtime_date_add_second_test
     tests/runtime_date_add_second_test.c
   )
@@ -2758,6 +2769,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.string_case_functions
     COMMAND mylite_runtime_string_case_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.string_slice_functions
+    COMMAND mylite_runtime_string_slice_functions_test
   )
   add_test(
     NAME libmylite.runtime.date_add_second

@@ -2728,6 +2728,14 @@ expression(A) ::= CHARACTER_LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION, B, R);
 }
+expression(A) ::= LEFT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_LEFT_FUNCTION, B, C, R);
+}
+expression(A) ::= RIGHT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_RIGHT_FUNCTION, B, C, R);
+}
 expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);

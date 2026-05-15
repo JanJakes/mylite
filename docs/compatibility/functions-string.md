@@ -23,7 +23,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `INSERT()` | ❌ | Insert substring by position |
 | `INSTR()` | ❌ | Return index of the first occurrence of substring |
 | `LCASE()` | 🟡 | Synonym for the limited `LOWER()` subset |
-| `LEFT()` | ❌ | Return leftmost number of characters as specified |
+| `LEFT()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values and system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; length is limited to integer/boolean/`NULL` literals, and UTF-8 text is sliced by character position. No binary-string slicing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns byte length, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `LOCATE()` | ❌ | Return position of the first occurrence of substring |
 | `LOWER()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over ASCII string/integer/boolean/`NULL` literals, supported session scalar values, system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; converts ASCII letters to lowercase and returns `NULL` for `NULL`. Non-ASCII text and embedded `NUL` values are rejected in this baseline; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
@@ -42,7 +42,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `REPEAT()` | ❌ | Repeat a string the specified number of times |
 | `REPLACE()` | ❌ | Replace occurrences of a specified string |
 | `REVERSE()` | ❌ | Reverse the characters in a string |
-| `RIGHT()` | ❌ | Return specified rightmost number of characters |
+| `RIGHT()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values and system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; length is limited to integer/boolean/`NULL` literals, and UTF-8 text is sliced by character position. No binary-string slicing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `RPAD()` | ❌ | Append string the specified number of times |
 | `RTRIM()` | ❌ | Remove trailing spaces |
 | `SOUNDEX()` | ❌ | Return a soundex string |

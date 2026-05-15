@@ -86,10 +86,10 @@ case "$version" in
 esac
 
 cleanup
-run_mysql "CREATE DATABASE ${DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; USE ${DATABASE}; SET NAMES utf8mb4;" >/dev/null
+run_mysql "CREATE DATABASE ${DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; USE ${DATABASE}; SET NAMES utf8mb4; SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';" >/dev/null
 
 scalar_expected=$(cat <<EXPECTED
-fooba	bar			ab	bc	abc	abc	NULL	NULL	NULL	NULL	é	🙂	é🙂	é🙂	2	1	4	1	12	345	1	0
+fooba	bar			ab	bc	abc	abc	NULL	NULL	NULL	NULL	é	🙂	é🙂	é🙂	2	1	4	1	12	345	mylite_	SUBSTITUTION	1	0
 -1	0
 EXPECTED
 )
@@ -103,6 +103,7 @@ expect_output \
 "LEFT('é🙂', 2), RIGHT('é🙂', 2), LENGTH(LEFT('é🙂', 1)), "\
 "CHAR_LENGTH(LEFT('é🙂', 1)), LENGTH(RIGHT('é🙂', 1)), "\
 "CHAR_LENGTH(RIGHT('é🙂', 1)), LEFT(12345, 2), RIGHT(-12345, 3), "\
+"LEFT(DATABASE(), 7), RIGHT(@@sql_mode, 12), "\
 "LEFT(TRUE, 1), RIGHT(FALSE, 1); SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
@@ -154,6 +155,14 @@ expect_output \
     "3	NULL
 2	🙂" \
     "SELECT id, RIGHT(v, 1) AS rv FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
+    "$DATABASE"
+
+expect_output \
+    "table null and nonpositive branches" \
+    "1			NULL	NULL
+3	NULL	NULL	NULL	NULL" \
+    "SELECT id, LEFT(v, 0), RIGHT(v, -1), LEFT(v, NULL), RIGHT(v, NULL) "\
+"FROM t WHERE id IN (1, 3) ORDER BY id;" \
     "$DATABASE"
 
 labels_expected=$(cat <<\EXPECTED

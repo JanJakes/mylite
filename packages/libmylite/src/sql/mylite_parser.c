@@ -5799,6 +5799,7 @@ static bool map_keyword_token(
         {"LAST_INSERT_ID", MYLITE_SQL_PARSE_LAST_INSERT_ID},
         {"LCASE", MYLITE_SQL_PARSE_LCASE},
         {"LENGTH", MYLITE_SQL_PARSE_LENGTH},
+        {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
         {"LOWER", MYLITE_SQL_PARSE_LOWER},
         {"MAX", MYLITE_SQL_PARSE_MAX},
         {"MIN", MYLITE_SQL_PARSE_MIN},

@@ -2218,6 +2218,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL = 6,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH = 7,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE = 8,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE = 9,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2239,11 +2240,24 @@ enum planned_string_case_function_kind {
     PLANNED_STRING_CASE_FUNCTION_UPPER = 2,
 };
 
+enum planned_string_slice_function_kind {
+    PLANNED_STRING_SLICE_FUNCTION_NONE = 0,
+    PLANNED_STRING_SLICE_FUNCTION_LEFT = 1,
+    PLANNED_STRING_SLICE_FUNCTION_RIGHT = 2,
+};
+
+struct string_slice_right_bounds {
+    size_t text_length;
+    uint64_t requested_length;
+    size_t character_count;
+};
+
 struct planned_row_scalar_expression {
     enum planned_row_scalar_expression_kind kind;
     enum planned_row_scalar_field_domain field_domain;
     enum planned_string_length_function_kind string_length_kind;
     enum planned_string_case_function_kind string_case_kind;
+    enum planned_string_slice_function_kind string_slice_kind;
     struct planned_value value;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
@@ -9611,6 +9625,59 @@ static bool is_string_case_function_kind(enum mylite_sql_ast_node_kind ast_kind)
 static enum mylite_string_case_kind string_case_function_to_value_kind(
     enum planned_string_case_function_kind function_kind
 );
+static int string_slice_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_string_slice_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_string_slice_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length,
+    bool *out_is_null
+);
+static int slice_utf8_text_value(
+    struct mylite_db *database,
+    enum planned_string_slice_function_kind function_kind,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    struct session_scalar_cell *out_cell
+);
+static int find_left_slice_end(
+    const char *text,
+    size_t text_length,
+    uint64_t requested_length,
+    size_t *out_end
+);
+static int find_right_slice_start(
+    const char *text,
+    const struct string_slice_right_bounds *bounds,
+    size_t *out_start
+);
+static bool string_slice_scalar_text_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+);
+static bool string_slice_length_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static int string_slice_signed_length_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static enum planned_string_slice_function_kind string_slice_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int scalar_subquery_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -10996,6 +11063,7 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
 static bool is_format_truncate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_convert_using_binary_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -14949,6 +15017,41 @@ static bool string_case_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_string_slice_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_slice_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_slice_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_slice_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_slice_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -15625,6 +15728,17 @@ static int append_row_scalar_string_case_expression_sql(
 static const char *row_scalar_string_case_sql_function(
     enum planned_string_case_function_kind function_kind
 );
+static int append_row_scalar_string_slice_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_string_slice_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter,
+    bool negate
+);
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
@@ -16290,6 +16404,11 @@ static int bind_row_scalar_string_length_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_case_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_slice_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -17395,6 +17514,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -21828,7 +21949,8 @@ static int execute_do_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER(), CEIL()/CEILING()/FLOOR()/ROUND(), "
             "CRC32()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited FIELD(), and "
-            "limited string length and string case functions, and top-level CASE expressions"
+            "limited string length, string case, and string slice functions, and top-level CASE "
+            "expressions"
         );
         return MYLITE_ERROR;
     }
@@ -21973,7 +22095,7 @@ static int execute_select_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND()/"
             "CRC32()/FORMAT()/TRUNCATE(), and "
             "CAST(value AS BINARY), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
-            "limited string length and string case functions"
+            "limited string length, string case, and string slice functions"
         );
         return MYLITE_ERROR;
     }
@@ -30074,6 +30196,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -53267,7 +53391,8 @@ static bool select_statement_is_row_function_scalar_projection(
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
         if (is_string_length_projection_expression(expression) ||
-            is_string_case_projection_expression(expression)) {
+            is_string_case_projection_expression(expression) ||
+            is_string_slice_projection_expression(expression)) {
             found_row_function = true;
         } else if (row_scalar_expression_contains_row_function(expression)) {
             return false;
@@ -54095,6 +54220,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_UPPER_FUNCTION:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
         return string_case_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+        return string_slice_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -54976,6 +55104,405 @@ static enum mylite_string_case_kind string_case_function_to_value_kind(
         return MYLITE_STRING_CASE_UPPER;
     }
     return MYLITE_STRING_CASE_LOWER;
+}
+
+static int string_slice_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_slice_function_kind function_kind = PLANNED_STRING_SLICE_FUNCTION_NONE;
+    struct session_scalar_cell argument_cell = {0};
+    char *owned_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
+    int64_t requested_length = 0;
+    bool text_is_null = false;
+    bool length_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_SLICE_FUNCTION_NONE
+                                       : string_slice_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_SLICE_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "string slice functions support exactly two arguments");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_slice_text_argument(
+        database,
+        child_at(expression, 0U),
+        &argument_cell,
+        &owned_text,
+        &text,
+        &text_length,
+        &text_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_slice_length_argument(
+            database,
+            child_at(expression, 1U),
+            &requested_length,
+            &length_is_null
+        );
+    }
+    if (rc != MYLITE_OK || text_is_null || length_is_null) {
+        free(owned_text);
+        session_scalar_cell_deinit(&argument_cell);
+        return rc;
+    }
+
+    rc = slice_utf8_text_value(
+        database,
+        function_kind,
+        text,
+        text_length,
+        requested_length,
+        out_cell
+    );
+    free(owned_text);
+    session_scalar_cell_deinit(&argument_cell);
+    return rc;
+}
+
+static int evaluate_string_slice_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only string, integer, boolean, NULL, "
+            "session scalar, and system variable string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "string slice functions support only string literals",
+                "string slice function literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_string_slice_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_length,
+    bool *out_is_null
+) {
+    if (out_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_length = 0;
+    *out_is_null = false;
+
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only integer, boolean, and NULL length literals"
+        );
+        return MYLITE_ERROR;
+    }
+    return string_slice_signed_length_value(database, expression, out_length, out_is_null);
+}
+
+static int slice_utf8_text_value(
+    struct mylite_db *database,
+    enum planned_string_slice_function_kind function_kind,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    struct session_scalar_cell *out_cell
+) {
+    size_t character_count = 0U;
+    size_t start = 0U;
+    size_t end = 0U;
+    size_t slice_length = 0U;
+    char *value = NULL;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (requested_length <= 0) {
+        out_cell->owned_text = (char *)malloc(1U);
+        if (out_cell->owned_text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        out_cell->owned_text[0] = '\0';
+        out_cell->value = out_cell->owned_text;
+        return MYLITE_OK;
+    }
+
+    rc = validate_utf8_text(text, text_length, &character_count);
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "invalid UTF-8 value in string slice function");
+        return MYLITE_ERROR;
+    }
+
+    if (function_kind == PLANNED_STRING_SLICE_FUNCTION_LEFT) {
+        rc = find_left_slice_end(text, text_length, (uint64_t)requested_length, &end);
+    } else if (function_kind == PLANNED_STRING_SLICE_FUNCTION_RIGHT) {
+        struct string_slice_right_bounds bounds = {
+            .text_length = text_length,
+            .requested_length = (uint64_t)requested_length,
+            .character_count = character_count,
+        };
+
+        end = text_length;
+        rc = find_right_slice_start(text, &bounds, &start);
+    } else {
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "invalid UTF-8 value in string slice function");
+        return MYLITE_ERROR;
+    }
+    slice_length = end - start;
+    if (slice_length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    value = (char *)malloc(slice_length + 1U);
+    if (value == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(value, text + start, slice_length);
+    value[slice_length] = '\0';
+    out_cell->owned_text = value;
+    out_cell->value = value;
+    return MYLITE_OK;
+}
+
+static int find_left_slice_end(
+    const char *text,
+    size_t text_length,
+    uint64_t requested_length,
+    size_t *out_end
+) {
+    size_t index = 0U;
+    uint64_t character_index = 0U;
+
+    if (text == NULL || out_end == NULL) {
+        return MYLITE_MISUSE;
+    }
+    while (index < text_length && character_index < requested_length) {
+        size_t width = 0U;
+        int rc = utf8_sequence_width(text, text_length, index, &width);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        index += width;
+        ++character_index;
+    }
+    *out_end = index;
+    return MYLITE_OK;
+}
+
+static int find_right_slice_start(
+    const char *text,
+    const struct string_slice_right_bounds *bounds,
+    size_t *out_start
+) {
+    size_t index = 0U;
+    size_t skip_count = 0U;
+
+    if (text == NULL || bounds == NULL || out_start == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (bounds->requested_length >= bounds->character_count) {
+        *out_start = 0U;
+        return MYLITE_OK;
+    }
+
+    skip_count = bounds->character_count - (size_t)bounds->requested_length;
+    for (size_t character_index = 0U; character_index < skip_count; ++character_index) {
+        size_t width = 0U;
+        int rc = utf8_sequence_width(text, bounds->text_length, index, &width);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        index += width;
+    }
+    *out_start = index;
+    return MYLITE_OK;
+}
+
+static bool string_slice_scalar_text_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+) {
+    return string_length_scalar_argument_is_admitted(expression);
+}
+
+static bool string_slice_length_argument_is_admitted(const struct mylite_sql_ast_node *expression) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    return (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static int string_slice_signed_length_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    *out_is_null = false;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        }
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only integer, boolean, and NULL length literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = 1;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_value = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "string slice function length literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        *out_value = INT64_MIN;
+    } else if (is_negative) {
+        *out_value = -(int64_t)magnitude;
+    } else {
+        *out_value = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static enum planned_string_slice_function_kind string_slice_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+        return PLANNED_STRING_SLICE_FUNCTION_LEFT;
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+        return PLANNED_STRING_SLICE_FUNCTION_RIGHT;
+    default:
+        return PLANNED_STRING_SLICE_FUNCTION_NONE;
+    }
+}
+
+static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_slice_function_kind(ast_kind) != PLANNED_STRING_SLICE_FUNCTION_NONE;
 }
 
 static int scalar_subquery_value(
@@ -65138,6 +65665,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_string_case_projection_expression(expression)) {
         return true;
     }
+    if (is_string_slice_projection_expression(expression)) {
+        return true;
+    }
     if (is_cast_binary_projection_expression(expression)) {
         return true;
     }
@@ -65459,6 +65989,19 @@ static bool is_string_case_projection_expression(const struct mylite_sql_ast_nod
         return false;
     }
     return string_case_scalar_argument_is_admitted(child_at(expression, 0U));
+}
+
+static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || !is_string_slice_function_kind(expression->kind)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    return (string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
+            string_slice_length_argument_is_admitted(child_at(expression, 1U))) != 0;
 }
 
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -78041,6 +78584,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (is_string_slice_function_kind(expression->kind)) {
+        return plan_row_scalar_string_slice_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
 
     if (has_source) {
         allow_scalar_subquery = false;
@@ -78420,6 +78974,215 @@ static bool string_case_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_string_slice_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_slice_function_kind function_kind = PLANNED_STRING_SLICE_FUNCTION_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_SLICE_FUNCTION_NONE
+                                       : string_slice_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_SLICE_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "string slice functions support exactly two arguments");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE;
+    out_expression->string_slice_kind = function_kind;
+    out_expression->argument_count = 2U;
+
+    rc = plan_row_scalar_string_slice_value_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_slice_length_argument(
+            database,
+            child_at(expression, 1U),
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_string_slice_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only string, integer, boolean, NULL, session "
+            "scalar, system variable, and descriptor column string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_slice_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "string slice functions do not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only string, integer, boolean, NULL, session "
+            "scalar, system variable, and descriptor column string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_slice_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string slice functions support only integer, boolean, and NULL length literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_slice_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string slice functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_slice_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_slice_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "string slice functions do not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "string slice functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "string slice functions support only integer, DECIMAL, nonbinary string, YEAR, and "
+        "temporal columns"
+    );
+    return false;
+}
+
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -78497,7 +79260,7 @@ static int plan_row_scalar_non_concat_expression(
     set_unsupported_error(
         database,
         "row-scalar SELECT supports only CONCAT(), FIELD(), DATE_FORMAT(), descriptor columns, "
-        "limited string length and string case functions, literals, DATABASE(), "
+        "limited string length, string case, and string slice functions, literals, DATABASE(), "
         "and system variables"
     );
     return MYLITE_ERROR;
@@ -79468,7 +80231,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_FIELD_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
             is_string_length_function_kind(current->kind) ||
-            is_string_case_function_kind(current->kind)) {
+            is_string_case_function_kind(current->kind) ||
+            is_string_slice_function_kind(current->kind)) {
             found = true;
             break;
         }
@@ -88098,6 +88862,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
         return append_row_scalar_string_case_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+        return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -88127,6 +88893,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -88447,6 +89214,87 @@ static const char *row_scalar_string_case_sql_function(
         break;
     }
     return NULL;
+}
+
+static int append_row_scalar_string_slice_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const struct planned_row_scalar_expression *value = NULL;
+    const struct planned_row_scalar_expression *length = NULL;
+    bool use_right = false;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (expression->string_slice_kind != PLANNED_STRING_SLICE_FUNCTION_LEFT &&
+        expression->string_slice_kind != PLANNED_STRING_SLICE_FUNCTION_RIGHT) {
+        return MYLITE_ERROR;
+    }
+
+    value = &expression->arguments[0];
+    length = &expression->arguments[1];
+    use_right = expression->string_slice_kind == PLANNED_STRING_SLICE_FUNCTION_RIGHT;
+
+    rc = dynamic_string_append(string, "(CASE WHEN ");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_string_slice_operand_sql(string, value, next_parameter, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL THEN NULL WHEN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <= 0 THEN '' ELSE substr(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_string_slice_operand_sql(string, value, next_parameter, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK && use_right) {
+        rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, true);
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "1, ");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_string_slice_operand_sql(string, length, next_parameter, false);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ") END)");
+    }
+    return rc;
+}
+
+static int append_row_scalar_string_slice_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter,
+    bool negate
+) {
+    int rc = MYLITE_OK;
+
+    if (negate) {
+        rc = dynamic_string_append(string, "(-");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    }
+    if (rc == MYLITE_OK && negate) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int build_select_found_rows_sql(const struct planned_select *plan, char **out_sql) {
@@ -92475,6 +93323,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+        return bind_row_scalar_string_slice_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -92504,6 +93358,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
@@ -92595,6 +93450,37 @@ static int bind_row_scalar_string_case_expression_parameters(
         &expression->arguments[0],
         parameter_index
     );
+}
+
+static int bind_row_scalar_string_slice_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    const struct planned_row_scalar_expression *value = NULL;
+    const struct planned_row_scalar_expression *length = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    value = &expression->arguments[0];
+    length = &expression->arguments[1];
+    rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_non_concat_expression_parameters(statement, value, parameter_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_non_concat_expression_parameters(statement, length, parameter_index);
+    }
+    return rc;
 }
 
 static int bind_select_predicate_parameters(

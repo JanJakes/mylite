@@ -929,6 +929,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "ucase_function";
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
         return "ucase_argument_count_error";
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+        return "left_function";
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+        return "right_function";
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return "abs_function";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:

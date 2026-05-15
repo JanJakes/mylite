@@ -1024,8 +1024,9 @@ show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
 }
 
-show_variables_statement(A) ::= SHOW(S) show_variables_scope_opt(O) VARIABLES(V) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_variables_statement(state, S, O, V, L);
+show_variables_statement(A) ::= SHOW(S) show_variables_scope_opt(O) VARIABLES(V)
+        show_variables_filter_opt(F). {
+    A = mylite_sql_parser_make_show_variables_statement(state, S, O, V, F);
 }
 
 show_variables_scope_opt(A) ::= . {
@@ -1039,6 +1040,16 @@ show_variables_scope_opt(A) ::= SESSION(T). {
 }
 show_variables_scope_opt(A) ::= LOCAL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+show_variables_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_variables_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_variables_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {

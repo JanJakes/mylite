@@ -19,9 +19,17 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 37,
-    global_variable_row_count = 33,
+    session_variable_row_count = 41,
+    global_variable_row_count = 37,
+    sql_log_variable_row_count = 2,
+    on_variable_row_count = 2,
+    gtid_default_variable_row_count = 5,
+    gtid_global_variable_row_count = 4,
+    gtid_session_variable_row_count = 6,
+    empty_gtid_variable_row_count = 3,
     mysql_error_parse = 1064,
+    mysql_error_unknown_column = 1054,
+    mysql_error_session_variable_only = 1238,
 };
 
 struct expected_variable_row {
@@ -33,6 +41,12 @@ struct expected_sql_error {
     int code;
     const char *sqlstate;
     const char *message_part;
+};
+
+struct expected_scalar_text_query {
+    const char *sql;
+    const char *expected;
+    const char *context;
 };
 
 static const char default_sql_mode[] =
@@ -61,6 +75,7 @@ static int expect_single_row(
     struct expected_variable_row expected,
     const char *context
 );
+static int expect_scalar_text(mylite_db *database, struct expected_scalar_text_query query);
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_statement_ok(mylite_db *database, const char *sql);
@@ -110,6 +125,10 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"default_storage_engine", "InnoDB"},
         {"error_count", "0"},
         {"foreign_key_checks", "ON"},
+        {"gtid_executed", ""},
+        {"gtid_mode", "OFF"},
+        {"gtid_owned", ""},
+        {"gtid_purged", ""},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -148,6 +167,10 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"collation_server", "utf8mb4_0900_ai_ci"},
         {"default_storage_engine", "InnoDB"},
         {"foreign_key_checks", "ON"},
+        {"gtid_executed", ""},
+        {"gtid_mode", "OFF"},
+        {"gtid_owned", ""},
+        {"gtid_purged", ""},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -169,10 +192,44 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"version", mylite_version()},
         {"version_comment", "MyLite"},
     };
-    const char *const expected_sql_log_rows[2][variable_column_count] = {
+    const char *const expected_sql_log_rows[sql_log_variable_row_count][variable_column_count] = {
         {"sql_log_bin", "ON"},
         {"sql_log_off", "OFF"},
     };
+    const char *const expected_on_rows[on_variable_row_count][variable_column_count] = {
+        {"autocommit", "ON"},
+        {"sql_log_bin", "ON"},
+    };
+    const char *const expected_gtid_default_rows[gtid_default_variable_row_count]
+                                                [variable_column_count] = {
+                                                    {"autocommit", "ON"},
+                                                    {"gtid_executed", ""},
+                                                    {"gtid_mode", "OFF"},
+                                                    {"gtid_owned", ""},
+                                                    {"gtid_purged", ""},
+                                                };
+    const char *const expected_gtid_global_rows[gtid_global_variable_row_count]
+                                               [variable_column_count] = {
+                                                   {"gtid_executed", ""},
+                                                   {"gtid_mode", "OFF"},
+                                                   {"gtid_owned", ""},
+                                                   {"gtid_purged", ""},
+                                               };
+    const char *const expected_gtid_session_rows[gtid_session_variable_row_count]
+                                                [variable_column_count] = {
+                                                    {"gtid_executed", ""},
+                                                    {"gtid_mode", "OFF"},
+                                                    {"gtid_owned", ""},
+                                                    {"gtid_purged", ""},
+                                                    {"sql_log_bin", "ON"},
+                                                    {"warning_count", "0"},
+                                                };
+    const char *const expected_empty_gtid_rows[empty_gtid_variable_row_count]
+                                              [variable_column_count] = {
+                                                  {"gtid_executed", ""},
+                                                  {"gtid_owned", ""},
+                                                  {"gtid_purged", ""},
+                                              };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -210,14 +267,14 @@ static int test_show_variables_values_scopes_and_filters(void) {
         database,
         "SHOW VARIABLES LIKE 'sql\\_log\\_%'",
         expected_sql_log_rows,
-        2U,
+        sql_log_variable_row_count,
         "show variables escaped underscore"
     );
     failures += expect_query_rows(
         database,
         "SHOW VARIABLES LIKE 'SQL\\_LOG\\_%'",
         expected_sql_log_rows,
-        2U,
+        sql_log_variable_row_count,
         "show variables case-insensitive like"
     );
     failures += expect_query_rows(
@@ -235,6 +292,191 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "utf8mb3",
         },
         "show session includes global system charset"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name = 'AUTOCOMMIT'",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where case-insensitive equality"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE `Variable_name` <=> 'autocommit'",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where null-safe equality"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE Value = 'on' AND Variable_name IN "
+        "('autocommit','sql_log_bin','sql_log_off')",
+        expected_on_rows,
+        on_variable_row_count,
+        "show variables where value equality"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name NOT LIKE 'sql\\_%' AND "
+        "Variable_name IN ('autocommit','sql_mode','sql_log_bin')",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where not like"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE (Variable_name = 'autocommit' OR "
+        "Variable_name = 'sql_log_bin') AND Value = 'ON'",
+        expected_on_rows,
+        on_variable_row_count,
+        "show variables where or and"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name <> 'autocommit' AND "
+        "Variable_name IN ('autocommit','sql_mode')",
+        (struct expected_variable_row){
+            .name = "sql_mode",
+            .value = default_sql_mode,
+        },
+        "show variables where not equal"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name < 'b' AND Variable_name IN ('autocommit','version')",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where less than"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name > 's' AND Variable_name IN ('autocommit','version')",
+        (struct expected_variable_row){
+            .name = "version",
+            .value = mylite_version(),
+        },
+        "show variables where greater than"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name IN (NULL, 'autocommit')",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where in null"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE Variable_name NOT IN (NULL, 'autocommit') AND "
+        "Variable_name IN ('autocommit','sql_mode')",
+        NULL,
+        0U,
+        "show variables where not in null"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE Value IS NULL OR Variable_name IS NULL",
+        NULL,
+        0U,
+        "show variables where is null"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name IS NOT NULL AND Variable_name = 'autocommit'",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where is not null"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE Variable_name IN "
+        "('autocommit','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        expected_gtid_default_rows,
+        gtid_default_variable_row_count,
+        "show variables where default gtid rows"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW GLOBAL VARIABLES WHERE Variable_name IN "
+        "('sql_log_bin','warning_count','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        expected_gtid_global_rows,
+        gtid_global_variable_row_count,
+        "show global variables where gtid rows"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW SESSION VARIABLES WHERE Variable_name IN "
+        "('sql_log_bin','warning_count','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        expected_gtid_session_rows,
+        gtid_session_variable_row_count,
+        "show session variables where gtid rows"
+    );
+    failures += expect_query_rows(
+        database,
+        "SHOW VARIABLES WHERE Value = '' AND Variable_name IN "
+        "('gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        expected_empty_gtid_rows,
+        empty_gtid_variable_row_count,
+        "show variables where empty gtid values"
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@gtid_mode",
+            .expected = "OFF",
+            .context = "gtid_mode scalar default",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@GLOBAL.gtid_mode",
+            .expected = "OFF",
+            .context = "gtid_mode scalar global",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@gtid_purged",
+            .expected = "",
+            .context = "gtid_purged scalar default",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@GLOBAL.gtid_executed",
+            .expected = "",
+            .context = "gtid_executed scalar global",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@SESSION.gtid_owned",
+            .expected = "",
+            .context = "gtid_owned scalar session",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@LOCAL.gtid_owned",
+            .expected = "",
+            .context = "gtid_owned scalar local",
+        }
     );
 
     mylite_close(database);
@@ -272,6 +514,15 @@ static int test_show_variables_state_and_file_safety(void) {
             .value = "ON",
         },
         "show variables file result"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
+        (struct expected_variable_row){
+            .name = "autocommit",
+            .value = "ON",
+        },
+        "show variables where file result"
     );
     session = mylite_connection_session_state(database);
     if (session != NULL) {
@@ -340,7 +591,7 @@ static int test_show_variables_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
+        "SHOW VARIABLES LIKE 'sql_%' LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -349,11 +600,74 @@ static int test_show_variables_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SHOW VARIABLES LIKE 'sql_%' LIMIT 1",
+        "SHOW VARIABLES WHERE missing = 'x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW VARIABLES WHERE variables.Variable_name = 'autocommit'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'variables.Variable_name' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW VARIABLES WHERE Variable_name = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "SHOW VARIABLES WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW VARIABLES WHERE (Variable_name = 'autocommit') XOR (Value = 'ON')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW VARIABLES WHERE does not support XOR predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@SESSION.gtid_purged",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'gtid_purged' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@LOCAL.gtid_executed",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'gtid_executed' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@SESSION.gtid_mode",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'gtid_mode' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION gtid_owned = ''",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'gtid_owned' is a read only variable",
         }
     );
 
@@ -471,6 +785,26 @@ static int expect_single_row(
     const char *const expected_rows[1][variable_column_count] = {{expected.name, expected.value}};
 
     return expect_query_rows(database, sql, expected_rows, 1U, context);
+}
+
+static int expect_scalar_text(mylite_db *database, struct expected_scalar_text_query query) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    if (result != NULL) {
+        failures += expect_size(mylite_result_column_count(result), 1U, query.context);
+        failures += expect_size(mylite_result_row_count(result), 1U, query.context);
+        failures += expect_text_or_null(
+            mylite_result_value_text(result, 0U, 0U),
+            query.expected,
+            query.context
+        );
+    } else {
+        failures += 1;
+    }
+
+    mylite_result_free(result);
+    return failures;
 }
 
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context) {

@@ -136,8 +136,8 @@ The admitted predicate subset is:
 - `column <= string_literal`
 - `column > string_literal`
 - `column >= string_literal`
-- `column = NULL` and `column <=> NULL`, which match no rows because these
-  output columns are never SQL `NULL`
+- `column <=> NULL`, which matches no rows because these output columns are
+  never SQL `NULL`
 - `column LIKE string_literal`
 - `column NOT LIKE string_literal`
 - `column IN (string_literal_or_NULL [, ...])`

@@ -3,9 +3,10 @@
 The exact value, scope, mutability, privilege requirement, persisted-variable behavior, optional plugin/build availability, and `SHOW VARIABLES` / Performance Schema exposure must be verified per variable.
 
 MyLite currently exposes a limited `SHOW VARIABLES` row set, including optional
-`GLOBAL`, `SESSION`, `LOCAL`, and `LIKE 'pattern'` forms, only for the fixed
-variables in the runtime registry defined by
-[baseline SHOW VARIABLES](../specs/baseline-show-variables/specs.md).
+`GLOBAL`, `SESSION`, `LOCAL`, `LIKE 'pattern'`, and limited `WHERE` forms, only
+for the fixed variables in the runtime registry defined by
+[baseline SHOW VARIABLES](../specs/baseline-show-variables/specs.md) and
+[baseline SHOW VARIABLES WHERE](../specs/baseline-show-variables-where/specs.md).
 Variables outside that registry remain absent from `SHOW VARIABLES`, and
 Performance Schema variable tables remain unsupported.
 
@@ -267,12 +268,12 @@ Performance Schema variable tables remain unsupported.
 | `group_replication_transaction_size_limit` | ❌ | Value, scope, SET, diagnostics |
 | `group_replication_unreachable_majority_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `group_replication_view_change_uuid` | ❌ | Value, scope, SET, diagnostics |
-| `gtid_executed` | ❌ | Value, scope, SET, diagnostics |
+| `gtid_executed` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID set tracking, replication, privileges, or mutable state |
 | `gtid_executed_compression_period` | ❌ | Value, scope, SET, diagnostics |
-| `gtid_mode` | ❌ | Value, scope, SET, diagnostics |
+| `gtid_mode` | 🟡 | Limited fixed `OFF` scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID enforcement, mode changes, replication, privileges, or mutable state |
 | `gtid_next` | ❌ | Value, scope, SET, diagnostics |
-| `gtid_owned` | ❌ | Value, scope, SET, diagnostics |
-| `gtid_purged` | ❌ | Value, scope, SET, diagnostics |
+| `gtid_owned` | 🟡 | Limited empty-string scalar placeholder for default/global/session/local reads and `SHOW VARIABLES`; read-only; no owned-GTID tracking, replication, privileges, or mutable state |
+| `gtid_purged` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; read-only; no GTID set parsing, `SET GLOBAL gtid_purged`, replication, privileges, or mutable state |
 | `have_compress` | ❌ | Value, scope, SET, diagnostics |
 | `have_dynamic_loading` | ❌ | Value, scope, SET, diagnostics |
 | `have_geometry` | ❌ | Value, scope, SET, diagnostics |

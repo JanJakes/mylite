@@ -13870,6 +13870,41 @@ static int test_show_variables_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SHOW VARIABLES WHERE Variable_name = 'autocommit';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT, "show variables where");
+    failures += expect_child_count(statement, 1U, "show variables where child count");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE, "variables where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW GLOBAL VARIABLES WHERE `Value` = 'ON';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "GLOBAL", "global variables where scope");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE, "scoped variables where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW VARIABLES LIKE 'a%' WHERE Variable_name = 'autocommit';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW VARIABLES WHERE Variable_name = 'autocommit' ORDER BY Variable_name;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE variables (global INT, session INT, local INT);",
         MYLITE_SQL_PARSE_OK,
         &result

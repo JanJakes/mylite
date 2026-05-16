@@ -32,6 +32,7 @@ enum {
     mysql_error_key_part_length_cannot_be_zero = 1391,
     mysql_error_wrong_usage = 1221,
     mysql_error_temporary_fulltext_index = 1796,
+    mysql_warning_innodb_rebuild_fulltext = 124,
 };
 
 struct expected_sql_error {
@@ -54,6 +55,7 @@ struct sqlite_exec_request {
 };
 
 static int test_fulltext_metadata_persistence_and_operations(void);
+static int test_fulltext_added_index_metadata_warnings_and_persistence(void);
 static int test_fulltext_mixed_index_show_create_order(void);
 static int test_fulltext_catalog_v18_migration(void);
 static int test_fulltext_diagnostics(void);
@@ -63,6 +65,11 @@ static int make_catalog_look_like_v18(sqlite3 *connection);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_statement_ok_with_warning_count(
+    mylite_db *database,
+    const char *sql,
+    size_t warning_count
+);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_physical_index_count(
@@ -99,6 +106,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_fulltext_metadata_persistence_and_operations();
+    failures += test_fulltext_added_index_metadata_warnings_and_persistence();
     failures += test_fulltext_mixed_index_show_create_order();
     failures += test_fulltext_catalog_v18_migration();
     failures += test_fulltext_diagnostics();
@@ -460,6 +468,271 @@ static int test_fulltext_metadata_persistence_and_operations(void) {
     return failures;
 }
 
+static int test_fulltext_added_index_metadata_warnings_and_persistence(void) {
+    static const char *const first_warning_rows[] = {
+        "Warning",
+        "124",
+        "InnoDB rebuilding table to add column FTS_DOC_ID",
+    };
+    static const char *const show_create_rows[] = {
+        "added",
+        "CREATE TABLE `added` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `title` varchar(40) DEFAULT NULL,\n"
+        "  `body` text,\n"
+        "  `other` varchar(20) DEFAULT NULL,\n"
+        "  FULLTEXT KEY `ft_title_body` (`title`,`body`),\n"
+        "  FULLTEXT KEY `body` (`body`),\n"
+        "  FULLTEXT KEY `ft_other` (`other`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const show_index_rows[] = {
+        "added", "1",        "ft_title_body",
+        "1",     "title",    NULL,
+        "0",     NULL,       NULL,
+        "YES",   "FULLTEXT", "",
+        "",      "YES",      NULL,
+        "added", "1",        "ft_title_body",
+        "2",     "body",     NULL,
+        "0",     NULL,       NULL,
+        "YES",   "FULLTEXT", "",
+        "",      "YES",      NULL,
+        "added", "1",        "body",
+        "1",     "body",     NULL,
+        "0",     NULL,       NULL,
+        "YES",   "FULLTEXT", "",
+        "",      "YES",      NULL,
+        "added", "1",        "ft_other",
+        "1",     "other",    NULL,
+        "0",     NULL,       NULL,
+        "YES",   "FULLTEXT", "",
+        "",      "YES",      NULL,
+    };
+    static const char *const statistics_rows[] = {
+        "body",          "1", "body",  NULL, NULL, "FULLTEXT",
+        "ft_other",      "1", "other", NULL, NULL, "FULLTEXT",
+        "ft_title_body", "1", "title", NULL, NULL, "FULLTEXT",
+        "ft_title_body", "2", "body",  NULL, NULL, "FULLTEXT",
+    };
+    static const char *const columns_rows[] = {
+        "id",
+        "",
+        "title",
+        "MUL",
+        "body",
+        "MUL",
+        "other",
+        "MUL",
+    };
+    static const char *const clone_show_create_rows[] = {
+        "added_clone",
+        "CREATE TABLE `added_clone` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `title` varchar(40) DEFAULT NULL,\n"
+        "  `body` text,\n"
+        "  `other` varchar(20) DEFAULT NULL,\n"
+        "  FULLTEXT KEY `ft_title_body` (`title`,`body`),\n"
+        "  FULLTEXT KEY `body` (`body`),\n"
+        "  FULLTEXT KEY `ft_other` (`other`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const standalone_show_create_rows[] = {
+        "standalone",
+        "CREATE TABLE `standalone` (\n"
+        "  `body` text,\n"
+        "  FULLTEXT KEY `ft_body` (`body`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const row_values[] = {"1", "alpha", "payload", "other"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "added_metadata") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open added fulltext file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE added (id INT, title VARCHAR(40), body TEXT, other VARCHAR(20))"
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT KEY ft_title_body (title, body(10))",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = first_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "first add fulltext warning",
+        }
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT (body)",
+        0U
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT INDEX ft_other (other(3))",
+        0U
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE added DROP INDEX ft_title_body");
+    failures += expect_statement_ok(database, "ALTER TABLE added DROP INDEX body");
+    failures += expect_statement_ok(database, "ALTER TABLE added DROP INDEX ft_other");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT KEY ft_title_body (title, body(10))",
+        0U
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT (body)",
+        0U
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE added ADD FULLTEXT INDEX ft_other (other(3))",
+        0U
+    );
+    failures +=
+        expect_physical_index_count(database, 0, "alter-added fulltext creates no SQLite index");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE added",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "alter-added fulltext SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM added",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 4U,
+            .context = "alter-added fulltext SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, "
+                   "SUB_PART, INDEX_TYPE FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'added' "
+                   "ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = statistics_field_count,
+            .row_count = 4U,
+            .context = "alter-added fulltext INFORMATION_SCHEMA.STATISTICS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_KEY FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'added' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = columns_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "alter-added fulltext INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO added VALUES (1, 'alpha', 'payload', 'other')", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, title, body, other FROM added",
+            .values = row_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "alter-added fulltext rows remain readable",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE added_clone LIKE added");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE added_clone",
+            .values = clone_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "alter-added fulltext clone",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE standalone (body TEXT)");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE FULLTEXT INDEX ft_body ON standalone (body(12))",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE standalone",
+            .values = standalone_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "standalone fulltext SHOW CREATE",
+        }
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE created_with_fulltext (body TEXT, FULLTEXT KEY ft_body (body))",
+        0U
+    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE created_with_fulltext DROP INDEX ft_body");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE created_with_fulltext ADD FULLTEXT KEY ft_body (body)",
+        0U
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen added fulltext file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE added",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "reopened alter-added fulltext",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, title, body, other FROM added",
+            .values = row_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "reopened alter-added fulltext rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_fulltext_mixed_index_show_create_order(void) {
     static const char *const show_create_rows[] = {
         "mixed_order",
@@ -669,14 +942,11 @@ static int test_fulltext_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(database, "CREATE TABLE bad_standalone (body TEXT)");
+    failures += expect_statement_ok_with_warning_count(
         database,
         "CREATE FULLTEXT INDEX ft_body ON bad_standalone (body)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
+        1U
     );
     failures += execute_error(
         database,
@@ -793,6 +1063,30 @@ static int create_fulltext_schema(mylite_db *database) {
 static int make_catalog_look_like_v18(sqlite3 *connection) {
     static const char *const sql =
         "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_tables RENAME TO _mylite_catalog_tables_v20;"
+        "CREATE TABLE _mylite_catalog_tables ("
+        "table_id INTEGER PRIMARY KEY,"
+        "schema_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "kind INTEGER NOT NULL CHECK(kind = 1),"
+        "physical_name TEXT NOT NULL UNIQUE,"
+        "auto_increment_next INTEGER NOT NULL CHECK(auto_increment_next > 0),"
+        "default_charset TEXT NOT NULL,"
+        "default_collation TEXT NOT NULL,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(schema_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_tables "
+        "(table_id, schema_id, name, kind, physical_name, auto_increment_next, default_charset, "
+        "default_collation, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
+        "default_charset, default_collation, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_tables_v20;"
+        "DROP TABLE _mylite_catalog_tables_v20;"
         "ALTER TABLE _mylite_catalog_indexes RENAME TO _mylite_catalog_indexes_v19;"
         "CREATE TABLE _mylite_catalog_indexes ("
         "index_id INTEGER PRIMARY KEY,"
@@ -874,6 +1168,24 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
         failures += expect_size(mylite_result_column_count(result), 0U, sql);
         failures += expect_size(mylite_result_row_count(result), 0U, sql);
         failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_statement_ok_with_warning_count(
+    mylite_db *database,
+    const char *sql,
+    size_t warning_count
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += expect_int64(mylite_result_affected_rows(result), 0, sql);
+        failures += expect_size(mylite_result_warning_count(result), warning_count, sql);
     }
     mylite_result_free(result);
     return failures;

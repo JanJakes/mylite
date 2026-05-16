@@ -372,6 +372,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *part_list
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_fulltext_index_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *part_list
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,

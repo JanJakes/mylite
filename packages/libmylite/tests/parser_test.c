@@ -12109,8 +12109,26 @@ static int test_create_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("CREATE FULLTEXT INDEX ft_v ON create_idx (v(4));", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT,
+        "create fulltext index"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "ft_v", "create fulltext index name");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "create_idx", "create fulltext index table");
+    key_parts = child_at(statement, 2U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "create fulltext part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 1U), "4", "create fulltext prefix");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "CREATE FULLTEXT INDEX k_v ON create_idx (v);",
+        "CREATE FULLTEXT KEY k_v ON create_idx (v);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -12291,7 +12309,40 @@ static int test_alter_table_add_index_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE add_idx ADD FULLTEXT KEY ft_v (v(4));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT,
+        "alter add fulltext statement"
+    );
+    secondary_index = child_at(statement, 1U);
+    failures += expect_node(
+        secondary_index,
+        MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION,
+        "alter add fulltext definition"
+    );
+    failures +=
+        expect_span_text(secondary_index, "FULLTEXT KEY ft_v (v(4))", "alter add fulltext span");
+    key_parts = child_at(secondary_index, 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "alter add fulltext part");
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 1U), "4", "alter add fulltext prefix");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE add_idx ADD CONSTRAINT uq_v UNIQUE (v);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD CONSTRAINT c FULLTEXT KEY ft_v (v);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

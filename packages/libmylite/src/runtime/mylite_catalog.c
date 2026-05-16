@@ -29,6 +29,7 @@ enum {
     catalog_schema_version_v16 = 16U,
     catalog_schema_version_v17 = 17U,
     catalog_schema_version_v18 = 18U,
+    catalog_schema_version_v19 = 19U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -171,9 +172,10 @@ enum catalog_table_select_column_index {
     catalog_table_select_auto_increment_next_column = 5,
     catalog_table_select_default_charset_column = 6,
     catalog_table_select_default_collation_column = 7,
-    catalog_table_select_descriptor_version_column = 8,
-    catalog_table_select_created_generation_column = 9,
-    catalog_table_select_updated_generation_column = 10,
+    catalog_table_select_fulltext_doc_id_initialized_column = 8,
+    catalog_table_select_descriptor_version_column = 9,
+    catalog_table_select_created_generation_column = 10,
+    catalog_table_select_updated_generation_column = 11,
 };
 
 enum catalog_column_select_column_index {
@@ -320,6 +322,7 @@ static int migrate_catalog_schema_v15_to_v16(sqlite3 *sqlite);
 static int migrate_catalog_schema_v16_to_v17(sqlite3 *sqlite);
 static int migrate_catalog_schema_v17_to_v18(sqlite3 *sqlite);
 static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite);
+static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -365,6 +368,11 @@ static int bind_catalog_column_replace_values(
     int64_t column_id,
     const struct catalog_column_values *values,
     uint64_t generation
+);
+static int mark_table_fulltext_doc_id_initialized_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
 );
 static int offset_catalog_column_ordinals_for_reorder(
     struct mylite_db *database,
@@ -934,9 +942,9 @@ int mylite_catalog_insert_table_in_mutation(
         database->sqlite,
         "INSERT INTO _mylite_catalog_tables "
         "(table_id, schema_id, name, kind, physical_name, auto_increment_next, default_charset, "
-        "default_collation, descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)",
+        "default_collation, fulltext_doc_id_initialized, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 1, ?9, ?9)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -1108,12 +1116,9 @@ int mylite_catalog_insert_index_in_mutation(
 ) {
     struct mylite_catalog_table_descriptor table = {0};
     sqlite3_stmt *statement = NULL;
-    int64_t unique_value = 0;
+    int64_t unique_value = catalog_bool_value(is_unique);
     int rc = MYLITE_OK;
 
-    if (is_unique) {
-        unique_value = 1;
-    }
     if (out_index != NULL) {
         *out_index = (struct mylite_catalog_index_descriptor){0};
     }
@@ -1188,6 +1193,13 @@ int mylite_catalog_insert_index_in_mutation(
         return rc;
     }
 
+    if (kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        rc = mark_table_fulltext_doc_id_initialized_in_mutation(database, mutation, table_id);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
     if (out_index != NULL) {
         bool found = false;
 
@@ -1199,6 +1211,57 @@ int mylite_catalog_insert_index_in_mutation(
     }
 
     return MYLITE_OK;
+}
+
+static int mark_table_fulltext_doc_id_initialized_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
+) {
+    struct mylite_catalog_table_descriptor table = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_active_mutation(mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_positive_id(table_id);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = read_table_by_id(database->sqlite, table_id, &table);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (table.fulltext_doc_id_initialized) {
+        return MYLITE_OK;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables "
+        "SET fulltext_doc_id_initialized = 1, descriptor_version = descriptor_version + 1, "
+        "updated_catalog_generation = ?1 "
+        "WHERE table_id = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 1, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
 }
 
 int mylite_catalog_insert_index_column_in_mutation(
@@ -3428,8 +3491,8 @@ int mylite_catalog_for_each_table_in_schema(
     rc = prepare_statement(
         database->sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation "
+        "default_charset, default_collation, fulltext_doc_id_initialized, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_tables WHERE schema_id = ?1 ORDER BY name",
         &statement
     );
@@ -4256,9 +4319,9 @@ int mylite_catalog_create_table(
         database->sqlite,
         "INSERT INTO _mylite_catalog_tables "
         "(schema_id, name, kind, physical_name, auto_increment_next, default_charset, "
-        "default_collation, descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?8)",
+        "default_collation, fulltext_doc_id_initialized, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, ?8, ?8)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -4852,6 +4915,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v18:
         rc = migrate_catalog_schema_v18_to_v19(sqlite);
+        next_schema_version = catalog_schema_version_v19;
+        break;
+    case catalog_schema_version_v19:
+        rc = migrate_catalog_schema_v19_to_v20(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -5487,6 +5554,29 @@ static int migrate_catalog_schema_v18_to_v19(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v19_to_v20(sqlite3 *sqlite) {
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "ALTER TABLE _mylite_catalog_tables "
+                             "ADD COLUMN fulltext_doc_id_initialized INTEGER NOT NULL DEFAULT 0 "
+                             "CHECK(fulltext_doc_id_initialized IN (0, 1));"
+                             "UPDATE _mylite_catalog_tables "
+                             "SET fulltext_doc_id_initialized = 1 "
+                             "WHERE table_id IN ("
+                             "SELECT DISTINCT table_id FROM _mylite_catalog_indexes WHERE kind = 3"
+                             ");"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 20, minimum_reader_schema_version = 20;"
+                             "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -5499,8 +5589,8 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-            "default_charset, default_collation, descriptor_version, created_catalog_generation, "
-            "updated_catalog_generation "
+            "default_charset, default_collation, fulltext_doc_id_initialized, "
+            "descriptor_version, created_catalog_generation, updated_catalog_generation "
             "FROM _mylite_catalog_tables WHERE 0"
         );
     }
@@ -5595,6 +5685,8 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "auto_increment_next INTEGER NOT NULL CHECK(auto_increment_next > 0),"
         "default_charset TEXT NOT NULL,"
         "default_collation TEXT NOT NULL,"
+        "fulltext_doc_id_initialized INTEGER NOT NULL "
+        "CHECK(fulltext_doc_id_initialized IN (0, 1)),"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -6421,8 +6513,8 @@ static int try_read_table_by_name(
     int rc = prepare_statement(
         sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation "
+        "default_charset, default_collation, fulltext_doc_id_initialized, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_tables WHERE schema_id = ?1 AND name = ?2",
         &statement
     );
@@ -6462,8 +6554,8 @@ static int read_table_by_id(
     int rc = prepare_statement(
         sqlite,
         "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-        "default_charset, default_collation, descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation "
+        "default_charset, default_collation, fulltext_doc_id_initialized, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_tables WHERE table_id = ?1",
         &statement
     );
@@ -6693,6 +6785,7 @@ static int materialize_table(
     struct mylite_catalog_table_descriptor *out_table
 ) {
     int64_t kind = 0;
+    int64_t fulltext_doc_id_initialized = 0;
     int rc =
         checked_column_i64(statement, catalog_table_select_table_id_column, &out_table->table_id);
 
@@ -6750,6 +6843,19 @@ static int materialize_table(
             catalog_table_select_default_collation_column,
             out_table->default_collation,
             sizeof(out_table->default_collation)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_table_select_fulltext_doc_id_initialized_column,
+            &fulltext_doc_id_initialized
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_catalog_bool_i64(
+            fulltext_doc_id_initialized,
+            &out_table->fulltext_doc_id_initialized
         );
     }
     if (rc == MYLITE_OK) {

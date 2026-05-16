@@ -684,6 +684,11 @@ create_index_statement(A) ::=
     RPAREN. {
     A = mylite_sql_parser_make_create_index_statement(state, C, true, N, T, L);
 }
+create_index_statement(A) ::=
+    CREATE(C) FULLTEXT INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
+    RPAREN. {
+    A = mylite_sql_parser_make_create_fulltext_index_statement(state, C, N, T, L);
+}
 
 drop_index_statement(A) ::= DROP(D) INDEX identifier(I) ON table_name(T). {
     A = mylite_sql_parser_make_drop_index_statement(state, D, I, T);
@@ -1132,6 +1137,11 @@ alter_table_add_index_statement(A) ::=
 
 alter_table_add_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD unique_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+}
+
+alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD fulltext_index_definition(I). {
     A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
 }
 

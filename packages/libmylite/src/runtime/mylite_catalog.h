@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 19
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 19
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 20
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 20
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -89,6 +89,7 @@ struct mylite_catalog_table_descriptor {
     int64_t auto_increment_next;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool fulltext_doc_id_initialized;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;

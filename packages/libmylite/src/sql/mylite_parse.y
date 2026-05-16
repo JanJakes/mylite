@@ -1750,9 +1750,9 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
         state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
-    select_locking_clause_opt(K). {
+    where_clause_opt(W) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL,
+        state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL, NULL,
         NULL, K);
 }
 select_statement(A) ::=
@@ -1775,10 +1775,10 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_cla
         NULL, NULL, NULL, NULL, NULL, NULL, K);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
-    select_locking_clause_opt(K). {
+    where_clause_opt(W) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL, K);
+        mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL, NULL, NULL, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)

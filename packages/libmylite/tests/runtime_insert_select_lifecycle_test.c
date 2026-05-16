@@ -22,6 +22,8 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_unknown_column = 1054,
+    mysql_error_duplicate_entry = 1062,
+    mysql_error_no_tables_used = 1096,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_column_specified_twice = 1110,
     mysql_error_table_does_not_exist = 1146,
@@ -46,6 +48,7 @@ struct expected_query {
 };
 
 static int test_insert_select_success_persistence_and_visibility(void);
+static int test_insert_select_dual_source_values_and_diagnostics(void);
 static int test_insert_select_schema_resolution_and_diagnostics(void);
 static int test_insert_select_independent_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
@@ -85,6 +88,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_insert_select_success_persistence_and_visibility();
+    failures += test_insert_select_dual_source_values_and_diagnostics();
     failures += test_insert_select_schema_resolution_and_diagnostics();
     failures += test_insert_select_independent_handles();
 
@@ -296,6 +300,343 @@ static int test_insert_select_success_persistence_and_visibility(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.renamed_dst' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_insert_select_dual_source_values_and_diagnostics(void) {
+    static const char *const inserted_rows[] = {
+        "1",
+        "dual",
+        "7",
+        "2",
+        "nosource",
+        "7",
+        "3",
+        "exists-app",
+        "7",
+        "5",
+        "not-exists",
+        "7",
+    };
+    static const char *const zero_rows[] = {"0"};
+    static const char *const last_insert_one[] = {"1"};
+    static const char *const last_insert_two[] = {"2"};
+    static const char *const last_insert_three[] = {"3"};
+    static const char *const last_insert_four[] = {"4"};
+    static const char *const keyed_rows[] = {
+        "1",
+        "a",
+        "2",
+        "b",
+        "3",
+        "null-id",
+        "4",
+        "zero-id",
+    };
+    static const char *const qualified_rows[] = {"9", "qualified"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation_before_dual_insert = 0U;
+    uint64_t sqlite_generation_before_dual_insert = 0U;
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "dual_source") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open dual source file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE guard(id INT NOT NULL, label VARCHAR(64))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE dst(id INT NOT NULL, label VARCHAR(128), must INT NOT NULL DEFAULT 7)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO guard VALUES (1, 'open'), (2, 'closed')", 2);
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        catalog_generation_before_dual_insert = catalog->generation;
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        sqlite_generation_before_dual_insert = session->sqlite_schema_generation;
+    }
+
+    failures += expect_dml_ok(database, "INSERT INTO dst(id, label) SELECT 1, 'dual' FROM DUAL", 1);
+    failures += expect_dml_ok(database, "INSERT INTO dst(id, label) SELECT 2, 'nosource'", 1);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 3, CONCAT('exists-', DATABASE()) FROM DUAL "
+        "WHERE EXISTS (SELECT 1 FROM guard WHERE id = 1)",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 4, 'skip' FROM DUAL "
+        "WHERE EXISTS (SELECT 1 FROM guard WHERE id = 99)",
+        0
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 5, 'not-exists' FROM DUAL "
+        "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 99)",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO dst(id, label) SELECT 6, 'skip' FROM DUAL "
+        "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 1)",
+        0
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before_dual_insert,
+            "dual source insert without auto-increment leaves catalog generation unchanged"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before_dual_insert,
+            "dual source insert leaves SQLite schema generation unchanged"
+        );
+    }
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label, must FROM dst ORDER BY id",
+            .values = inserted_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "insert select dual source rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE required_target(id INT NOT NULL, must INT NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO required_target(id) SELECT 10 FROM DUAL "
+        "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 1)",
+        0
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM required_target",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "zero-row dual source skips omitted required column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO required_target(id) SELECT 11 FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'must' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO required_target(id, must) SELECT 12, NULL FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'must' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO required_target(id, must) SELECT 13 FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO required_target SELECT * FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_no_tables_used,
+            .sqlstate = "HY000",
+            .message_part = "No tables used",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 20, 'x' FROM DUAL "
+        "WHERE EXISTS (SELECT 1 FROM missing_guard)",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_guard' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO dst(id, label) SELECT 21, 'x' FROM DUAL "
+        "WHERE EXISTS (SELECT 1 FROM guard WHERE missing = 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE keyed(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) UNIQUE)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO keyed(label) SELECT 'a' FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "dual source first generated insert id",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO keyed(label) SELECT 'b' FROM DUAL "
+        "WHERE NOT EXISTS (SELECT 1 FROM guard WHERE id = 99)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_two,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "dual source second generated insert id",
+        }
+    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO keyed(id, label) SELECT NULL, 'null-id' FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_three,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "dual source explicit NULL generated insert id",
+        }
+    );
+    failures +=
+        expect_dml_ok(database, "INSERT INTO keyed(id, label) SELECT 0, 'zero-id' FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_four,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "dual source explicit zero generated insert id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM keyed ORDER BY id",
+            .values = keyed_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "dual source auto increment rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO keyed(id, label) SELECT DEFAULT, 'default-id' FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax near 'DEFAULT'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO keyed(label) SELECT 'a' FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE app.qualified_dst(id INT NOT NULL, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "dual source insert preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen dual source file");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO app.qualified_dst(id, label) SELECT 9, 'qualified' FROM DUAL",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM app.qualified_dst",
+            .values = qualified_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "schema-qualified dual source without selected schema",
         }
     );
 

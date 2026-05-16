@@ -16559,6 +16559,32 @@ static int test_insert_select_statement(void) {
     failures += expect_child_count(child_at(statement, 1U), 0U, "insert select implicit columns");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT 1, 'ok' FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM app.guard WHERE id = 1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select dual where statement"
+    );
+    failures +=
+        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_SELECT_STATEMENT, "dual source");
+    failures += expect_node(
+        child_at(child_at(statement, 2U), 1U),
+        MYLITE_SQL_AST_FROM_DUAL,
+        "insert select dual source"
+    );
+    failures += expect_node(
+        first_child_kind(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "insert select dual where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

@@ -9,10 +9,12 @@ descriptors, baseline table lifecycle, integer and `NULL` row storage,
 descriptor-backed `SELECT ... WHERE ... ORDER BY ... LIMIT`, and the current
 `INSERT ... VALUES` / `INSERT ... SET` row-write paths.
 
-This is not full MySQL `INSERT ... SELECT`. The slice admits one target table,
-one descriptor-backed source `SELECT`, existing integer-family and `NULL`
-storage, optional target column lists, and the existing source `SELECT`
-predicate/order/limit subset.
+This is not full MySQL `INSERT ... SELECT`. The original slice admits one
+target table, one descriptor-backed source `SELECT`, existing integer-family
+and `NULL` storage, optional target column lists, and the existing source
+`SELECT` predicate/order/limit subset. A later narrow extension for no-source
+and `FROM DUAL` row-scalar sources is specified separately in
+`docs/specs/baseline-insert-select-dual-source/specs.md`.
 
 ## Sources
 
@@ -153,7 +155,9 @@ This feature must not implement:
 - source literal projection, `FROM DUAL` source projection, expression
   projection, arithmetic, functions, variables, parameters, subqueries,
   string/decimal/float/hex/bit/date/time/json selected values, or general
-  expression evaluation;
+  expression evaluation in the descriptor-backed source path; no-source and
+  `FROM DUAL` row-scalar sources are covered only by the separate
+  baseline-insert-select-dual-source extension;
 - DML `DEFAULT` keyword values in the source `SELECT` or target list;
 - primary/unique/foreign keys, duplicate-key handling, auto-increment,
   `LAST_INSERT_ID()` changes, generated columns, check constraints, triggers,

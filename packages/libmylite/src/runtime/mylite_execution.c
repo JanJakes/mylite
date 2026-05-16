@@ -2300,12 +2300,19 @@ struct planned_row_scalar_select_item {
     const struct mylite_sql_ast_node *alias;
 };
 
+struct planned_row_scalar_exists_filter {
+    bool has_filter;
+    bool negate;
+    struct planned_exists_subquery subquery;
+};
+
 struct planned_row_scalar_select {
     bool has_source;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct planned_row_scalar_select_item *items;
     size_t item_count;
+    struct planned_row_scalar_exists_filter tableless_filter;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
@@ -2317,9 +2324,16 @@ struct row_scalar_select_clauses {
     const struct mylite_sql_ast_node *limit_clause;
 };
 
+enum planned_insert_select_source_kind {
+    PLANNED_INSERT_SELECT_SOURCE_TABLE = 0,
+    PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR = 1,
+};
+
 struct planned_insert_select {
     struct planned_insert target;
+    enum planned_insert_select_source_kind source_kind;
     struct planned_select source;
+    struct planned_row_scalar_select row_source;
     size_t *target_indexes;
     size_t target_count;
 };
@@ -8811,6 +8825,33 @@ static int plan_insert_select(
     const struct mylite_sql_ast_node *statement,
     struct planned_insert_select *out_plan
 );
+static bool insert_select_source_is_row_scalar(const struct mylite_sql_ast_node *select_statement);
+static int plan_insert_select_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan,
+    struct primary_key_info *primary_key
+);
+static void apply_insert_select_primary_key_info(
+    const struct primary_key_info *primary_key,
+    struct planned_insert *target
+);
+static int plan_insert_select_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool row_scalar_source,
+    struct planned_insert_select *out_plan
+);
+static int plan_insert_select_row_scalar_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    struct planned_insert_select *out_plan
+);
+static int plan_insert_select_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan
+);
 static int reject_insert_select_key_bearing_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8821,6 +8862,45 @@ static void planned_insert_select_deinit(struct planned_insert_select *plan);
 static int execute_insert_select_from_plan(
     struct mylite_db *database,
     const struct planned_insert_select *plan,
+    mylite_result *result
+);
+static int execute_insert_select_row_scalar_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    mylite_result *result
+);
+static int prepare_insert_select_row_scalar_source(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    sqlite3_stmt **out_statement,
+    char **out_sql,
+    bool *out_has_row
+);
+static int materialize_insert_select_row_scalar_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    struct planned_insert_row *row
+);
+static int finish_insert_select_row_scalar_result(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    bool has_row,
+    struct planned_insert_row *row,
+    mylite_result *result
+);
+static void planned_insert_row_deinit(struct planned_insert_row *row, size_t column_count);
+static int normalize_insert_select_row_scalar_result(struct mylite_db *database, int rc);
+static int validate_insert_select_row_scalar_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    size_t row_number
+);
+static int execute_insert_select_row_scalar_insert(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct planned_insert_row *row,
     mylite_result *result
 );
 static int execute_insert_select_materialize(
@@ -9119,6 +9199,16 @@ static int plan_row_scalar_select_row_envelope(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_tableless_filter(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_exists_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
     struct planned_row_scalar_select *out_plan
 );
 static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan);
@@ -15843,6 +15933,11 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int build_row_scalar_select_sql(
     const struct planned_row_scalar_select *plan,
     char **out_sql
+);
+static int append_row_scalar_tableless_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_select *plan,
+    size_t *next_parameter
 );
 static int append_row_scalar_expression_sql(
     struct dynamic_string *string,
@@ -46140,46 +46235,24 @@ static int plan_insert_select(
     const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_statement = child_at(statement, 2U);
     struct primary_key_info primary_key = primary_key_info_init();
+    bool row_scalar_source = insert_select_source_is_row_scalar(select_statement);
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
-    rc = resolve_visible_writable_table_reference(
-        database,
-        child_at(statement, 0U),
-        &out_plan->target.target,
-        &out_plan->target.table
-    );
-    if (rc == MYLITE_OK) {
-        rc = load_table_columns(
-            database,
-            out_plan->target.table.table_id,
-            &out_plan->target.columns,
-            &out_plan->target.column_count
-        );
+    out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_TABLE;
+    if (row_scalar_source) {
+        out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR;
     }
-    if (rc == MYLITE_OK) {
-        rc = load_primary_key_info(
-            database,
-            out_plan->target.table.table_id,
-            out_plan->target.columns,
-            out_plan->target.column_count,
-            &primary_key
-        );
+    if (row_scalar_source && statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
+        set_unsupported_error(database, "REPLACE ... SELECT does not support row-scalar sources");
+        primary_key_info_deinit(&primary_key);
+        return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK) {
-        rc = load_table_index_infos(
-            database,
-            out_plan->target.table.table_id,
-            out_plan->target.columns,
-            out_plan->target.column_count,
-            &out_plan->target.indexes,
-            &out_plan->target.index_count
-        );
+    rc = plan_insert_select_target(database, statement, out_plan, &primary_key);
+    if (rc == MYLITE_OK && row_scalar_source) {
+        rc = initialize_insert_auto_increment_plan(database, &out_plan->target);
     }
-    if (rc == MYLITE_OK) {
-        rc = load_insert_target_foreign_key_infos(database, &out_plan->target);
-    }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !row_scalar_source) {
         rc = reject_insert_select_key_bearing_target(database, statement, out_plan, &primary_key);
     }
     if (rc == MYLITE_OK) {
@@ -46201,8 +46274,123 @@ static int plan_insert_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select(database, select_statement, &out_plan->source);
+        rc = plan_insert_select_source(database, statement, row_scalar_source, out_plan);
     }
+
+    primary_key_info_deinit(&primary_key);
+    return rc;
+}
+
+static bool insert_select_source_is_row_scalar(const struct mylite_sql_ast_node *select_statement) {
+    const struct mylite_sql_ast_node *from_clause = NULL;
+
+    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return false;
+    }
+
+    from_clause = child_at(select_statement, 1U);
+    return (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) != 0;
+}
+
+static int plan_insert_select_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan,
+    struct primary_key_info *primary_key
+) {
+    int rc = resolve_visible_writable_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target.target,
+        &out_plan->target.table
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->target.table.table_id,
+            &out_plan->target.columns,
+            &out_plan->target.column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(
+            database,
+            out_plan->target.table.table_id,
+            out_plan->target.columns,
+            out_plan->target.column_count,
+            primary_key
+        );
+    }
+    if (rc == MYLITE_OK) {
+        apply_insert_select_primary_key_info(primary_key, &out_plan->target);
+        rc = load_table_index_infos(
+            database,
+            out_plan->target.table.table_id,
+            out_plan->target.columns,
+            out_plan->target.column_count,
+            &out_plan->target.indexes,
+            &out_plan->target.index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_insert_target_foreign_key_infos(database, &out_plan->target);
+    }
+
+    return rc;
+}
+
+static void apply_insert_select_primary_key_info(
+    const struct primary_key_info *primary_key,
+    struct planned_insert *target
+) {
+    if (!primary_key->has_primary_key) {
+        return;
+    }
+
+    target->has_primary_key = true;
+    if (primary_key->part_count == 1U) {
+        target->primary_key_column_index = primary_key->parts[0].column_index;
+    }
+}
+
+static int plan_insert_select_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool row_scalar_source,
+    struct planned_insert_select *out_plan
+) {
+    const struct mylite_sql_ast_node *select_statement = child_at(statement, 2U);
+
+    if (row_scalar_source) {
+        return plan_insert_select_row_scalar_source(database, select_statement, out_plan);
+    }
+
+    return plan_insert_select_table_source(database, statement, out_plan);
+}
+
+static int plan_insert_select_row_scalar_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    struct planned_insert_select *out_plan
+) {
+    int rc = plan_row_scalar_select(database, select_statement, &out_plan->row_source);
+
+    if (rc == MYLITE_OK && out_plan->row_source.item_count != out_plan->target_count) {
+        set_column_count_mismatch_error(database, 1U);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int plan_insert_select_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan
+) {
+    int rc = plan_select(database, child_at(statement, 2U), &out_plan->source);
+
     if (rc == MYLITE_OK && out_plan->source.calc_found_rows) {
         if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
             set_unsupported_error(
@@ -46230,7 +46418,6 @@ static int plan_insert_select(
         rc = MYLITE_ERROR;
     }
 
-    primary_key_info_deinit(&primary_key);
     return rc;
 }
 
@@ -46300,6 +46487,7 @@ static void planned_insert_select_deinit(struct planned_insert_select *plan) {
     }
 
     planned_select_deinit(&plan->source);
+    planned_row_scalar_select_deinit(&plan->row_source);
     planned_insert_deinit(&plan->target);
     free(plan->target_indexes);
     *plan = (struct planned_insert_select){0};
@@ -46319,12 +46507,17 @@ static int execute_insert_select_from_plan(
     struct mylite_statement_transaction transaction = {0};
     bool temporary_table_created = false;
     int64_t affected_rows = 0;
-    int rc = build_insert_select_temp_table_name(
+    int rc = MYLITE_OK;
+
+    if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR) {
+        return execute_insert_select_row_scalar_from_plan(database, plan, result);
+    }
+
+    rc = build_insert_select_temp_table_name(
         database,
         temporary_table_name,
         sizeof(temporary_table_name)
     );
-
     if (rc == MYLITE_OK) {
         rc = build_insert_select_materialize_sql(plan, temporary_table_name, &materialize_sql);
     }
@@ -46403,6 +46596,218 @@ static int execute_insert_select_from_plan(
     mylite_result_set_affected_rows(result, affected_rows);
 
     return MYLITE_OK;
+}
+
+static int execute_insert_select_row_scalar_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_insert_row row = {0};
+    char *sql = NULL;
+    bool has_row = false;
+    int rc = prepare_insert_select_row_scalar_source(database, plan, &statement, &sql, &has_row);
+
+    if (rc == MYLITE_OK && has_row) {
+        rc = materialize_insert_select_row_scalar_row(database, statement, plan, &row);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc == MYLITE_OK) {
+        rc = finish_insert_select_row_scalar_result(database, plan, has_row, &row, result);
+    }
+
+    planned_insert_row_deinit(&row, plan->target.column_count);
+    return normalize_insert_select_row_scalar_result(database, rc);
+}
+
+static int prepare_insert_select_row_scalar_source(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    sqlite3_stmt **out_statement,
+    char **out_sql,
+    bool *out_has_row
+) {
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_statement = NULL;
+    *out_sql = NULL;
+    *out_has_row = false;
+
+    rc = build_row_scalar_select_sql(&plan->row_source, out_sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, *out_sql, out_statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_select_parameters(*out_statement, &plan->row_source);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    sqlite_rc = sqlite3_step(*out_statement);
+    if (sqlite_rc == SQLITE_ROW) {
+        *out_has_row = true;
+        return MYLITE_OK;
+    }
+    if (sqlite_rc == SQLITE_DONE) {
+        return MYLITE_OK;
+    }
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int materialize_insert_select_row_scalar_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    struct planned_insert_row *row
+) {
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    if (plan->target.column_count > SIZE_MAX / sizeof(*row->values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    row->values = calloc(plan->target.column_count, sizeof(*row->values));
+    if (row->values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = check_insert_omitted_columns(
+        database,
+        &plan->target,
+        plan->target_indexes,
+        plan->target_count
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_insert_select_row_scalar_row(database, statement, plan, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = materialize_insert_select_row_values(database, statement, plan, 1U, row->values);
+    }
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc == SQLITE_ROW) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT row-scalar source returned too many rows"
+        );
+        return MYLITE_ERROR;
+    }
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int finish_insert_select_row_scalar_result(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    bool has_row,
+    struct planned_insert_row *row,
+    mylite_result *result
+) {
+    if (has_row) {
+        return execute_insert_select_row_scalar_insert(database, plan, row, result);
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return MYLITE_OK;
+}
+
+static void planned_insert_row_deinit(struct planned_insert_row *row, size_t column_count) {
+    if (row == NULL || row->values == NULL) {
+        return;
+    }
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        planned_value_deinit(&row->values[column_index]);
+    }
+    free(row->values);
+    *row = (struct planned_insert_row){0};
+}
+
+static int normalize_insert_select_row_scalar_result(struct mylite_db *database, int rc) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+        return rc;
+    }
+
+    set_physical_sqlite_row_error(database);
+    return MYLITE_ERROR;
+}
+
+static int validate_insert_select_row_scalar_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    size_t row_number
+) {
+    if (plan->target_count > (size_t)INT_MAX) {
+        return MYLITE_ERROR;
+    }
+    for (size_t target_position = 0U; target_position < plan->target_count; ++target_position) {
+        size_t column_index = plan->target_indexes[target_position];
+        const struct mylite_catalog_column_descriptor *target_column =
+            &plan->target.columns[column_index];
+        int rc = MYLITE_OK;
+
+        if (column_descriptor_is_auto_increment(target_column) &&
+            sqlite3_column_type(statement, (int)target_position) == SQLITE_NULL) {
+            continue;
+        }
+        rc = validate_insert_select_value(
+            database,
+            statement,
+            (int)target_position,
+            NULL,
+            target_column,
+            row_number
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int execute_insert_select_row_scalar_insert(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct planned_insert_row *row,
+    mylite_result *result
+) {
+    struct planned_insert row_plan = plan->target;
+    int rc = MYLITE_OK;
+
+    row_plan.rows = row;
+    row_plan.row_count = 1U;
+    rc = plan_insert_auto_increment_values(database, &row_plan);
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, &row_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_from_plan(database, &row_plan, result);
+    }
+
+    return rc;
 }
 
 static int execute_insert_select_materialize(
@@ -46734,6 +47139,11 @@ static int materialize_insert_select_omitted_value(
     const struct mylite_catalog_column_descriptor *target_column,
     struct planned_value *out_value
 ) {
+    if (column_descriptor_is_auto_increment(target_column)) {
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+
     return materialize_dml_default_value(database, target_column, false, out_value);
 }
 
@@ -46814,7 +47224,8 @@ static int validate_insert_select_value(
 ) {
     int sqlite_type = sqlite3_column_type(statement, selected_column_index);
 
-    if (!insert_select_source_target_types_are_compatible(source_column, target_column)) {
+    if (source_column != NULL &&
+        !insert_select_source_target_types_are_compatible(source_column, target_column)) {
         set_unsupported_error(database, insert_select_implicit_conversion_message(target_column));
         return MYLITE_ERROR;
     }
@@ -49277,7 +49688,9 @@ static int plan_row_scalar_select(
         if (rc == MYLITE_OK) {
             item_source_context = &source_context;
         }
-    } else if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+    } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        rc = collect_row_scalar_select_clauses(database, child_at(statement, 2U), &clauses);
+    } else if (from_clause != NULL) {
         set_unsupported_error(
             database,
             "row-scalar SELECT supports only no-source, DUAL, or one descriptor table source"
@@ -49304,6 +49717,9 @@ static int plan_row_scalar_select(
             table_column_count,
             out_plan
         );
+    }
+    if (rc == MYLITE_OK && !out_plan->has_source) {
+        rc = plan_row_scalar_select_tableless_filter(database, &clauses, out_plan);
     }
 
     free(table_columns);
@@ -49414,6 +49830,71 @@ static int plan_row_scalar_select_row_envelope(
     return rc;
 }
 
+static int plan_row_scalar_select_tableless_filter(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    struct planned_row_scalar_select *out_plan
+) {
+    if (clauses->order_clause != NULL || clauses->limit_clause != NULL) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+        );
+        return MYLITE_ERROR;
+    }
+    if (clauses->where_clause == NULL) {
+        return MYLITE_OK;
+    }
+
+    return plan_row_scalar_select_exists_filter(database, clauses->where_clause, out_plan);
+}
+
+static int plan_row_scalar_select_exists_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct mylite_sql_ast_node *predicate = NULL;
+    bool negate = false;
+    int rc = MYLITE_OK;
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+        );
+        return MYLITE_ERROR;
+    }
+
+    predicate = unwrap_parenthesized_predicate(child_at(where_clause, 0U));
+    if (predicate != NULL && predicate->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        negate = true;
+        predicate = unwrap_parenthesized_predicate(child_at(predicate, 0U));
+    }
+    if (predicate == NULL || predicate->kind != MYLITE_SQL_AST_EXISTS_PREDICATE) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT FROM DUAL supports only WHERE EXISTS filtering"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_exists_subquery(
+        database,
+        child_at(predicate, 0U),
+        NULL,
+        NULL,
+        0U,
+        &out_plan->tableless_filter.subquery
+    );
+    if (rc == MYLITE_OK) {
+        out_plan->tableless_filter.has_filter = true;
+        out_plan->tableless_filter.negate = negate;
+    }
+
+    return rc;
+}
+
 static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan) {
     if (plan == NULL) {
         return;
@@ -49423,6 +49904,9 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
         planned_row_scalar_expression_deinit(&plan->items[item_index].expression);
     }
     free(plan->items);
+    if (plan->tableless_filter.has_filter) {
+        planned_exists_subquery_deinit(&plan->tableless_filter.subquery);
+    }
     planned_select_predicate_deinit(&plan->predicate);
     *plan = (struct planned_row_scalar_select){false};
 }
@@ -79504,8 +79988,15 @@ static int plan_row_scalar_select_items(
 ) {
     const struct mylite_sql_ast_node *item = NULL;
 
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        select_list_is_wildcard(select_list)) {
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_unsupported_error(database, "row-scalar SELECT supports only explicit select items");
+        return MYLITE_ERROR;
+    }
+    if (select_list_is_wildcard(select_list)) {
+        if (!out_plan->has_source) {
+            set_no_tables_used_error(database);
+            return MYLITE_ERROR;
+        }
         set_unsupported_error(database, "row-scalar SELECT supports only explicit select items");
         return MYLITE_ERROR;
     }
@@ -90164,6 +90655,9 @@ static int build_row_scalar_select_sql(
     if (rc == MYLITE_OK && plan->has_source) {
         rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
     }
+    if (rc == MYLITE_OK && !plan->has_source) {
+        rc = append_row_scalar_tableless_filter_sql(&string, plan, &next_parameter);
+    }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
         if (*out_sql == NULL) {
@@ -90172,6 +90666,32 @@ static int build_row_scalar_select_sql(
     }
 
     dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_row_scalar_tableless_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_select *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (!plan->tableless_filter.has_filter) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " WHERE ");
+    if (rc == MYLITE_OK && plan->tableless_filter.negate) {
+        rc = dynamic_string_append(string, "NOT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_exists_predicate_sql(
+            string,
+            &plan->tableless_filter.subquery,
+            next_parameter
+        );
+    }
 
     return rc;
 }
@@ -94592,6 +95112,13 @@ static int bind_row_scalar_select_parameters(
     }
     if (rc == MYLITE_OK && plan->has_source && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+    }
+    if (rc == MYLITE_OK && !plan->has_source && plan->tableless_filter.has_filter) {
+        rc = bind_select_exists_predicate_parameters(
+            statement,
+            &plan->tableless_filter.subquery,
+            &parameter_index
+        );
     }
 
     return rc;

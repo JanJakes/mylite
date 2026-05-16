@@ -848,23 +848,15 @@ static int test_unique_index_diagnostics(void) {
         database,
         "CREATE TABLE key_bearing (id INT, v INT, UNIQUE KEY u_v (v))"
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO key_bearing SELECT 1, 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT ... SELECT into unique-index tables is not supported",
-        }
-    );
-    failures += expect_dml_ok(database, "REPLACE INTO key_bearing VALUES (1, 2)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO key_bearing SELECT 1, 2", 1);
+    failures += expect_dml_ok(database, "REPLACE INTO key_bearing VALUES (3, 4)", 1);
     failures += execute_error(
         database,
         "REPLACE INTO key_bearing SELECT 1, 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "REPLACE ... SELECT into unique-index tables is not supported",
+            .message_part = "REPLACE ... SELECT does not support row-scalar sources",
         }
     );
     failures += execute_error(

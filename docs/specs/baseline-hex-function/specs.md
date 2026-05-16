@@ -15,6 +15,9 @@ Core supported behavior:
 - integer, signed integer, boolean, and `NULL` arguments follow MySQL's numeric
   `BIGINT`/`longlong` form, with negative values rendered as unsigned 64-bit
   two's-complement hexadecimal text;
+- supported numeric session scalar values and numeric system variables use the
+  same unsigned 64-bit numeric formatting, while string-valued scalars and
+  system variables are hexed from visible bytes;
 - supported `CAST(value AS BINARY)`, `CONVERT(value, BINARY)`, and
   `CONVERT(value USING charset)` scalar values are hexed from their visible
   bytes;
@@ -58,6 +61,14 @@ Runtime probes establish the behavior used by this phase:
 - `HEX(255) = 'FF'`, `HEX(-1) = 'FFFFFFFFFFFFFFFF'`,
   `HEX(TRUE) = '1'`, and `HEX(FALSE) = '0'`;
 - `HEX(NULL)` returns `NULL`;
+- supported parentheses do not change scalar conversion, so `HEX((255)) = 'FF'`
+  and `HEX((-1)) = 'FFFFFFFFFFFFFFFF'`;
+- numeric session scalars and numeric system variables use numeric conversion:
+  after `SET timestamp = 1700000000; DO 0`, MySQL reports
+  `HEX(ROW_COUNT()) = '0'`, `HEX(LAST_INSERT_ID()) = '0'`,
+  `HEX(@@autocommit) = '1'`, `HEX(@@sql_safe_updates) = '0'`,
+  `HEX(@@sql_select_limit) = 'FFFFFFFFFFFFFFFF'`, and
+  `HEX(@@timestamp) = '6553F100'`;
 - `CHAR` trailing spaces are stripped in the current default SQL mode before
   `HEX()` sees the value;
 - `BINARY(N)` values are padded with `0x00` and `HEX()` includes those bytes;
@@ -201,8 +212,11 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
      hexadecimal text;
    - `TRUE` / `FALSE`: numeric `1` / `0`;
    - `NULL`: SQL `NULL`;
-   - supported session scalar value, system variable, `CAST(... AS BINARY)`,
-     or `CONVERT(...)`: existing visible byte string or SQL `NULL`.
+   - supported numeric session scalar and numeric system-variable value: numeric
+     value formatted as unsigned 64-bit hexadecimal text;
+   - supported string-valued session scalar, string-valued system variable,
+     `CAST(... AS BINARY)`, or `CONVERT(...)`: existing visible byte string or
+     SQL `NULL`.
 3. Return SQL `NULL` if the argument is `NULL`.
 4. Return uppercase hexadecimal text. Empty byte strings return the empty
    string.

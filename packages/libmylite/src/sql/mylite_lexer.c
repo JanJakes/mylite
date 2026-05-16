@@ -522,6 +522,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"HASH", 0U},
         {"HAVING", MYLITE_SQL_KEYWORD_RESERVED},
         {"HELP", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
+        {"HEX", 0U},
         {"HIGH_PRIORITY", MYLITE_SQL_KEYWORD_RESERVED},
         {"HISTOGRAM", 0U},
         {"HISTORY", 0U},

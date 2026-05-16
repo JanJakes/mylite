@@ -89,16 +89,17 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; USE ${DATABASE}; SET NAMES utf8mb4; SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION';" >/dev/null
 
 scalar_expected=$(cat <<EXPECTED
-616263	C3A9	610062		0061	6162	414243	414243	414243	FF	FFFFFFFFFFFFFFFF	1	0	NULL
+616263	C3A9	610062		0061	6162	414243	414243	414243	FF	FFFFFFFFFFFFFFFF	1	0	NULL	FF	NULL	1	FFFFFFFFFFFFFFFF
 -1	0
 EXPECTED
 )
 expect_output \
     "scalar hex values" \
     "$scalar_expected" \
-    "DO 0; SELECT HEX('abc'), HEX('é'), HEX('a\\0b'), HEX(''), "\
+"DO 0; SELECT HEX('abc'), HEX('é'), HEX('a\\0b'), HEX(''), "\
 "HEX(X'0061'), HEX(0x6162), HEX(CAST('ABC' AS BINARY)), HEX(CONVERT('ABC', BINARY)), "\
-"HEX(CONVERT('ABC' USING utf8mb4)), HEX(255), HEX(-1), HEX(TRUE), HEX(FALSE), HEX(NULL); "\
+"HEX(CONVERT('ABC' USING utf8mb4)), HEX(255), HEX(-1), HEX(TRUE), HEX(FALSE), HEX(NULL), "\
+"HEX((255)), HEX((NULL)), HEX((TRUE)), HEX((-1)); "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
@@ -112,6 +113,14 @@ expect_output \
     "do row count" \
     "0	0" \
     "DO HEX('abc'), HEX(NULL), HEX(255); SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
+    "numeric scalar hex values" \
+    "0	0	0	1	0	FFFFFFFFFFFFFFFF	6553F100	1700000000.000000" \
+    "SET timestamp = 1700000000; DO 0; SELECT HEX(ROW_COUNT()), HEX(LAST_INSERT_ID()), "\
+"HEX(@@warning_count), HEX(@@autocommit), HEX(@@sql_safe_updates), HEX(@@sql_select_limit), "\
+"HEX(@@timestamp), @@timestamp;" \
     "$DATABASE"
 
 run_mysql \

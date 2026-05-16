@@ -463,7 +463,7 @@ tests.
 | `FIELD()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over flat all-string or all-integer argument lists with `NULL`, ASCII string literals, signed-64 integer/boolean literals, and supported descriptor columns; returns the 1-based first-match position or `0`; no mixed domains, binary strings, non-ASCII collation parity, predicates, DML assignments, ordering/grouping expressions, or general expression metadata. | [string functions](docs/compatibility/functions-string.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `FIND_IN_SET()` | ❌ | Comma-list position. | [string functions](docs/compatibility/functions-string.md) |
 | `FROM_BASE64()` | ❌ | Base64 decode. | [string functions](docs/compatibility/functions-string.md) |
-| `HEX()` | ❌ | Hex representation. | [string functions](docs/compatibility/functions-string.md) |
+| `HEX()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; string and binary values are rendered as uppercase byte hex, integer/boolean and supported numeric scalar/system-variable values use MySQL-style unsigned 64-bit numeric hex, and `NULL` yields `NULL`. | [string functions](docs/compatibility/functions-string.md) |
 | `INSERT()` | ❌ | Insert substring. | [string functions](docs/compatibility/functions-string.md) |
 | `INSTR()` | ❌ | First substring index. | [string functions](docs/compatibility/functions-string.md) |
 | `LCASE()` | 🟡 | Limited `LOWER()` synonym for ASCII-only scalar and row-scalar projection. | [string functions](docs/compatibility/functions-string.md) |

@@ -374,6 +374,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UNION_TERM_LIST = 365,
     MYLITE_SQL_AST_UNION_TERM = 366,
     MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION = 367,
+    MYLITE_SQL_AST_HEX_FUNCTION = 368,
+    MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR = 369,
 };
 
 enum mylite_sql_ast_literal_kind {

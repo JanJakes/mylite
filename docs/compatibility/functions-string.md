@@ -19,7 +19,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `FIELD()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over flat all-string or all-integer argument lists with `NULL`, ASCII string literals, signed-64 integer/boolean literals, and supported descriptor columns; returns the 1-based first-match position or `0`; no mixed domains, binary strings, non-ASCII collation parity, predicates, DML assignments, ordering/grouping expressions, or general expression metadata |
 | `FIND_IN_SET()` | ❌ | Index (position) of first argument within second argument |
 | `FROM_BASE64()` | ❌ | Decode base64 encoded string and return result |
-| `HEX()` | ❌ | Hexadecimal representation of decimal or string value |
+| `HEX()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string, hex, integer, boolean, `NULL`, supported session scalar, system variable, and binary cast/convert arguments, plus descriptor-backed integer, nonbinary string, baseline `TEXT`, binary string, and baseline `BLOB` columns; returns uppercase byte hex for string/binary values, unsigned 64-bit numeric hex for integer/boolean and supported numeric scalar/system-variable values, and `NULL` for `NULL`. No `UNHEX()`, decimal/float/`BIT`/temporal row-backed conversion, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, binary result metadata, or expression metadata |
 | `INSERT()` | ❌ | Insert substring by position |
 | `INSTR()` | ❌ | Return index of the first occurrence of substring |
 | `LCASE()` | 🟡 | Synonym for the limited `LOWER()` subset |

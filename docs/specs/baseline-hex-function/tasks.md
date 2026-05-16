@@ -12,15 +12,15 @@
 - [x] Write independently authored feature specification with MyLite grammar
   snippets, ownership boundaries, diagnostics, generated SQL shape, and known
   exclusions.
-- [ ] Extend lexer/parser/AST support for exact one-argument `HEX()`.
-- [ ] Implement no-source, `DUAL`, and `DO` scalar execution.
-- [ ] Implement descriptor-backed row-scalar projection execution using
+- [x] Extend lexer/parser/AST support for exact one-argument `HEX()`.
+- [x] Implement no-source, `DUAL`, and `DO` scalar execution.
+- [x] Implement descriptor-backed row-scalar projection execution using
   descriptor-built SQLite expressions.
-- [ ] Add runtime and parser tests under `packages/libmylite/tests/`.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
+- [x] Add runtime and parser tests under `packages/libmylite/tests/`.
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
   support wording.
-- [ ] Register any new runtime test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime/MySQL expectation verification.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote
+- [x] Register any new runtime test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused parser/runtime/MySQL expectation verification.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote
   `main`.

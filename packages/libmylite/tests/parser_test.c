@@ -61,6 +61,7 @@ static int test_rounding_functions(void);
 static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
+static int test_hex_function(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
 static int test_string_slice_functions(void);
@@ -326,6 +327,7 @@ int main(void) {
     failures += test_base_conversion_functions();
     failures += test_bit_count_function();
     failures += test_numeric_format_truncate_crc32_functions();
+    failures += test_hex_function();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
     failures += test_string_slice_functions();
@@ -3262,6 +3264,88 @@ static int test_numeric_format_truncate_crc32_functions(void) {
     select = child_at(result.root, 0U);
     failures +=
         expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "numeric function identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_hex_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT HEX('abc'), HEX(X'0061'), HEX(-1), HEX(v) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_HEX_FUNCTION, "hex string function");
+    failures += expect_span_text(expression, "HEX('abc')", "hex string span");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "hex string");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_HEX_FUNCTION, "hex binary function");
+    failures += expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_HEX, "hex literal");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_HEX_FUNCTION, "hex signed function");
+    failures += expect_operator(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "hex negative argument"
+    );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_HEX_FUNCTION, "hex column function");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "hex column");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "hex from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT HEX ('a'), (HEX(255)) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_HEX_FUNCTION, "spaced hex");
+    failures += expect_span_text(expression, "HEX ('a')", "spaced hex span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized hex");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_HEX_FUNCTION, "wrapped hex");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT HEX();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR,
+        "empty hex argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT HEX('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR,
+        "two hex argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO HEX('abc'), HEX(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "hex do");
+    failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_HEX_FUNCTION, "do hex");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_HEX_FUNCTION, "do null hex");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE hex_names (hex INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "hex identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

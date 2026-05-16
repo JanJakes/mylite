@@ -22,6 +22,7 @@ enum {
     show_columns_field_count = 6,
     numbers_column_count = 5,
     numbers_after_added_column_count = 6,
+    temporal_positioned_column_count = 5,
     row_count_text_capacity = 32,
     physical_drop_sql_capacity = 256,
     mysql_error_parse = 1064,
@@ -35,8 +36,8 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_invalid_default = 1067,
+    mysql_error_invalid_use_of_null = 1138,
     mysql_error_data_out_of_range = 1264,
-    mysql_error_data_truncated = 1265,
 };
 
 struct expected_sql_error {
@@ -136,6 +137,62 @@ static int test_change_column_success_persistence_and_dml(void) {
         "  `b` bigint DEFAULT NULL,\n"
         "  `bu` bigint unsigned DEFAULT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const temporal_position_columns[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "n",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "dt_ts",
+        "timestamp",
+        "YES",
+        "",
+        NULL,
+        "",
+        "tail",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "ts_auto",
+        "timestamp",
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+    };
+    static const char *const temporal_position_ordinals[] = {
+        "id",
+        "1",
+        "n",
+        "2",
+        "dt_ts",
+        "3",
+        "tail",
+        "4",
+        "ts_auto",
+        "5",
+    };
+    static const char *const temporal_position_rows[] = {
+        "1",
+        "10",
+        "2020-01-01 01:02:03",
+        "99",
+        "2020-01-01 01:02:03",
+        "2",
+        "20",
+        "2021-02-03 04:05:06",
+        "88",
+        NULL,
     };
     static const char *const nullability_only_columns[] = {"c", "int", "YES", "", NULL, ""};
     static const char *const case_column_rows[] = {"mixed", "int", "YES", "", NULL, ""};
@@ -319,6 +376,68 @@ static int test_change_column_success_persistence_and_dml(void) {
             .context = "show create after change",
         }
     );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE temporal_positioned ("
+        "id INT NOT NULL, n INT, dt DATETIME NULL, ts TIMESTAMP NULL, tail INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO temporal_positioned VALUES "
+        "(1, 10, '2020-01-01 01:02:03', '2020-01-01 01:02:03', 99), "
+        "(2, 20, '2021-02-03 04:05:06', NULL, 88)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE temporal_positioned CHANGE ts ts_auto TIMESTAMP NULL "
+        "DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER tail",
+        0
+    );
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE temporal_positioned CHANGE dt dt_ts TIMESTAMP NULL AFTER n",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM temporal_positioned",
+            .values = temporal_position_columns,
+            .column_count = show_columns_field_count,
+            .row_count = temporal_positioned_column_count,
+            .context = "show columns after change temporal positioning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'temporal_positioned' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = temporal_position_ordinals,
+            .column_count = 2U,
+            .row_count = temporal_positioned_column_count,
+            .context = "information schema ordinals after change temporal positioning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM temporal_positioned ORDER BY id",
+            .values = temporal_position_rows,
+            .column_count = temporal_positioned_column_count,
+            .row_count = 2U,
+            .context = "rows after change temporal positioning",
+        }
+    );
+
     failures += expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
@@ -678,9 +797,9 @@ static int test_change_column_diagnostics_and_rollback(void) {
         database,
         "ALTER TABLE numbers CHANGE n changed BIGINT NOT NULL",
         (struct expected_sql_error){
-            .code = mysql_error_data_truncated,
-            .sqlstate = "01000",
-            .message_part = "Data truncated for column 'changed' at row 1",
+            .code = mysql_error_invalid_use_of_null,
+            .sqlstate = "22004",
+            .message_part = "Invalid use of NULL value",
         }
     );
     failures += expect_query_values(
@@ -774,11 +893,11 @@ static int test_change_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers CHANGE n changed BIGINT FIRST",
+        "ALTER TABLE numbers CHANGE n changed BIGINT AFTER n",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'n' in 'numbers'",
         }
     );
     failures += execute_error(
@@ -796,7 +915,8 @@ static int test_change_column_diagnostics_and_rollback(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE CHANGE COLUMN supports only baseline integer columns",
+            .message_part = "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, "
+                            "and temporal columns",
         }
     );
     failures += execute_error(

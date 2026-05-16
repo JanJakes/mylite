@@ -33,8 +33,8 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_invalid_default = 1067,
+    mysql_error_invalid_use_of_null = 1138,
     mysql_error_data_out_of_range = 1264,
-    mysql_error_data_truncated = 1265,
 };
 
 struct expected_sql_error {
@@ -138,6 +138,49 @@ static int test_modify_column_success_persistence_and_dml(void) {
         "  `n` int DEFAULT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const positioned_columns[] = {
+        "c", "int", "YES", "", NULL, "", "id", "int",    "NO",  "", NULL, "",
+        "b", "int", "YES", "", NULL, "", "a",  "bigint", "YES", "", NULL, "",
+    };
+    static const char *const positioned_ordinals[] = {
+        "c",
+        "1",
+        "id",
+        "2",
+        "b",
+        "3",
+        "a",
+        "4",
+    };
+    static const char *const positioned_rows[] = {"4", "1", "3", "2", "8", "5", "7", "6"};
+    static const char *const modify_temporal_columns[] = {
+        "dt",
+        "datetime",
+        "YES",
+        "",
+        NULL,
+        "on update CURRENT_TIMESTAMP",
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "ts",
+        "datetime",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const modify_temporal_rows[] = {
+        "2020-01-01 01:02:03",
+        "1",
+        "2020-01-01 01:02:03",
+        "2021-02-03 04:05:06",
+        "2",
+        NULL,
+    };
     static const char *const case_column_rows[] = {"mixed", "int", "YES", "", NULL, ""};
     static const char *const persisted_rows[] = {"1", "2", "2", "6", "3", "4"};
     static const char *const renamed_rows[] = {"9"};
@@ -216,6 +259,99 @@ static int test_modify_column_success_persistence_and_dml(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "show create after modify",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE positioned (id INT NOT NULL, a INT, b INT, c INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO positioned VALUES (1, 2, 3, 4), (5, 6, 7, 8)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_modify_ok(database, "ALTER TABLE positioned MODIFY c INT FIRST", 0);
+    failures += expect_modify_ok(database, "ALTER TABLE positioned MODIFY a BIGINT AFTER b", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM positioned",
+            .values = positioned_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 4U,
+            .context = "show columns after modify positioning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'positioned' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = positioned_ordinals,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "information schema ordinals after modify positioning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM positioned ORDER BY id",
+            .values = positioned_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "select star after modify positioning",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE modify_temporal (id INT, dt DATETIME NULL, ts TIMESTAMP NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO modify_temporal VALUES "
+        "(1, '2020-01-01 01:02:03', '2020-01-01 01:02:03'), "
+        "(2, '2021-02-03 04:05:06', NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_modify_ok(
+        database,
+        "ALTER TABLE modify_temporal MODIFY dt DATETIME NULL ON UPDATE CURRENT_TIMESTAMP FIRST",
+        0
+    );
+    failures += expect_modify_ok(
+        database,
+        "ALTER TABLE modify_temporal MODIFY ts DATETIME NULL AFTER id",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM modify_temporal",
+            .values = modify_temporal_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 3U,
+            .context = "show columns after modify temporal positioning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM modify_temporal ORDER BY id",
+            .values = modify_temporal_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows after modify temporal positioning",
         }
     );
 
@@ -478,9 +614,9 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         database,
         "ALTER TABLE numbers MODIFY n BIGINT NOT NULL",
         (struct expected_sql_error){
-            .code = mysql_error_data_truncated,
-            .sqlstate = "01000",
-            .message_part = "Data truncated for column 'n' at row 1",
+            .code = mysql_error_invalid_use_of_null,
+            .sqlstate = "22004",
+            .message_part = "Invalid use of NULL value",
         }
     );
     failures += expect_query_values(
@@ -556,11 +692,11 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT FIRST",
+        "ALTER TABLE numbers MODIFY n BIGINT AFTER n",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'n' in 'numbers'",
         }
     );
     failures += execute_error(
@@ -578,7 +714,8 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer columns",
+            .message_part = "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, "
+                            "and temporal columns",
         }
     );
     failures += execute_error(

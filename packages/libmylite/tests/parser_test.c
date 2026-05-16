@@ -93,6 +93,8 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_alter_table_column_position_statements(void);
+static int test_column_position_nonreserved_identifier_statements(void);
 static int test_column_charset_collation_attribute_statements(void);
 static int test_empty_insert_values_statements(void);
 static int test_table_maintenance_statements(void);
@@ -355,6 +357,8 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_alter_table_column_position_statements();
+    failures += test_column_position_nonreserved_identifier_statements();
     failures += test_column_charset_collation_attribute_statements();
     failures += test_empty_insert_values_statements();
     failures += test_table_maintenance_statements();
@@ -8527,6 +8531,143 @@ static int test_table_lifecycle_statements(void) {
         "amount",
         "second projection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_column_position_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *position = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle MODIFY old_col BIGINT FIRST;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "alter table modify column first statement"
+    );
+    failures += expect_child_count(statement, 3U, "alter modify first child count");
+    position = child_at(statement, 2U);
+    failures +=
+        expect_node(position, MYLITE_SQL_AST_COLUMN_POSITION_FIRST, "alter modify first position");
+    failures += expect_child_count(position, 0U, "alter modify first position child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle MODIFY old_col BIGINT AFTER other_col;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "alter table modify column after statement"
+    );
+    failures += expect_child_count(statement, 3U, "alter modify after child count");
+    position = child_at(statement, 2U);
+    failures +=
+        expect_node(position, MYLITE_SQL_AST_COLUMN_POSITION_AFTER, "alter modify after position");
+    failures += expect_child_count(position, 1U, "alter modify after position child count");
+    failures +=
+        expect_span_text(child_at(position, 0U), "other_col", "alter modify after column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle CHANGE old_col new_col BIGINT FIRST;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT,
+        "alter table change column first statement"
+    );
+    failures += expect_child_count(statement, 4U, "alter change first child count");
+    position = child_at(statement, 3U);
+    failures +=
+        expect_node(position, MYLITE_SQL_AST_COLUMN_POSITION_FIRST, "alter change first position");
+    failures += expect_child_count(position, 0U, "alter change first position child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle CHANGE old_col new_col BIGINT AFTER other_col;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT,
+        "alter table change column after statement"
+    );
+    failures += expect_child_count(statement, 4U, "alter change after child count");
+    position = child_at(statement, 3U);
+    failures +=
+        expect_node(position, MYLITE_SQL_AST_COLUMN_POSITION_AFTER, "alter change after position");
+    failures += expect_child_count(position, 1U, "alter change after position child count");
+    failures +=
+        expect_span_text(child_at(position, 0U), "other_col", "alter change after column name");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_column_position_nonreserved_identifier_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *position = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("CREATE TABLE first (after INT, first INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_span_text(child_at(statement, 0U), "first", "first table identifier");
+    failures +=
+        expect_span_text(child_at(child_at(columns, 0U), 0U), "after", "after column identifier");
+    failures +=
+        expect_span_text(child_at(child_at(columns, 1U), 0U), "first", "first column identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE first MODIFY first BIGINT AFTER after;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    position = child_at(statement, 2U);
+    failures += expect_span_text(
+        child_at(child_at(statement, 1U), 0U),
+        "first",
+        "modify first target identifier"
+    );
+    failures += expect_span_text(child_at(position, 0U), "after", "modify after target identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE first CHANGE after first BIGINT AFTER after;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    position = child_at(statement, 3U);
+    failures += expect_span_text(child_at(statement, 1U), "after", "change after old identifier");
+    failures += expect_span_text(
+        child_at(child_at(statement, 2U), 0U),
+        "first",
+        "change first new identifier"
+    );
+    failures += expect_span_text(child_at(position, 0U), "after", "change after target identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -18488,14 +18629,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name MODIFY old_col BIGINT FIRST;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name MODIFY old_col BIGINT AFTER other_col;",
+        "ALTER TABLE old_name MODIFY old_col BIGINT AFTER old_name.other_col;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -18551,14 +18685,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name CHANGE old_col new_col BIGINT FIRST;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name CHANGE old_col new_col BIGINT AFTER other_col;",
+        "ALTER TABLE old_name CHANGE old_col new_col BIGINT AFTER old_name.other_col;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

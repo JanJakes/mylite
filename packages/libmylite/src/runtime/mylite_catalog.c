@@ -90,6 +90,19 @@ enum catalog_column_replace_bind_index {
     catalog_column_replace_column_id_bind = 15,
 };
 
+enum catalog_column_reorder_offset_bind_index {
+    catalog_column_reorder_offset_bind = 1,
+    catalog_column_reorder_offset_table_id_bind = 2,
+};
+
+enum catalog_column_reorder_bind_index {
+    catalog_column_reorder_ordinal_bind = 1,
+    catalog_column_reorder_version_increment_bind = 2,
+    catalog_column_reorder_generation_bind = 3,
+    catalog_column_reorder_table_id_bind = 4,
+    catalog_column_reorder_column_id_bind = 5,
+};
+
 enum catalog_index_insert_bind_index {
     catalog_index_insert_index_id_bind = 1,
     catalog_index_insert_table_id_bind = 2,
@@ -351,6 +364,16 @@ static int bind_catalog_column_replace_values(
     const struct catalog_column_values *values,
     uint64_t generation
 );
+static int offset_catalog_column_ordinals_for_reorder(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_reorder *reorder
+);
+static int apply_catalog_column_reorder(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_column_reorder *reorder,
+    size_t column_index
+);
 static int step_done(sqlite3_stmt *statement);
 static int require_changed_row(sqlite3 *sqlite);
 static int finalize_statement(sqlite3_stmt *statement, int rc);
@@ -559,6 +582,9 @@ static bool catalog_logical_type_equals(const char *logical_type, const char *ex
 static int validate_catalog_bool_i64(int64_t value, bool *out_bool);
 static int validate_index_kind(enum mylite_catalog_index_kind kind);
 static int validate_active_mutation(const struct mylite_catalog_mutation *mutation);
+static int validate_catalog_column_reorder_request(
+    const struct mylite_catalog_column_reorder *reorder
+);
 static int validate_positive_id(int64_t id);
 static int validate_positive_ordinal(int64_t ordinal_position);
 static int validate_generation(uint64_t generation);
@@ -2583,6 +2609,148 @@ int mylite_catalog_replace_column_in_mutation(
     }
 
     return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_reorder_columns_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_column_reorder *reorder
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_catalog_column_reorder_request(reorder);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = offset_catalog_column_ordinals_for_reorder(database, reorder);
+    for (size_t index = 0U; rc == MYLITE_OK && index < reorder->column_count; ++index) {
+        rc = apply_catalog_column_reorder(database, mutation, reorder, index);
+    }
+
+    return rc;
+}
+
+static int offset_catalog_column_ordinals_for_reorder(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_reorder *reorder
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_columns "
+        "SET ordinal_position = ordinal_position + ?1 WHERE table_id = ?2",
+        &statement
+    );
+
+    if (rc == MYLITE_OK) {
+        rc =
+            bind_i64(statement, catalog_column_reorder_offset_bind, (int64_t)reorder->column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_reorder_offset_table_id_bind, reorder->table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK &&
+        sqlite3_changes64(database->sqlite) != (sqlite3_int64)reorder->column_count) {
+        rc = MYLITE_ERROR;
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int apply_catalog_column_reorder(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_column_reorder *reorder,
+    size_t column_index
+) {
+    const struct mylite_catalog_column_descriptor *column = &reorder->columns[column_index];
+    int64_t final_ordinal = (int64_t)column_index + 1;
+    bool ordinal_changed = column->ordinal_position != final_ordinal;
+    int64_t increment_descriptor_version =
+        (ordinal_changed && column->column_id != reorder->metadata_replaced_column_id) ? 1 : 0;
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (column->table_id != reorder->table_id) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_positive_id(column->column_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_ordinal(final_ordinal);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_columns "
+        "SET ordinal_position = ?1, "
+        "descriptor_version = descriptor_version + ?2, "
+        "updated_catalog_generation = CASE WHEN ?2 <> 0 THEN ?3 "
+        "ELSE updated_catalog_generation END "
+        "WHERE table_id = ?4 AND column_id = ?5",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_reorder_ordinal_bind, final_ordinal);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_column_reorder_version_increment_bind,
+            increment_descriptor_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, catalog_column_reorder_generation_bind, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_reorder_table_id_bind, reorder->table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_reorder_column_id_bind, column->column_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int validate_catalog_column_reorder_request(
+    const struct mylite_catalog_column_reorder *reorder
+) {
+    int rc = MYLITE_OK;
+
+    if (reorder == NULL || reorder->columns == NULL || reorder->column_count == 0U ||
+        reorder->column_count > (size_t)(INT64_MAX / 2)) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_positive_id(reorder->table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(reorder->metadata_replaced_column_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return MYLITE_OK;
 }
 
 int mylite_catalog_set_column_visibility_in_mutation(

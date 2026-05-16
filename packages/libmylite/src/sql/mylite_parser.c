@@ -2360,12 +2360,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_sta
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *column
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_ast_node *position
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (column != NULL) {
+    if (position != NULL) {
+        span = span_join(span, position->span);
+    } else if (column != NULL) {
         span = span_join(span, column->span);
     } else if (table_name != NULL) {
         span = span_join(span, table_name->span);
@@ -2378,6 +2381,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_sta
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, column);
+    if (position != NULL) {
+        mylite_sql_ast_node_append_child(statement, position);
+    }
     return statement;
 }
 
@@ -2386,12 +2392,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_sta
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_column_name,
-    struct mylite_sql_ast_node *column
+    struct mylite_sql_ast_node *column,
+    struct mylite_sql_ast_node *position
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (column != NULL) {
+    if (position != NULL) {
+        span = span_join(span, position->span);
+    } else if (column != NULL) {
         span = span_join(span, column->span);
     } else if (old_column_name != NULL) {
         span = span_join(span, old_column_name->span);
@@ -2407,7 +2416,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_sta
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, old_column_name);
     mylite_sql_ast_node_append_child(statement, column);
+    if (position != NULL) {
+        mylite_sql_ast_node_append_child(statement, position);
+    }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_position_first(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token
+) {
+    return make_node(state, MYLITE_SQL_AST_COLUMN_POSITION_FIRST, span_from_token(&first_token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_position_after(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token after_token,
+    struct mylite_sql_ast_node *column_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&after_token);
+    struct mylite_sql_ast_node *position = NULL;
+
+    if (column_name != NULL) {
+        span = span_join(span, column_name->span);
+    }
+
+    position = make_node(state, MYLITE_SQL_AST_COLUMN_POSITION_AFTER, span);
+    if (position == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(position, column_name);
+    return position;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_set_default_statement(
@@ -5927,9 +5967,11 @@ static bool map_keyword_token(
         {"SESSION_USER", MYLITE_SQL_PARSE_SESSION_USER},
         {"RENAME", MYLITE_SQL_PARSE_RENAME},
         {"ADD", MYLITE_SQL_PARSE_ADD},
+        {"AFTER", MYLITE_SQL_PARSE_AFTER},
         {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
         {"CHANGE", MYLITE_SQL_PARSE_CHANGE},
         {"COLUMN", MYLITE_SQL_PARSE_COLUMN},
+        {"FIRST", MYLITE_SQL_PARSE_FIRST},
         {"FOR", MYLITE_SQL_PARSE_FOR},
         {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},

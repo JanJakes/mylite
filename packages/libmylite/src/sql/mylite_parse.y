@@ -1210,13 +1210,25 @@ alter_table_rename_column_statement(A) ::=
 }
 
 alter_table_modify_column_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) MODIFY column_keyword_opt column_definition(C). {
-    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, T, C);
+    ALTER(A1) TABLE table_name(T) MODIFY column_keyword_opt column_definition(C)
+    column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, T, C, P);
 }
 
 alter_table_change_column_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) CHANGE column_keyword_opt identifier(O) column_definition(C). {
-    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C);
+    ALTER(A1) TABLE table_name(T) CHANGE column_keyword_opt identifier(O) column_definition(C)
+    column_position_opt(P). {
+    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C, P);
+}
+
+column_position_opt(A) ::= . {
+    A = NULL;
+}
+column_position_opt(A) ::= FIRST(T). {
+    A = mylite_sql_parser_make_column_position_first(state, T);
+}
+column_position_opt(A) ::= AFTER(T) identifier(C). {
+    A = mylite_sql_parser_make_column_position_after(state, T, C);
 }
 
 alter_table_set_default_statement(A) ::=
@@ -3846,6 +3858,12 @@ identifier(A) ::= TABLES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TEMPORARY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= AFTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FIRST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TEXT(T). {

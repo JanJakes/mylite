@@ -445,6 +445,19 @@ int mylite_catalog_replace_column_in_mutation(
     const char *character_set_name,
     const char *collation_name
 );
+
+struct mylite_catalog_column_reorder {
+    int64_t table_id;
+    const struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+    int64_t metadata_replaced_column_id;
+};
+
+int mylite_catalog_reorder_columns_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct mylite_catalog_column_reorder *reorder
+);
 int mylite_catalog_set_column_visibility_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

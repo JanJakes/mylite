@@ -1792,6 +1792,11 @@ struct planned_alter_table_modify_column {
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     size_t column_index;
+    size_t target_column_index;
+    bool has_position;
+    bool position_first;
+    bool changes_position;
+    char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool is_noop;
     bool is_metadata_only;
     bool checks_duplicate_replacement;
@@ -8484,6 +8489,11 @@ static int plan_alter_table_change_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 );
+static int plan_alter_table_modify_column_position(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_modify_column *out_plan
+);
 static int plan_alter_table_set_default(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8597,10 +8607,20 @@ static int resolve_alter_table_column_replacement_plan(
     struct mylite_db *database,
     struct planned_alter_table_modify_column *out_plan
 );
+static int resolve_alter_table_modify_column_position(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+);
 static int complete_alter_table_modify_column_plan(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     struct planned_alter_table_modify_column *out_plan
+);
+static bool modify_column_temporal_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
 );
 static bool modify_column_definition_matches(
     const struct mylite_catalog_column_descriptor *original_column,
@@ -17369,6 +17389,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_POSITION_FIRST:
+    case MYLITE_SQL_AST_COLUMN_POSITION_AFTER:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
@@ -30053,6 +30075,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
     case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_COLUMN_POSITION_FIRST:
+    case MYLITE_SQL_AST_COLUMN_POSITION_AFTER:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_VARCHAR_TYPE:
     case MYLITE_SQL_AST_CHAR_TYPE:
@@ -41522,7 +41546,8 @@ static int plan_alter_table_modify_column(
     out_plan->rowid_alias_message =
         "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias";
     out_plan->integer_support_message =
-        "ALTER TABLE MODIFY COLUMN supports only baseline integer columns";
+        "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, and temporal "
+        "columns";
     out_plan->unsupported_primary_key_message =
         "ALTER TABLE MODIFY COLUMN does not yet support primary-key tables";
     out_plan->unsupported_secondary_index_message =
@@ -41557,6 +41582,9 @@ static int plan_alter_table_modify_column(
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
+        rc = plan_alter_table_modify_column_position(database, child_at(statement, 2U), out_plan);
+    }
+    if (rc == MYLITE_OK) {
         memcpy(
             out_plan->lookup_column_name,
             out_plan->column.name,
@@ -41585,7 +41613,8 @@ static int plan_alter_table_change_column(
     out_plan->rowid_alias_message =
         "ALTER TABLE CHANGE COLUMN requires an unshadowed SQLite rowid alias";
     out_plan->integer_support_message =
-        "ALTER TABLE CHANGE COLUMN supports only baseline integer columns";
+        "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, and temporal "
+        "columns";
     out_plan->unsupported_primary_key_message =
         "ALTER TABLE CHANGE COLUMN does not yet support primary-key tables";
     out_plan->unsupported_secondary_index_message =
@@ -41632,6 +41661,9 @@ static int plan_alter_table_change_column(
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
+        rc = plan_alter_table_modify_column_position(database, child_at(statement, 3U), out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = resolve_alter_table_column_replacement_plan(database, out_plan);
     }
     if (rc != MYLITE_OK) {
@@ -41639,6 +41671,41 @@ static int plan_alter_table_change_column(
     }
 
     return rc;
+}
+
+static int plan_alter_table_modify_column_position(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    if (position == NULL) {
+        return MYLITE_OK;
+    }
+
+    out_plan->has_position = true;
+    if (position->kind == MYLITE_SQL_AST_COLUMN_POSITION_FIRST) {
+        out_plan->position_first = true;
+        return MYLITE_OK;
+    }
+    if (position->kind != MYLITE_SQL_AST_COLUMN_POSITION_AFTER) {
+        set_runtime_error(database, "invalid ALTER TABLE column position");
+        return MYLITE_ERROR;
+    }
+
+    if (copy_identifier_text(
+            child_at(position, 0U),
+            out_plan->after_column_name,
+            sizeof(out_plan->after_column_name),
+            database
+        ) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    if (mylite_catalog_name_is_reserved(out_plan->after_column_name)) {
+        set_reserved_name_error(database, "column", out_plan->after_column_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_alter_table_set_default(
@@ -42547,12 +42614,53 @@ static int resolve_alter_table_column_replacement_plan(
         out_plan->original_column = columns[column_index];
         out_plan->column_index = column_index;
         out_plan->column_count = column_count;
+        rc = resolve_alter_table_modify_column_position(database, columns, column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
     }
 
     free(columns);
 
     return rc;
+}
+
+static int resolve_alter_table_modify_column_position(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    size_t after_column_index = 0U;
+    int rc = MYLITE_OK;
+
+    out_plan->target_column_index = out_plan->column_index;
+    if (!out_plan->has_position) {
+        return MYLITE_OK;
+    }
+    if (out_plan->position_first) {
+        out_plan->target_column_index = 0U;
+        out_plan->changes_position = out_plan->target_column_index != out_plan->column_index;
+        return MYLITE_OK;
+    }
+
+    rc = find_column_index(columns, column_count, out_plan->after_column_name, &after_column_index);
+    if (rc != MYLITE_OK || after_column_index == out_plan->column_index) {
+        set_unknown_column_in_table_error(
+            database,
+            out_plan->after_column_name,
+            out_plan->table.name
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (after_column_index < out_plan->column_index) {
+        out_plan->target_column_index = after_column_index + 1U;
+    } else {
+        out_plan->target_column_index = after_column_index;
+    }
+    out_plan->changes_position = out_plan->target_column_index != out_plan->column_index;
+    return MYLITE_OK;
 }
 
 static int complete_alter_table_modify_column_plan(
@@ -42564,9 +42672,11 @@ static int complete_alter_table_modify_column_plan(
         &out_plan->original_column,
         &out_plan->column
     );
+    bool supports_temporal_replacement =
+        modify_column_temporal_replacement_supported(&out_plan->original_column, &out_plan->column);
     int rc = MYLITE_OK;
 
-    if (!supports_char_varchar_replacement &&
+    if (!supports_char_varchar_replacement && !supports_temporal_replacement &&
         (column_descriptor_is_string_family(&out_plan->original_column) ||
          column_descriptor_is_json(&out_plan->original_column) ||
          column_descriptor_is_bit(&out_plan->original_column) ||
@@ -42593,6 +42703,9 @@ static int complete_alter_table_modify_column_plan(
     }
     if (modify_column_definition_matches(&out_plan->original_column, &out_plan->column)) {
         if (modify_column_name_matches(&out_plan->original_column, &out_plan->column)) {
+            if (out_plan->changes_position) {
+                goto rebuild_column;
+            }
             if (out_plan->original_column.is_visible) {
                 out_plan->is_noop = true;
             } else {
@@ -42600,14 +42713,19 @@ static int complete_alter_table_modify_column_plan(
             }
             return MYLITE_OK;
         }
+        if (out_plan->changes_position) {
+            goto rebuild_column;
+        }
         out_plan->is_metadata_only = true;
         return MYLITE_OK;
     }
-    if (modify_column_metadata_only_replacement(&out_plan->original_column, &out_plan->column)) {
+    if (!out_plan->changes_position &&
+        modify_column_metadata_only_replacement(&out_plan->original_column, &out_plan->column)) {
         out_plan->is_metadata_only = true;
         return MYLITE_OK;
     }
 
+rebuild_column:
     if (!modify_column_type_matches(&out_plan->original_column, &out_plan->column)) {
         out_plan->reports_rebuild_row_count = true;
     }
@@ -42766,6 +42884,16 @@ static int alter_table_modify_column_from_plan(
             plan->column.collation_name
         );
     }
+    if (rc == MYLITE_OK && plan->changes_position) {
+        const struct mylite_catalog_column_reorder reorder = {
+            .table_id = plan->table.table_id,
+            .columns = plan->columns,
+            .column_count = plan->column_count,
+            .metadata_replaced_column_id = plan->original_column.column_id,
+        };
+
+        rc = mylite_catalog_reorder_columns_in_mutation(database, &mutation, &reorder);
+    }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
         if (!modify_column_name_matches(&plan->original_column, &plan->column)) {
             struct planned_alter_table_rename_column rename_plan = {
@@ -42831,10 +42959,31 @@ static int collect_modify_column_rebuild_columns(
         return MYLITE_NOMEM;
     }
 
-    for (size_t index = 0U; index < column_count; ++index) {
-        rebuild_columns[index] = columns[index];
-        if (index == out_plan->column_index) {
-            make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+    if (!out_plan->changes_position) {
+        for (size_t index = 0U; index < column_count; ++index) {
+            rebuild_columns[index] = columns[index];
+            if (index == out_plan->column_index) {
+                make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+            }
+        }
+    } else {
+        size_t source_index = 0U;
+
+        for (size_t index = 0U; index < column_count; ++index) {
+            if (index == out_plan->target_column_index) {
+                make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+            } else {
+                while (source_index < column_count && source_index == out_plan->column_index) {
+                    ++source_index;
+                }
+                if (source_index >= column_count) {
+                    free(rebuild_columns);
+                    set_runtime_error(database, "failed to plan column reorder");
+                    return MYLITE_ERROR;
+                }
+                rebuild_columns[index] = columns[source_index];
+                ++source_index;
+            }
         }
     }
 
@@ -42870,7 +43019,7 @@ static int validate_modify_column_existing_rows(
         ++row_number;
         if (sqlite_type == SQLITE_NULL) {
             if (!target_column.is_nullable) {
-                set_data_truncated_error(database, target_column.name, row_number);
+                set_invalid_use_of_null_error(database);
                 rc = MYLITE_ERROR;
             }
         } else if (sqlite_type == SQLITE_INTEGER) {
@@ -42977,6 +43126,20 @@ static int validate_existing_text_for_column(
             }
         );
     }
+    if (column_descriptor_is_datetime(column)) {
+        if (predicate_datetime_text_admitted(database, (const char *)text, (size_t)byte_count)) {
+            return MYLITE_OK;
+        }
+        set_incorrect_datetime_value_error(database, (const char *)text, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_timestamp(column)) {
+        if (predicate_timestamp_text_admitted(database, (const char *)text, (size_t)byte_count)) {
+            return MYLITE_OK;
+        }
+        set_incorrect_datetime_value_error(database, (const char *)text, column->name, row_number);
+        return MYLITE_ERROR;
+    }
 
     set_physical_sqlite_row_error(database);
     return MYLITE_ERROR;
@@ -43009,6 +43172,18 @@ static void make_modify_target_descriptor(
         sizeof(out_column->default_text),
         "%s",
         plan->column.default_text
+    );
+    snprintf(
+        out_column->character_set_name,
+        sizeof(out_column->character_set_name),
+        "%s",
+        plan->column.character_set_name
+    );
+    snprintf(
+        out_column->collation_name,
+        sizeof(out_column->collation_name),
+        "%s",
+        plan->column.collation_name
     );
 }
 
@@ -72438,6 +72613,18 @@ static bool modify_column_char_varchar_replacement_supported(
             planned_column_is_char_or_varchar(replacement_column)) != 0;
 }
 
+static bool modify_column_temporal_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    bool original_is_temporal = (column_descriptor_is_datetime(original_column) ||
+                                 column_descriptor_is_timestamp(original_column)) != 0;
+    bool replacement_is_temporal = (planned_column_is_datetime(replacement_column) ||
+                                    planned_column_is_timestamp(replacement_column)) != 0;
+
+    return (original_is_temporal && replacement_is_temporal) != 0;
+}
+
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node) {
     return mylite_sql_ast_node_nullability(nullability_node) != MYLITE_SQL_AST_NULLABILITY_NOT_NULL;
 }
@@ -88227,7 +88414,7 @@ static int build_alter_table_modify_copy_sql(
          ++column_index) {
         const char *source_name = plan->columns[column_index].name;
 
-        if (column_index == plan->column_index) {
+        if (plan->columns[column_index].column_id == plan->original_column.column_id) {
             source_name = plan->original_column.name;
         }
         if (column_index != 0U) {

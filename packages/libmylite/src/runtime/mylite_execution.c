@@ -72,6 +72,8 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
+    mysql_error_wrong_usage = 1221,
+    mysql_error_fulltext_column = 1283,
     mysql_error_json_used_as_key = 3152,
     mysql_error_primary_key_part_null = 1171,
     mysql_error_key_does_not_exist = 1176,
@@ -104,6 +106,7 @@ enum {
     mysql_error_data_too_long = 1406,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
+    mysql_error_temporary_fulltext_index = 1796,
     mysql_error_key_part_length_cannot_be_zero = 1391,
     mysql_error_decimal_scale_too_big = 1425,
     mysql_error_decimal_precision_too_big = 1426,
@@ -174,6 +177,12 @@ enum {
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    index_display_group_primary = 0,
+    index_display_group_not_null_unique = 1,
+    index_display_group_nullable_unique = 2,
+    index_display_group_secondary = 3,
+    index_display_group_fulltext = 4,
+    index_display_group_unknown = 5,
     select_source_alias_capacity = sizeof("_mylite_s") + integer_text_capacity,
     update_unique_internal_key_alias_capacity = sizeof("_mylite_key_") + integer_text_capacity,
     duplicate_key_value_display_length = 64,
@@ -1446,7 +1455,13 @@ struct planned_secondary_index {
     size_t part_capacity;
     int64_t index_id;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    enum mylite_catalog_index_kind kind;
     bool is_unique;
+};
+
+struct secondary_index_part_nodes {
+    const struct mylite_sql_ast_node *prefix_node;
+    const struct mylite_sql_ast_node *direction_node;
 };
 
 struct planned_primary_key_part {
@@ -7932,6 +7947,7 @@ static int append_temporary_secondary_index_descriptor(
     struct temporary_index_descriptor_positions *positions
 );
 static bool planned_create_table_has_auto_increment(const struct planned_create_table *plan);
+static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan);
 static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
@@ -8346,6 +8362,7 @@ static int rename_index_from_plan(
     struct mylite_db *database,
     const struct planned_rename_index *plan
 );
+static bool loaded_index_kind_is_secondary_or_fulltext(enum mylite_catalog_index_kind kind);
 static int plan_alter_table_add_check(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -11916,6 +11933,7 @@ static int apply_create_table_secondary_index_definition(
     struct mylite_db *database,
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *secondary_index,
+    enum mylite_catalog_index_kind index_kind,
     bool is_unique
 );
 static int apply_create_table_foreign_key_definitions(
@@ -12272,6 +12290,27 @@ static int validate_secondary_index_column(
     struct mylite_db *database,
     const struct planned_column *column
 );
+static int validate_fulltext_index_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
+static int validate_fulltext_string_key_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
+static bool planned_secondary_index_is_fulltext(const struct planned_secondary_index *index);
+static const char *planned_secondary_index_unqualified_column_message(
+    const struct planned_secondary_index *index
+);
+static int validate_planned_secondary_index_part(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index *index,
+    size_t column_index,
+    const char *column_name,
+    struct secondary_index_part_nodes nodes,
+    int64_t *out_prefix_length
+);
 static int validate_secondary_index_prefix_for_planned_column(
     struct mylite_db *database,
     const struct planned_column *column,
@@ -12317,6 +12356,9 @@ static const struct mylite_sql_ast_node *secondary_index_part_column_node(
     const struct mylite_sql_ast_node *part
 );
 static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
+    const struct mylite_sql_ast_node *part
+);
+static const struct mylite_sql_ast_node *secondary_index_part_direction_node(
     const struct mylite_sql_ast_node *part
 );
 static enum mylite_catalog_index_sort_direction index_part_sort_direction(
@@ -13134,6 +13176,10 @@ static bool column_has_composite_unique_secondary_index(
     int64_t column_id
 );
 static bool column_has_nonunique_secondary_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+);
+static bool column_has_first_fulltext_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
@@ -16846,6 +16892,9 @@ static void set_storage_engine_cant_index_column_error(
     struct mylite_db *database,
     const char *column_name
 );
+static void set_fulltext_column_error(struct mylite_db *database, const char *column_name);
+static void set_fulltext_explicit_order_error(struct mylite_db *database);
+static void set_temporary_fulltext_index_error(struct mylite_db *database);
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
 static void set_json_key_error(struct mylite_db *database, const char *column_name);
 static void set_incorrect_prefix_key_error(struct mylite_db *database);
@@ -17492,6 +17541,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
@@ -20180,6 +20230,10 @@ static int execute_create_temporary_table_statement(
     }
 
     rc = plan_create_table(database, statement, &plan);
+    if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan)) {
+        set_temporary_fulltext_index_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc =
             maybe_finish_create_temporary_if_not_exists_noop(database, statement, &plan, &finished);
@@ -24347,15 +24401,21 @@ static int append_information_schema_statistics_base_index_row(
         const struct loaded_index_part *part = &index->parts[part_index];
         char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const bool is_fulltext = index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
         const char *collation =
             part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
                                                                                           : "A";
         const char *prefix_value = NULL;
+        const char *index_type = "BTREE";
 
         if (part->column.is_nullable) {
             nullable = "YES";
         }
-        if (part->index_column.has_prefix_length) {
+        if (is_fulltext) {
+            collation = NULL;
+            index_type = "FULLTEXT";
+        }
+        if (!is_fulltext && part->index_column.has_prefix_length) {
             rc = information_schema_format_i64(
                 database,
                 part->index_column.prefix_length,
@@ -24381,7 +24441,7 @@ static int append_information_schema_statistics_base_index_row(
             prefix_value,
             NULL,
             nullable,
-            "BTREE",
+            index_type,
             "",
             "",
             "YES",
@@ -28933,7 +28993,9 @@ static int execute_show_index_statement(
             set_nomem_error(database);
         }
     }
-    for (int group = 0; rc == MYLITE_OK && group <= 3; ++group) {
+    for (int group = index_display_group_primary;
+         rc == MYLITE_OK && group <= index_display_group_fulltext;
+         ++group) {
         for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
             if (index_display_group(&indexes[index]) != group) {
                 continue;
@@ -29517,7 +29579,9 @@ static int append_show_create_table_indexes(
     size_t appended = 0U;
     int rc = MYLITE_OK;
 
-    for (int group = 0; rc == MYLITE_OK && group <= 3; ++group) {
+    for (int group = index_display_group_primary;
+         rc == MYLITE_OK && group <= index_display_group_fulltext;
+         ++group) {
         for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
             if (index_display_group(&plan->indexes[index]) != group) {
                 continue;
@@ -29689,6 +29753,14 @@ static int append_show_create_table_index(
         } else {
             rc = dynamic_string_append(string, "  KEY ");
         }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " (");
+        }
+    } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        rc = dynamic_string_append(string, "  FULLTEXT KEY ");
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
         }
@@ -29871,20 +29943,23 @@ static int append_show_create_table_index_part(
 
 static int index_display_group(const struct loaded_index_info *index) {
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
-        return 0;
+        return index_display_group_primary;
     }
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY && index->index.is_unique &&
         index->part_count > 0U && !index->parts[0].column.is_nullable) {
-        return 1;
+        return index_display_group_not_null_unique;
     }
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY && index->index.is_unique) {
-        return 2;
+        return index_display_group_nullable_unique;
     }
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
-        return 3;
+        return index_display_group_secondary;
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return index_display_group_fulltext;
     }
 
-    return 4;
+    return index_display_group_unknown;
 }
 
 static int show_create_table_type_text(
@@ -30502,6 +30577,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION:
     case MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST:
     case MYLITE_SQL_AST_SECONDARY_INDEX_PART:
     case MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION:
@@ -30946,6 +31022,7 @@ static int plan_create_table_item(
 
     if (item->kind == MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION ||
+        item->kind == MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION ||
         item->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
         return MYLITE_OK;
@@ -31000,6 +31077,7 @@ static int validate_create_table_item_list(
             item->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION &&
             item->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
+            item->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION &&
             item->kind != MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
             set_parse_error(database, NULL);
@@ -31142,6 +31220,7 @@ static int apply_create_table_inline_unique_indexes(
 
             *index = (struct planned_secondary_index){0};
             snprintf(index->name, sizeof(index->name), "%s", index_name);
+            index->kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
             index->is_unique = true;
             rc = reserve_planned_secondary_index_parts(database, index, 1U);
             if (rc == MYLITE_OK) {
@@ -31178,9 +31257,29 @@ static int apply_create_table_secondary_index_definitions(
     item = child_at(item_list, 0U);
     while (rc == MYLITE_OK && item != NULL) {
         if (item->kind == MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION) {
-            rc = apply_create_table_secondary_index_definition(database, plan, item, false);
+            rc = apply_create_table_secondary_index_definition(
+                database,
+                plan,
+                item,
+                MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+                false
+            );
         } else if (item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION) {
-            rc = apply_create_table_secondary_index_definition(database, plan, item, true);
+            rc = apply_create_table_secondary_index_definition(
+                database,
+                plan,
+                item,
+                MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+                true
+            );
+        } else if (item->kind == MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION) {
+            rc = apply_create_table_secondary_index_definition(
+                database,
+                plan,
+                item,
+                MYLITE_CATALOG_INDEX_KIND_FULLTEXT,
+                false
+            );
         }
         item = item->next_sibling;
     }
@@ -31192,6 +31291,7 @@ static int apply_create_table_secondary_index_definition(
     struct mylite_db *database,
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *secondary_index,
+    enum mylite_catalog_index_kind index_kind,
     bool is_unique
 ) {
     const struct mylite_sql_ast_node *first_child = child_at(secondary_index, 0U);
@@ -31208,7 +31308,8 @@ static int apply_create_table_secondary_index_definition(
 
     if (secondary_index == NULL ||
         (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
-         secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION)) {
+         secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -31228,12 +31329,12 @@ static int apply_create_table_secondary_index_definition(
     first_part = child_at(part_list, 0U);
     first_column = secondary_index_part_column_node(first_part);
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        const char *message = "Secondary indexes support only unqualified key columns";
-
-        if (is_unique) {
-            message = "Unique indexes support only unqualified key columns";
-        }
-        set_unsupported_error(database, message);
+        planned_index.kind = index_kind;
+        planned_index.is_unique = is_unique;
+        set_unsupported_error(
+            database,
+            planned_secondary_index_unqualified_column_message(&planned_index)
+        );
         return MYLITE_ERROR;
     }
 
@@ -31261,6 +31362,7 @@ static int apply_create_table_secondary_index_definition(
         );
     }
     if (rc == MYLITE_OK) {
+        planned_index.kind = index_kind;
         planned_index.is_unique = is_unique;
         snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
     }
@@ -31275,7 +31377,7 @@ static int apply_create_table_secondary_index_definition(
     if (rc == MYLITE_OK && is_unique) {
         rc = validate_planned_unique_index_part_list(database, &planned_index);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !planned_secondary_index_is_fulltext(&planned_index)) {
         rc = validate_planned_secondary_index_key_length(database, plan, &planned_index);
     }
     if (rc == MYLITE_OK) {
@@ -33215,6 +33317,7 @@ static int add_create_table_foreign_key_child_index(
         rc = reserve_planned_secondary_index_parts(database, &index, foreign_key->part_count);
     }
     if (rc == MYLITE_OK) {
+        index.kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
         index.is_unique = false;
     }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
@@ -33341,21 +33444,17 @@ static int append_planned_secondary_index_part(
 ) {
     const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
     const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
+    const struct mylite_sql_ast_node *direction_node = secondary_index_part_direction_node(part);
     enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
+    bool is_fulltext = planned_secondary_index_is_fulltext(index);
+    bool has_prefix_length = false;
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int64_t prefix_length = 0;
     size_t column_index = 0U;
     int rc = MYLITE_OK;
 
     if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        if (index != NULL && index->is_unique) {
-            set_unsupported_error(database, "Unique indexes support only unqualified key columns");
-        } else {
-            set_unsupported_error(
-                database,
-                "Secondary indexes support only unqualified key columns"
-            );
-        }
+        set_unsupported_error(database, planned_secondary_index_unqualified_column_message(index));
         return MYLITE_ERROR;
     }
 
@@ -33378,43 +33477,111 @@ static int append_planned_secondary_index_part(
             return MYLITE_ERROR;
         }
     }
-    if (prefix_node != NULL) {
-        uint64_t key_bytes = 0U;
-
-        rc = parse_secondary_index_part_prefix_length(
+    if (rc == MYLITE_OK) {
+        rc = validate_planned_secondary_index_part(
             database,
-            prefix_node,
+            plan,
+            index,
+            column_index,
             column_name,
+            (struct secondary_index_part_nodes){
+                .prefix_node = prefix_node,
+                .direction_node = direction_node,
+            },
             &prefix_length
         );
-        if (rc == MYLITE_OK) {
-            rc = validate_secondary_index_prefix_for_planned_column(
-                database,
-                &plan->columns[column_index],
-                prefix_length,
-                &key_bytes
-            );
-        }
-        (void)key_bytes;
-    } else if (index->is_unique) {
-        rc = validate_unique_index_column(database, &plan->columns[column_index]);
-    } else {
-        rc = validate_secondary_index_column(database, &plan->columns[column_index]);
     }
     if (rc == MYLITE_OK) {
         rc = reserve_planned_secondary_index_parts(database, index, index->part_count + 1U);
     }
     if (rc == MYLITE_OK) {
+        enum mylite_catalog_index_sort_direction stored_sort_direction = sort_direction;
+        int64_t stored_prefix_length = prefix_length;
+
+        if (is_fulltext) {
+            stored_sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
+            stored_prefix_length = 0;
+        } else if (prefix_node != NULL) {
+            has_prefix_length = true;
+        }
         index->parts[index->part_count] = (struct planned_secondary_index_part){
             .column_index = column_index,
-            .has_prefix_length = prefix_node != NULL,
-            .prefix_length = prefix_length,
-            .sort_direction = sort_direction,
+            .has_prefix_length = has_prefix_length,
+            .prefix_length = stored_prefix_length,
+            .sort_direction = stored_sort_direction,
         };
         ++index->part_count;
     }
 
     return rc;
+}
+
+static const char *planned_secondary_index_unqualified_column_message(
+    const struct planned_secondary_index *index
+) {
+    if (planned_secondary_index_is_fulltext(index)) {
+        return "FULLTEXT indexes support only unqualified key columns";
+    }
+    if (index != NULL && index->is_unique) {
+        return "Unique indexes support only unqualified key columns";
+    }
+
+    return "Secondary indexes support only unqualified key columns";
+}
+
+static int validate_planned_secondary_index_part(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct planned_secondary_index *index,
+    size_t column_index,
+    const char *column_name,
+    struct secondary_index_part_nodes nodes,
+    int64_t *out_prefix_length
+) {
+    bool is_fulltext = planned_secondary_index_is_fulltext(index);
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || index == NULL || column_index >= plan->column_count ||
+        out_prefix_length == NULL) {
+        set_runtime_error(database, "invalid secondary-index key part");
+        return MYLITE_ERROR;
+    }
+    if (is_fulltext && nodes.direction_node != NULL) {
+        set_fulltext_explicit_order_error(database);
+        return MYLITE_ERROR;
+    }
+    if (nodes.prefix_node != NULL) {
+        uint64_t key_bytes = 0U;
+
+        rc = parse_secondary_index_part_prefix_length(
+            database,
+            nodes.prefix_node,
+            column_name,
+            out_prefix_length
+        );
+        if (rc == MYLITE_OK && !is_fulltext) {
+            rc = validate_secondary_index_prefix_for_planned_column(
+                database,
+                &plan->columns[column_index],
+                *out_prefix_length,
+                &key_bytes
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (is_fulltext) {
+        return validate_fulltext_index_column(database, &plan->columns[column_index]);
+    }
+    if (nodes.prefix_node != NULL) {
+        return MYLITE_OK;
+    }
+    if (index->is_unique) {
+        return validate_unique_index_column(database, &plan->columns[column_index]);
+    }
+
+    return validate_secondary_index_column(database, &plan->columns[column_index]);
 }
 
 static int validate_planned_unique_index_part_list(
@@ -33630,6 +33797,70 @@ static int validate_secondary_index_column(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_fulltext_index_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (column == NULL) {
+        set_runtime_error(database, "invalid FULLTEXT index column");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_char_or_varchar(column)) {
+        return validate_fulltext_string_key_column(database, column);
+    }
+    if (planned_column_is_text_family(column)) {
+        return MYLITE_OK;
+    }
+
+    set_fulltext_column_error(database, column->name);
+    return MYLITE_ERROR;
+}
+
+static int validate_fulltext_string_key_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    size_t length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || !planned_column_is_char_or_varchar(column)) {
+        set_runtime_error(database, "invalid FULLTEXT string key column");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            "FULLTEXT indexes support only baseline CHAR descriptors",
+            &length
+        );
+    } else {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            "FULLTEXT indexes support only baseline VARCHAR descriptors",
+            &length
+        );
+    }
+    if (rc == MYLITE_OK && length == 0U) {
+        set_storage_engine_cant_index_column_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static bool planned_secondary_index_is_fulltext(const struct planned_secondary_index *index) {
+    if (index == NULL) {
+        return false;
+    }
+    if (index->kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return true;
+    }
+
+    return false;
 }
 
 static int validate_secondary_index_prefix_for_planned_column(
@@ -33912,6 +34143,24 @@ static const struct mylite_sql_ast_node *secondary_index_part_prefix_node(
             return NULL;
         }
         if (child->kind == MYLITE_SQL_AST_LITERAL) {
+            return child;
+        }
+    }
+}
+
+static const struct mylite_sql_ast_node *secondary_index_part_direction_node(
+    const struct mylite_sql_ast_node *part
+) {
+    if (part == NULL || part->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART) {
+        return NULL;
+    }
+    for (size_t child_index = 1U;; ++child_index) {
+        const struct mylite_sql_ast_node *child = child_at(part, child_index);
+
+        if (child == NULL) {
+            return NULL;
+        }
+        if (child->kind == MYLITE_SQL_AST_ORDER_DIRECTION) {
             return child;
         }
     }
@@ -34389,7 +34638,8 @@ static int clone_create_table_like_indexes(
         const struct loaded_index_info *source_index = &indexes[index];
         struct planned_secondary_index *target_index = NULL;
 
-        if (source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        if (source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+            source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
             continue;
         }
         rc = reserve_planned_secondary_indexes(
@@ -34404,6 +34654,7 @@ static int clone_create_table_like_indexes(
         target_index = &out_plan->secondary_indexes[out_plan->secondary_index_count];
         *target_index = (struct planned_secondary_index){0};
         snprintf(target_index->name, sizeof(target_index->name), "%s", source_index->index.name);
+        target_index->kind = source_index->index.kind;
         target_index->is_unique = source_index->index.is_unique;
         rc =
             reserve_planned_secondary_index_parts(database, target_index, source_index->part_count);
@@ -36100,7 +36351,7 @@ static int insert_create_table_index_catalog_rows(
             table_id,
             secondary->name,
             secondary->physical_name,
-            MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+            secondary->kind,
             secondary->is_unique,
             NULL
         );
@@ -36534,7 +36785,7 @@ static int append_temporary_secondary_index_descriptor(
     *index = (struct mylite_catalog_index_descriptor){
         .index_id = planned->index_id,
         .table_id = table_id,
-        .kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY,
+        .kind = planned->kind,
         .is_unique = planned->is_unique,
     };
     snprintf(index->name, sizeof(index->name), "%s", planned->name);
@@ -36580,6 +36831,18 @@ static bool planned_create_table_has_auto_increment(const struct planned_create_
     }
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
         if (plan->columns[column_index].is_auto_increment) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        if (plan->secondary_indexes[index].kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
             return true;
         }
     }
@@ -40006,7 +40269,7 @@ static int plan_drop_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK &&
-        indexes[resolved_index].index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        !loaded_index_kind_is_secondary_or_fulltext(indexes[resolved_index].index.kind)) {
         set_unsupported_error(database, "DROP INDEX supports only secondary indexes");
         rc = MYLITE_ERROR;
     }
@@ -40051,7 +40314,7 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
             plan->index.index.index_id
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
         rc = execute_physical_drop_index(database, plan);
     }
     if (rc == MYLITE_OK) {
@@ -40073,7 +40336,9 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
         return rc;
     }
 
-    ++database->session.sqlite_schema_generation;
+    if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        ++database->session.sqlite_schema_generation;
+    }
 
     return MYLITE_OK;
 }
@@ -40170,7 +40435,7 @@ static int plan_alter_table_rename_index(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK &&
-        indexes[resolved_index].index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        !loaded_index_kind_is_secondary_or_fulltext(indexes[resolved_index].index.kind)) {
         set_unsupported_error(database, "ALTER TABLE RENAME INDEX supports only secondary indexes");
         rc = MYLITE_ERROR;
     }
@@ -40196,6 +40461,17 @@ static int plan_alter_table_rename_index(
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
+}
+
+static bool loaded_index_kind_is_secondary_or_fulltext(enum mylite_catalog_index_kind kind) {
+    if (kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        return true;
+    }
+    if (kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return true;
+    }
+
+    return false;
 }
 
 static void planned_rename_index_deinit(struct planned_rename_index *plan) {
@@ -40507,7 +40783,10 @@ static int copy_alter_table_check_indexes(
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
         if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
             rc = copy_alter_table_check_primary_index(database, &indexes[index], out_plan);
-        } else if (indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        } else if (
+            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
+            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT
+        ) {
             rc = copy_alter_table_check_secondary_index(database, &indexes[index], out_plan);
         }
     }
@@ -40566,6 +40845,7 @@ static int copy_alter_table_check_secondary_index(
     target = &out_plan->rebuild.secondary_indexes[out_plan->rebuild.secondary_index_count];
     *target = (struct planned_secondary_index){0};
     target->index_id = index->index.index_id;
+    target->kind = index->index.kind;
     target->is_unique = index->index.is_unique;
     snprintf(target->name, sizeof(target->name), "%s", index->index.name);
     snprintf(
@@ -74026,6 +74306,9 @@ static const char *column_key_text(
     if (column_has_nonunique_secondary_index(indexes, column->column_id)) {
         return "MUL";
     }
+    if (column_has_first_fulltext_index(indexes, column->column_id)) {
+        return "MUL";
+    }
 
     return "";
 }
@@ -74097,6 +74380,21 @@ static bool column_has_nonunique_secondary_index(
                     return true;
                 }
             }
+        }
+    }
+
+    return false;
+}
+
+static bool column_has_first_fulltext_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+) {
+    for (size_t index = 0U; index < indexes.count; ++index) {
+        if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+            indexes.indexes[index].part_count > 0U &&
+            indexes.indexes[index].parts[0].index_column.column_id == column_id) {
+            return true;
         }
     }
 
@@ -86701,15 +86999,21 @@ static int append_show_index(
         const struct loaded_index_part *part = &index->parts[part_index];
         char prefix_text[integer_text_capacity];
         const char *nullable = "";
+        const bool is_fulltext = index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
         const char *collation =
             part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
                                                                                           : "A";
         const char *prefix_value = NULL;
+        const char *index_type = "BTREE";
 
         if (part->column.is_nullable) {
             nullable = "YES";
         }
-        if (part->index_column.has_prefix_length) {
+        if (is_fulltext) {
+            collation = NULL;
+            index_type = "FULLTEXT";
+        }
+        if (!is_fulltext && part->index_column.has_prefix_length) {
             rc = information_schema_format_i64(
                 database,
                 part->index_column.prefix_length,
@@ -86732,7 +87036,7 @@ static int append_show_index(
             prefix_value,
             NULL,
             nullable,
-            "BTREE",
+            index_type,
             "",
             "",
             "YES",
@@ -87464,6 +87768,9 @@ static int append_create_table_secondary_indexes_sql(
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->secondary_index_count; ++index) {
         const struct planned_secondary_index *secondary = &plan->secondary_indexes[index];
 
+        if (planned_secondary_index_is_fulltext(secondary)) {
+            continue;
+        }
         rc = append_create_table_index_sql(
             string,
             secondary->is_unique,
@@ -96454,6 +96761,44 @@ static void set_storage_engine_cant_index_column_error(
         mysql_error_storage_engine_cant_index_column,
         "42000",
         message
+    );
+}
+
+static void set_fulltext_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column '%s' cannot be part of FULLTEXT index",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_fulltext_column,
+        "HY000",
+        message
+    );
+}
+
+static void set_fulltext_explicit_order_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_wrong_usage,
+        "HY000",
+        "Incorrect usage of spatial/fulltext/hash index and explicit index order"
+    );
+}
+
+static void set_temporary_fulltext_index_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_temporary_fulltext_index,
+        "HY000",
+        "Cannot create FULLTEXT index on temporary InnoDB table"
     );
 }
 

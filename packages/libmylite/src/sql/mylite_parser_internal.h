@@ -1340,6 +1340,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
     struct mylite_sql_ast_node *key_parts,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token fulltext_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,

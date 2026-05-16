@@ -846,6 +846,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_alter_check_statement";
     case MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION:
         return "unique_index_definition";
+    case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
+        return "fulltext_index_definition";
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
         return "inline_unique_key";
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:

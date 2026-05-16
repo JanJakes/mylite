@@ -11132,6 +11132,14 @@ static int test_current_date_time_function_statements(void) {
 }
 
 static int test_create_table_primary_key_statements(void) {
+    enum {
+        fulltext_item_count = 7U,
+        fulltext_key_item_index = 3U,
+        fulltext_index_item_index = 4U,
+        fulltext_named_item_index = 5U,
+        fulltext_unnamed_item_index = 6U,
+    };
+
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *items = NULL;
@@ -11554,6 +11562,82 @@ static int test_create_table_primary_key_statements(void) {
         child_at(child_at(key_parts, 0U), 2U),
         MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
         "secondary prefix asc key part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE fulltext_keys (id INT, body TEXT, title VARCHAR(20), "
+        "FULLTEXT KEY ft_body (body), FULLTEXT INDEX ft_title (title), "
+        "FULLTEXT ft_named (body(10)), FULLTEXT (title DESC));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_child_count(items, fulltext_item_count, "fulltext item count");
+    failures += expect_node(
+        child_at(items, fulltext_key_item_index),
+        MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION,
+        "fulltext key definition"
+    );
+    failures += expect_span_text(
+        child_at(child_at(items, fulltext_key_item_index), 0U),
+        "ft_body",
+        "fulltext key name"
+    );
+    key_parts = child_at(child_at(items, fulltext_key_item_index), 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "body", "fulltext key part");
+    failures += expect_node(
+        child_at(items, fulltext_index_item_index),
+        MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION,
+        "fulltext index definition"
+    );
+    failures += expect_span_text(
+        child_at(child_at(items, fulltext_index_item_index), 0U),
+        "ft_title",
+        "fulltext index name"
+    );
+    key_parts = child_at(child_at(items, fulltext_index_item_index), 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "title", "fulltext index part");
+    failures += expect_node(
+        child_at(items, fulltext_named_item_index),
+        MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION,
+        "named fulltext definition"
+    );
+    failures += expect_span_text(
+        child_at(child_at(items, fulltext_named_item_index), 0U),
+        "ft_named",
+        "named fulltext name"
+    );
+    key_parts = child_at(child_at(items, fulltext_named_item_index), 1U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 1U), "10", "fulltext ignored prefix");
+    failures += expect_node(
+        child_at(items, fulltext_unnamed_item_index),
+        MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION,
+        "unnamed fulltext definition"
+    );
+    key_parts = child_at(child_at(items, fulltext_unnamed_item_index), 0U);
+    failures += expect_order_direction(
+        child_at(child_at(key_parts, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "fulltext explicit order parser part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE fulltext_no_semicolon (body TEXT, FULLTEXT KEY ft_body (body))",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_constraint_fulltext (body TEXT, "
+        "CONSTRAINT c FULLTEXT KEY ft_body (body));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

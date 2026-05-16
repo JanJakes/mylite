@@ -373,6 +373,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT = 364,
     MYLITE_SQL_AST_UNION_TERM_LIST = 365,
     MYLITE_SQL_AST_UNION_TERM = 366,
+    MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION = 367,
 };
 
 enum mylite_sql_ast_literal_kind {

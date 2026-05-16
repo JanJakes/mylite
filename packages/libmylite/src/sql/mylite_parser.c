@@ -4607,6 +4607,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
     return unique_index;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token fulltext_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&fulltext_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *fulltext_index =
+        make_node(state, MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION, span);
+    if (fulltext_index == NULL) {
+        return NULL;
+    }
+
+    if (index_name != NULL) {
+        mylite_sql_ast_node_append_child(fulltext_index, index_name);
+    }
+    mylite_sql_ast_node_append_child(fulltext_index, key_parts);
+    return fulltext_index;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,
@@ -6017,6 +6039,7 @@ static bool map_keyword_token(
         {"PRIMARY", MYLITE_SQL_PARSE_PRIMARY},
         {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
+        {"FULLTEXT", MYLITE_SQL_PARSE_FULLTEXT},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},

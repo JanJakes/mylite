@@ -380,6 +380,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SUBSTRING_FUNCTION = 371,
     MYLITE_SQL_AST_SUBSTR_FUNCTION = 372,
     MYLITE_SQL_AST_MID_FUNCTION = 373,
+    MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT = 374,
 };
 
 enum mylite_sql_ast_literal_kind {

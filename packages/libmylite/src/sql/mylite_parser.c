@@ -1087,6 +1087,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_like_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *source_table
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_create_table_like_statement(
+        state,
+        create_token,
+        if_not_exists_clause,
+        table_name,
+        source_table
+    );
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT;
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,

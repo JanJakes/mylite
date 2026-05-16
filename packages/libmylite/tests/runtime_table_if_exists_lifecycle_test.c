@@ -30,6 +30,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
+    mysql_error_table_does_not_exist = 1146,
 };
 
 struct expected_sql_error {
@@ -594,9 +595,9 @@ static int test_errors_and_unsupported_forms(void) {
         database,
         "CREATE TEMPORARY TABLE temp_table LIKE other_table",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.other_table' doesn't exist",
         }
     );
     failures += execute_error(

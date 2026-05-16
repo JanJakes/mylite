@@ -13130,8 +13130,46 @@ static int test_create_table_like_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "CREATE TEMPORARY TABLE IF NOT EXISTS app.temp_clone LIKE other.source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    source_table = child_at(statement, 1U);
+    if_not_exists = child_at(statement, 2U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT,
+        "create temporary table like statement"
+    );
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "temp like target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "temp like target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "temp_clone", "temp like target table");
+    failures += expect_node(source_table, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "temp like source");
+    failures += expect_span_text(child_at(source_table, 0U), "other", "temp like source schema");
+    failures += expect_span_text(child_at(source_table, 1U), "source", "temp like source table");
+    failures += expect_node(
+        if_not_exists,
+        MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE,
+        "temp like if not exists clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
-        parse_sql("CREATE TEMPORARY TABLE t LIKE source;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("CREATE TEMPORARY TABLE temp_clone (LIKE source);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    source_table = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT,
+        "parenthesized temporary create table like statement"
+    );
+    failures += expect_span_text(table_name, "temp_clone", "parenthesized temp like target");
+    failures += expect_span_text(source_table, "source", "parenthesized temp like source");
+    failures += expect_child_count(statement, 2U, "parenthesized temp like child count");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

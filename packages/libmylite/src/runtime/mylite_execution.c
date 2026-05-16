@@ -6666,6 +6666,11 @@ static int execute_create_table_like_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_temporary_table_like_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_create_table_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -13375,11 +13380,6 @@ static bool modify_column_char_varchar_replacement_supported(
 );
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node);
 
-static int resolve_readable_base_table(
-    struct mylite_db *database,
-    const struct table_name_resolution *resolution,
-    struct mylite_catalog_table_descriptor *out_table
-);
 static int load_table_columns(
     struct mylite_db *database,
     int64_t table_id,
@@ -17769,6 +17769,8 @@ static int execute_parsed_statement(
         return execute_create_temporary_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
         return execute_create_table_like_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
+        return execute_create_temporary_table_like_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
         return execute_create_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -20725,6 +20727,54 @@ static int execute_create_table_like_statement(
     }
     if (rc == MYLITE_OK && !finished) {
         rc = create_table_from_plan(database, &plan.create_table);
+    }
+    planned_create_table_like_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_create_temporary_table_like_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_table_like plan = {0};
+    mylite_result *result = NULL;
+    bool finished = false;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        mylite_result_free(result);
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_create_table_like(database, statement, &plan);
+    if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan.create_table)) {
+        set_temporary_fulltext_index_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = maybe_finish_create_temporary_if_not_exists_noop(
+            database,
+            statement,
+            &plan.create_table,
+            &finished
+        );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = create_temporary_table_from_plan(database, &plan.create_table);
     }
     planned_create_table_like_deinit(&plan);
     if (rc != MYLITE_OK) {
@@ -30908,6 +30958,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_LIKE_STATEMENT:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -34882,14 +34933,12 @@ static int plan_create_table_like(
     *out_plan = (struct planned_create_table_like){0};
     rc = reject_information_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->source);
-    }
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->source_table);
+        rc = resolve_visible_table_reference(
+            database,
+            child_at(statement, 1U),
+            &out_plan->source,
+            &out_plan->source_table
+        );
     }
     if (rc == MYLITE_OK) {
         memcpy(
@@ -75608,30 +75657,6 @@ static bool modify_column_temporal_replacement_supported(
 
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node) {
     return mylite_sql_ast_node_nullability(nullability_node) != MYLITE_SQL_AST_NULLABILITY_NOT_NULL;
-}
-
-static int resolve_readable_base_table(
-    struct mylite_db *database,
-    const struct table_name_resolution *resolution,
-    struct mylite_catalog_table_descriptor *out_table
-) {
-    int rc = mylite_catalog_read_table_by_name(
-        database,
-        resolution->schema.schema_id,
-        resolution->table_name,
-        out_table
-    );
-
-    if (rc != MYLITE_OK) {
-        set_table_does_not_exist_error(database, resolution->schema.name, resolution->table_name);
-        return MYLITE_ERROR;
-    }
-    if (out_table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
-        set_unsupported_error(database, "statement supports only persistent base tables");
-        return MYLITE_ERROR;
-    }
-
-    return MYLITE_OK;
 }
 
 static int load_table_columns(

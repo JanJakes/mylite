@@ -524,15 +524,7 @@ static int test_create_table_like_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TEMPORARY TABLE temp_like LIKE src",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += execute_statement_ok(database, "CREATE TEMPORARY TABLE temp_like LIKE src");
     failures += execute_statement_ok(database, "CREATE TABLE future_src (id INT)");
     sqlite = mylite_connection_sqlite_for_test(database);
     failures += expect_true(sqlite != NULL, "read SQLite handle for future descriptor test");

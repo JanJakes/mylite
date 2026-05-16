@@ -215,7 +215,8 @@ Fast C tests extend the existing datetime and timestamp runtime lifecycle
 binaries, covering:
 
 - `T` separator predicates;
-- explicit offset predicates in comparison, `BETWEEN`, and `IN` positions;
+- explicit offset predicates with `T` and space separators in comparison,
+  `<=>`, `BETWEEN`, `NOT BETWEEN`, `IN`, and `NOT IN` positions;
 - `DATETIME` session-offset conversion for explicit offsets;
 - `TIMESTAMP` explicit-offset conversion to MyLite's fixed UTC baseline;
 - `UPDATE` and `DELETE` through the shared predicate planner;

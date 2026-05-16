@@ -90,7 +90,12 @@ expect_output \
 3
 3
 3
-3" \
+3
+3
+4,5
+3
+1,5
+1,2,4,5" \
     "SET time_zone = '+00:00';
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE dt = '2016-01-15T00:00:00';
@@ -104,6 +109,17 @@ expect_output \
        WHERE dt = '2016-01-15T14:00:00+14:00';
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE dt = '2016-01-14T10:00:00-14:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt = '2016-01-15 00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt > '2016-01-15 00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt <=> '2016-01-15T00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt NOT BETWEEN '2016-01-14T23:00:00+00:00'
+       AND '2016-01-15T01:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt NOT IN ('2016-01-15T00:00:00+00:00');
      SHOW WARNINGS;" \
     "$DATABASE"
 
@@ -123,12 +139,28 @@ expect_output \
     "timestamp explicit offsets compare by instant" \
     "3
 3
+3
+4,5
+3
+1,5
+1,2,4,5
 3" \
     "SET time_zone = '+00:00';
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE ts = '2016-01-15T00:00:00+00:00';
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE ts = '2016-01-15T01:00:00+01:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts = '2016-01-15 00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts > '2016-01-15 00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts <=> '2016-01-15T00:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts NOT BETWEEN '2016-01-14T23:00:00+00:00'
+       AND '2016-01-15T01:00:00+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts NOT IN ('2016-01-15T00:00:00+00:00');
      SET time_zone = '+02:00';
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE ts = '2016-01-15T00:00:00+00:00';
@@ -169,6 +201,33 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "datetime offset beyond positive limit is rejected" \
+    1525 \
+    "HY000" \
+    "Incorrect DATETIME value: '2016-01-15T14:01:00+14:01'" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE dt = '2016-01-15T14:01:00+14:01';" \
+    "$DATABASE"
+
+expect_error \
+    "one-digit timestamp offset hour is rejected" \
+    1525 \
+    "HY000" \
+    "Incorrect TIMESTAMP value: '2016-01-15T01:00:00+1:00'" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts = '2016-01-15T01:00:00+1:00';" \
+    "$DATABASE"
+
+expect_error \
+    "minus zero timestamp offset is rejected" \
+    1525 \
+    "HY000" \
+    "Incorrect TIMESTAMP value: '2016-01-15T00:00:00-00:00'" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts = '2016-01-15T00:00:00-00:00';" \
+    "$DATABASE"
+
+expect_error \
     "timestamp offset beyond positive limit is rejected" \
     1525 \
     "HY000" \
@@ -185,4 +244,23 @@ Warning	1292	Incorrect datetime value: '2016-01-14T10:00:00Z' for column 'dt' at
      SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
        WHERE dt = '2016-01-14T10:00:00Z';
      SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "timestamp trailing Z is also warning truncation behavior deferred by this slice" \
+    "1
+Warning	1292	Incorrect datetime value: '2016-01-14T10:00:00Z' for column 'ts' at row 1" \
+    "SET time_zone = '+00:00';
+     SELECT GROUP_CONCAT(id ORDER BY id) FROM temporal_values
+       WHERE ts = '2016-01-14T10:00:00Z';
+     SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_error \
+    "strict mutating trailing Z predicate can error" \
+    1292 \
+    "22007" \
+    "Incorrect datetime value: '2016-01-14T10:00:00Z' for column 'dt' at row 1" \
+    "UPDATE temporal_values SET marker = 8
+       WHERE dt = '2016-01-14T10:00:00Z';" \
     "$DATABASE"

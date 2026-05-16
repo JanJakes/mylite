@@ -161,6 +161,14 @@ enum {
     time_zone_max_positive_offset_minutes = 14 * time_zone_minutes_per_hour,
     time_zone_max_negative_offset_minutes =
         (13 * time_zone_minutes_per_hour) + time_zone_max_minute,
+    temporal_predicate_offset_max_minutes = 14 * time_zone_minutes_per_hour,
+    temporal_predicate_offset_sign_index = 0,
+    temporal_predicate_offset_hour_tens_index = 1,
+    temporal_predicate_offset_hour_ones_index = 2,
+    temporal_predicate_offset_separator_index = 3,
+    temporal_predicate_offset_minute_tens_index = 4,
+    temporal_predicate_offset_minute_ones_index = 5,
+    temporal_predicate_offset_text_length = 6,
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
@@ -14751,6 +14759,24 @@ static int convert_predicate_timestamp_literal(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+
+struct temporal_predicate_normalization_input {
+    const char *text;
+    size_t text_length;
+    int target_offset_minutes;
+};
+
+static bool normalize_iso_temporal_predicate_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+);
+static bool parse_temporal_predicate_offset(const char *text, int *out_offset_minutes);
+static bool shift_datetime_parts_by_minutes(
+    const struct date_add_datetime_parts *parts,
+    int delta_minutes,
+    char *out_text
+);
+static bool format_datetime_parts_text(const struct date_add_datetime_parts *parts, char *out_text);
 static int convert_integer_for_predicate(
     struct mylite_db *database,
     uint64_t magnitude,
@@ -83999,6 +84025,8 @@ static int convert_predicate_datetime_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
+    char normalized[datetime_text_length + 1U];
+    struct temporal_predicate_normalization_input normalization = {0};
     int rc = MYLITE_OK;
 
     (void)column;
@@ -84019,6 +84047,19 @@ static int convert_predicate_datetime_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes =
+        database == NULL ? 0 : database->session.time_zone_offset_minutes;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        if (!predicate_datetime_text_admitted(database, normalized, datetime_text_length)) {
+            set_incorrect_datetime_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        free(text);
+        return copy_text_value(database, normalized, out_value);
+    }
     if (!predicate_datetime_text_admitted(database, text, text_length)) {
         set_incorrect_datetime_literal_error(database, text);
         free(text);
@@ -84036,6 +84077,8 @@ static int convert_predicate_timestamp_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
+    char normalized[datetime_text_length + 1U];
+    struct temporal_predicate_normalization_input normalization = {0};
     int rc = MYLITE_OK;
 
     (void)column;
@@ -84056,6 +84099,18 @@ static int convert_predicate_timestamp_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    normalization.text = text;
+    normalization.text_length = text_length;
+    normalization.target_offset_minutes = 0;
+    if (normalize_iso_temporal_predicate_text(&normalization, normalized)) {
+        if (!predicate_timestamp_text_admitted(database, normalized, datetime_text_length)) {
+            set_incorrect_timestamp_value_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        free(text);
+        return copy_text_value(database, normalized, out_value);
+    }
     if (!predicate_timestamp_text_admitted(database, text, text_length)) {
         set_incorrect_timestamp_value_error(database, text);
         free(text);
@@ -84063,6 +84118,166 @@ static int convert_predicate_timestamp_literal(
     }
 
     return assign_text_value(database, text, text_length, out_value);
+}
+
+static bool normalize_iso_temporal_predicate_text(
+    const struct temporal_predicate_normalization_input *input,
+    char *out_text
+) {
+    struct date_add_datetime_parts parts = {0};
+    int source_offset_minutes = 0;
+
+    if (input == NULL || input->text == NULL || out_text == NULL) {
+        return false;
+    }
+    if (input->text_length == datetime_text_length &&
+        input->text[datetime_date_time_separator_offset] == 'T') {
+        memcpy(out_text, input->text, datetime_text_length);
+        out_text[datetime_date_time_separator_offset] = ' ';
+        out_text[datetime_text_length] = '\0';
+        return datetime_text_has_canonical_shape(out_text, datetime_text_length);
+    }
+    if (input->text_length != datetime_text_length + sizeof("+00:00") - 1U ||
+        (input->text[datetime_date_time_separator_offset] != ' ' &&
+         input->text[datetime_date_time_separator_offset] != 'T')) {
+        return false;
+    }
+
+    memcpy(out_text, input->text, datetime_text_length);
+    out_text[datetime_date_time_separator_offset] = ' ';
+    out_text[datetime_text_length] = '\0';
+    if (!date_add_parse_datetime_text(out_text, datetime_text_length, &parts)) {
+        return false;
+    }
+    if (!parse_temporal_predicate_offset(
+            input->text + datetime_text_length,
+            &source_offset_minutes
+        )) {
+        return false;
+    }
+
+    return shift_datetime_parts_by_minutes(
+        &parts,
+        input->target_offset_minutes - source_offset_minutes,
+        out_text
+    );
+}
+
+static bool parse_temporal_predicate_offset(const char *text, int *out_offset_minutes) {
+    int sign = 0;
+    int hours = 0;
+    int minutes = 0;
+    int total_minutes = 0;
+
+    if (text == NULL || out_offset_minutes == NULL) {
+        return false;
+    }
+    if (text[temporal_predicate_offset_sign_index] == '+') {
+        sign = 1;
+    } else if (text[temporal_predicate_offset_sign_index] == '-') {
+        sign = -1;
+    } else {
+        return false;
+    }
+    if (text[temporal_predicate_offset_hour_tens_index] < '0' ||
+        text[temporal_predicate_offset_hour_tens_index] > '9' ||
+        text[temporal_predicate_offset_hour_ones_index] < '0' ||
+        text[temporal_predicate_offset_hour_ones_index] > '9' ||
+        text[temporal_predicate_offset_separator_index] != ':' ||
+        text[temporal_predicate_offset_minute_tens_index] < '0' ||
+        text[temporal_predicate_offset_minute_tens_index] > '9' ||
+        text[temporal_predicate_offset_minute_ones_index] < '0' ||
+        text[temporal_predicate_offset_minute_ones_index] > '9' ||
+        text[temporal_predicate_offset_text_length] != '\0') {
+        return false;
+    }
+
+    hours = ((text[temporal_predicate_offset_hour_tens_index] - '0') * decimal_base) +
+            (text[temporal_predicate_offset_hour_ones_index] - '0');
+    minutes = ((text[temporal_predicate_offset_minute_tens_index] - '0') * decimal_base) +
+              (text[temporal_predicate_offset_minute_ones_index] - '0');
+    if (minutes > time_zone_max_minute) {
+        return false;
+    }
+    total_minutes = (hours * time_zone_minutes_per_hour) + minutes;
+    if (total_minutes > temporal_predicate_offset_max_minutes) {
+        return false;
+    }
+    if (sign < 0 && total_minutes == 0) {
+        return false;
+    }
+
+    *out_offset_minutes = sign * total_minutes;
+    return true;
+}
+
+static bool shift_datetime_parts_by_minutes(
+    const struct date_add_datetime_parts *parts,
+    int delta_minutes,
+    char *out_text
+) {
+    const int64_t seconds_per_day = date_add_seconds_per_day();
+    struct date_add_day_second shifted = {0};
+    struct date_add_datetime_parts output = {0};
+    int64_t days = 0;
+    int64_t day_seconds = 0;
+    int64_t base_seconds = 0;
+    int64_t shifted_seconds = 0;
+    int64_t result_day_seconds = 0;
+
+    if (parts == NULL || out_text == NULL) {
+        return false;
+    }
+
+    days = date_add_days_from_datetime(parts);
+    day_seconds = ((int64_t)parts->hour * (int64_t)time_second_per_hour) +
+                  ((int64_t)parts->minute * (int64_t)time_second_per_minute) +
+                  (int64_t)parts->second;
+    base_seconds = (days * seconds_per_day) + day_seconds;
+    if (!date_add_checked_add_int64(
+            base_seconds,
+            (int64_t)delta_minutes * time_zone_seconds_per_minute,
+            &shifted_seconds
+        )) {
+        return false;
+    }
+
+    shifted = date_add_floor_divmod_seconds(shifted_seconds);
+    date_add_civil_from_days(shifted.days, &output);
+    if (output.year < date_minimum_year || output.year > date_maximum_year) {
+        return false;
+    }
+    result_day_seconds = shifted.day_seconds;
+    output.hour = (uint32_t)(result_day_seconds / time_second_per_hour);
+    result_day_seconds %= time_second_per_hour;
+    output.minute = (uint32_t)(result_day_seconds / time_second_per_minute);
+    output.second = (uint32_t)(result_day_seconds % time_second_per_minute);
+
+    return format_datetime_parts_text(&output, out_text);
+}
+
+static bool format_datetime_parts_text(
+    const struct date_add_datetime_parts *parts,
+    char *out_text
+) {
+    int written = 0;
+
+    if (parts == NULL || out_text == NULL) {
+        return false;
+    }
+
+    written = snprintf(
+        out_text,
+        datetime_text_length + 1U,
+        "%04" PRId64 "-%02" PRIu32 "-%02" PRIu32 " %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
+        parts->year,
+        parts->month,
+        parts->day,
+        parts->hour,
+        parts->minute,
+        parts->second
+    );
+    return written == datetime_text_length;
 }
 
 static bool predicate_date_text_admitted(

@@ -9,17 +9,17 @@
   snippets before implementation.
 - [x] Add a MySQL-runtime expectation script for the admitted and explicitly
   deferred behavior.
-- [ ] Implement MyLite-owned predicate conversion for `DATETIME` `T` separator
+- [x] Implement MyLite-owned predicate conversion for `DATETIME` `T` separator
   and numeric-offset string literals.
-- [ ] Implement MyLite-owned predicate conversion for `TIMESTAMP` `T` separator
+- [x] Implement MyLite-owned predicate conversion for `TIMESTAMP` `T` separator
   and numeric-offset string literals using the current fixed-UTC timestamp
   storage baseline.
-- [ ] Add fast runtime tests for SELECT, UPDATE, DELETE, `BETWEEN`, `IN`,
+- [x] Add fast runtime tests for SELECT, UPDATE, DELETE, `BETWEEN`, `IN`,
   session-offset, invalid-offset, and trailing-`Z` cases.
-- [ ] Update compatibility docs without overclaiming general temporal
+- [x] Update compatibility docs without overclaiming general temporal
   conversion or trailing-`Z` behavior.
-- [ ] Run the MySQL expectation script, focused CTest entries, and full check
+- [x] Run the MySQL expectation script, focused CTest entries, and full check
   workflow.
-- [ ] Review the final diff for descriptor authority, warning/diagnostic scope,
+- [x] Review the final diff for descriptor authority, warning/diagnostic scope,
   no SQLite temporal parser reliance, no row materialization, file-format
   safety, cleanup safety, and compatibility-matrix accuracy.

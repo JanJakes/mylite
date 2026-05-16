@@ -23,6 +23,7 @@ enum {
     mysql_error_incorrect_column_specifier = 1063,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_datetime_value = 1292,
+    mysql_error_incorrect_temporal_value = 1525,
     mysql_error_no_default = 1364,
 };
 
@@ -162,6 +163,10 @@ static int test_datetime_success_metadata_dml_and_persistence(void) {
         "2024-05-06 07:08:09",
     };
     static const char *const predicate_rows[] = {"1", "3"};
+    static const char *const after_predicate_rows[] = {"1", "2"};
+    static const char *const nseq_rows[] = {"1"};
+    static const char *const not_between_rows[] = {"2"};
+    static const char *const not_in_rows[] = {"2", "3"};
     static const char *const null_rows[] = {"4"};
     static const char *const order_asc_rows[] = {"4", "3", "1", "2"};
     static const char *const order_desc_rows[] = {"2", "1", "3", "4"};
@@ -322,6 +327,129 @@ static int test_datetime_success_metadata_dml_and_persistence(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "datetime IN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2024-02-29T03:04:05'",
+            .values = (const char *const[]){"3"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime T separator equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2024-02-29T02:04:05-01:00'",
+            .values = (const char *const[]){"3"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime offset equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d > '2024-02-29 03:04:05+00:00' ORDER BY id",
+            .values = after_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "datetime space-offset greater-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d <=> '2025-01-02T00:00:00+00:00'",
+            .values = nseq_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime offset null-safe equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d BETWEEN '2024-01-01T00:00:00+00:00' "
+                   "AND '2025-12-31T23:59:59+00:00' ORDER BY id",
+            .values = predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "datetime offset BETWEEN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d NOT BETWEEN '2024-01-01T00:00:00+00:00' "
+                   "AND '2025-12-31T23:59:59+00:00' ORDER BY id",
+            .values = not_between_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime offset NOT BETWEEN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d IN ('2025-01-02T00:00:00+00:00', NULL) "
+                   "ORDER BY id",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime offset IN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d NOT IN ('2025-01-02T00:00:00+00:00') "
+                   "ORDER BY id",
+            .values = not_in_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "datetime offset NOT IN predicate",
+        }
+    );
+    failures += expect_statement_ok(database, "SET time_zone = '+02:00'");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2024-02-29T01:04:05+00:00'",
+            .values = (const char *const[]){"3"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "datetime offset predicate follows session time zone",
+        }
+    );
+    failures += expect_statement_ok(database, "SET time_zone = '+00:00'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE iso_dt (id INT NOT NULL, d DATETIME, flag INT NOT NULL DEFAULT 0)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO iso_dt VALUES "
+        "(1, '2016-01-15 00:00:00', 0), (2, '2016-01-15 01:00:00', 0)",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE iso_dt SET flag = 7 WHERE d = '2016-01-15T01:00:00+01:00'",
+        1
+    );
+    failures +=
+        expect_dml_ok(database, "DELETE FROM iso_dt WHERE d = '2016-01-15T01:00:00+01:00'", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, flag FROM iso_dt",
+            .values = (const char *const[]){"2", "0"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "datetime offset predicates feed update and delete",
         }
     );
     failures += expect_query_values(
@@ -801,6 +929,42 @@ static int test_datetime_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "WHERE DATETIME predicates support only string literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00+1:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATETIME value: '2024-01-01T00:00:00+1:00'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00-00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATETIME value: '2024-01-01T00:00:00-00:00'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T14:01:00+14:01'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATETIME value: '2024-01-01T14:01:00+14:01'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00Z'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATETIME value: '2024-01-01T00:00:00Z'",
         }
     );
 

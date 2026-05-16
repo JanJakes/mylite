@@ -26,8 +26,10 @@ enum {
     mysql_error_unknown_column = 1054,
     mysql_error_unknown = 1105,
     mysql_error_duplicate_column = 1060,
+    mysql_error_duplicate_key = 1062,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_incorrect_column_name = 1166,
+    mysql_error_no_referenced_row = 1452,
     mysql_error_table_does_not_exist = 1146,
 };
 
@@ -45,11 +47,22 @@ struct expected_query {
     const char *context;
 };
 
+struct physical_index_name_glob {
+    const char *value;
+};
+
+struct physical_index_sql_needle {
+    const char *value;
+};
+
 static int test_rename_column_success_descriptor_persistence_and_dml(void);
+static int test_rename_column_keyed_dependencies(void);
 static int test_rename_column_diagnostics(void);
 static int test_rename_column_physical_failure_preserves_catalog(void);
 static int test_rename_column_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
+static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_ddl_result(const mylite_result *result, const char *context);
 static int expect_query_values(mylite_db *database, struct expected_query query);
@@ -73,6 +86,17 @@ static int expect_missing_column_descriptor(
     mylite_db *database,
     int64_t table_id,
     const char *name,
+    const char *context
+);
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
+    const char *context
+);
+static int expect_physical_index_sql_contains(
+    mylite_db *database,
+    struct physical_index_name_glob name_glob,
+    struct physical_index_sql_needle needle,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -105,6 +129,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_rename_column_success_descriptor_persistence_and_dml();
+    failures += test_rename_column_keyed_dependencies();
     failures += test_rename_column_diagnostics();
     failures += test_rename_column_physical_failure_preserves_catalog();
     failures += test_rename_column_independent_handles();
@@ -628,6 +653,365 @@ static int test_rename_column_success_descriptor_persistence_and_dml(void) {
     return failures;
 }
 
+static int test_rename_column_keyed_dependencies(void) {
+    static const char *const keyed_rows_after_rename[] = {
+        "1",
+        "alpha",
+        "10",
+        "hello world",
+        "2",
+        "beta",
+        "20",
+        "beta words",
+    };
+    static const char *const primary_statistics[] = {"pk_id", NULL, "BTREE"};
+    static const char *const unique_statistics[] = {"key_name", NULL, "BTREE"};
+    static const char *const index_statistics[] = {"v", NULL, "BTREE"};
+    static const char *const prefix_statistics[] = {"key_name", "10", "BTREE"};
+    static const char *const fulltext_statistics[] = {"content", NULL, "FULLTEXT"};
+    static const char *const key_column_usage_values[] = {"pid", "parent_pk"};
+    static const char *const child_after_delete[] = {"11", "2"};
+    static const char *const child_after_update[] = {"11", "20"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor keyed_table = {0};
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "keyed") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed rename file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE keyed_rename ("
+        "id INT NOT NULL, "
+        "k VARCHAR(20) NOT NULL, "
+        "v INT, "
+        "body VARCHAR(100), "
+        "PRIMARY KEY (id), "
+        "UNIQUE KEY uk_k (k), "
+        "KEY idx_v (v), "
+        "KEY pref_k (k(10)), "
+        "FULLTEXT KEY ft_body (body))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO keyed_rename VALUES "
+        "(1, 'alpha', 10, 'hello world'), (2, 'beta', 20, 'beta words')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read keyed rename schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "keyed_rename", &keyed_table),
+        MYLITE_OK,
+        "read keyed rename table"
+    );
+    failures += expect_physical_index_count(database, 4, "physical indexes before keyed rename");
+
+    failures += execute_ok(database, "ALTER TABLE keyed_rename RENAME COLUMN id TO pk_id", &result);
+    failures += expect_ddl_result(result, "rename primary-key column result");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "ALTER TABLE keyed_rename RENAME COLUMN k TO key_name", &result);
+    failures += expect_ddl_result(result, "rename indexed string column result");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "ALTER TABLE keyed_rename RENAME COLUMN body TO content", &result);
+    failures += expect_ddl_result(result, "rename fulltext column result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 4, "physical indexes after keyed rename");
+    failures += expect_physical_index_sql_contains(
+        database,
+        (struct physical_index_name_glob){"_mylite_user_index_*"},
+        (struct physical_index_sql_needle){"\"pk_id\""},
+        "physical primary index follows rename"
+    );
+    failures += expect_physical_index_sql_contains(
+        database,
+        (struct physical_index_name_glob){"_mylite_user_index_*"},
+        (struct physical_index_sql_needle){"\"key_name\""},
+        "physical secondary index follows rename"
+    );
+    failures += expect_physical_index_sql_contains(
+        database,
+        (struct physical_index_name_glob){"_mylite_user_index_*"},
+        (struct physical_index_sql_needle){"substr(\"key_name\", 1, 10)"},
+        "physical prefix index follows rename"
+    );
+    failures += expect_physical_index_sql_contains(
+        database,
+        (struct physical_index_name_glob){"_mylite_user_index_*"},
+        (struct physical_index_sql_needle){"\"v\""},
+        "physical nonunique index remains valid"
+    );
+    failures += expect_column_descriptor(
+        database,
+        keyed_table.table_id,
+        "pk_id",
+        1,
+        "INT",
+        false,
+        "renamed primary-key column descriptor"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT pk_id, key_name, v, content FROM keyed_rename ORDER BY pk_id",
+            .values = keyed_rows_after_rename,
+            .row_count = 2U,
+            .column_count = 4U,
+            .context = "rows after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_rename' "
+                   "AND INDEX_NAME = 'PRIMARY'",
+            .values = primary_statistics,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "primary statistics after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_rename' "
+                   "AND INDEX_NAME = 'uk_k'",
+            .values = unique_statistics,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "unique statistics after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_rename' "
+                   "AND INDEX_NAME = 'idx_v'",
+            .values = index_statistics,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "secondary statistics after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_rename' "
+                   "AND INDEX_NAME = 'pref_k'",
+            .values = prefix_statistics,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "prefix statistics after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART, INDEX_TYPE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_rename' "
+                   "AND INDEX_NAME = 'ft_body'",
+            .values = fulltext_statistics,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "fulltext statistics after keyed renames",
+        }
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE keyed_rename", &result);
+    if (failures == 0) {
+        const char *show_create = mylite_result_value_text(result, 0U, 1U);
+
+        failures +=
+            expect_contains(show_create, "PRIMARY KEY (`pk_id`)", "show create primary rename");
+        failures += expect_contains(
+            show_create,
+            "UNIQUE KEY `uk_k` (`key_name`)",
+            "show create unique rename"
+        );
+        failures += expect_contains(
+            show_create,
+            "KEY `pref_k` (`key_name`(10))",
+            "show create prefix rename"
+        );
+        failures += expect_contains(
+            show_create,
+            "FULLTEXT KEY `ft_body` (`content`)",
+            "show create fulltext rename"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT INTO keyed_rename VALUES (1, 'gamma', 30, 'duplicate primary')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO keyed_rename VALUES (3, 'alpha', 30, 'duplicate unique')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE parent_rename (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_rename ("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "KEY p_idx(parent_id), "
+        "CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent_rename(id) "
+        "ON DELETE CASCADE ON UPDATE CASCADE)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO parent_rename VALUES (1), (2)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO child_rename VALUES (10, 1), (11, 2)", 2);
+    failures +=
+        execute_ok(database, "ALTER TABLE parent_rename RENAME COLUMN id TO parent_pk", &result);
+    failures += expect_ddl_result(result, "rename parent foreign-key column result");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "ALTER TABLE child_rename RENAME COLUMN parent_id TO pid", &result);
+    failures += expect_ddl_result(result, "rename child foreign-key column result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, REFERENCED_COLUMN_NAME "
+                   "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'child_rename' "
+                   "AND CONSTRAINT_NAME = 'fk_parent'",
+            .values = key_column_usage_values,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "foreign-key key-column usage after rename",
+        }
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_rename", &result);
+    if (failures == 0) {
+        const char *show_create = mylite_result_value_text(result, 0U, 1U);
+
+        failures += expect_contains(
+            show_create,
+            "KEY `p_idx` (`pid`)",
+            "show create foreign-key child index rename"
+        );
+        failures += expect_contains(
+            show_create,
+            "CONSTRAINT `fk_parent` FOREIGN KEY (`pid`) REFERENCES `parent_rename` (`parent_pk`) "
+            "ON DELETE CASCADE ON UPDATE CASCADE",
+            "show create foreign-key rename"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT INTO child_rename VALUES (12, 99)",
+        (struct expected_sql_error){
+            .code = mysql_error_no_referenced_row,
+            .sqlstate = "23000",
+            .message_part = "child row",
+        }
+    );
+    failures += expect_dml_ok(database, "DELETE FROM parent_rename WHERE parent_pk = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, pid FROM child_rename ORDER BY id",
+            .values = child_after_delete,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "foreign-key cascade delete after rename",
+        }
+    );
+    failures +=
+        expect_dml_ok(database, "UPDATE parent_rename SET parent_pk = 20 WHERE parent_pk = 2", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, pid FROM child_rename ORDER BY id",
+            .values = child_after_update,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "foreign-key cascade update after rename",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed rename file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT pk_id, key_name, v, content FROM keyed_rename ORDER BY pk_id",
+            .values = keyed_rows_after_rename,
+            .row_count = 2U,
+            .column_count = 4U,
+            .context = "reopen rows after keyed renames",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, pid FROM child_rename ORDER BY id",
+            .values = child_after_update,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "reopen foreign-key rows after rename",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_rename_column_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -1037,6 +1421,25 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
     return 0;
 }
 
+static int expect_statement_ok(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (result != NULL) {
+        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
     mylite_result *result = NULL;
     const char *message = NULL;
@@ -1153,6 +1556,123 @@ static int expect_missing_column_descriptor(
     );
 }
 
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
+    const char *context
+) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3 *connection = mylite_connection_sqlite_for_test(database);
+    sqlite3_stmt *statement = NULL;
+    int actual_count = 0;
+    int rc = SQLITE_OK;
+
+    if (connection == NULL) {
+        fprintf(stderr, "%s: missing SQLite test connection\n", context);
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(
+        connection,
+        "SELECT count(*) FROM sqlite_schema "
+        "WHERE type = 'index' AND name GLOB '_mylite_user_index_*'",
+        sqlite_use_nul_terminated_string,
+        &statement,
+        NULL
+    );
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: prepare physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        actual_count = sqlite3_column_int(statement, 0);
+        rc = SQLITE_OK;
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && rc == SQLITE_OK) {
+        rc = SQLITE_ERROR;
+    }
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+    return expect_int(actual_count, expected_count, context);
+}
+
+static int expect_physical_index_sql_contains(
+    mylite_db *database,
+    struct physical_index_name_glob name_glob,
+    struct physical_index_sql_needle needle,
+    const char *context
+) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3 *connection = mylite_connection_sqlite_for_test(database);
+    sqlite3_stmt *statement = NULL;
+    bool found = false;
+    int rc = SQLITE_OK;
+
+    if (connection == NULL) {
+        fprintf(stderr, "%s: missing SQLite test connection\n", context);
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(
+        connection,
+        "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name GLOB ?1",
+        sqlite_use_nul_terminated_string,
+        &statement,
+        NULL
+    );
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            statement,
+            1,
+            name_glob.value,
+            sqlite_use_nul_terminated_string,
+            NULL
+        );
+    }
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: prepare physical index SQL query failed: %d\n", context, rc);
+        sqlite3_finalize(statement);
+        return 1;
+    }
+
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const unsigned char *sql = sqlite3_column_text(statement, 0);
+
+        if (sql != NULL && strstr((const char *)sql, needle.value) != NULL) {
+            found = true;
+            rc = SQLITE_OK;
+            break;
+        }
+    }
+    if (rc == SQLITE_DONE) {
+        rc = SQLITE_OK;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK && rc == SQLITE_OK) {
+        rc = SQLITE_ERROR;
+    }
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: physical index SQL query failed: %d\n", context, rc);
+        return 1;
+    }
+    if (!found) {
+        fprintf(
+            stderr,
+            "%s: expected physical index SQL matching '%s' to contain '%s'\n",
+            context,
+            name_glob.value,
+            needle.value
+        );
+        return 1;
+    }
+    return 0;
+}
+
 static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
@@ -1173,7 +1693,7 @@ static int current_process_id(void) {
 #ifdef _WIN32
     return _getpid();
 #else
-    return (int)getpid();
+    return getpid();
 #endif
 }
 

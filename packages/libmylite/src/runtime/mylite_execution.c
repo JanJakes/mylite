@@ -42288,17 +42288,6 @@ static int plan_alter_table_rename_column_from_columns(
     out_plan->column = columns[old_column_index];
     out_plan->is_noop = strcmp(out_plan->column.name, out_plan->new_column_name) == 0;
 
-    rc = reject_primary_key_column_alter(
-        database,
-        out_plan->table.table_id,
-        columns,
-        column_count,
-        &out_plan->column,
-        "ALTER TABLE RENAME COLUMN does not yet support primary-key columns"
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     if (out_plan->is_noop) {
         return MYLITE_OK;
     }

@@ -12,10 +12,14 @@ descriptor `SELECT`, descriptor DML, and descriptor table introspection.
 
 The feature is intentionally not full MySQL `ALTER TABLE` support. It supports
 one column-rename action for persistent base tables. It does not implement
-multiple actions, `CHANGE COLUMN`, `MODIFY COLUMN`, indexes, constraints,
-temporary tables, views, metadata locks, algorithms, locks, privilege checks,
-dependency invalidation for unsupported object kinds, or implicit commit
-behavior.
+multiple actions, `CHANGE COLUMN`, `MODIFY COLUMN`, temporary tables, views,
+metadata locks, algorithms, locks, privilege checks, dependency invalidation
+for unsupported object kinds, or implicit commit behavior.
+
+The later `baseline-key-aware-alter-rename-column` slice extends this base
+behavior so existing key and supported foreign-key descriptors follow renamed
+columns by descriptor id. CHECK expression dependency rewriting remains out of
+scope.
 
 ## Sources
 
@@ -100,9 +104,11 @@ This feature must not implement:
 - `CHANGE COLUMN`, `MODIFY COLUMN`, or type/attribute changes;
 - `RENAME INDEX`, `RENAME KEY`, table options, partitions, or positioning;
 - table-qualified old or new column names;
-- temporary tables, views, triggers, privileges, metadata locks, foreign keys,
-  cascades, generated columns, invisible columns, routines, events, or
-  `INFORMATION_SCHEMA` dependency maintenance;
+- temporary tables, views, triggers, privileges, metadata locks, generated
+  columns, invisible columns, routines, events, or CHECK expression dependency
+  maintenance;
+- creating, dropping, or rewriting index, key, or foreign-key descriptors in
+  the rename-column path beyond the later column-id-following key-aware slice;
 - reconstructing descriptors from SQLite schema text;
 - generalized table rebuilds or SQLite fork patches.
 
@@ -365,8 +371,9 @@ pass.
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-ddl.md` only for
 the exact supported subset. Do not overclaim full `ALTER TABLE`, `CHANGE
 COLUMN`, `MODIFY COLUMN`, multiple rename actions, aliases, partitions, views,
-dependency updates, generated columns, invisible columns, keys, constraints,
-algorithms, locks, metadata locks, privileges, or implicit commit semantics.
+CHECK expression dependency updates, generated columns, invisible columns,
+new key or constraint operations, algorithms, locks, metadata locks,
+privileges, or implicit commit semantics.
 
 ## Verification
 

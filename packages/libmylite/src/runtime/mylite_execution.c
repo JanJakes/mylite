@@ -31263,7 +31263,13 @@ static int render_check_constraint_expression(
 
     dynamic_string_init(&check_string);
     dynamic_string_init(&sqlite_string);
-    rc = render_check_expression_node(&context, expression, true, &is_boolean);
+    rc = dynamic_string_reserve(&check_string, 1U);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_reserve(&sqlite_string, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = render_check_expression_node(&context, expression, true, &is_boolean);
+    }
     if (rc == MYLITE_OK && !is_boolean) {
         set_check_constraint_non_boolean_error(database);
         rc = MYLITE_ERROR;
@@ -40235,7 +40241,13 @@ static int plan_alter_table_add_check_definition(
 
         dynamic_string_init(&check_string);
         dynamic_string_init(&sqlite_string);
-        rc = render_check_expression_node(&context, expression, true, &is_boolean);
+        rc = dynamic_string_reserve(&check_string, 1U);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_reserve(&sqlite_string, 1U);
+        }
+        if (rc == MYLITE_OK) {
+            rc = render_check_expression_node(&context, expression, true, &is_boolean);
+        }
         if (rc == MYLITE_OK && !is_boolean) {
             set_check_constraint_non_boolean_error(database);
             rc = MYLITE_ERROR;

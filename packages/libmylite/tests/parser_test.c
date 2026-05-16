@@ -52,6 +52,7 @@ static int test_field_function(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
+static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
 static int test_isnull_function(void);
@@ -320,6 +321,7 @@ int main(void) {
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
+    failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
     failures += test_isnull_function();
@@ -2404,6 +2406,113 @@ static int test_date_format_function(void) {
         MYLITE_SQL_PARSE_OK,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_temporal_extract_functions(void) {
+    enum {
+        temporal_extract_hour_projection_index = 5,
+        temporal_extract_minute_projection_index = 6,
+        temporal_extract_second_projection_index = 7
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DATE('2008-01-02 13:29:17'), YEAR(d), MONTH(d), DAY(d), "
+        "DAYOFMONTH(d), HOUR(tm), MINUTE(tm), SECOND(tm) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_DATE_FUNCTION,
+        "date extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_YEAR_FUNCTION,
+        "year extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 2U), 0U),
+        MYLITE_SQL_AST_MONTH_FUNCTION,
+        "month extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_DAY_FUNCTION,
+        "day extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 4U), 0U),
+        MYLITE_SQL_AST_DAYOFMONTH_FUNCTION,
+        "dayofmonth extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_hour_projection_index), 0U),
+        MYLITE_SQL_AST_HOUR_FUNCTION,
+        "hour extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_minute_projection_index), 0U),
+        MYLITE_SQL_AST_MINUTE_FUNCTION,
+        "minute extract function"
+    );
+    expression = child_at(child_at(select_list, temporal_extract_second_projection_index), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SECOND_FUNCTION, "second extract function");
+    failures += expect_child_count(expression, 1U, "second extract child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATE ('2008-01-02 13:29:17'), HOUR ('13:29:17') AS h FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO DATE(NULL), YEAR('2008-01-02'), HOUR('13:29:17');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "temporal extract do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_DATE_FUNCTION, "do date extract");
+    failures +=
+        expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_HOUR_FUNCTION, "do hour extract");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DAYOFMONTH();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR,
+        "dayofmonth zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE temporal_extract_keywords(day INT, dayofmonth INT, hour INT, minute INT, "
+        "month INT, second INT, year INT, date DATE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

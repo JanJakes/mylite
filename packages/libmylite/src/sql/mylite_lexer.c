@@ -397,6 +397,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"DATE_ADD", 0U},
         {"DATE_FORMAT", 0U},
         {"DAY", 0U},
+        {"DAYOFMONTH", 0U},
         {"DAY_HOUR", MYLITE_SQL_KEYWORD_RESERVED},
         {"DAY_MICROSECOND", MYLITE_SQL_KEYWORD_RESERVED},
         {"DAY_MINUTE", MYLITE_SQL_KEYWORD_RESERVED},

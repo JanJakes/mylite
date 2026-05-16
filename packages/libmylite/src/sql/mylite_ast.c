@@ -742,6 +742,24 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "date_format_argument_count_error";
+    case MYLITE_SQL_AST_DATE_FUNCTION:
+        return "date_function";
+    case MYLITE_SQL_AST_YEAR_FUNCTION:
+        return "year_function";
+    case MYLITE_SQL_AST_MONTH_FUNCTION:
+        return "month_function";
+    case MYLITE_SQL_AST_DAY_FUNCTION:
+        return "day_function";
+    case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
+        return "dayofmonth_function";
+    case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
+        return "dayofmonth_argument_count_error";
+    case MYLITE_SQL_AST_HOUR_FUNCTION:
+        return "hour_function";
+    case MYLITE_SQL_AST_MINUTE_FUNCTION:
+        return "minute_function";
+    case MYLITE_SQL_AST_SECOND_FUNCTION:
+        return "second_function";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return "current_timestamp_value";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:

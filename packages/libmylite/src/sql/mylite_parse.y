@@ -2474,6 +2474,38 @@ expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
 }
+expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DATE_FUNCTION, B, R);
+}
+expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);
+}
+expression(A) ::= MONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MONTH_FUNCTION, B, R);
+}
+expression(A) ::= DAY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAY_FUNCTION, B, R);
+}
+expression(A) ::= DAYOFMONTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DAYOFMONTH_FUNCTION, B, R);
+}
+expression(A) ::= HOUR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_HOUR_FUNCTION, B, R);
+}
+expression(A) ::= MINUTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MINUTE_FUNCTION, B, R);
+}
+expression(A) ::= SECOND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SECOND_FUNCTION, B, R);
+}
 expression(A) ::= current_timestamp_value(T). {
     A = T;
 }
@@ -3066,6 +3098,16 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= DAYOFMONTH(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    DAYOFMONTH(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= ABS(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4160,6 +4202,21 @@ identifier(A) ::= SERIAL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DAYOFMONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MONTH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SECOND(T). {

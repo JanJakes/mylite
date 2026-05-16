@@ -531,7 +531,7 @@ Performance Schema variable tables remain unsupported.
 | `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or coupling to `lower_case_file_system` |
 | `mandatory_roles` | ❌ | Value, scope, SET, diagnostics |
 | `master_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
-| `max_allowed_packet` | ❌ | Value, scope, SET, diagnostics |
+| `max_allowed_packet` | 🟡 | Limited fixed scalar value `67108864`; default/global/session/local scalar reads and `SHOW VARIABLES` rows are supported; non-global `SET` targets return MySQL-style session-read-only diagnostics; exact no-op global `SET` forms may preserve the fixed value; no mutable state, packet-size enforcement, string/result-buffer limits, rounding warnings, or privilege semantics |
 | `max_binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `max_binlog_size` | ❌ | Value, scope, SET, diagnostics |
 | `max_binlog_stmt_cache_size` | ❌ | Value, scope, SET, diagnostics |

@@ -198,6 +198,12 @@ variables. The `SHOW VARIABLES WHERE` predicate evaluates over these rows like
 any other fixed text row; they do not change MyLite's current case-sensitive
 catalog name-resolution behavior.
 
+`max_allowed_packet` is part of the fixed registry after its baseline
+system-variable slice. It has default, session/local `SHOW`, and global `SHOW`
+visibility with decimal text value `67108864`. The `SHOW VARIABLES WHERE`
+predicate evaluates over this row like any other fixed text row; this baseline
+does not enforce packet, string, or result-buffer size limits.
+
 ## Scope Semantics
 
 No explicit scope, `SESSION`, and `LOCAL` use the existing session-visible

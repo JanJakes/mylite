@@ -86,6 +86,7 @@ enum {
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
     mysql_error_incorrect_argument_type = 1232,
+    mysql_error_session_variable_read_only = 1621,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_operand_should_contain_one_column = 1241,
@@ -485,6 +486,7 @@ static const double double_scientific_integer_threshold = 1.0e15;
 static const double logarithm_base_two = 2.0;
 static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
+static const uint64_t max_allowed_packet_default_value = 67108864ULL;
 static const unsigned char ascii_max_byte = 0x7fU;
 static const char national_character_set_name[] = "utf8mb3";
 static const char national_collation_name[] = "utf8mb3_general_ci";
@@ -6240,6 +6242,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_GTID_PURGED = 41,
     SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 42,
     SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM = 43,
+    SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 44,
 };
 
 struct system_variable_component {
@@ -6294,6 +6297,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
     {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
     {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
+    {"max_allowed_packet", SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
     {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
     {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
     {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
@@ -6531,6 +6535,17 @@ static int validate_set_fixed_boolean_value(
     const struct mylite_sql_ast_node *value_node,
     bool expected_value
 );
+static int apply_set_max_allowed_packet_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_fixed_uint64_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t expected_value,
+    const char *unsupported_message
+);
 static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
@@ -6593,6 +6608,10 @@ static bool session_sql_mode_has(const struct mylite_session_state *session, uin
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static bool system_variable_expression_has_global_scope(
     const struct mylite_sql_ast_node *expression
+);
+static void set_session_read_only_system_variable_error(
+    struct mylite_db *database,
+    const char *variable_name
 );
 static void set_read_only_system_variable_error(
     struct mylite_db *database,
@@ -20094,6 +20113,9 @@ static int apply_set_system_variable_statement(
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
+        return apply_set_max_allowed_packet_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -20347,6 +20369,70 @@ static int validate_set_fixed_boolean_value(
         );
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int apply_set_max_allowed_packet_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    if (target == NULL) {
+        set_runtime_error(database, "invalid max_allowed_packet target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_session_read_only_system_variable_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+
+    return validate_set_fixed_uint64_value(
+        database,
+        value_node,
+        max_allowed_packet_default_value,
+        "SET max_allowed_packet supports only fixed no-op global assignments"
+    );
+}
+
+static int validate_set_fixed_uint64_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t expected_value,
+    const char *unsupported_message
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t actual_value = 0U;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal_node);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        literal_node = unwrap_parenthesized_expression(child_at(literal_node, 0U));
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&literal_node->span, &actual_value) != MYLITE_OK ||
+        actual_value != expected_value) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
     return MYLITE_OK;
 }
 
@@ -69112,6 +69198,17 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
+    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+        rc = format_uint64(
+            database,
+            max_allowed_packet_default_value,
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text)
+        );
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->integer_text;
+        }
+        return rc;
     case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
         rc = format_timestamp_system_variable_value(
             database,
@@ -69333,6 +69430,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
+    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
         return true;
     default:
         return false;
@@ -69460,6 +69558,18 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         *out_value = "0";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET: {
+        int rc = format_uint64(
+            database,
+            max_allowed_packet_default_value,
+            integer_buffer,
+            integer_buffer_size
+        );
+        if (rc == MYLITE_OK) {
+            *out_value = integer_buffer;
+        }
+        return rc;
+    }
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
         int rc = format_uint64(database, UINT64_MAX, integer_buffer, integer_buffer_size);
         if (rc == MYLITE_OK) {
@@ -101120,6 +101230,30 @@ static void set_global_variable_only_error(struct mylite_db *database, const cha
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_session_variable_only,
+        "HY000",
+        message
+    );
+}
+
+static void set_session_read_only_system_variable_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "SESSION variable '%s' is read-only. Use SET GLOBAL to assign the value",
+        variable_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_session_variable_read_only,
         "HY000",
         message
     );

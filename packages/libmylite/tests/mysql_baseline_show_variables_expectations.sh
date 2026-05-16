@@ -121,6 +121,7 @@ supported_session_rows=$(run_mysql "
       'foreign_key_checks',
       'lower_case_file_system',
       'lower_case_table_names',
+      'max_allowed_packet',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -154,6 +155,7 @@ error_count|0
 foreign_key_checks|ON
 lower_case_file_system|OFF
 lower_case_table_names|0
+max_allowed_packet|67108864
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF
@@ -197,6 +199,7 @@ supported_global_rows=$(run_mysql "
       'foreign_key_checks',
       'lower_case_file_system',
       'lower_case_table_names',
+      'max_allowed_packet',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -229,6 +232,7 @@ default_storage_engine|InnoDB
 foreign_key_checks|ON
 lower_case_file_system|OFF
 lower_case_table_names|0
+max_allowed_packet|67108864
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF

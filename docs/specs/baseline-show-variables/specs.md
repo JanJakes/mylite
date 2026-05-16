@@ -146,6 +146,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `foreign_key_checks` | yes | yes | `ON` |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
+| `max_allowed_packet` | yes | yes | `67108864` |
 | `sql_auto_is_null` | yes | yes | `OFF` |
 | `sql_big_selects` | yes | yes | `ON` |
 | `sql_buffer_result` | yes | yes | `OFF` |

@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 43,
-    global_variable_row_count = 39,
+    session_variable_row_count = 44,
+    global_variable_row_count = 40,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -131,6 +131,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_purged", ""},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
+        {"max_allowed_packet", "67108864"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -175,6 +176,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_purged", ""},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
+        {"max_allowed_packet", "67108864"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -335,6 +337,24 @@ static int test_show_variables_values_scopes_and_filters(void) {
     );
     failures += expect_single_row(
         database,
+        "SHOW VARIABLES LIKE 'max_allowed_packet'",
+        (struct expected_variable_row){
+            .name = "max_allowed_packet",
+            .value = "67108864",
+        },
+        "show variables max allowed packet"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet'",
+        (struct expected_variable_row){
+            .name = "max_allowed_packet",
+            .value = "67108864",
+        },
+        "show global variables max allowed packet"
+    );
+    failures += expect_single_row(
+        database,
         "SHOW VARIABLES WHERE Value = '0' AND "
         "Variable_name IN ('autocommit','lower_case_table_names')",
         (struct expected_variable_row){
@@ -352,6 +372,16 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "OFF",
         },
         "show variables where lower case file system"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Value = '67108864' AND "
+        "Variable_name IN ('autocommit','max_allowed_packet')",
+        (struct expected_variable_row){
+            .name = "max_allowed_packet",
+            .value = "67108864",
+        },
+        "show variables where max allowed packet"
     );
     failures += expect_single_row(
         database,

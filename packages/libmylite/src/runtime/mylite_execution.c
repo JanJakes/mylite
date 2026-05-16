@@ -119,6 +119,8 @@ enum {
     mysql_error_cannot_update_table_while_creating = 1746,
     mysql_error_foreign_key_cascade_duplicate = 1761,
     mysql_error_duplicate_foreign_key = 1826,
+    mysql_error_drop_column_fk_child = 1828,
+    mysql_error_drop_column_fk_parent = 1829,
     mysql_error_check_constraint_non_boolean = 3812,
     mysql_error_check_constraint_column_ref = 3813,
     mysql_error_check_constraint_function = 3814,
@@ -1785,11 +1787,25 @@ struct planned_alter_table_auto_increment {
     bool has_auto_increment_column;
 };
 
+struct planned_drop_column_index_update {
+    struct mylite_catalog_index_descriptor index;
+    struct loaded_index_part *remaining_parts;
+    size_t remaining_part_count;
+    int64_t removed_ordinal_position;
+    bool drops_index;
+};
+
 struct planned_alter_table_drop_column {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor column;
+    struct planned_drop_column_index_update *index_updates;
+    size_t index_update_count;
+    size_t index_update_capacity;
+    const char *rowid_alias;
+    int64_t affected_rows;
     size_t column_count;
+    bool removes_one_part_primary_key;
 };
 
 struct planned_alter_table_rename_column {
@@ -8560,9 +8576,65 @@ static int plan_alter_table_drop_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_drop_column *out_plan
 );
+static int plan_alter_table_drop_column_dependencies(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    struct planned_alter_table_drop_column *out_plan
+);
+static void planned_alter_table_drop_column_deinit(struct planned_alter_table_drop_column *plan);
+static int plan_drop_column_key_dependencies(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_drop_column *out_plan
+);
+static int reject_drop_column_foreign_key_dependencies(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static int append_drop_column_index_update(
+    struct mylite_db *database,
+    struct planned_alter_table_drop_column *plan,
+    const struct loaded_index_info *index
+);
+static int reserve_drop_column_index_updates(
+    struct planned_alter_table_drop_column *plan,
+    size_t required_capacity
+);
+static bool loaded_index_find_column_ordinal(
+    const struct loaded_index_info *index,
+    int64_t column_id,
+    int64_t *out_ordinal_position
+);
+static int validate_drop_column_unique_key_updates(
+    struct mylite_db *database,
+    struct planned_alter_table_drop_column *plan,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static int validate_drop_column_unique_key_update(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct planned_drop_column_index_update *update
+);
 static int alter_table_drop_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_drop_column *plan
+);
+static int execute_physical_drop_column_prepare_indexes(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+);
+static int execute_physical_drop_column_recreate_indexes(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+);
+static int execute_physical_drop_column_create_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct planned_drop_column_index_update *update
 );
 static int plan_alter_table_rename_column(
     struct mylite_db *database,
@@ -13323,14 +13395,6 @@ static int note_check_constraint_presence(
     const struct mylite_catalog_check_constraint_descriptor *check_constraint,
     void *user_data
 );
-static int reject_primary_key_column_alter(
-    struct mylite_db *database,
-    int64_t table_id,
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    const struct mylite_catalog_column_descriptor *column,
-    const char *message
-);
 static int reject_inline_primary_key_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,
@@ -17048,6 +17112,17 @@ static void set_foreign_key_missing_unique_error(struct mylite_db *database);
 static void set_duplicate_foreign_key_error(
     struct mylite_db *database,
     const char *foreign_key_name
+);
+static void set_drop_column_foreign_key_child_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *foreign_key_name
+);
+static void set_drop_column_foreign_key_parent_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *foreign_key_name,
+    const char *child_table_name
 );
 static void set_foreign_key_cascade_duplicate_error(
     struct mylite_db *database,
@@ -21641,10 +21716,13 @@ static int execute_alter_table_drop_column_statement(
         rc = alter_table_drop_column_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
+        planned_alter_table_drop_column_deinit(&plan);
         mylite_result_free(result);
         return rc;
     }
 
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_drop_column_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -42107,19 +42185,315 @@ static int plan_alter_table_drop_column(
         out_plan->column = columns[column_index];
     }
     if (rc == MYLITE_OK) {
-        rc = reject_primary_key_column_alter(
-            database,
-            out_plan->table.table_id,
-            columns,
-            out_plan->column_count,
-            &out_plan->column,
-            "ALTER TABLE DROP COLUMN does not yet support primary-key columns"
-        );
+        rc = plan_alter_table_drop_column_dependencies(database, columns, out_plan);
     }
 
     free(columns);
+    if (rc != MYLITE_OK) {
+        planned_alter_table_drop_column_deinit(out_plan);
+    }
 
     return rc;
+}
+
+static int plan_alter_table_drop_column_dependencies(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    struct planned_alter_table_drop_column *out_plan
+) {
+    int rc = reject_drop_column_foreign_key_dependencies(
+        database,
+        out_plan,
+        columns,
+        out_plan->column_count
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_drop_column_key_dependencies(database, columns, out_plan->column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_drop_column_unique_key_updates(
+            database,
+            out_plan,
+            columns,
+            out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK && out_plan->removes_one_part_primary_key) {
+        rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
+    }
+
+    return rc;
+}
+
+static void planned_alter_table_drop_column_deinit(struct planned_alter_table_drop_column *plan) {
+    if (plan == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < plan->index_update_count; ++index) {
+        free(plan->index_updates[index].remaining_parts);
+    }
+    free(plan->index_updates);
+    *plan = (struct planned_alter_table_drop_column){0};
+}
+
+static int reject_drop_column_foreign_key_dependencies(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    struct loaded_foreign_key_info *child_foreign_keys = NULL;
+    struct loaded_foreign_key_info *parent_foreign_keys = NULL;
+    size_t child_foreign_key_count = 0U;
+    size_t parent_foreign_key_count = 0U;
+    int rc = load_table_foreign_key_infos(
+        database,
+        plan->table.table_id,
+        columns,
+        column_count,
+        &child_foreign_keys,
+        &child_foreign_key_count
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < child_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &child_foreign_keys[index];
+
+        for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+            if (foreign_key->parts[part_index].child_column.column_id == plan->column.column_id) {
+                set_drop_column_foreign_key_child_error(
+                    database,
+                    plan->column.name,
+                    foreign_key->foreign_key.name
+                );
+                rc = MYLITE_ERROR;
+                break;
+            }
+        }
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = load_parent_foreign_key_infos(
+            database,
+            plan->table.table_id,
+            &parent_foreign_keys,
+            &parent_foreign_key_count
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < parent_foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &parent_foreign_keys[index];
+
+        for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+            if (foreign_key->parts[part_index].parent_column.column_id == plan->column.column_id) {
+                set_drop_column_foreign_key_parent_error(
+                    database,
+                    plan->column.name,
+                    foreign_key->foreign_key.name,
+                    foreign_key->child_table.name
+                );
+                rc = MYLITE_ERROR;
+                break;
+            }
+        }
+    }
+
+    loaded_foreign_key_infos_deinit(&child_foreign_keys, &child_foreign_key_count);
+    loaded_foreign_key_infos_deinit(&parent_foreign_keys, &parent_foreign_key_count);
+    return rc;
+}
+
+static int plan_drop_column_key_dependencies(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_drop_column *out_plan
+) {
+    struct loaded_index_info *indexes = NULL;
+    size_t index_count = 0U;
+    int rc = load_table_index_infos(
+        database,
+        out_plan->table.table_id,
+        columns,
+        column_count,
+        &indexes,
+        &index_count
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+        rc = append_drop_column_index_update(database, out_plan, &indexes[index]);
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    return rc;
+}
+
+static int append_drop_column_index_update(
+    struct mylite_db *database,
+    struct planned_alter_table_drop_column *plan,
+    const struct loaded_index_info *index
+) {
+    struct planned_drop_column_index_update *update = NULL;
+    int64_t removed_ordinal_position = 0;
+    int rc = MYLITE_OK;
+
+    if (!loaded_index_find_column_ordinal(
+            index,
+            plan->column.column_id,
+            &removed_ordinal_position
+        )) {
+        return MYLITE_OK;
+    }
+
+    rc = reserve_drop_column_index_updates(plan, plan->index_update_count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    update = &plan->index_updates[plan->index_update_count];
+    *update = (struct planned_drop_column_index_update){
+        .index = index->index,
+        .remaining_parts = NULL,
+        .remaining_part_count = 0U,
+        .removed_ordinal_position = removed_ordinal_position,
+        .drops_index = index->part_count == 1U,
+    };
+    if (update->drops_index && index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        plan->removes_one_part_primary_key = true;
+    }
+    if (!update->drops_index) {
+        if (index->part_count - 1U > SIZE_MAX / sizeof(*update->remaining_parts)) {
+            return MYLITE_NOMEM;
+        }
+        update->remaining_parts = calloc(index->part_count - 1U, sizeof(*update->remaining_parts));
+        if (update->remaining_parts == NULL) {
+            return MYLITE_NOMEM;
+        }
+        for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+            if (index->parts[part_index].column.column_id == plan->column.column_id) {
+                continue;
+            }
+            update->remaining_parts[update->remaining_part_count] = index->parts[part_index];
+            ++update->remaining_part_count;
+        }
+        if (update->remaining_part_count == 0U) {
+            set_runtime_error(database, "invalid drop-column key update");
+            return MYLITE_ERROR;
+        }
+    }
+
+    ++plan->index_update_count;
+    return MYLITE_OK;
+}
+
+static int reserve_drop_column_index_updates(
+    struct planned_alter_table_drop_column *plan,
+    size_t required_capacity
+) {
+    enum { initial_drop_column_index_update_capacity = 4 };
+
+    struct planned_drop_column_index_update *resized = NULL;
+    size_t capacity = plan->index_update_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_drop_column_index_update_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*plan->index_updates)) {
+        return MYLITE_NOMEM;
+    }
+
+    resized = realloc(plan->index_updates, capacity * sizeof(*plan->index_updates));
+    if (resized == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = plan->index_update_capacity; index < capacity; ++index) {
+        resized[index] = (struct planned_drop_column_index_update){0};
+    }
+    plan->index_updates = resized;
+    plan->index_update_capacity = capacity;
+    return MYLITE_OK;
+}
+
+static bool loaded_index_find_column_ordinal(
+    const struct loaded_index_info *index,
+    int64_t column_id,
+    int64_t *out_ordinal_position
+) {
+    if (out_ordinal_position != NULL) {
+        *out_ordinal_position = 0;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        if (index->parts[part_index].column.column_id == column_id) {
+            if (out_ordinal_position != NULL) {
+                *out_ordinal_position = index->parts[part_index].index_column.ordinal_position;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static int validate_drop_column_unique_key_updates(
+    struct mylite_db *database,
+    struct planned_alter_table_drop_column *plan,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_update_count; ++index) {
+        const struct planned_drop_column_index_update *update = &plan->index_updates[index];
+
+        if (update->drops_index || !update->index.is_unique) {
+            continue;
+        }
+        if (plan->rowid_alias == NULL) {
+            rc = choose_sqlite_rowid_alias(
+                database,
+                columns,
+                column_count,
+                "ALTER TABLE DROP COLUMN requires an unshadowed SQLite rowid alias",
+                &plan->rowid_alias
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_drop_column_unique_key_update(database, plan, update);
+        }
+    }
+
+    return rc;
+}
+
+static int validate_drop_column_unique_key_update(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct planned_drop_column_index_update *update
+) {
+    struct planned_alter_table_add_index validation = {
+        .target = plan->target,
+        .table = plan->table,
+        .parts = update->remaining_parts,
+        .part_count = update->remaining_part_count,
+        .part_capacity = update->remaining_part_count,
+        .rowid_alias = plan->rowid_alias,
+        .is_unique = true,
+    };
+    const char *index_name =
+        update->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY ? "PRIMARY" : update->index.name;
+    int written = snprintf(validation.index_name, sizeof(validation.index_name), "%s", index_name);
+
+    if (written < 0 || (size_t)written >= sizeof(validation.index_name)) {
+        set_runtime_error(database, "invalid narrowed unique-key name");
+        return MYLITE_ERROR;
+    }
+    return validate_create_unique_index_existing_rows(database, &validation);
 }
 
 static int alter_table_drop_column_from_plan(
@@ -42129,6 +42503,30 @@ static int alter_table_drop_column_from_plan(
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
     int rc = mylite_catalog_begin_mutation(database, &mutation);
 
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_update_count; ++index) {
+        const struct planned_drop_column_index_update *update = &plan->index_updates[index];
+
+        if (update->drops_index) {
+            rc = mylite_catalog_delete_index_in_mutation(
+                database,
+                &mutation,
+                plan->table.table_id,
+                update->index.index_id
+            );
+        } else {
+            rc = mylite_catalog_delete_index_column_in_mutation(
+                database,
+                &mutation,
+                plan->table.table_id,
+                update->index.index_id,
+                plan->column.column_id,
+                update->removed_ordinal_position
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_drop_column_prepare_indexes(database, plan);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_delete_column_in_mutation(
             database,
@@ -42140,6 +42538,9 @@ static int alter_table_drop_column_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = execute_physical_alter_table_drop_column(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_drop_column_recreate_indexes(database, plan);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
@@ -42163,6 +42564,71 @@ static int alter_table_drop_column_from_plan(
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
+}
+
+static int execute_physical_drop_column_prepare_indexes(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_update_count; ++index) {
+        const struct planned_drop_column_index_update *update = &plan->index_updates[index];
+        char *sql = NULL;
+
+        if (update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+            continue;
+        }
+        rc = build_drop_index_sql(update->index.physical_name, &sql);
+        if (rc == MYLITE_OK) {
+            rc = execute_sqlite_schema_sql(database, sql);
+        }
+        free(sql);
+    }
+
+    return rc;
+}
+
+static int execute_physical_drop_column_recreate_indexes(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_update_count; ++index) {
+        const struct planned_drop_column_index_update *update = &plan->index_updates[index];
+
+        if (update->drops_index || update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+            continue;
+        }
+        rc = execute_physical_drop_column_create_index(database, plan, update);
+    }
+
+    return rc;
+}
+
+static int execute_physical_drop_column_create_index(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan,
+    const struct planned_drop_column_index_update *update
+) {
+    struct planned_alter_table_add_index index_plan = {
+        .target = plan->target,
+        .table = plan->table,
+        .parts = update->remaining_parts,
+        .part_count = update->remaining_part_count,
+        .part_capacity = update->remaining_part_count,
+        .rowid_alias = NULL,
+        .is_unique = update->index.is_unique,
+    };
+    char *sql = NULL;
+    int rc = build_add_index_sql(&index_plan, update->index.physical_name, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    return rc;
 }
 
 static int execute_physical_alter_table_drop_column(
@@ -75210,29 +75676,6 @@ static int note_check_constraint_presence(
     return MYLITE_OK;
 }
 
-static int reject_primary_key_column_alter(
-    struct mylite_db *database,
-    int64_t table_id,
-    const struct mylite_catalog_column_descriptor *columns,
-    size_t column_count,
-    const struct mylite_catalog_column_descriptor *column,
-    const char *message
-) {
-    struct primary_key_info primary_key = primary_key_info_init();
-    int rc = load_primary_key_info(database, table_id, columns, column_count, &primary_key);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (primary_key_info_contains_column_id(&primary_key, column != NULL ? column->column_id : 0)) {
-        set_unsupported_error(database, message);
-        rc = MYLITE_ERROR;
-    }
-
-    primary_key_info_deinit(&primary_key);
-    return rc;
-}
-
 static int reject_inline_primary_key_column_definition(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_definition,
@@ -97801,6 +98244,58 @@ static void set_duplicate_foreign_key_error(
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_duplicate_foreign_key,
+        "HY000",
+        message
+    );
+}
+
+static void set_drop_column_foreign_key_child_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *foreign_key_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Cannot drop column '%s': needed in a foreign key constraint '%s'",
+        column_name,
+        foreign_key_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_drop_column_fk_child,
+        "HY000",
+        message
+    );
+}
+
+static void set_drop_column_foreign_key_parent_error(
+    struct mylite_db *database,
+    const char *column_name,
+    const char *foreign_key_name,
+    const char *child_table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Cannot drop column '%s': needed in a foreign key constraint '%s' of table '%s'",
+        column_name,
+        foreign_key_name,
+        child_table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_drop_column_fk_parent,
         "HY000",
         message
     );

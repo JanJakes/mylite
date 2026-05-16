@@ -106,6 +106,12 @@ algorithm/lock modifiers. MyLite rejects them in this phase because they require
 multi-action planning, dependency checks, metadata-lock semantics, or later
 descriptor surfaces.
 
+The later `baseline-key-aware-alter-drop-column` phase expands this baseline by
+updating descriptor-owned primary, unique, nonunique, prefix, metadata-only
+fulltext, and supported auto-increment key dependencies when the dropped column
+is part of a supported key, while still rejecting supported foreign-key column
+dependencies and CHECK-constrained tables.
+
 ## Ownership Boundary
 
 - The public API remains unchanged. `mylite_execute()` owns call validation,

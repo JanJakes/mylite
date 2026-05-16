@@ -20,7 +20,10 @@ enum {
     test_path_capacity = 1024,
     sql_capacity = 512,
     show_columns_column_count = 6,
+    show_index_column_count = 15,
+    statistics_key_part_column_count = 5,
     mysql_error_parse = 1064,
+    mysql_error_duplicate_entry = 1062,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_unknown_column = 1054,
@@ -30,6 +33,8 @@ enum {
     mysql_error_table_does_not_exist = 1146,
     mysql_error_cant_remove_all_fields = 1090,
     mysql_error_cant_drop_field_or_key = 1091,
+    mysql_error_drop_column_fk_child = 1828,
+    mysql_error_drop_column_fk_parent = 1829,
 };
 
 struct expected_sql_error {
@@ -47,12 +52,18 @@ struct expected_query {
 };
 
 static int test_drop_column_success_descriptor_persistence_and_dml(void);
+static int test_drop_column_key_dependency_updates(void);
 static int test_drop_column_diagnostics(void);
 static int test_drop_column_physical_failure_preserves_catalog(void);
 static int test_drop_column_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_ddl_result(const mylite_result *result, const char *context);
+static int expect_ddl_result_rows(
+    const mylite_result *result,
+    int64_t affected_rows,
+    const char *context
+);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -74,6 +85,11 @@ static int expect_missing_column_descriptor(
     mylite_db *database,
     int64_t table_id,
     const char *name,
+    const char *context
+);
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -101,6 +117,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_drop_column_success_descriptor_persistence_and_dml();
+    failures += test_drop_column_key_dependency_updates();
     failures += test_drop_column_diagnostics();
     failures += test_drop_column_physical_failure_preserves_catalog();
     failures += test_drop_column_independent_handles();
@@ -569,6 +586,414 @@ static int test_drop_column_success_descriptor_persistence_and_dml(void) {
     return failures;
 }
 
+static int test_drop_column_key_dependency_updates(void) {
+    static const char *const single_remaining_rows[] = {"1000", "2000"};
+    static const char *const no_show_index_rows[] = {NULL};
+    static const char *const no_statistics_rows[] = {"0"};
+    static const char *const fulltext_remaining_rows[] = {"1", "10", "2", "20"};
+    static const char *const composite_primary_rows[] = {"PRIMARY", "0", "1", "b", NULL};
+    static const char *const composite_unique_rows[] = {"u_ab", "0", "1", "b", NULL};
+    static const char *const composite_secondary_rows[] = {"k_ab", "1", "1", "b", NULL};
+    static const char *const composite_prefix_rows[] = {
+        "k_prefix",
+        "1",
+        "1",
+        "name",
+        "4",
+        "k_prefix",
+        "1",
+        "2",
+        "c",
+        NULL,
+    };
+    static const char *const composite_remaining_rows[] = {
+        "10",
+        "7",
+        "alpha name",
+        "20",
+        "8",
+        "beta name",
+    };
+    static const char *const composite_show_create_rows[] = {
+        "composite_keys",
+        "CREATE TABLE `composite_keys` (\n"
+        "  `b` int NOT NULL,\n"
+        "  `c` int DEFAULT NULL,\n"
+        "  `name` varchar(20) DEFAULT NULL,\n"
+        "  PRIMARY KEY (`b`),\n"
+        "  UNIQUE KEY `u_ab` (`b`),\n"
+        "  KEY `k_ab` (`b`),\n"
+        "  KEY `k_prefix` (`name`(4),`c`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const auto_remaining_rows[] = {"10", "20"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "key_dependencies") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open key dependency file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE single_keys ("
+        "id INT NOT NULL PRIMARY KEY, "
+        "uniq_col INT UNIQUE, "
+        "plain_col INT, "
+        "pref_col VARCHAR(20), "
+        "keep_col INT, "
+        "KEY k_plain (plain_col), "
+        "KEY k_pref (pref_col(5)))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO single_keys VALUES "
+        "(1, 10, 100, 'alpha', 1000), "
+        "(2, 20, 200, 'beta', 2000)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 4, "single-key physical indexes before drop");
+    failures += execute_ok(database, "ALTER TABLE single_keys DROP COLUMN plain_col", &result);
+    failures += expect_ddl_result(result, "drop plain secondary key column");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 3, "plain secondary index removed");
+    failures += execute_ok(database, "ALTER TABLE single_keys DROP COLUMN uniq_col", &result);
+    failures += expect_ddl_result(result, "drop unique secondary key column");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 2, "unique secondary index removed");
+    failures += execute_ok(database, "ALTER TABLE single_keys DROP COLUMN pref_col", &result);
+    failures += expect_ddl_result(result, "drop prefix secondary key column");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 1, "prefix secondary index removed");
+    failures += execute_ok(database, "ALTER TABLE single_keys DROP COLUMN id", &result);
+    failures += expect_ddl_result_rows(result, 2, "drop one-column primary key");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 0, "single-key indexes all removed");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT keep_col FROM single_keys ORDER BY keep_col",
+            .values = single_remaining_rows,
+            .row_count = 2U,
+            .column_count = 1U,
+            .context = "single-key rows after key column drops",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'single_keys'",
+            .values = no_statistics_rows,
+            .row_count = 1U,
+            .column_count = 1U,
+            .context = "single-key statistics removed",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM single_keys",
+            .values = no_show_index_rows,
+            .row_count = 0U,
+            .column_count = show_index_column_count,
+            .context = "single-key SHOW INDEX removed",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE fulltext_keys ("
+        "id INT, "
+        "body TEXT, "
+        "keep_col INT, "
+        "FULLTEXT KEY ft_body (body))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO fulltext_keys VALUES (1, 'first body', 10), (2, 'second body', 20)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 0, "fulltext metadata has no physical index");
+    failures += execute_ok(database, "ALTER TABLE fulltext_keys DROP COLUMN body", &result);
+    failures += expect_ddl_result(result, "drop fulltext key column");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_physical_index_count(database, 0, "dropped fulltext key stays metadata-only");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'fulltext_keys'",
+            .values = no_statistics_rows,
+            .row_count = 1U,
+            .column_count = 1U,
+            .context = "fulltext statistics removed",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, keep_col FROM fulltext_keys ORDER BY id",
+            .values = fulltext_remaining_rows,
+            .row_count = 2U,
+            .column_count = 2U,
+            .context = "fulltext rows after drop",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE composite_keys ("
+        "a INT NOT NULL, "
+        "b INT NOT NULL, "
+        "c INT, "
+        "name VARCHAR(20), "
+        "PRIMARY KEY (a,b), "
+        "UNIQUE KEY u_ab (a,b), "
+        "KEY k_ab (a,b), "
+        "KEY k_prefix (name(4), c))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO composite_keys VALUES "
+        "(1, 10, 7, 'alpha name'), "
+        "(2, 20, 8, 'beta name')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 4, "composite physical indexes before drop");
+    failures += execute_ok(database, "ALTER TABLE composite_keys DROP COLUMN a", &result);
+    failures += expect_ddl_result(result, "drop composite key first part");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 4, "composite indexes rebuilt after drop");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'composite_keys' AND INDEX_NAME = 'PRIMARY'",
+            .values = composite_primary_rows,
+            .row_count = 1U,
+            .column_count = statistics_key_part_column_count,
+            .context = "primary key shrinks after dropped part",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'composite_keys' AND INDEX_NAME = 'u_ab'",
+            .values = composite_unique_rows,
+            .row_count = 1U,
+            .column_count = statistics_key_part_column_count,
+            .context = "unique key shrinks after dropped part",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'composite_keys' AND INDEX_NAME = 'k_ab'",
+            .values = composite_secondary_rows,
+            .row_count = 1U,
+            .column_count = statistics_key_part_column_count,
+            .context = "secondary key shrinks after dropped part",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'composite_keys' AND INDEX_NAME = 'k_prefix' "
+                   "ORDER BY SEQ_IN_INDEX",
+            .values = composite_prefix_rows,
+            .row_count = 2U,
+            .column_count = statistics_key_part_column_count,
+            .context = "unaffected prefix key remains ordered",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b, c, name FROM composite_keys ORDER BY b",
+            .values = composite_remaining_rows,
+            .row_count = 2U,
+            .column_count = 3U,
+            .context = "composite rows after key shrink",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE composite_keys",
+            .values = composite_show_create_rows,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "composite SHOW CREATE after key shrink",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unique_duplicate (a INT, b INT, UNIQUE KEY u_ab (a,b))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO unique_duplicate VALUES (1,1), (2,1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE unique_duplicate DROP COLUMN a",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE primary_duplicate (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a,b))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO primary_duplicate VALUES (1,1), (2,1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE primary_duplicate DROP COLUMN a",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_drop (id INT AUTO_INCREMENT, keep_col INT, KEY id_key (id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO auto_drop (keep_col) VALUES (10), (20)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "ALTER TABLE auto_drop DROP COLUMN id", &result);
+    failures += expect_ddl_result(result, "drop nonunique auto-increment key column");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT keep_col FROM auto_drop ORDER BY keep_col",
+            .values = auto_remaining_rows,
+            .row_count = 2U,
+            .column_count = 1U,
+            .context = "auto-increment rows after drop",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'auto_drop'",
+            .values = no_statistics_rows,
+            .row_count = 1U,
+            .column_count = 1U,
+            .context = "auto-increment key statistics removed",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE child_fk ("
+        "id INT, "
+        "parent_id INT, "
+        "CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent_fk (id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE child_fk DROP COLUMN parent_id",
+        (struct expected_sql_error){
+            .code = mysql_error_drop_column_fk_child,
+            .sqlstate = "HY000",
+            .message_part = "needed in a foreign key constraint 'fk_parent'",
+        }
+    );
+    failures +=
+        execute_ok(database, "CREATE TABLE parent_ref (id INT PRIMARY KEY, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE child_ref ("
+        "id INT, "
+        "parent_id INT, "
+        "CONSTRAINT fk_parent_ref FOREIGN KEY (parent_id) REFERENCES parent_ref (id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE parent_ref DROP COLUMN id",
+        (struct expected_sql_error){
+            .code = mysql_error_drop_column_fk_parent,
+            .sqlstate = "HY000",
+            .message_part = "needed in a foreign key constraint 'fk_parent_ref'",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_drop_column_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -988,11 +1413,19 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 }
 
 static int expect_ddl_result(const mylite_result *result, const char *context) {
+    return expect_ddl_result_rows(result, 0, context);
+}
+
+static int expect_ddl_result_rows(
+    const mylite_result *result,
+    int64_t affected_rows,
+    const char *context
+) {
     int failures = 0;
 
     failures += expect_size(mylite_result_column_count(result), 0U, context);
     failures += expect_size(mylite_result_row_count(result), 0U, context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, context);
     failures += expect_size(mylite_result_warning_count(result), 0U, context);
     return failures;
 }
@@ -1083,6 +1516,52 @@ static int expect_missing_column_descriptor(
     );
 }
 
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
+    const char *context
+) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3 *connection = mylite_connection_sqlite_for_test(database);
+    sqlite3_stmt *statement = NULL;
+    int actual_count = 0;
+    int rc = SQLITE_OK;
+
+    if (connection == NULL) {
+        fprintf(stderr, "%s: missing SQLite test connection\n", context);
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(
+        connection,
+        "SELECT count(*) FROM sqlite_schema "
+        "WHERE type = 'index' AND name GLOB '_mylite_user_index_*'",
+        sqlite_use_nul_terminated_string,
+        &statement,
+        NULL
+    );
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: prepare physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        actual_count = sqlite3_column_int(statement, 0);
+        rc = SQLITE_OK;
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && rc == SQLITE_OK) {
+        rc = SQLITE_ERROR;
+    }
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+
+    return expect_int(actual_count, expected_count, context);
+}
+
 static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
@@ -1103,7 +1582,7 @@ static int current_process_id(void) {
 #ifdef _WIN32
     return _getpid();
 #else
-    return (int)getpid();
+    return getpid();
 #endif
 }
 

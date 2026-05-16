@@ -1143,7 +1143,9 @@ static int test_primary_key_type_and_mutation_coverage(void) {
 }
 
 static int test_primary_key_diagnostics(void) {
-    static const char *const keyed_rows[] = {"1", "10"};
+    static const char *const keyed_rows_after_drop[] = {"10"};
+    static const char *const keyed_rows_after_replace[] = {"10", "11"};
+    static const char *const no_show_index_rows[] = {NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1317,29 +1319,48 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "ALTER TABLE ADD COLUMN does not support PRIMARY KEY",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(database, "ALTER TABLE keyed DROP COLUMN id", 1);
+    failures += expect_query_values(
         database,
-        "ALTER TABLE keyed DROP COLUMN id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE DROP COLUMN does not yet support primary-key columns",
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM keyed",
+            .values = no_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 0U,
+            .context = "primary-key table after DROP COLUMN id SHOW INDEX",
         }
     );
     failures += expect_dml_ok(database, "ALTER TABLE keyed MODIFY COLUMN v BIGINT", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v FROM keyed",
-            .values = keyed_rows,
-            .column_count = 2U,
+            .sql = "SELECT v FROM keyed",
+            .values = keyed_rows_after_drop,
+            .column_count = 1U,
             .row_count = 1U,
             .context = "primary-key table after MODIFY COLUMN",
         }
     );
+    failures += expect_statement_ok(database, "ALTER TABLE keyed ORDER BY v");
+    failures += expect_statement_ok(database, "ALTER TABLE keyed FORCE");
+    failures += expect_dml_ok(database, "REPLACE INTO keyed VALUES (11)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v FROM keyed ORDER BY v",
+            .values = keyed_rows_after_replace,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "primary-key table after DROP COLUMN id REPLACE",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE keyed_negative (id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO keyed_negative VALUES (1, 10)", 1);
     failures += execute_error(
         database,
-        "ALTER TABLE keyed ORDER BY v",
+        "ALTER TABLE keyed_negative ORDER BY v",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1348,17 +1369,16 @@ static int test_primary_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE keyed FORCE",
+        "ALTER TABLE keyed_negative FORCE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ALTER TABLE FORCE does not yet support primary-key tables",
         }
     );
-    failures += expect_dml_ok(database, "REPLACE INTO keyed VALUES (1, 11)", 2);
     failures += execute_error(
         database,
-        "INSERT INTO keyed SELECT id, v FROM keyed",
+        "INSERT INTO keyed_negative SELECT id, v FROM keyed_negative",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1367,7 +1387,7 @@ static int test_primary_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO keyed SELECT id, v FROM keyed",
+        "REPLACE INTO keyed_negative SELECT id, v FROM keyed_negative",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

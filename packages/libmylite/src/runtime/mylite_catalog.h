@@ -380,6 +380,14 @@ int mylite_catalog_delete_index_in_mutation(
     int64_t table_id,
     int64_t index_id
 );
+int mylite_catalog_delete_index_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t index_id,
+    int64_t column_id,
+    int64_t ordinal_position
+);
 int mylite_catalog_rename_index_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

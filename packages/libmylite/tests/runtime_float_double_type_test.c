@@ -623,8 +623,8 @@ static int test_float_double_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, or TIMESTAMP "
-                "descriptor columns",
+                "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, "
+                "or nonbinary string descriptor columns",
         }
     );
     failures += execute_error(

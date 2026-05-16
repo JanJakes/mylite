@@ -84233,6 +84233,15 @@ static int plan_select_order(
         set_unsupported_error(database, "ORDER BY does not yet support SET columns");
         return MYLITE_ERROR;
     }
+    if (column_descriptor_is_string_family(&out_order->column)) {
+        out_order->has_order = true;
+        out_order->direction = PLANNED_SELECT_ORDER_ASC;
+        direction = child_at(order_clause, 1U);
+        if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            out_order->direction = PLANNED_SELECT_ORDER_DESC;
+        }
+        return MYLITE_OK;
+    }
     if (rc == MYLITE_OK && !column_descriptor_is_date(&out_order->column) &&
         !column_descriptor_is_time(&out_order->column) &&
         !column_descriptor_is_datetime(&out_order->column) &&
@@ -84244,8 +84253,8 @@ static int plan_select_order(
         rc = integer_range_for_column(
             database,
             &out_order->column,
-            "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, or TIMESTAMP "
-            "descriptor columns",
+            "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
+            "nonbinary string descriptor columns",
             &range
         );
     }

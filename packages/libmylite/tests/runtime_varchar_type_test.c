@@ -674,17 +674,6 @@ static int test_varchar_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM diag ORDER BY v",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, or "
-                            "TIMESTAMP descriptor "
-                            "columns",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT DISTINCT v FROM diag",
         (struct expected_sql_error){
             .code = mysql_error_parse,

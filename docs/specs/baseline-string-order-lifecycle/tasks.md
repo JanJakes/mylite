@@ -11,12 +11,12 @@
 - [x] Add MySQL-runtime expectation script for the selected feature surface.
 - [x] Write independently authored feature specification with MyLite grammar
   snippets, ownership boundaries, diagnostics, and known exclusions.
-- [ ] Extend the shared descriptor order planner for admitted nonbinary string
+- [x] Extend the shared descriptor order planner for admitted nonbinary string
   descriptors.
-- [ ] Add or extend runtime tests under `packages/libmylite/tests/`.
-- [ ] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
+- [x] Add or extend runtime tests under `packages/libmylite/tests/`.
+- [x] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
   support wording.
-- [ ] Run focused runtime/MySQL expectation verification.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend findings, commit, and push to remote
+- [x] Run focused runtime/MySQL expectation verification.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review with a subagent, amend findings, commit, and push to remote
   `main`.

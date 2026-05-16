@@ -555,17 +555,6 @@ static int test_text_diagnostics(void) {
             .context = "TEXT equality predicate",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT id FROM diag ORDER BY tt",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, or "
-                            "TIMESTAMP descriptor "
-                            "columns",
-        }
-    );
     failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO diag (id, nn) VALUES (10, NULL)",

@@ -978,6 +978,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "ucase_function";
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
         return "ucase_argument_count_error";
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+        return "ltrim_function";
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+        return "ltrim_argument_count_error";
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+        return "rtrim_function";
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+        return "rtrim_argument_count_error";
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+        return "trim_function";
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+        return "trim_leading_function";
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
+        return "trim_trailing_function";
     case MYLITE_SQL_AST_LEFT_FUNCTION:
         return "left_function";
     case MYLITE_SQL_AST_RIGHT_FUNCTION:

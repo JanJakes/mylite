@@ -99,7 +99,10 @@ static int test_keywords(void) {
     failures += expect_keyword("lcase", 0U);
     failures += expect_keyword("left", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_keyword("lower", 0U);
+    failures += expect_keyword("ltrim", 0U);
     failures += expect_keyword("right", MYLITE_SQL_KEYWORD_RESERVED);
+    failures += expect_keyword("rtrim", 0U);
+    failures += expect_keyword("trim", 0U);
     failures += expect_keyword("ucase", 0U);
     failures += expect_keyword("upper", 0U);
     failures += expect_keyword("nullif", 0U);

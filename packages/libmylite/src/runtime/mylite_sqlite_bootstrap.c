@@ -5,6 +5,7 @@
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_case.h"
+#include "mylite_string_trim.h"
 #include "sqlite3.h"
 
 #include <stddef.h>
@@ -197,6 +198,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_case_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_trim_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_regexp_functions(sqlite);

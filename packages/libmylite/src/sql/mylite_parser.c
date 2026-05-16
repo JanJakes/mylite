@@ -4389,6 +4389,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_one_argument_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_trim_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *remove_string,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    function = make_node(
+        state,
+        function_kind,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, value);
+    mylite_sql_ast_node_append_child(function, remove_string);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -6047,6 +6071,7 @@ static bool map_keyword_token(
         {"BIT_COUNT", MYLITE_SQL_PARSE_BIT_COUNT},
         {"BIT_OR", MYLITE_SQL_PARSE_BIT_OR},
         {"BIT_XOR", MYLITE_SQL_PARSE_BIT_XOR},
+        {"BOTH", MYLITE_SQL_PARSE_BOTH},
         {"CROSS", MYLITE_SQL_PARSE_CROSS},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
@@ -6062,10 +6087,12 @@ static bool map_keyword_token(
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
         {"LAST_INSERT_ID", MYLITE_SQL_PARSE_LAST_INSERT_ID},
         {"LCASE", MYLITE_SQL_PARSE_LCASE},
+        {"LEADING", MYLITE_SQL_PARSE_LEADING},
         {"LENGTH", MYLITE_SQL_PARSE_LENGTH},
         {"MID", MYLITE_SQL_PARSE_MID},
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
         {"LOWER", MYLITE_SQL_PARSE_LOWER},
+        {"LTRIM", MYLITE_SQL_PARSE_LTRIM},
         {"MAX", MYLITE_SQL_PARSE_MAX},
         {"MIN", MYLITE_SQL_PARSE_MIN},
         {"SUM", MYLITE_SQL_PARSE_SUM},
@@ -6099,6 +6126,9 @@ static bool map_keyword_token(
         {"TRUNCATE", MYLITE_SQL_PARSE_TRUNCATE},
         {"SUBSTR", MYLITE_SQL_PARSE_SUBSTR},
         {"SUBSTRING", MYLITE_SQL_PARSE_SUBSTRING},
+        {"RTRIM", MYLITE_SQL_PARSE_RTRIM},
+        {"TRAILING", MYLITE_SQL_PARSE_TRAILING},
+        {"TRIM", MYLITE_SQL_PARSE_TRIM},
         {"UCASE", MYLITE_SQL_PARSE_UCASE},
         {"UPPER", MYLITE_SQL_PARSE_UPPER},
         {"SHOW", MYLITE_SQL_PARSE_SHOW},

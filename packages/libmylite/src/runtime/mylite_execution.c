@@ -12,6 +12,7 @@
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
 #include "mylite_string_case.h"
+#include "mylite_string_trim.h"
 #include "sqlite3.h"
 
 #include <float.h>
@@ -2277,6 +2278,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE = 8,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE = 9,
     PLANNED_ROW_SCALAR_EXPRESSION_HEX = 10,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM = 11,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2296,6 +2298,13 @@ enum planned_string_case_function_kind {
     PLANNED_STRING_CASE_FUNCTION_NONE = 0,
     PLANNED_STRING_CASE_FUNCTION_LOWER = 1,
     PLANNED_STRING_CASE_FUNCTION_UPPER = 2,
+};
+
+enum planned_string_trim_function_kind {
+    PLANNED_STRING_TRIM_FUNCTION_NONE = 0,
+    PLANNED_STRING_TRIM_FUNCTION_BOTH = 1,
+    PLANNED_STRING_TRIM_FUNCTION_LEADING = 2,
+    PLANNED_STRING_TRIM_FUNCTION_TRAILING = 3,
 };
 
 enum planned_string_slice_function_kind {
@@ -2330,6 +2339,7 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_field_domain field_domain;
     enum planned_string_length_function_kind string_length_kind;
     enum planned_string_case_function_kind string_case_kind;
+    enum planned_string_trim_function_kind string_trim_kind;
     enum planned_string_slice_function_kind string_slice_kind;
     struct planned_value value;
     struct mylite_catalog_column_descriptor column;
@@ -10054,6 +10064,28 @@ static bool is_string_case_function_kind(enum mylite_sql_ast_node_kind ast_kind)
 static enum mylite_string_case_kind string_case_function_to_value_kind(
     enum planned_string_case_function_kind function_kind
 );
+static int string_trim_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_string_trim_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static bool string_trim_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static enum planned_string_trim_function_kind string_trim_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_string_trim_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static enum mylite_string_trim_kind string_trim_function_to_value_kind(
+    enum planned_string_trim_function_kind function_kind
+);
 static int string_slice_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11622,6 +11654,7 @@ static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expre
 static bool is_format_truncate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_trim_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_charset_collation_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -15651,6 +15684,41 @@ static bool string_case_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_string_trim_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_trim_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_trim_remove_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_trim_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_trim_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_string_slice_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16428,6 +16496,14 @@ static int append_row_scalar_string_case_expression_sql(
 static const char *row_scalar_string_case_sql_function(
     enum planned_string_case_function_kind function_kind
 );
+static int append_row_scalar_string_trim_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_string_trim_sql_function(
+    enum planned_string_trim_function_kind function_kind
+);
 static int append_row_scalar_string_slice_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -17144,6 +17220,11 @@ static int bind_row_scalar_string_length_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_case_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_trim_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -18312,6 +18393,13 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
@@ -22952,7 +23040,7 @@ static int execute_select_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND()/"
             "CRC32()/FORMAT()/TRUNCATE(), and "
             "CAST(value AS BINARY), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
-            "limited string length, string case, and string slice functions"
+            "limited string length, string case, string trim, and string slice functions"
         );
         return MYLITE_ERROR;
     }
@@ -31558,6 +31646,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
@@ -57101,6 +57196,10 @@ static const char *argument_count_error_node_function_name(
         return "UPPER";
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
         return "UCASE";
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+        return "LTRIM";
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+        return "RTRIM";
     default:
         break;
     }
@@ -57182,6 +57281,12 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_UPPER_FUNCTION:
     case MYLITE_SQL_AST_UCASE_FUNCTION:
         return string_case_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
+        return string_trim_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
@@ -57321,6 +57426,12 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UCASE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "LTRIM");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "RTRIM");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return date_format_function_value(database, expression, out_cell);
@@ -58081,6 +58192,199 @@ static enum mylite_string_case_kind string_case_function_to_value_kind(
         return MYLITE_STRING_CASE_UPPER;
     }
     return MYLITE_STRING_CASE_LOWER;
+}
+
+static int string_trim_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_trim_function_kind function_kind = PLANNED_STRING_TRIM_FUNCTION_NONE;
+    struct session_scalar_cell value_cell = {0};
+    struct session_scalar_cell remove_cell = {0};
+    char *owned_value = NULL;
+    char *owned_remove = NULL;
+    const char *value = NULL;
+    const char *remove_string = " ";
+    size_t value_length = 0U;
+    size_t remove_string_length = 1U;
+    size_t argument_count = 0U;
+    bool value_is_null = false;
+    bool remove_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_TRIM_FUNCTION_NONE
+                                       : string_trim_function_kind(expression->kind);
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_TRIM_FUNCTION_NONE ||
+        (argument_count != 1U && argument_count != 2U)) {
+        set_unsupported_error(
+            database,
+            "trim functions support one value and an optional remove string"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_trim_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &value_cell,
+        &owned_value,
+        &value,
+        &value_length,
+        &value_is_null
+    );
+    if (rc == MYLITE_OK && argument_count == 2U) {
+        rc = evaluate_string_trim_scalar_argument(
+            database,
+            child_at(expression, 1U),
+            &remove_cell,
+            &owned_remove,
+            &remove_string,
+            &remove_string_length,
+            &remove_is_null
+        );
+    }
+    if (rc != MYLITE_OK || value_is_null || remove_is_null) {
+        free(owned_value);
+        free(owned_remove);
+        session_scalar_cell_deinit(&value_cell);
+        session_scalar_cell_deinit(&remove_cell);
+        return rc;
+    }
+
+    rc = mylite_string_trim_value(
+        database,
+        string_trim_function_to_value_kind(function_kind),
+        value,
+        value_length,
+        remove_string,
+        remove_string_length,
+        &out_cell->owned_text
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->owned_text;
+    }
+
+    free(owned_value);
+    free(owned_remove);
+    session_scalar_cell_deinit(&value_cell);
+    session_scalar_cell_deinit(&remove_cell);
+    return rc;
+}
+
+static int evaluate_string_trim_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_trim_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "trim functions support only string, integer, boolean, NULL, session scalar, and "
+            "system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "trim functions support only string literals",
+                "trim function literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static bool string_trim_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression) {
+    return string_length_scalar_argument_is_admitted(expression);
+}
+
+static enum planned_string_trim_function_kind string_trim_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+        return PLANNED_STRING_TRIM_FUNCTION_LEADING;
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
+        return PLANNED_STRING_TRIM_FUNCTION_TRAILING;
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+        return PLANNED_STRING_TRIM_FUNCTION_BOTH;
+    default:
+        return PLANNED_STRING_TRIM_FUNCTION_NONE;
+    }
+}
+
+static bool is_string_trim_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_trim_function_kind(ast_kind) != PLANNED_STRING_TRIM_FUNCTION_NONE;
+}
+
+static enum mylite_string_trim_kind string_trim_function_to_value_kind(
+    enum planned_string_trim_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_TRIM_FUNCTION_LEADING:
+        return MYLITE_STRING_TRIM_LEADING;
+    case PLANNED_STRING_TRIM_FUNCTION_TRAILING:
+        return MYLITE_STRING_TRIM_TRAILING;
+    case PLANNED_STRING_TRIM_FUNCTION_BOTH:
+    case PLANNED_STRING_TRIM_FUNCTION_NONE:
+        break;
+    }
+    return MYLITE_STRING_TRIM_BOTH;
 }
 
 static int string_slice_function_value(
@@ -70094,6 +70398,27 @@ static bool is_string_case_projection_expression(const struct mylite_sql_ast_nod
     return string_case_scalar_argument_is_admitted(child_at(expression, 0U));
 }
 
+static bool is_string_trim_projection_expression(const struct mylite_sql_ast_node *expression) {
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || !is_string_trim_function_kind(expression->kind)) {
+        return false;
+    }
+    argument_count = mylite_sql_ast_node_child_count(expression);
+    if (argument_count != 1U && argument_count != 2U) {
+        return false;
+    }
+    if (!string_trim_scalar_argument_is_admitted(child_at(expression, 0U))) {
+        return false;
+    }
+    if (argument_count == 1U) {
+        return true;
+    }
+    return string_trim_scalar_argument_is_admitted(child_at(expression, 1U));
+}
+
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression) {
     enum planned_string_slice_function_kind function_kind = PLANNED_STRING_SLICE_FUNCTION_NONE;
     size_t argument_count = 0U;
@@ -70143,6 +70468,9 @@ static bool is_string_metadata_projection_expression(const struct mylite_sql_ast
         return true;
     }
     if (is_string_case_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_trim_projection_expression(expression)) {
         return true;
     }
     if (is_string_slice_projection_expression(expression)) {
@@ -82818,6 +83146,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (is_string_trim_function_kind(expression->kind)) {
+        return plan_row_scalar_string_trim_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (is_string_slice_function_kind(expression->kind)) {
         return plan_row_scalar_string_slice_expression(
             database,
@@ -83227,6 +83566,231 @@ static bool string_case_column_descriptor_is_supported(
         database,
         "string case functions support only integer, DECIMAL, nonbinary string, YEAR, and "
         "temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_trim_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_trim_function_kind function_kind = PLANNED_STRING_TRIM_FUNCTION_NONE;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_TRIM_FUNCTION_NONE
+                                       : string_trim_function_kind(expression->kind);
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_TRIM_FUNCTION_NONE ||
+        (argument_count != 1U && argument_count != 2U)) {
+        set_unsupported_error(
+            database,
+            "trim functions support one value and an optional remove string"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM;
+    out_expression->string_trim_kind = function_kind;
+    out_expression->argument_count = 2U;
+
+    rc = plan_row_scalar_string_trim_value_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK && argument_count == 2U) {
+        rc = plan_row_scalar_string_trim_remove_argument(
+            database,
+            child_at(expression, 1U),
+            &out_expression->arguments[1]
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = copy_text_value(database, " ", &out_expression->arguments[1].value);
+        if (rc == MYLITE_OK) {
+            out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        }
+    }
+    return rc;
+}
+
+static int plan_row_scalar_string_trim_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "trim functions support only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_trim_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "trim functions do not support RAND() value arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_trim_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "trim functions support only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_trim_remove_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER ||
+        !string_trim_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "trim functions support only scalar string, integer, boolean, NULL, session scalar, "
+            "and system variable remove-string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_trim_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT trim functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_trim_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_trim_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "trim functions do not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "trim functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "trim functions support only integer, DECIMAL, nonbinary string, YEAR, and temporal "
+        "columns"
     );
     return false;
 }
@@ -83840,7 +84404,8 @@ static int plan_row_scalar_non_concat_expression(
     set_unsupported_error(
         database,
         "row-scalar SELECT supports only CONCAT(), FIELD(), DATE_FORMAT(), descriptor columns, "
-        "limited string length, string case, string slice, HEX(), CHARSET(), and COLLATION() "
+        "limited string length, string case, string trim, string slice, HEX(), CHARSET(), and "
+        "COLLATION() "
         "functions, literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
@@ -84812,6 +85377,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
             is_string_length_function_kind(current->kind) ||
             is_string_case_function_kind(current->kind) ||
+            is_string_trim_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
@@ -93748,6 +94314,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
         return append_row_scalar_string_case_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+        return append_row_scalar_string_trim_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
@@ -93781,6 +94349,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
@@ -94100,6 +94669,60 @@ static const char *row_scalar_string_case_sql_function(
     case PLANNED_STRING_CASE_FUNCTION_UPPER:
         return "_mylite_upper_ascii";
     case PLANNED_STRING_CASE_FUNCTION_NONE:
+        break;
+    }
+    return NULL;
+}
+
+static int append_row_scalar_string_trim_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    function_name = row_scalar_string_trim_sql_function(expression->string_trim_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *row_scalar_string_trim_sql_function(
+    enum planned_string_trim_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_TRIM_FUNCTION_BOTH:
+        return "_mylite_trim";
+    case PLANNED_STRING_TRIM_FUNCTION_LEADING:
+        return "_mylite_ltrim";
+    case PLANNED_STRING_TRIM_FUNCTION_TRAILING:
+        return "_mylite_rtrim";
+    case PLANNED_STRING_TRIM_FUNCTION_NONE:
         break;
     }
     return NULL;
@@ -98457,6 +99080,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+        return bind_row_scalar_string_trim_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return bind_row_scalar_string_slice_expression_parameters(
             statement,
@@ -98494,6 +99123,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
@@ -98587,6 +99217,26 @@ static int bind_row_scalar_string_case_expression_parameters(
         &expression->arguments[0],
         parameter_index
     );
+}
+
+static int bind_row_scalar_string_trim_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_row_scalar_string_slice_expression_parameters(

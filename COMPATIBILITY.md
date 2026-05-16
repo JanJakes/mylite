@@ -473,7 +473,7 @@ tests.
 | `LOCATE()` | ❌ | Substring position. | [string functions](docs/compatibility/functions-string.md) |
 | `LOWER()` | 🟡 | Limited ASCII-only no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed values; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, or general expression metadata. | [string functions](docs/compatibility/functions-string.md) |
 | `LPAD()` | ❌ | Left padding. | [string functions](docs/compatibility/functions-string.md) |
-| `LTRIM()` | ❌ | Trim leading spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `LTRIM()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; trims leading ASCII space from admitted scalar and descriptor-backed text-convertible values. | [string functions](docs/compatibility/functions-string.md) |
 | `MAKE_SET()` | ❌ | Bitmask-selected set. | [string functions](docs/compatibility/functions-string.md) |
 | `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `OCTET_LENGTH()` | 🟡 | Limited `LENGTH()` synonym. | [string functions](docs/compatibility/functions-string.md) |
@@ -489,7 +489,7 @@ tests.
 | `REVERSE()` | ❌ | Reverse string. | [string functions](docs/compatibility/functions-string.md) |
 | `RIGHT()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values with literal integer/boolean/`NULL` lengths; UTF-8 text is sliced by character position. | [string functions](docs/compatibility/functions-string.md) |
 | `RPAD()` | ❌ | Right padding. | [string functions](docs/compatibility/functions-string.md) |
-| `RTRIM()` | ❌ | Trim trailing spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `RTRIM()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; trims trailing ASCII space from admitted scalar and descriptor-backed text-convertible values. | [string functions](docs/compatibility/functions-string.md) |
 | `SOUNDEX()` | ❌ | Soundex string. | [string functions](docs/compatibility/functions-string.md) |
 | `SPACE()` | ❌ | Repeated spaces. | [string functions](docs/compatibility/functions-string.md) |
 | `STRCMP()` | ❌ | String comparison. | [string functions](docs/compatibility/functions-string.md) |
@@ -497,7 +497,7 @@ tests.
 | `SUBSTRING()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values; supports comma and `FROM` / `FOR` forms with literal integer/boolean/`NULL` positions and optional lengths, slicing UTF-8 text by character position. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `SUBSTRING_INDEX()` | ❌ | Delimiter-count substring. | [string functions](docs/compatibility/functions-string.md) |
 | `TO_BASE64()` | ❌ | Base64 encode. | [string functions](docs/compatibility/functions-string.md) |
-| `TRIM()` | ❌ | Trim spaces. | [string functions](docs/compatibility/functions-string.md) |
+| `TRIM()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; supports default, `remstr FROM`, and `LEADING` / `TRAILING` / `BOTH` forms over admitted scalar and descriptor-backed text-convertible values. | [string functions](docs/compatibility/functions-string.md) |
 | `UCASE()` | 🟡 | Limited `UPPER()` synonym for ASCII-only scalar and row-scalar projection. | [string functions](docs/compatibility/functions-string.md) |
 | `UNHEX()` | ❌ | Hex decode. | [string functions](docs/compatibility/functions-string.md) |
 | `UPPER()` | 🟡 | Limited ASCII-only no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed values; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, or general expression metadata. | [string functions](docs/compatibility/functions-string.md) |

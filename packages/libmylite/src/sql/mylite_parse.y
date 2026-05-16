@@ -62,6 +62,7 @@
 %type union_modifier_opt { enum mylite_sql_ast_union_modifier }
 %type join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
+%type trim_direction { enum mylite_sql_ast_node_kind }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -2881,6 +2882,37 @@ expression(A) ::= UCASE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UCASE_FUNCTION, B, R);
 }
+expression(A) ::= LTRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LTRIM_FUNCTION, B, R);
+}
+expression(A) ::= RTRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RTRIM_FUNCTION, B, R);
+}
+expression(A) ::= TRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(
+        state, T, MYLITE_SQL_AST_TRIM_FUNCTION, NULL, B, R);
+}
+expression(A) ::= TRIM(T) LPAREN expression(B) FROM expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(
+        state, T, MYLITE_SQL_AST_TRIM_FUNCTION, B, C, R);
+}
+expression(A) ::= TRIM(T) LPAREN trim_direction(D) expression(B) FROM expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(state, T, D, B, C, R);
+}
+expression(A) ::= TRIM(T) LPAREN trim_direction(D) FROM expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(state, T, D, NULL, C, R);
+}
+trim_direction(A) ::= LEADING. {
+    A = MYLITE_SQL_AST_TRIM_LEADING_FUNCTION;
+}
+trim_direction(A) ::= TRAILING. {
+    A = MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION;
+}
+trim_direction(A) ::= BOTH. {
+    A = MYLITE_SQL_AST_TRIM_FUNCTION;
+}
 expression(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
@@ -3350,6 +3382,24 @@ expression(A) ::= UCASE(T) LPAREN expression(B) COMMA function_argument_list(C) 
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= LTRIM(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LTRIM(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= RTRIM(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= RTRIM(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -3966,6 +4016,15 @@ identifier(A) ::= UPPER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UCASE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LTRIM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= RTRIM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TRIM(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UTC(T). {

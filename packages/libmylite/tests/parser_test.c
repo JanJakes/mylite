@@ -65,6 +65,7 @@ static int test_hex_function(void);
 static int test_charset_collation_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
+static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
@@ -332,6 +333,7 @@ int main(void) {
     failures += test_charset_collation_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
+    failures += test_string_trim_functions();
     failures += test_string_slice_functions();
     failures += test_pi_function();
     failures += test_rand_function();
@@ -3676,6 +3678,142 @@ static int test_string_case_functions(void) {
     select = child_at(result.root, 0U);
     failures +=
         expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "string case identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_trim_functions(void) {
+    enum {
+        trim_trailing_item_index = 5,
+        trim_both_default_item_index = 6,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LTRIM(v), RTRIM('a'), TRIM('  a  '), TRIM('x' FROM 'xxaxx'), "
+        "TRIM(LEADING 'x' FROM 'xxa'), TRIM(TRAILING 'x' FROM 'axx'), "
+        "TRIM(BOTH FROM ' a ') FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LTRIM_FUNCTION, "ltrim function");
+    failures += expect_span_text(expression, "LTRIM(v)", "ltrim span");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "ltrim column");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_RTRIM_FUNCTION, "rtrim function");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "rtrim literal");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TRIM_FUNCTION, "trim function");
+    failures += expect_child_count(expression, 1U, "trim default child count");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TRIM_FUNCTION, "trim remove function");
+    failures += expect_child_count(expression, 2U, "trim remove child count");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "trim value child");
+    failures += expect_literal(
+        child_at(expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "trim remove child"
+    );
+    expression = child_at(child_at(select_list, 4U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TRIM_LEADING_FUNCTION, "trim leading function");
+    failures += expect_child_count(expression, 2U, "trim leading child count");
+    expression = child_at(child_at(select_list, trim_trailing_item_index), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION, "trim trailing function");
+    expression = child_at(child_at(select_list, trim_both_default_item_index), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TRIM_FUNCTION, "trim both default function");
+    failures += expect_child_count(expression, 1U, "trim both default child count");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "trim from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LTRIM ('  a'), (RTRIM('a  ')), TRIM(LEADING FROM '  a'), "
+        "TRIM(TRAILING FROM 'a  '), TRIM(+1 FROM 1112111) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LTRIM_FUNCTION, "spaced ltrim");
+    failures += expect_span_text(expression, "LTRIM ('  a')", "spaced ltrim span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized rtrim");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_RTRIM_FUNCTION, "wrapped rtrim");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TRIM_LEADING_FUNCTION, "trim leading default");
+    failures += expect_child_count(expression, 1U, "trim leading default child count");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION, "trim trailing default");
+    failures += expect_child_count(expression, 1U, "trim trailing default child count");
+    expression = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_TRIM_FUNCTION, "signed trim remove");
+    failures += expect_operator(
+        child_at(expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "trim signed remove argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LTRIM();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR,
+        "empty ltrim argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT RTRIM('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR,
+        "two rtrim argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT TRIM();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT TRIM('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO LTRIM(' a'), RTRIM('a '), TRIM(' a '), TRIM('x' FROM 'xax');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "trim do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LTRIM_FUNCTION, "do ltrim");
+    failures += expect_node(child_at(expression_list, 3U), MYLITE_SQL_AST_TRIM_FUNCTION, "do trim");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE trim_words (ltrim INT, rtrim INT, trim INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "trim identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

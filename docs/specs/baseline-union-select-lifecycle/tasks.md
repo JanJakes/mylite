@@ -11,16 +11,16 @@
   snippets, ownership boundaries, duplicate handling, unsupported surfaces,
   diagnostics, performance notes, and test plan.
 - [x] Add MySQL-runtime expectation script for user-visible behavior.
-- [ ] Update compatibility documentation for the exact limited subset.
-- [ ] Extend AST/parser support for compound select statements without
+- [x] Update compatibility documentation for the exact limited subset.
+- [x] Extend AST/parser support for compound select statements without
   admitting unrelated set-operation grammar.
-- [ ] Add runtime support for branch execution, column-count validation,
+- [x] Add runtime support for branch execution, column-count validation,
   metadata copying, `UNION ALL` append, and `UNION` duplicate removal.
-- [ ] Add focused runtime C tests for success paths, diagnostics, result
+- [x] Add focused runtime C tests for success paths, diagnostics, result
   metadata, read-only persistence, independent handles, and unsupported forms.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review final diff for MySQL behavior, result metadata, performance,
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused parser/runtime tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review final diff for MySQL behavior, result metadata, performance,
   cleanup, scope control, and compatibility accuracy.
 - [ ] Commit and push the implementation slice.

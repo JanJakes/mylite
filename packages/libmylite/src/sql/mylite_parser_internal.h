@@ -165,6 +165,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement_with_modifie
     struct mylite_sql_ast_node *limit_clause,
     struct mylite_sql_select_locking_clause locking_clause
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_compound_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *first_select,
+    struct mylite_sql_ast_node *terms
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_term_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *term
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_union_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *terms,
+    struct mylite_sql_ast_node *term
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token union_token,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct mylite_sql_ast_node *select_statement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,

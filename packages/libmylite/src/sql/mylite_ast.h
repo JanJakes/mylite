@@ -370,6 +370,9 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION = 361,
     MYLITE_SQL_AST_COLUMN_POSITION_FIRST = 362,
     MYLITE_SQL_AST_COLUMN_POSITION_AFTER = 363,
+    MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT = 364,
+    MYLITE_SQL_AST_UNION_TERM_LIST = 365,
+    MYLITE_SQL_AST_UNION_TERM = 366,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -492,6 +495,11 @@ enum mylite_sql_ast_select_modifier {
     MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT = 1,
 };
 
+enum mylite_sql_ast_union_modifier {
+    MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT = 0,
+    MYLITE_SQL_AST_UNION_MODIFIER_ALL = 1,
+};
+
 enum mylite_sql_ast_select_option {
     MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY = 1U << 0U,
     MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN = 1U << 1U,
@@ -519,6 +527,10 @@ struct mylite_sql_ast_select_payload {
     unsigned int options;
     int calc_found_rows;
     enum mylite_sql_ast_select_locking_clause locking_clause;
+};
+
+struct mylite_sql_ast_union_payload {
+    enum mylite_sql_ast_union_modifier modifier;
 };
 
 struct mylite_sql_ast_join_payload {
@@ -603,6 +615,7 @@ struct mylite_sql_ast_column_visibility_payload {
 
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_select_payload select;
+    struct mylite_sql_ast_union_payload union_term;
     struct mylite_sql_ast_join_payload join;
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
@@ -663,6 +676,10 @@ void mylite_sql_ast_node_set_select_calc_found_rows(
 void mylite_sql_ast_node_set_select_locking_clause(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_select_locking_clause locking_clause
+);
+void mylite_sql_ast_node_set_union_modifier(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_union_modifier modifier
 );
 void mylite_sql_ast_node_set_join_kind(
     struct mylite_sql_ast_node *node,
@@ -732,6 +749,9 @@ enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
 unsigned int mylite_sql_ast_node_select_options(const struct mylite_sql_ast_node *node);
 int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_clause(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_union_modifier mylite_sql_ast_node_union_modifier(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(const struct mylite_sql_ast_node *node);

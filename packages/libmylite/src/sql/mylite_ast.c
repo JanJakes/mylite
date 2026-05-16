@@ -121,6 +121,17 @@ void mylite_sql_ast_node_set_select_locking_clause(
     node->payload.select.locking_clause = locking_clause;
 }
 
+void mylite_sql_ast_node_set_union_modifier(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_union_modifier modifier
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.union_term.modifier = modifier;
+}
+
 void mylite_sql_ast_node_set_join_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_join_kind join_kind
@@ -336,6 +347,16 @@ enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_cla
     }
 
     return node->payload.select.locking_clause;
+}
+
+enum mylite_sql_ast_union_modifier mylite_sql_ast_node_union_modifier(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_UNION_TERM) {
+        return MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;
+    }
+
+    return node->payload.union_term.modifier;
 }
 
 enum mylite_sql_ast_join_kind mylite_sql_ast_node_join_kind(
@@ -673,6 +694,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "script";
     case MYLITE_SQL_AST_SELECT_STATEMENT:
         return "select_statement";
+    case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
+        return "compound_select_statement";
+    case MYLITE_SQL_AST_UNION_TERM_LIST:
+        return "union_term_list";
+    case MYLITE_SQL_AST_UNION_TERM:
+        return "union_term";
     case MYLITE_SQL_AST_USE_STATEMENT:
         return "use_statement";
     case MYLITE_SQL_AST_SELECT_LIST:

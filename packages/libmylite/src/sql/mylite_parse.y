@@ -59,6 +59,7 @@
 %type select_sql_no_cache_opt { int }
 %type select_sql_calc_found_rows_opt { int }
 %type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
+%type union_modifier_opt { enum mylite_sql_ast_union_modifier }
 %type join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
 
@@ -83,6 +84,9 @@ statements(A) ::= statements(B) SEMICOLON statement(C). {
     A = mylite_sql_parser_append_statement(state, B, C);
 }
 
+statement(A) ::= compound_select_statement(B). {
+    A = B;
+}
 statement(A) ::= select_statement(B). {
     A = B;
 }
@@ -1791,6 +1795,31 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
+}
+
+compound_select_statement(A) ::= select_statement(S) union_term_list(T). {
+    A = mylite_sql_parser_make_compound_select_statement(state, S, T);
+}
+
+union_term_list(A) ::= union_term(T). {
+    A = mylite_sql_parser_make_union_term_list(state, T);
+}
+union_term_list(A) ::= union_term_list(L) union_term(T). {
+    A = mylite_sql_parser_append_union_term(state, L, T);
+}
+
+union_term(A) ::= UNION(U) union_modifier_opt(M) select_statement(S). {
+    A = mylite_sql_parser_make_union_term(state, U, M, S);
+}
+
+union_modifier_opt(A) ::= . {
+    A = MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;
+}
+union_modifier_opt(A) ::= DISTINCT. {
+    A = MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;
+}
+union_modifier_opt(A) ::= ALL. {
+    A = MYLITE_SQL_AST_UNION_MODIFIER_ALL;
 }
 
 table_source(A) ::= table_name(N) table_alias_opt(AL). {

@@ -466,6 +466,89 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_compound_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *first_select,
+    struct mylite_sql_ast_node *terms
+) {
+    struct mylite_sql_source_span span = {0};
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (first_select != NULL) {
+        span = first_select->span;
+    }
+    if (terms != NULL) {
+        span = first_select == NULL ? terms->span : span_join(span, terms->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, first_select);
+    mylite_sql_ast_node_append_child(statement, terms);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_term_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *term
+) {
+    struct mylite_sql_source_span span = {0};
+    struct mylite_sql_ast_node *list = NULL;
+
+    if (term != NULL) {
+        span = term->span;
+    }
+    list = make_node(state, MYLITE_SQL_AST_UNION_TERM_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, term);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_union_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *terms,
+    struct mylite_sql_ast_node *term
+) {
+    (void)state;
+
+    if (terms == NULL || term == NULL) {
+        return terms;
+    }
+
+    mylite_sql_ast_node_append_child(terms, term);
+    mylite_sql_ast_node_set_span(terms, span_join(terms->span, term->span));
+    return terms;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_union_term(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token union_token,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct mylite_sql_ast_node *select_statement
+) {
+    struct mylite_sql_source_span span = span_from_token(&union_token);
+    struct mylite_sql_ast_node *term = NULL;
+
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    }
+
+    term = make_node(state, MYLITE_SQL_AST_UNION_TERM, span);
+    if (term == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_union_modifier(term, modifier);
+    mylite_sql_ast_node_append_child(term, select_statement);
+    return term;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_do_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token do_token,
@@ -5812,6 +5895,7 @@ static bool map_keyword_token(
         {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"UNION", MYLITE_SQL_PARSE_UNION},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},
         {"BETWEEN", MYLITE_SQL_PARSE_BETWEEN},

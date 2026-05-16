@@ -86,6 +86,7 @@ enum {
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_subquery_returns_more_than_one_row = 1242,
+    mysql_error_select_reduced = 1222,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
@@ -6900,6 +6901,62 @@ static int execute_select_statement(
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int execute_compound_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int reject_compound_select_branch_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch
+);
+static int append_compound_result_columns(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+);
+static int append_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct
+);
+static int deduplicate_compound_result(struct mylite_db *database, mylite_result **in_out_result);
+static int append_distinct_compound_rows(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+);
+static int append_all_compound_rows(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+);
+static int append_compound_row(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source,
+    size_t row_index
+);
+static bool compound_result_contains_row(
+    const mylite_result *target,
+    const mylite_result *source,
+    size_t source_row_index
+);
+static bool compound_result_rows_equal(
+    const mylite_result *left,
+    size_t left_row_index,
+    const mylite_result *right,
+    size_t right_row_index
+);
+static bool compound_result_cells_equal(
+    const mylite_result *left,
+    size_t left_row_index,
+    const mylite_result *right,
+    size_t right_row_index,
+    size_t column_index
 );
 static int execute_scalar_or_row_scalar_select_if_needed(
     struct mylite_db *database,
@@ -16675,6 +16732,7 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
 static void set_no_tables_used_error(struct mylite_db *database);
 static void set_scalar_subquery_column_count_error(struct mylite_db *database);
 static void set_scalar_subquery_row_count_error(struct mylite_db *database);
+static void set_union_column_count_mismatch_error(struct mylite_db *database);
 static void set_update_table_used_error(struct mylite_db *database, const char *table_name);
 static void set_native_function_parameter_count_error(
     struct mylite_db *database,
@@ -17065,7 +17123,8 @@ int mylite_execute(
     if (rc == MYLITE_OK) {
         completed_row_count = row_count_for_completed_statement(statement, *out_result);
         preserve_diagnostics_snapshot = statement_preserves_diagnostics_snapshot(statement);
-        if (statement != NULL && statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        if (statement != NULL && (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT ||
+                                  statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT)) {
             completed_statement_is_select = true;
         }
     }
@@ -17308,6 +17367,14 @@ static int execute_parsed_statement(
         }
         return rc;
     }
+    case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT: {
+        int rc = execute_compound_select_statement(database, context, statement, out_result);
+
+        if (rc == MYLITE_OK) {
+            clear_next_transaction_characteristics_after_statement(database);
+        }
+        return rc;
+    }
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
@@ -17366,6 +17433,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_UNION_TERM_LIST:
+    case MYLITE_SQL_AST_UNION_TERM:
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
@@ -22184,6 +22253,327 @@ static int execute_select_statement(
     planned_select_deinit(&plan);
 
     return rc;
+}
+
+static int execute_compound_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *first_branch = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *term = NULL;
+    mylite_result *result = NULL;
+    mylite_result *branch_result = NULL;
+    int rc = reject_compound_select_branch_shape(database, first_branch);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_select_statement(database, context, first_branch, &branch_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_compound_result_columns(database, result, branch_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_all_compound_rows(database, result, branch_result);
+    }
+    mylite_result_free(branch_result);
+    branch_result = NULL;
+
+    term = child_at(terms, 0U);
+    while (rc == MYLITE_OK && term != NULL) {
+        const struct mylite_sql_ast_node *branch = child_at(term, 0U);
+        bool distinct =
+            mylite_sql_ast_node_union_modifier(term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT;
+
+        rc = reject_compound_select_branch_shape(database, branch);
+        if (rc == MYLITE_OK) {
+            rc = execute_select_statement(database, context, branch, &branch_result);
+        }
+        if (rc == MYLITE_OK &&
+            mylite_result_column_count(branch_result) != mylite_result_column_count(result)) {
+            set_union_column_count_mismatch_error(database);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_compound_branch_rows(database, &result, branch_result, distinct);
+        }
+
+        mylite_result_free(branch_result);
+        branch_result = NULL;
+        term = term->next_sibling;
+    }
+
+    if (rc != MYLITE_OK) {
+        mylite_result_free(branch_result);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int reject_compound_select_branch_shape(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch
+) {
+    if (branch == NULL || branch->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "UNION supports only SELECT query blocks");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_calc_found_rows(branch)) {
+        set_unsupported_error(database, "UNION does not support SQL_CALC_FOUND_ROWS");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_options(branch) != 0U) {
+        set_unsupported_error(database, "UNION does not support SELECT options in query blocks");
+        return MYLITE_ERROR;
+    }
+    if (child_with_kind(branch, MYLITE_SQL_AST_ORDER_BY_CLAUSE) != NULL) {
+        set_unsupported_error(database, "UNION branch ORDER BY is not supported");
+        return MYLITE_ERROR;
+    }
+    if (child_with_kind(branch, MYLITE_SQL_AST_LIMIT_CLAUSE) != NULL) {
+        set_unsupported_error(database, "UNION branch LIMIT is not supported");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_select_locking_clause(branch) !=
+        MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        set_unsupported_error(database, "UNION does not support locking clauses");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_compound_result_columns(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+) {
+    size_t column_count = mylite_result_column_count(source);
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        const struct mylite_result_column *column =
+            mylite_result_column_metadata_at(source, column_index);
+        int rc = MYLITE_OK;
+
+        if (column == NULL) {
+            rc = mylite_result_append_column(
+                target,
+                mylite_result_column_name(source, column_index)
+            );
+        } else {
+            const struct mylite_result_column_descriptor descriptor = {
+                .label = column->label,
+                .schema_name = column->schema_name,
+                .table_name = column->table_name,
+                .origin_schema_name = column->origin_schema_name,
+                .origin_table_name = column->origin_table_name,
+                .origin_column_name = column->origin_column_name,
+                .logical_type = column->logical_type,
+                .flags = column->flags,
+                .charset_id = column->charset_id,
+                .collation_id = column->collation_id,
+                .display_length = column->display_length,
+                .decimals = column->decimals,
+                .nullable = column->nullable,
+            };
+
+            rc = mylite_result_append_column_descriptor(target, &descriptor);
+        }
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_compound_branch_rows(
+    struct mylite_db *database,
+    mylite_result **in_out_result,
+    const mylite_result *branch_result,
+    bool distinct
+) {
+    if (!distinct) {
+        return append_all_compound_rows(database, *in_out_result, branch_result);
+    }
+
+    int rc = deduplicate_compound_result(database, in_out_result);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return append_distinct_compound_rows(database, *in_out_result, branch_result);
+}
+
+static int deduplicate_compound_result(struct mylite_db *database, mylite_result **in_out_result) {
+    mylite_result *old_result = *in_out_result;
+    mylite_result *deduplicated = NULL;
+    size_t row_count = mylite_result_row_count(old_result);
+    int rc = MYLITE_OK;
+
+    if (row_count <= 1U) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_result_create(&deduplicated);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = append_compound_result_columns(database, deduplicated, old_result);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        if (!compound_result_contains_row(deduplicated, old_result, row_index)) {
+            rc = append_compound_row(database, deduplicated, old_result, row_index);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(deduplicated);
+        return rc;
+    }
+
+    mylite_result_free(old_result);
+    *in_out_result = deduplicated;
+    return MYLITE_OK;
+}
+
+static int append_distinct_compound_rows(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+) {
+    size_t row_count = mylite_result_row_count(source);
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        if (!compound_result_contains_row(target, source, row_index)) {
+            rc = append_compound_row(database, target, source, row_index);
+        }
+    }
+
+    return rc;
+}
+
+static int append_all_compound_rows(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source
+) {
+    size_t row_count = mylite_result_row_count(source);
+    int rc = MYLITE_OK;
+
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < row_count; ++row_index) {
+        rc = append_compound_row(database, target, source, row_index);
+    }
+
+    return rc;
+}
+
+static int append_compound_row(
+    struct mylite_db *database,
+    mylite_result *target,
+    const mylite_result *source,
+    size_t row_index
+) {
+    size_t column_count = mylite_result_column_count(source);
+    struct mylite_result_cell *cells = calloc(column_count, sizeof(*cells));
+    int rc = MYLITE_OK;
+
+    if (cells == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        const void *bytes = mylite_result_value_bytes(source, row_index, column_index);
+
+        cells[column_index] = (struct mylite_result_cell){
+            .bytes = bytes,
+            .size = mylite_result_value_size(source, row_index, column_index),
+            .is_null = bytes == NULL,
+        };
+    }
+
+    rc = mylite_result_append_bytes_row(target, cells);
+    free(cells);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static bool compound_result_contains_row(
+    const mylite_result *target,
+    const mylite_result *source,
+    size_t source_row_index
+) {
+    size_t row_count = mylite_result_row_count(target);
+
+    for (size_t row_index = 0U; row_index < row_count; ++row_index) {
+        if (compound_result_rows_equal(target, row_index, source, source_row_index)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool compound_result_rows_equal(
+    const mylite_result *left,
+    size_t left_row_index,
+    const mylite_result *right,
+    size_t right_row_index
+) {
+    size_t column_count = mylite_result_column_count(left);
+
+    if (column_count != mylite_result_column_count(right)) {
+        return false;
+    }
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (!compound_result_cells_equal(
+                left,
+                left_row_index,
+                right,
+                right_row_index,
+                column_index
+            )) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool compound_result_cells_equal(
+    const mylite_result *left,
+    size_t left_row_index,
+    const mylite_result *right,
+    size_t right_row_index,
+    size_t column_index
+) {
+    const void *left_bytes = mylite_result_value_bytes(left, left_row_index, column_index);
+    const void *right_bytes = mylite_result_value_bytes(right, right_row_index, column_index);
+    size_t left_size = mylite_result_value_size(left, left_row_index, column_index);
+    size_t right_size = mylite_result_value_size(right, right_row_index, column_index);
+
+    if (left_bytes == NULL || right_bytes == NULL) {
+        if (left_bytes == NULL && right_bytes == NULL) {
+            return true;
+        }
+        return false;
+    }
+    if (left_size != right_size) {
+        return false;
+    }
+    return memcmp(left_bytes, right_bytes, left_size) == 0;
 }
 
 static int execute_scalar_or_row_scalar_select_if_needed(
@@ -30015,6 +30405,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DO_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
@@ -30052,6 +30443,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_UNION_TERM_LIST:
+    case MYLITE_SQL_AST_UNION_TERM:
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
@@ -95044,6 +95437,15 @@ static void set_scalar_subquery_row_count_error(struct mylite_db *database) {
         mysql_error_subquery_returns_more_than_one_row,
         "21000",
         "Subquery returns more than 1 row"
+    );
+}
+
+static void set_union_column_count_mismatch_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_select_reduced,
+        "21000",
+        "The used SELECT statements have a different number of columns"
     );
 }
 

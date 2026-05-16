@@ -152,6 +152,7 @@ static int test_select_sql_calc_found_rows_clause(void);
 static int test_select_noop_modifier_clause(void);
 static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
+static int test_select_union_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_inner_join_clause(void);
 static int test_select_item_alias_clause(void);
@@ -416,6 +417,7 @@ int main(void) {
     failures += test_select_noop_modifier_clause();
     failures += test_select_locking_clause();
     failures += test_select_all_clause();
+    failures += test_select_union_clause();
     failures += test_select_table_alias_clause();
     failures += test_select_inner_join_clause();
     failures += test_select_item_alias_clause();
@@ -16016,6 +16018,79 @@ static int test_select_all_clause(void) {
         "SELECT DISTINCT ALL n FROM simple_lifecycle;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_union_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *terms = NULL;
+    const struct mylite_sql_ast_node *first_term = NULL;
+    const struct mylite_sql_ast_node *second_term = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT 1 UNION SELECT 2;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    terms = child_at(statement, 1U);
+    first_term = child_at(terms, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT, "union statement");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_SELECT_STATEMENT, "union left");
+    failures += expect_node(terms, MYLITE_SQL_AST_UNION_TERM_LIST, "union terms");
+    failures += expect_child_count(terms, 1U, "union term count");
+    failures += expect_node(first_term, MYLITE_SQL_AST_UNION_TERM, "union term");
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(first_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
+        "default union modifier"
+    );
+    failures +=
+        expect_node(child_at(first_term, 0U), MYLITE_SQL_AST_SELECT_STATEMENT, "union right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM a UNION ALL SELECT id FROM b UNION DISTINCT SELECT id FROM c;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    terms = child_at(statement, 1U);
+    first_term = child_at(terms, 0U);
+    second_term = child_at(terms, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT, "union chain statement");
+    failures += expect_child_count(terms, 2U, "union chain term count");
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(first_term) == MYLITE_SQL_AST_UNION_MODIFIER_ALL,
+        "union all modifier"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_union_modifier(second_term) == MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
+        "union distinct modifier"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(first_term, 0U), 0U), 0U), 0U),
+        "id",
+        "union all branch select item"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(second_term, 0U), 0U), 0U), 0U),
+        "id",
+        "union distinct branch select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM a ORDER BY id UNION SELECT id FROM b;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        first_child_kind(child_at(statement, 0U), MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "union branch order parsed for runtime rejection"
     );
     mylite_sql_parse_result_deinit(&result);
 

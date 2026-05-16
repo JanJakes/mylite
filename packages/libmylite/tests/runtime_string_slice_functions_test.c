@@ -114,6 +114,34 @@ static int test_no_source_dual_and_do_string_slices(void) {
     };
     static const char *const columns_dual[] = {"a", "b"};
     static const char *const values_dual[] = {"a", "c"};
+    static const char *const columns_substring[] = {
+        "s2", "sf",  "m2", "s23",  "sf23", "mneg", "sn",  "sfar",  "sz",   "sl0",   "sln",
+        "se", "sem", "si", "sint", "st",   "sfal", "sdb", "smode", "snul", "spnul", "slnul",
+    };
+    static const char *const values_substring[] = {
+        "bcdef",
+        "bcdef",
+        "bcdef",
+        "bcd",
+        "bcd",
+        "cd",
+        "def",
+        "",
+        "",
+        "",
+        "",
+        "\xC3\xA9\xF0\x9F\x99\x82",
+        "\360\237\231\202a",
+        "234",
+        "12345",
+        "1",
+        "0",
+        "ap",
+        "SUBSTITUTION",
+        NULL,
+        NULL,
+        NULL,
+    };
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -161,6 +189,29 @@ static int test_no_source_dual_and_do_string_slices(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT SUBSTRING('abcdef', 2) AS s2, SUBSTR('abcdef' FROM 2) AS sf, "
+                   "MID('abcdef', 2) AS m2, SUBSTRING('abcdef', 2, 3) AS s23, "
+                   "SUBSTR('abcdef' FROM 2 FOR 3) AS sf23, "
+                   "MID('abcdef' FROM -4 FOR 2) AS mneg, SUBSTRING('abcdef', -3) AS sn, "
+                   "SUBSTRING('abc', -5) AS sfar, SUBSTRING('abc', 0) AS sz, "
+                   "SUBSTRING('abc', 1, 0) AS sl0, SUBSTRING('abc', 1, -1) AS sln, "
+                   "SUBSTRING('\xC3\xA9\360\237\231\202abc', 1, 2) AS se, "
+                   "SUBSTRING('\xC3\xA9\360\237\231\202abc', -4, 2) AS sem, "
+                   "SUBSTRING(12345, 2, 3) AS si, SUBSTRING(-12345, 2) AS sint, "
+                   "SUBSTRING(TRUE, 1) AS st, SUBSTRING(FALSE, 1) AS sfal, "
+                   "SUBSTRING(DATABASE(), 1, 2) AS sdb, SUBSTRING(@@sql_mode, -12) AS smode, "
+                   "SUBSTRING(NULL, 1) AS snul, SUBSTRING('abc', NULL) AS spnul, "
+                   "SUBSTRING('abc', 1, NULL) AS slnul",
+            .columns = columns_substring,
+            .column_count = sizeof(columns_substring) / sizeof(columns_substring[0]),
+            .values = values_substring,
+            .row_count = 1U,
+            .context = "no-source substring values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ROW_COUNT(), @@warning_count",
             .columns = columns_row_status,
             .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
@@ -170,7 +221,12 @@ static int test_no_source_dual_and_do_string_slices(void) {
         }
     );
 
-    failures += execute_ok(database, "DO LEFT('abc', 1), RIGHT(NULL, 1), LEFT(TRUE, 1)", &result);
+    failures += execute_ok(
+        database,
+        "DO LEFT('abc', 1), RIGHT(NULL, 1), LEFT(TRUE, 1), "
+        "SUBSTRING('abc', 1), SUBSTR(NULL, 1), MID('abc', 1, 1)",
+        &result
+    );
     if (failures == 0) {
         failures += expect_size(mylite_result_column_count(result), 0U, "string slice do columns");
         failures += expect_size(mylite_result_row_count(result), 0U, "string slice do rows");
@@ -246,8 +302,50 @@ static int test_table_backed_string_slices_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_substring_table[] = {
+        "id",
+        "sv",
+        "st",
+        "mc",
+        "tail",
+        "si",
+        "sd",
+        "sy",
+        "sdt",
+    };
+    static const char *const values_substring_table[] = {
+        "1",
+        "bc",
+        "el",
+        "a",
+        "ello",
+        "23",
+        "30",
+        "2024",
+        "2024-01-02",
+        "2",
+        "\xF0\x9F\x99\x82",
+        "",
+        "\xC3\xA9",
+        "",
+        "7",
+        "50",
+        "1970",
+        NULL,
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
     static const char *const columns_limited[] = {"id", "rv"};
     static const char *const values_limited[] = {"3", NULL, "2", "\xF0\x9F\x99\x82"};
+    static const char *const columns_substring_limited[] = {"id", "s"};
+    static const char *const values_substring_limited[] = {"3", NULL, "2", ""};
     static const char *const columns_branches[] = {"id", "l0", "rn", "lnull_len", "rnull_len"};
     static const char *const values_branches[] = {
         "1",
@@ -261,10 +359,39 @@ static int test_table_backed_string_slices_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_substring_branches[] = {
+        "id",
+        "sz",
+        "sl0",
+        "sln",
+        "sfar",
+        "spnul",
+        "slnul",
+    };
+    static const char *const values_substring_branches[] = {
+        "1",
+        "",
+        "",
+        "",
+        "",
+        NULL,
+        NULL,
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
     static const char *const columns_labels[] = {"LEFT(v, 2)", "r"};
     static const char *const values_labels[] = {"ab", "c"};
+    static const char *const columns_substring_labels[] = {"SUBSTRING(v, 2, 3)", "s"};
+    static const char *const values_substring_labels[] = {"bc", "el"};
     static const char *const columns_reopen[] = {"lv", "rv"};
     static const char *const values_reopen[] = {"ab", "c"};
+    static const char *const columns_substring_reopen[] = {"sv", "st"};
+    static const char *const values_substring_reopen[] = {"bc", "el"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -309,12 +436,40 @@ static int test_table_backed_string_slices_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, SUBSTRING(v, 2, 3) AS sv, "
+                   "SUBSTR(txt FROM -4 FOR 2) AS st, MID(c, 1, 2) AS mc, "
+                   "SUBSTRING(txt, 2) AS tail, SUBSTRING(i, 2, 2) AS si, "
+                   "SUBSTR(d, -2) AS sd, MID(y, 1, 4) AS sy, "
+                   "SUBSTRING(dt, 1, 10) AS sdt FROM t ORDER BY id",
+            .columns = columns_substring_table,
+            .column_count = sizeof(columns_substring_table) / sizeof(columns_substring_table[0]),
+            .values = values_substring_table,
+            .row_count = 3U,
+            .context = "table substring values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id, RIGHT(v, 1) AS rv FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2",
             .columns = columns_limited,
             .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
             .values = values_limited,
             .row_count = 2U,
             .context = "table string slice row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, SUBSTR(v FROM -4 FOR 2) AS s FROM t "
+                   "WHERE id >= 1 ORDER BY id DESC LIMIT 2",
+            .columns = columns_substring_limited,
+            .column_count =
+                sizeof(columns_substring_limited) / sizeof(columns_substring_limited[0]),
+            .values = values_substring_limited,
+            .row_count = 2U,
+            .context = "table substring row envelope",
         }
     );
     failures += expect_query(
@@ -333,12 +488,39 @@ static int test_table_backed_string_slices_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, SUBSTRING(v, 0) AS sz, SUBSTRING(v, 1, 0) AS sl0, "
+                   "SUBSTRING(v, 1, -1) AS sln, SUBSTRING(v, -4) AS sfar, "
+                   "SUBSTRING(v, NULL) AS spnul, SUBSTRING(v, 1, NULL) AS slnul "
+                   "FROM t WHERE id IN (1, 3) ORDER BY id",
+            .columns = columns_substring_branches,
+            .column_count =
+                sizeof(columns_substring_branches) / sizeof(columns_substring_branches[0]),
+            .values = values_substring_branches,
+            .row_count = 2U,
+            .context = "table substring null and nonpositive branches",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT LEFT(v, 2), RIGHT(v, 1) AS r FROM t WHERE id = 1",
             .columns = columns_labels,
             .column_count = sizeof(columns_labels) / sizeof(columns_labels[0]),
             .values = values_labels,
             .row_count = 1U,
             .context = "string slice labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING(v, 2, 3), SUBSTR(txt FROM -4 FOR 2) AS s "
+                   "FROM t WHERE id = 1",
+            .columns = columns_substring_labels,
+            .column_count = sizeof(columns_substring_labels) / sizeof(columns_substring_labels[0]),
+            .values = values_substring_labels,
+            .row_count = 1U,
+            .context = "substring labels",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -361,6 +543,18 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = values_reopen,
             .row_count = 1U,
             .context = "string slice reopen",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING(v, 2, 3) AS sv, SUBSTR(txt FROM -4 FOR 2) AS st "
+                   "FROM t WHERE id = 1",
+            .columns = columns_substring_reopen,
+            .column_count = sizeof(columns_substring_reopen) / sizeof(columns_substring_reopen[0]),
+            .values = values_substring_reopen,
+            .row_count = 1U,
+            .context = "substring reopen",
         }
     );
 
@@ -406,6 +600,24 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT MID('a', 1, 2, 3)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING ('abc', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEFT(missing, 1)",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -434,7 +646,46 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT SUBSTRING('abc', '2')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice functions support only integer, boolean, and NULL position literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING('abc', 1, '2')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice functions support only integer, boolean, and NULL length literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING('abc', 9223372036854775808)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "string slice function position literals must fit the signed 64-bit range",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEFT(CAST('ABC' AS BINARY), 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string slice functions support only string, integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING(CAST('ABC' AS BINARY), 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -452,7 +703,25 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT SUBSTR(b, 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string slice functions do not support binary columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEFT(f, 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string slice functions do not support approximate numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT MID(f, 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

@@ -8,10 +8,10 @@
 - [x] Specify the narrow parser/runtime/SQLite ownership boundary and
   unsupported expression surface.
 - [x] Add MySQL-runtime expectation script for this feature.
-- [ ] Extend lexer/parser/AST support for `SUBSTRING`, `SUBSTR`, and `MID`.
-- [ ] Extend scalar and row-scalar runtime support using descriptor-driven
+- [x] Extend lexer/parser/AST support for `SUBSTRING`, `SUBSTR`, and `MID`.
+- [x] Extend scalar and row-scalar runtime support using descriptor-driven
   planning and guarded SQLite `substr()` generation.
-- [ ] Add parser and runtime C tests.
-- [ ] Update compatibility documentation for the exact supported subset.
-- [ ] Run focused MySQL expectation, parser/runtime tests, and full check.
-- [ ] Review, amend gaps, commit, and push.
+- [x] Add parser and runtime C tests.
+- [x] Update compatibility documentation for the exact supported subset.
+- [x] Run focused MySQL expectation, parser/runtime tests, and full check.
+- [x] Review, amend gaps, commit, and push.

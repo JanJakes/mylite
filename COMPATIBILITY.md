@@ -475,7 +475,7 @@ tests.
 | `LPAD()` | ❌ | Left padding. | [string functions](docs/compatibility/functions-string.md) |
 | `LTRIM()` | ❌ | Trim leading spaces. | [string functions](docs/compatibility/functions-string.md) |
 | `MAKE_SET()` | ❌ | Bitmask-selected set. | [string functions](docs/compatibility/functions-string.md) |
-| `MID()` | ❌ | Substring synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `OCTET_LENGTH()` | 🟡 | Limited `LENGTH()` synonym. | [string functions](docs/compatibility/functions-string.md) |
 | `ORD()` | ❌ | Leftmost character code. | [string functions](docs/compatibility/functions-string.md) |
 | `POSITION()` | ❌ | LOCATE synonym. | [string functions](docs/compatibility/functions-string.md) |
@@ -493,8 +493,8 @@ tests.
 | `SOUNDEX()` | ❌ | Soundex string. | [string functions](docs/compatibility/functions-string.md) |
 | `SPACE()` | ❌ | Repeated spaces. | [string functions](docs/compatibility/functions-string.md) |
 | `STRCMP()` | ❌ | String comparison. | [string functions](docs/compatibility/functions-string.md) |
-| `SUBSTR()` | ❌ | Substring synonym. | [string functions](docs/compatibility/functions-string.md) |
-| `SUBSTRING()` | ❌ | Substring. | [string functions](docs/compatibility/functions-string.md) |
+| `SUBSTR()` | 🟡 | Synonym for the limited `SUBSTRING()` subset. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
+| `SUBSTRING()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values; supports comma and `FROM` / `FOR` forms with literal integer/boolean/`NULL` positions and optional lengths, slicing UTF-8 text by character position. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `SUBSTRING_INDEX()` | ❌ | Delimiter-count substring. | [string functions](docs/compatibility/functions-string.md) |
 | `TO_BASE64()` | ❌ | Base64 encode. | [string functions](docs/compatibility/functions-string.md) |
 | `TRIM()` | ❌ | Trim spaces. | [string functions](docs/compatibility/functions-string.md) |

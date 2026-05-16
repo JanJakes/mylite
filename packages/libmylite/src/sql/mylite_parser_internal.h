@@ -1246,6 +1246,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_functio
     struct mylite_sql_ast_node *second_argument,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_three_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *first_argument,
+    struct mylite_sql_ast_node *second_argument,
+    struct mylite_sql_ast_node *third_argument,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_one_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

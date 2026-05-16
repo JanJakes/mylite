@@ -30,7 +30,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `LPAD()` | ❌ | Left-padding behavior |
 | `LTRIM()` | ❌ | Remove leading spaces |
 | `MAKE_SET()` | ❌ | Bitmask-selected string set |
-| `MID()` | ❌ | Return a substring starting from the specified position |
+| `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset |
 | `OCTET_LENGTH()` | 🟡 | Synonym for the limited `LENGTH()` subset |
 | `ORD()` | ❌ | Return character code for leftmost character of the argument |
 | `POSITION()` | ❌ | Synonym for LOCATE() |
@@ -48,8 +48,8 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `SOUNDEX()` | ❌ | Return a soundex string |
 | `SPACE()` | ❌ | Return a string of the specified number of spaces |
 | `STRCMP()` | ❌ | Compare two strings |
-| `SUBSTR()` | ❌ | Return substring as specified |
-| `SUBSTRING()` | ❌ | Return substring as specified |
+| `SUBSTR()` | 🟡 | Synonym for the limited `SUBSTRING()` subset |
+| `SUBSTRING()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values and system variables, and descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline `TEXT`, `YEAR`, and temporal columns; supports comma and `FROM` / `FOR` forms with literal integer/boolean/`NULL` positions and optional lengths, with UTF-8 text sliced by character position. No binary-string slicing, string/numeric position coercion, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `SUBSTRING_INDEX()` | ❌ | Delimiter-count substring |
 | `TO_BASE64()` | ❌ | Return argument converted to a base-64 string |
 | `TRIM()` | ❌ | Remove leading and trailing spaces |

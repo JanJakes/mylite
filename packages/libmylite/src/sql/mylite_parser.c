@@ -4319,6 +4319,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_two_argument_functio
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_three_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *first_argument,
+    struct mylite_sql_ast_node *second_argument,
+    struct mylite_sql_ast_node *third_argument,
+    struct mylite_sql_token right_paren
+) {
+    if (!parser_sql_mode_has(state, MYLITE_SQL_MODE_IGNORE_SPACE) &&
+        left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_three_argument_function(
+        state,
+        function_token,
+        function_kind,
+        first_argument,
+        second_argument,
+        third_argument,
+        right_paren
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_one_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -6015,6 +6042,7 @@ static bool map_keyword_token(
         {"LAST_INSERT_ID", MYLITE_SQL_PARSE_LAST_INSERT_ID},
         {"LCASE", MYLITE_SQL_PARSE_LCASE},
         {"LENGTH", MYLITE_SQL_PARSE_LENGTH},
+        {"MID", MYLITE_SQL_PARSE_MID},
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
         {"LOWER", MYLITE_SQL_PARSE_LOWER},
         {"MAX", MYLITE_SQL_PARSE_MAX},
@@ -6048,6 +6076,8 @@ static bool map_keyword_token(
         {"DATE_FORMAT", MYLITE_SQL_PARSE_DATE_FORMAT},
         {"DROP", MYLITE_SQL_PARSE_DROP},
         {"TRUNCATE", MYLITE_SQL_PARSE_TRUNCATE},
+        {"SUBSTR", MYLITE_SQL_PARSE_SUBSTR},
+        {"SUBSTRING", MYLITE_SQL_PARSE_SUBSTRING},
         {"UCASE", MYLITE_SQL_PARSE_UCASE},
         {"UPPER", MYLITE_SQL_PARSE_UPPER},
         {"SHOW", MYLITE_SQL_PARSE_SHOW},

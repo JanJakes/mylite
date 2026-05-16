@@ -3644,6 +3644,48 @@ static int test_string_slice_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT SUBSTRING(v, 2), SUBSTR('abcdef', 2, 3), MID(v FROM -4 FOR 2) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBSTRING_FUNCTION, "substring function");
+    failures += expect_span_text(expression, "SUBSTRING(v, 2)", "substring span");
+    failures += expect_child_count(expression, 2U, "substring arity");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBSTR_FUNCTION, "substr function");
+    failures += expect_child_count(expression, 3U, "substr arity");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_MID_FUNCTION, "mid function");
+    failures += expect_span_text(expression, "MID(v FROM -4 FOR 2)", "mid from span");
+    failures += expect_operator(
+        child_at(expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "mid negative position"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "substring from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SUBSTRING('abcdef' FROM 2), SUBSTR('abcdef' FROM 2 FOR 3), "
+        "MID('abcdef' FROM 2 FOR 3) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBSTRING_FUNCTION, "substring from");
+    failures += expect_child_count(expression, 2U, "substring from arity");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBSTR_FUNCTION, "substr from for");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_MID_FUNCTION, "mid from for");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT LEFT ('abc', 1), (RIGHT('abc', 1)) FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3665,6 +3707,10 @@ static int test_string_slice_functions(void) {
     failures += parse_sql("SELECT RIGHT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("SELECT RIGHT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("SELECT RIGHT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT SUBSTRING();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT SUBSTRING('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT MID('a', 1, 2, 3);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT SUBSTRING ('abc', 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
 
     failures += parse_sql("DO LEFT('abc', 1), RIGHT('abc', 1);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
@@ -3673,6 +3719,31 @@ static int test_string_slice_functions(void) {
     failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LEFT_FUNCTION, "do left");
     failures +=
         expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_RIGHT_FUNCTION, "do right");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO SUBSTRING('abc', 1), SUBSTR('abc' FROM 1), MID('abc', 1, 1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "substring do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_SUBSTRING_FUNCTION,
+        "do substring"
+    );
+    failures += expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_MID_FUNCTION, "do mid");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE substring_words (substring INT, substr INT, mid INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "substring identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

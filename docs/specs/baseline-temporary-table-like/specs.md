@@ -14,11 +14,13 @@ The statement creates an empty descriptor clone. When `TEMPORARY` is present,
 the destination descriptor and physical table are session-local and omitted
 from durable catalog listings. Source tables may be persistent base tables or
 session temporary tables visible through MyLite's existing temporary-shadowing
-rules. The slice deliberately keeps temporary `AUTO_INCREMENT`, `FULLTEXT`,
-and check-constraint cloning deferred because the current temporary-table
-lifecycle does not own those runtime semantics. Foreign-key constraints are not
-cloned by MySQL `LIKE`; their supporting indexes may be cloned when they fit
-the existing index subset.
+rules. The original slice deliberately kept temporary `AUTO_INCREMENT`,
+`FULLTEXT`, and check-constraint cloning deferred because the temporary-table
+lifecycle did not own those runtime semantics. The later
+`baseline-temporary-auto-increment` slice lifts the auto-increment deferral
+with session-local counters; temporary `FULLTEXT` and check-constraint cloning
+remain deferred. Foreign-key constraints are not cloned by MySQL `LIKE`; their
+supporting indexes may be cloned when they fit the existing index subset.
 
 ## Sources
 
@@ -82,8 +84,8 @@ records runtime probes for this feature. Observed behavior:
 - `CREATE TEMPORARY TABLE ... LIKE view_name` fails with MySQL error `1347`
   because the source is not a base table.
 - MySQL clones `AUTO_INCREMENT` into temporary `LIKE` tables and resets the
-  temporary counter to `1`. MyLite defers this until session-local
-  temporary-table auto-increment counters exist.
+  temporary counter to `1`. The later `baseline-temporary-auto-increment`
+  feature adopts that behavior for the current indexed auto-increment subset.
 
 ## Scope
 
@@ -110,8 +112,6 @@ The implementation must add:
 
 This feature must not implement:
 
-- temporary `AUTO_INCREMENT` counters or cloning of an auto-increment source
-  into a temporary target;
 - temporary `FULLTEXT` cloning;
 - temporary check-constraint cloning;
 - temporary `CREATE TABLE ... SELECT`;
@@ -248,12 +248,12 @@ clone policy for supported source descriptors:
 - supporting indexes for foreign-key source constraints when they fit the
   existing index subset, without cloning foreign-key constraints themselves;
 - table default charset and collation;
-- target auto-increment counter reset to `1` only for persistent targets.
+- target auto-increment counter reset to `1` for supported persistent and
+  temporary targets.
 
 Temporary targets reject cloned descriptors that the current temporary table
 runtime cannot execute safely:
 
-- any `AUTO_INCREMENT` source column;
 - any `FULLTEXT` source index;
 - any check-constraint source descriptor.
 
@@ -317,8 +317,7 @@ The implementation must provide deterministic diagnostics for:
 - existing target temporary table without `IF NOT EXISTS`;
 - unsupported source object kind such as a view once view descriptors exist;
 - unsupported source descriptor families;
-- temporary target with `AUTO_INCREMENT`, `FULLTEXT`, or check-constraint
-  source descriptors;
+- temporary target with `FULLTEXT` or check-constraint source descriptors;
 - temporary DDL inside an active user transaction;
 - physical SQLite failures;
 - allocation failures.
@@ -345,8 +344,7 @@ with CTest. The test must cover:
   precedence;
 - unknown source table;
 - reserved target/source names;
-- rejected temporary clone from `AUTO_INCREMENT`, `FULLTEXT`, and check
-  constraint sources;
+- rejected temporary clone from `FULLTEXT` and check constraint sources;
 - temporary clone from a foreign-key source, verifying supporting index cloning
   without cloning the foreign-key constraint;
 - temporary DDL inside an active transaction;
@@ -365,6 +363,6 @@ Run:
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-ddl.md` to claim
 only the limited `CREATE TEMPORARY TABLE ... LIKE` and temporary-source
-cloning surface. Do not claim temporary auto-increment, temporary fulltext,
-temporary checks, temporary CTAS, temporary ALTER,
-views, privileges, or full MySQL metadata parity.
+cloning surface. Do not claim temporary fulltext, temporary checks,
+temporary CTAS, temporary ALTER, views, privileges, or full MySQL metadata
+parity.

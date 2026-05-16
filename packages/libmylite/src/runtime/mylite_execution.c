@@ -7996,7 +7996,6 @@ static int append_temporary_secondary_index_descriptor(
     struct mylite_temporary_catalog_table *out_table,
     struct temporary_index_descriptor_positions *positions
 );
-static bool planned_create_table_has_auto_increment(const struct planned_create_table *plan);
 static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan);
 static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
@@ -12108,6 +12107,11 @@ static int advance_auto_increment_after_update(
     const struct planned_update *plan,
     const struct planned_value *assignment_value,
     int64_t affected_rows
+);
+static int update_table_auto_increment_next(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t auto_increment_next
 );
 static int update_matches_any_row(
     struct mylite_db *database,
@@ -36463,10 +36467,6 @@ static int create_temporary_table_from_plan(
     int64_t table_id = 0;
     int rc = MYLITE_OK;
 
-    if (planned_create_table_has_auto_increment(plan)) {
-        set_unsupported_error(database, "Temporary AUTO_INCREMENT tables are not yet supported");
-        return MYLITE_ERROR;
-    }
     if (plan->foreign_key_count != 0U) {
         set_unsupported_error(database, "Temporary FOREIGN KEY tables are not yet supported");
         return MYLITE_ERROR;
@@ -37006,7 +37006,7 @@ static int build_temporary_table_descriptors(
         .table_id = table_id,
         .schema_id = plan->target.schema.schema_id,
         .kind = MYLITE_CATALOG_TABLE_KIND_TEMPORARY,
-        .auto_increment_next = 1,
+        .auto_increment_next = plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
     };
     snprintf(out_table->table.name, sizeof(out_table->table.name), "%s", plan->target.table_name);
     snprintf(
@@ -37089,7 +37089,7 @@ static int build_temporary_table_column_descriptors(
             .ordinal_position = (int64_t)column_index + 1,
             .is_nullable = column->is_nullable,
             .is_visible = column->is_visible,
-            .is_auto_increment = false,
+            .is_auto_increment = column->is_auto_increment,
             .default_kind = column->default_kind,
             .default_integer = column->default_integer,
             .on_update_current_timestamp = column->on_update_current_timestamp,
@@ -37321,18 +37321,6 @@ static int append_temporary_secondary_index_descriptor(
     }
 
     return MYLITE_OK;
-}
-
-static bool planned_create_table_has_auto_increment(const struct planned_create_table *plan) {
-    if (plan == NULL) {
-        return false;
-    }
-    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        if (plan->columns[column_index].is_auto_increment) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan) {
@@ -46555,9 +46543,9 @@ static int execute_insert_from_plan(
     statement = NULL;
     if (rc == MYLITE_OK && plan->has_auto_increment &&
         counters.auto_increment_next_after_rows != plan->auto_increment_next) {
-        rc = mylite_catalog_update_table_auto_increment_next(
+        rc = update_table_auto_increment_next(
             database,
-            plan->table.table_id,
+            &plan->table,
             counters.auto_increment_next_after_rows
         );
     }
@@ -50226,13 +50214,39 @@ static int advance_auto_increment_after_update(
         );
     }
     if (rc == MYLITE_OK && next_value != plan->table.auto_increment_next) {
-        rc = mylite_catalog_update_table_auto_increment_next(
-            database,
-            plan->table.table_id,
-            next_value
-        );
+        rc = update_table_auto_increment_next(database, &plan->table, next_value);
     }
 
+    return rc;
+}
+
+static int update_table_auto_increment_next(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t auto_increment_next
+) {
+    int rc = MYLITE_OK;
+
+    if (table == NULL) {
+        set_runtime_error(database, "invalid auto-increment table descriptor");
+        return MYLITE_ERROR;
+    }
+    if (table->table_id < 0) {
+        rc = mylite_temporary_catalog_update_table_auto_increment_next(
+            &database->session.temporary_catalog,
+            table->table_id,
+            auto_increment_next
+        );
+    } else {
+        rc = mylite_catalog_update_table_auto_increment_next(
+            database,
+            table->table_id,
+            auto_increment_next
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update auto-increment counter");
+    }
     return rc;
 }
 

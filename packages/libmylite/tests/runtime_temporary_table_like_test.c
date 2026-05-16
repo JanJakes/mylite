@@ -365,6 +365,7 @@ static int test_temporary_like_diagnostics(void) {
     static const char *const one_count_rows[] = {"1"};
     static const char *const zero_count_rows[] = {"0"};
     static const char *const existing_temp_status_rows[] = {"0", "1", "0"};
+    static const char *const ai_clone_rows[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -509,11 +510,33 @@ static int test_temporary_like_diagnostics(void) {
         "CREATE TABLE ai_src(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY)",
         (struct expected_statement){0, 0U}
     );
-    failures += expect_error(
+    failures += expect_statement(
         database,
         "CREATE TEMPORARY TABLE ai_tmp LIKE ai_src",
-        mysql_error_parse,
-        "Temporary AUTO_INCREMENT tables are not yet supported"
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_query_contains(
+        database,
+        "SHOW CREATE TABLE ai_tmp",
+        0U,
+        1U,
+        "`id` int NOT NULL AUTO_INCREMENT",
+        "temporary LIKE clones auto-increment column"
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO ai_tmp VALUES (NULL)",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ai_tmp",
+            .values = ai_clone_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary LIKE auto-increment counter resets",
+        }
     );
     failures += expect_statement(
         database,

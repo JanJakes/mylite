@@ -192,6 +192,28 @@ int mylite_temporary_catalog_remove_table_by_id(
     return MYLITE_OK;
 }
 
+int mylite_temporary_catalog_update_table_auto_increment_next(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id, // NOLINT(bugprone-easily-swappable-parameters): mirror durable catalog API.
+    int64_t auto_increment_next
+) {
+    if (catalog == NULL || table_id >= 0) {
+        return MYLITE_MISUSE;
+    }
+    if (auto_increment_next <= 0) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; index < catalog->table_count; ++index) {
+        if (catalog->tables[index].table.table_id == table_id) {
+            catalog->tables[index].table.auto_increment_next = auto_increment_next;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
+}
+
 int mylite_temporary_catalog_try_read_table_by_name(
     const struct mylite_temporary_catalog *catalog,
     const char *schema_name,

@@ -184,9 +184,11 @@ Temporary descriptors store:
 - descriptor versions fixed to zero for this baseline because temporary
   descriptors have no persistent catalog generation.
 
-The initial slice rejects temporary `AUTO_INCREMENT` definitions because the
-current auto-increment counter is persistent-catalog backed. Adding
-session-local temporary auto-increment counters is a later feature.
+The initial slice rejected temporary `AUTO_INCREMENT` definitions because the
+auto-increment counter was persistent-catalog backed. The later
+`baseline-temporary-auto-increment` feature adds session-local counters for the
+current indexed auto-increment subset while keeping temporary descriptors
+outside the durable catalog.
 
 ## Physical SQLite Handling
 
@@ -254,7 +256,8 @@ The implementation must provide deterministic diagnostics for:
 - unknown table;
 - duplicate temporary table;
 - reserved `_mylite_*` schema or table names;
-- unsupported temporary auto-increment definitions;
+- unsupported temporary auto-increment definitions in the initial lifecycle
+  slice before `baseline-temporary-auto-increment`;
 - unsupported temporary DDL in an active user transaction;
 - unsupported object kinds once non-base-table durable descriptors exist;
 - unsupported temporary `LIKE`, temporary CTAS, ALTER, RENAME, TRUNCATE,

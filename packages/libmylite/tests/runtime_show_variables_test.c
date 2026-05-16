@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 42,
-    global_variable_row_count = 38,
+    session_variable_row_count = 43,
+    global_variable_row_count = 39,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -129,6 +129,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
@@ -172,6 +173,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
@@ -306,12 +308,30 @@ static int test_show_variables_values_scopes_and_filters(void) {
     );
     failures += expect_single_row(
         database,
+        "SHOW VARIABLES LIKE 'lower_case_file_system'",
+        (struct expected_variable_row){
+            .name = "lower_case_file_system",
+            .value = "OFF",
+        },
+        "show variables lower case file system"
+    );
+    failures += expect_single_row(
+        database,
         "SHOW GLOBAL VARIABLES LIKE 'lower_case_table_names'",
         (struct expected_variable_row){
             .name = "lower_case_table_names",
             .value = "0",
         },
         "show global variables lower case table names"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'lower_case_file_system'",
+        (struct expected_variable_row){
+            .name = "lower_case_file_system",
+            .value = "OFF",
+        },
+        "show global variables lower case file system"
     );
     failures += expect_single_row(
         database,
@@ -322,6 +342,16 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "0",
         },
         "show variables where lower case table names"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Value = 'OFF' AND "
+        "Variable_name IN ('autocommit','lower_case_file_system')",
+        (struct expected_variable_row){
+            .name = "lower_case_file_system",
+            .value = "OFF",
+        },
+        "show variables where lower case file system"
     );
     failures += expect_single_row(
         database,
@@ -506,6 +536,38 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .sql = "SELECT @@LOCAL.gtid_owned",
             .expected = "",
             .context = "gtid_owned scalar local",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@lower_case_file_system",
+            .expected = "0",
+            .context = "lower_case_file_system scalar default",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@GLOBAL.lower_case_file_system",
+            .expected = "0",
+            .context = "lower_case_file_system scalar global",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@LOWER_CASE_FILE_SYSTEM",
+            .expected = "0",
+            .context = "lower_case_file_system scalar case-insensitive",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@global.`lower_case_file_system`",
+            .expected = "0",
+            .context = "lower_case_file_system scalar quoted name",
         }
     );
     failures += expect_scalar_text(
@@ -734,11 +796,29 @@ static int test_show_variables_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT @@SESSION.lower_case_file_system",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_file_system' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT @@LOCAL.lower_case_table_names",
         (struct expected_sql_error){
             .code = mysql_error_session_variable_only,
             .sqlstate = "HY000",
             .message_part = "Variable 'lower_case_table_names' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@LOCAL.lower_case_file_system",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_file_system' is a GLOBAL variable",
         }
     );
     failures += execute_error(

@@ -144,6 +144,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `default_storage_engine` | yes | yes | `InnoDB` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
+| `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `sql_auto_is_null` | yes | yes | `OFF` |
 | `sql_big_selects` | yes | yes | `ON` |

@@ -722,6 +722,14 @@ static int make_catalog_look_like_v3(sqlite3 *sqlite) {
         sqlite,
         "ALTER TABLE _mylite_catalog_tables DROP COLUMN fulltext_doc_id_initialized"
     );
+    failures += execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN created_time_utc_epoch"
+    );
+    failures += execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_tables DROP COLUMN updated_time_utc_epoch"
+    );
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_auto_increment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_visible");

@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 20
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 20
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 21
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 21
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -90,6 +90,8 @@ struct mylite_catalog_table_descriptor {
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool fulltext_doc_id_initialized;
+    int64_t created_time_utc_epoch;
+    int64_t updated_time_utc_epoch;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -278,6 +280,8 @@ int mylite_catalog_insert_table_in_mutation(
     int64_t auto_increment_next,
     const char *default_charset,
     const char *default_collation,
+    int64_t created_time_utc_epoch,
+    int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_insert_column_in_mutation(
@@ -501,6 +505,11 @@ int mylite_catalog_update_table_auto_increment_next(
     int64_t table_id,
     int64_t auto_increment_next
 );
+int mylite_catalog_update_table_updated_time(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t updated_time_utc_epoch
+);
 int mylite_catalog_for_each_schema(
     struct mylite_db *database,
     mylite_catalog_schema_callback callback,
@@ -600,6 +609,8 @@ int mylite_catalog_create_table(
     enum mylite_catalog_table_kind kind,
     const char *default_charset,
     const char *default_collation,
+    int64_t created_time_utc_epoch,
+    int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table
 );
 int mylite_catalog_read_table_by_name(

@@ -23,6 +23,7 @@ enum {
     sqlite_header_size = 16,
     expected_catalog_table_count = 6,
     expected_catalog_generation_after_mutations = 5,
+    catalog_test_timestamp_epoch = 1700000000,
 };
 
 static int test_catalog_created_in_shifted_payload_without_preamble_changes(void);
@@ -178,6 +179,8 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             MYLITE_CATALOG_TABLE_KIND_BASE,
             MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
             MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+            catalog_test_timestamp_epoch,
+            catalog_test_timestamp_epoch,
             &table
         ),
         MYLITE_OK,
@@ -241,6 +244,16 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     );
     failures += expect_text(table.name, "renamed_items", "reopened table name");
     failures += expect_text(table.physical_name, "phys_items", "reopened physical table name");
+    failures += expect_int64(
+        table.created_time_utc_epoch,
+        catalog_test_timestamp_epoch,
+        "table created timestamp"
+    );
+    failures += expect_int64(
+        table.updated_time_utc_epoch,
+        catalog_test_timestamp_epoch,
+        "table updated timestamp"
+    );
     failures += expect_uint64(table.descriptor_version, 2U, "table descriptor version");
     failures += expect_int(
         mylite_catalog_read_column_by_name(database, table.table_id, "id", &column),
@@ -402,6 +415,8 @@ static int test_catalog_default_text_validation(void) {
             MYLITE_CATALOG_TABLE_KIND_BASE,
             MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
             MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+            catalog_test_timestamp_epoch,
+            catalog_test_timestamp_epoch,
             &table
         ),
         MYLITE_OK,

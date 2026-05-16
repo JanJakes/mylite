@@ -10,6 +10,7 @@
 
 #ifdef _WIN32
 #  include <process.h>
+#  include <windows.h>
 #else
 #  include <unistd.h>
 #endif
@@ -35,6 +36,12 @@ enum {
     status_checksum_column = 15,
     status_create_options_column = 16,
     status_comment_column = 17,
+    datetime_text_length = 19,
+    datetime_year_month_separator = 4,
+    datetime_month_day_separator = 7,
+    datetime_date_time_separator = 10,
+    datetime_hour_minute_separator = 13,
+    datetime_minute_second_separator = 16,
     decimal_base = 10,
     row_count_text_capacity = 32,
     suffix_capacity = 16,
@@ -54,6 +61,37 @@ struct expected_status_row {
     const char *name;
     const char *rows;
     const char *average_row_length;
+    const char *index_length;
+};
+
+struct status_cell_query {
+    const char *sql;
+    const char *table_name;
+    size_t column_index;
+    const char *context;
+};
+
+struct expected_status_cell {
+    struct status_cell_query cell;
+    const char *expected;
+};
+
+struct copied_status_cell {
+    struct status_cell_query cell;
+    char *buffer;
+    size_t buffer_size;
+};
+
+struct expected_single_value {
+    const char *sql;
+    const char *expected;
+    const char *context;
+};
+
+struct expected_text_difference {
+    const char *left;
+    const char *right;
+    const char *context;
 };
 
 static const char *const status_columns[show_table_status_column_count] = {
@@ -93,11 +131,15 @@ static int expect_status_row(
     const struct expected_status_row *expected,
     const char *context
 );
+static int expect_status_cell(mylite_db *database, struct expected_status_cell expected);
+static int copy_status_cell(mylite_db *database, struct copied_status_cell request);
+static int expect_single_value(mylite_db *database, struct expected_single_value expected);
 static int find_result_row_by_name(
     const mylite_result *result,
     const char *name,
     size_t *out_row_index
 );
+static void wait_for_next_status_second(void);
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -112,6 +154,8 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_text_contains(const char *actual, const char *needle, const char *context);
+static int expect_text_not_equal(struct expected_text_difference expected);
+static int expect_datetime_text(const char *actual, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -135,7 +179,12 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
         {.name = "a_b", .rows = "0", .average_row_length = "0"},
         {.name = "empty_numbers", .rows = "0", .average_row_length = "0"},
         {.name = "numbers", .rows = "3", .average_row_length = "5461"},
+        {.name = "primary_only", .rows = "0", .average_row_length = "0"},
         {.name = "rename_me", .rows = "1", .average_row_length = "16384"},
+        {.name = "secondary_keyed",
+         .rows = "0",
+         .average_row_length = "0",
+         .index_length = "16384"},
         {.name = "to_truncate", .rows = "2", .average_row_length = "8192"},
     };
     static const struct expected_status_row numbers_after_delete[] = {
@@ -162,6 +211,9 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
     uint64_t catalog_generation = 0U;
     uint64_t sqlite_schema_generation = 0U;
     const struct mylite_session_state *session = NULL;
+    char numbers_update_time_before[row_count_text_capacity];
+    char numbers_update_time_after[row_count_text_capacity];
+    char numbers_update_time_after_zero[row_count_text_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -173,6 +225,65 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open values file");
     failures += create_status_schema(database);
+    failures += expect_status_cell(
+        database,
+        (struct expected_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS FROM app LIKE 'empty\\_numbers'",
+                    .table_name = "empty_numbers",
+                    .column_index = status_create_time_column,
+                    .context = "create time UTC status",
+                },
+            .expected = "2023-11-14 22:13:20",
+        }
+    );
+    failures += expect_status_cell(
+        database,
+        (struct expected_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS FROM app LIKE 'empty\\_numbers'",
+                    .table_name = "empty_numbers",
+                    .column_index = status_update_time_column,
+                    .context = "initial update time UTC status",
+                },
+            .expected = "2023-11-14 22:13:20",
+        }
+    );
+    failures += execute_statement_ok(database, "SET time_zone = '+02:00'");
+    failures += expect_status_cell(
+        database,
+        (struct expected_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS FROM app LIKE 'empty\\_numbers'",
+                    .table_name = "empty_numbers",
+                    .column_index = status_create_time_column,
+                    .context = "create time session time zone status",
+                },
+            .expected = "2023-11-15 00:13:20",
+        }
+    );
+    failures += expect_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT CREATE_TIME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = "
+                   "'app' AND TABLE_NAME = 'empty_numbers'",
+            .expected = "2023-11-15 00:13:20",
+            .context = "information schema create time session time zone",
+        }
+    );
+    failures += expect_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT INDEX_LENGTH FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = "
+                   "'app' AND TABLE_NAME = 'secondary_keyed'",
+            .expected = "16384",
+            .context = "information schema secondary index length",
+        }
+    );
+    failures += execute_statement_ok(database, "SET time_zone = '+00:00'");
     failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS FROM app",
@@ -239,7 +350,62 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
         "preamble after show table status"
     );
 
+    failures += copy_status_cell(
+        database,
+        (struct copied_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS LIKE 'numbers'",
+                    .table_name = "numbers",
+                    .column_index = status_update_time_column,
+                    .context = "numbers update time before update",
+                },
+            .buffer = numbers_update_time_before,
+            .buffer_size = sizeof(numbers_update_time_before),
+        }
+    );
+    wait_for_next_status_second();
     failures += execute_statement_ok(database, "UPDATE numbers SET i = 99 WHERE id = 2");
+    failures += copy_status_cell(
+        database,
+        (struct copied_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS LIKE 'numbers'",
+                    .table_name = "numbers",
+                    .column_index = status_update_time_column,
+                    .context = "numbers update time after update",
+                },
+            .buffer = numbers_update_time_after,
+            .buffer_size = sizeof(numbers_update_time_after),
+        }
+    );
+    failures += expect_text_not_equal((struct expected_text_difference){
+        .left = numbers_update_time_after,
+        .right = numbers_update_time_before,
+        .context = "positive update changes table update time",
+    });
+    wait_for_next_status_second();
+    failures += execute_statement_ok(database, "UPDATE numbers SET i = 99 WHERE id = 999");
+    failures += copy_status_cell(
+        database,
+        (struct copied_status_cell){
+            .cell =
+                {
+                    .sql = "SHOW TABLE STATUS LIKE 'numbers'",
+                    .table_name = "numbers",
+                    .column_index = status_update_time_column,
+                    .context = "numbers update time after zero update",
+                },
+            .buffer = numbers_update_time_after_zero,
+            .buffer_size = sizeof(numbers_update_time_after_zero),
+        }
+    );
+    failures += expect_text_or_null(
+        numbers_update_time_after_zero,
+        numbers_update_time_after,
+        "zero-row update preserves table update time"
+    );
     failures += expect_show_table_status_result(
         database,
         "SHOW TABLE STATUS LIKE 'numbers'",
@@ -491,6 +657,8 @@ static int create_status_schema(mylite_db *database) {
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "CREATE DATABASE other");
+    failures += execute_statement_ok(database, "SET time_zone = '+00:00'");
+    failures += execute_statement_ok(database, "SET timestamp = 1700000000");
     failures += execute_statement_ok(database, "CREATE TABLE other.only_other (id INT NOT NULL)");
     failures += execute_statement_ok(database, "USE app");
     failures +=
@@ -499,6 +667,11 @@ static int create_status_schema(mylite_db *database) {
         execute_statement_ok(database, "CREATE TABLE numbers (id INT NOT NULL, i INT NULL)");
     failures +=
         execute_statement_ok(database, "INSERT INTO numbers VALUES (1, NULL), (2, 20), (3, 30)");
+    failures += execute_statement_ok(database, "CREATE TABLE primary_only (id INT PRIMARY KEY)");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE secondary_keyed (id INT PRIMARY KEY, i INT, KEY i_key (i))"
+    );
     failures += execute_statement_ok(database, "CREATE TABLE `a%b` (id INT NOT NULL)");
     failures += execute_statement_ok(database, "CREATE TABLE `a_b` (id INT NOT NULL)");
     failures += execute_statement_ok(database, "CREATE TABLE rename_me (id INT NOT NULL)");
@@ -599,7 +772,7 @@ static int expect_status_row(
     );
     failures += expect_text_or_null(
         mylite_result_value_text(result, row_index, status_index_length_column),
-        "0",
+        expected->index_length == NULL ? "0" : expected->index_length,
         context
     );
     failures += expect_text_or_null(
@@ -612,14 +785,12 @@ static int expect_status_row(
         NULL,
         context
     );
-    failures += expect_text_or_null(
+    failures += expect_datetime_text(
         mylite_result_value_text(result, row_index, status_create_time_column),
-        NULL,
         context
     );
-    failures += expect_text_or_null(
+    failures += expect_datetime_text(
         mylite_result_value_text(result, row_index, status_update_time_column),
-        NULL,
         context
     );
     failures += expect_text_or_null(
@@ -651,6 +822,76 @@ static int expect_status_row(
     return failures;
 }
 
+static int expect_status_cell(mylite_db *database, struct expected_status_cell expected) {
+    char actual[row_count_text_capacity];
+    int failures = copy_status_cell(
+        database,
+        (struct copied_status_cell){
+            .cell = expected.cell,
+            .buffer = actual,
+            .buffer_size = sizeof(actual),
+        }
+    );
+
+    if (failures == 0) {
+        failures += expect_text_or_null(actual, expected.expected, expected.cell.context);
+    }
+    return failures;
+}
+
+static int copy_status_cell(mylite_db *database, struct copied_status_cell request) {
+    mylite_result *result = NULL;
+    size_t row_index = 0U;
+    const char *value = NULL;
+    int failures = execute_ok(database, request.cell.sql, &result);
+
+    if (request.buffer == NULL || request.buffer_size == 0U) {
+        mylite_result_free(result);
+        return failures + 1;
+    }
+    request.buffer[0] = '\0';
+    if (result == NULL) {
+        return failures + 1;
+    }
+    failures += find_result_row_by_name(result, request.cell.table_name, &row_index);
+    if (failures == 0) {
+        value = mylite_result_value_text(result, row_index, request.cell.column_index);
+        if (value == NULL) {
+            (void)fprintf(stderr, "%s: expected non-NULL status cell\n", request.cell.context);
+            ++failures;
+        } else if (
+            snprintf(request.buffer, request.buffer_size, "%s", value) < 0 ||
+            strlen(value) >= request.buffer_size
+        ) {
+            (void)fprintf(stderr, "%s: status cell buffer too small\n", request.cell.context);
+            ++failures;
+        }
+    }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_single_value(mylite_db *database, struct expected_single_value expected) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, expected.sql, &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+    failures += expect_size(mylite_result_column_count(result), 1U, expected.context);
+    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
+    if (mylite_result_column_count(result) == 1U && mylite_result_row_count(result) == 1U) {
+        failures += expect_text_or_null(
+            mylite_result_value_text(result, 0U, 0U),
+            expected.expected,
+            expected.context
+        );
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
 static int find_result_row_by_name(
     const mylite_result *result,
     const char *name,
@@ -668,6 +909,14 @@ static int find_result_row_by_name(
     }
 
     return 1;
+}
+
+static void wait_for_next_status_second(void) {
+#ifdef _WIN32
+    Sleep(1100U);
+#else
+    sleep(1U);
+#endif
 }
 
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context) {
@@ -858,6 +1107,40 @@ static int expect_text_contains(const char *actual, const char *needle, const ch
         context,
         actual == NULL ? "NULL" : actual,
         needle == NULL ? "NULL" : needle
+    );
+    return 1;
+}
+
+static int expect_text_not_equal(struct expected_text_difference expected) {
+    if (expected.left != NULL && expected.right != NULL &&
+        strcmp(expected.left, expected.right) != 0) {
+        return 0;
+    }
+
+    (void)fprintf(
+        stderr,
+        "%s: expected different values, both were [%s]\n",
+        expected.context,
+        expected.left == NULL ? "NULL" : expected.left
+    );
+    return 1;
+}
+
+static int expect_datetime_text(const char *actual, const char *context) {
+    if (actual != NULL && strlen(actual) == datetime_text_length &&
+        actual[datetime_year_month_separator] == '-' &&
+        actual[datetime_month_day_separator] == '-' &&
+        actual[datetime_date_time_separator] == ' ' &&
+        actual[datetime_hour_minute_separator] == ':' &&
+        actual[datetime_minute_second_separator] == ':') {
+        return 0;
+    }
+
+    (void)fprintf(
+        stderr,
+        "%s: expected DATETIME text, got [%s]\n",
+        context,
+        actual == NULL ? "NULL" : actual
     );
     return 1;
 }

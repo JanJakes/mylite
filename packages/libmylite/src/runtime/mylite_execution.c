@@ -260,7 +260,10 @@ enum {
     show_create_table_result_column_count = 2,
     show_create_database_result_column_count = 2,
     show_table_status_result_column_count = 18,
+    show_table_status_index_length_column = 8,
     show_table_status_auto_increment_column = 10,
+    show_table_status_create_time_column = 11,
+    show_table_status_update_time_column = 12,
     show_table_status_data_length = 16384,
     show_character_set_result_column_count = 4,
     show_collation_result_column_count = 7,
@@ -301,7 +304,10 @@ enum {
     information_schema_user_privileges_column_count = 4,
     information_schema_views_column_count = 10,
     information_schema_view_table_usage_column_count = 6,
+    information_schema_tables_index_length_column = 11,
     information_schema_tables_auto_increment_column = 13,
+    information_schema_tables_create_time_column = 14,
+    information_schema_tables_update_time_column = 15,
     information_schema_columns_default_column = 5,
     information_schema_columns_is_nullable_column = 6,
     information_schema_columns_character_maximum_length_column = 8,
@@ -2729,9 +2735,26 @@ struct secondary_index_presence_context {
     bool has_secondary_index;
 };
 
+struct nonprimary_index_presence_context {
+    bool has_nonprimary_index;
+};
+
 struct show_tables_context {
     mylite_result *result;
     const struct show_like_filter *filter;
+};
+
+struct table_status_values {
+    char row_count_text[integer_text_capacity];
+    char average_row_length_text[integer_text_capacity];
+    char index_length_text[integer_text_capacity];
+    char auto_increment_text[integer_text_capacity];
+    char create_time_text[datetime_text_length + 1U];
+    char update_time_text[datetime_text_length + 1U];
+    const char *index_length;
+    const char *auto_increment;
+    const char *create_time;
+    const char *update_time;
 };
 
 struct show_table_status_context {
@@ -7138,6 +7161,32 @@ static int append_information_schema_tables_base_row(
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
+);
+static int load_table_status_values(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+);
+static int table_status_has_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_auto_increment
+);
+static int table_status_index_length(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t *out_index_length
+);
+static int note_nonprimary_index_presence(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+);
+static int format_table_status_timestamp(
+    struct mylite_db *database,
+    int64_t epoch,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_timestamp
 );
 static int append_information_schema_columns_system_rows(
     struct mylite_db *database,
@@ -12113,6 +12162,12 @@ static int update_table_auto_increment_next(
     const struct mylite_catalog_table_descriptor *table,
     int64_t auto_increment_next
 );
+static int touch_persistent_table_updated_time(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t affected_rows,
+    bool force
+);
 static int update_matches_any_row(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -14309,7 +14364,19 @@ static int format_current_timestamp_text(
 );
 static int format_current_date_text(struct mylite_db *database, char *buffer, size_t buffer_size);
 static int format_current_time_text(struct mylite_db *database, char *buffer, size_t buffer_size);
+static int format_session_timestamp_epoch_text(
+    struct mylite_db *database,
+    int64_t epoch,
+    char *buffer,
+    size_t buffer_size
+);
 static int current_timestamp_session_parts(struct mylite_db *database, struct tm *out_time_parts);
+static int session_time_parts_from_epoch(
+    struct mylite_db *database,
+    int64_t epoch,
+    struct tm *out_time_parts
+);
+static int64_t current_wall_clock_epoch(void);
 static int make_zero_approximate_value(struct planned_value *out_value);
 static int parse_approximate_literal_value(
     struct mylite_db *database,
@@ -23957,14 +24024,13 @@ static int append_information_schema_tables_base_row(
     const struct mylite_catalog_schema_descriptor *schema,
     const struct mylite_catalog_table_descriptor *table
 ) {
-    char row_count_text[integer_text_capacity];
-    char average_row_length_text[integer_text_capacity];
-    char auto_increment_text[integer_text_capacity];
-    int64_t row_count = 0;
-    int64_t average_row_length = 0;
-    struct mylite_catalog_column_descriptor *columns = NULL;
-    size_t column_count = 0U;
-    bool has_auto_increment = false;
+    struct table_status_values status = {0};
+    int rc = load_table_status_values(database, table, &status);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
     const char *values[information_schema_tables_column_count] = {
         "def",
         schema->name,
@@ -23973,66 +24039,216 @@ static int append_information_schema_tables_base_row(
         "InnoDB",
         "10",
         "Dynamic",
-        row_count_text,
-        average_row_length_text,
+        status.row_count_text,
+        status.average_row_length_text,
         "16384",
         "0",
+        status.index_length,
         "0",
-        "0",
-        NULL,
-        NULL,
-        NULL,
+        status.auto_increment,
+        status.create_time,
+        status.update_time,
         NULL,
         table->default_collation,
         NULL,
         "",
         "",
     };
-    int rc = read_show_table_status_row_count(database, table, &row_count);
 
+    return append_information_schema_row(database, rows, values);
+}
+
+static int load_table_status_values(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    struct table_status_values *out_values
+) {
+    int64_t row_count = 0;
+    int64_t average_row_length = 0;
+    int64_t index_length = 0;
+    bool has_auto_increment = false;
+    int rc = MYLITE_OK;
+
+    if (out_values == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_values = (struct table_status_values){0};
+
+    rc = read_show_table_status_row_count(database, table, &row_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
     if (rc != MYLITE_OK) {
-        set_runtime_error(database, "failed to read INFORMATION_SCHEMA.TABLES row count");
+        set_runtime_error(database, "failed to read table status row count");
         return MYLITE_ERROR;
     }
     if (row_count > 0) {
         average_row_length = show_table_status_data_length / row_count;
     }
-    rc = information_schema_format_i64(database, row_count, row_count_text, sizeof(row_count_text));
+    rc = format_show_table_status_integer(
+        database,
+        row_count,
+        out_values->row_count_text,
+        sizeof(out_values->row_count_text)
+    );
     if (rc == MYLITE_OK) {
-        rc = information_schema_format_i64(
+        rc = format_show_table_status_integer(
             database,
             average_row_length,
-            average_row_length_text,
-            sizeof(average_row_length_text)
+            out_values->average_row_length_text,
+            sizeof(out_values->average_row_length_text)
         );
     }
     if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, table->table_id, &columns, &column_count);
+        rc = table_status_index_length(database, table, &index_length);
     }
+    if (rc == MYLITE_OK) {
+        rc = format_show_table_status_integer(
+            database,
+            index_length,
+            out_values->index_length_text,
+            sizeof(out_values->index_length_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_values->index_length = out_values->index_length_text;
+        rc = table_status_has_auto_increment(database, table, &has_auto_increment);
+    }
+    if (rc == MYLITE_OK && has_auto_increment) {
+        rc = format_show_table_status_integer(
+            database,
+            table->auto_increment_next,
+            out_values->auto_increment_text,
+            sizeof(out_values->auto_increment_text)
+        );
+        if (rc == MYLITE_OK) {
+            out_values->auto_increment = out_values->auto_increment_text;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_table_status_timestamp(
+            database,
+            table->created_time_utc_epoch,
+            out_values->create_time_text,
+            sizeof(out_values->create_time_text),
+            &out_values->create_time
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_table_status_timestamp(
+            database,
+            table->updated_time_utc_epoch,
+            out_values->update_time_text,
+            sizeof(out_values->update_time_text),
+            &out_values->update_time
+        );
+    }
+
+    return rc;
+}
+
+static int table_status_has_auto_increment(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *out_has_auto_increment
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_has_auto_increment == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_auto_increment = false;
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
         if (column_descriptor_is_auto_increment(&columns[column_index])) {
-            has_auto_increment = true;
+            *out_has_auto_increment = true;
             break;
         }
     }
     free(columns);
     if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (has_auto_increment) {
-        rc = information_schema_format_i64(
-            database,
-            table->auto_increment_next,
-            auto_increment_text,
-            sizeof(auto_increment_text)
-        );
-        if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
             return rc;
         }
-        values[information_schema_tables_auto_increment_column] = auto_increment_text;
+        set_runtime_error(database, "failed to read table status columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int table_status_index_length(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t *out_index_length
+) {
+    struct nonprimary_index_presence_context context = {.has_nonprimary_index = false};
+    int rc = MYLITE_OK;
+
+    if (out_index_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_index_length = 0;
+    rc = mylite_catalog_for_each_index_in_table(
+        database,
+        table->table_id,
+        note_nonprimary_index_presence,
+        &context
+    );
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        set_runtime_error(database, "failed to read table status index descriptors");
+        return MYLITE_ERROR;
+    }
+    if (context.has_nonprimary_index) {
+        *out_index_length = show_table_status_data_length;
+    }
+    return MYLITE_OK;
+}
+
+static int note_nonprimary_index_presence(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+) {
+    struct nonprimary_index_presence_context *context = user_data;
+
+    if (context == NULL || index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (index->kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        context->has_nonprimary_index = true;
     }
 
-    return append_information_schema_row(database, rows, values);
+    return MYLITE_OK;
+}
+
+static int format_table_status_timestamp(
+    struct mylite_db *database,
+    int64_t epoch,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_timestamp
+) {
+    if (out_timestamp == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_timestamp = NULL;
+    if (epoch <= 0) {
+        return MYLITE_OK;
+    }
+    int rc = format_session_timestamp_epoch_text(database, epoch, buffer, buffer_size);
+
+    if (rc == MYLITE_OK) {
+        *out_timestamp = buffer;
+    }
+    return rc;
 }
 
 static int append_information_schema_columns_system_rows(
@@ -36713,6 +36929,7 @@ static int insert_create_table_catalog_rows(
     struct mylite_catalog_table_descriptor *out_table
 ) {
     int64_t *column_ids = NULL;
+    int64_t created_time_utc_epoch = current_timestamp_epoch(database);
     int rc = mylite_catalog_insert_table_in_mutation(
         database,
         mutation,
@@ -36724,6 +36941,8 @@ static int insert_create_table_catalog_rows(
         plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
         plan->default_charset,
         plan->default_collation,
+        created_time_utc_epoch,
+        created_time_utc_epoch,
         out_table
     );
 
@@ -37647,6 +37866,9 @@ static int execute_truncate_from_plan(
     statement = NULL;
     if (rc == MYLITE_OK && plan->table.auto_increment_next != 1) {
         rc = mylite_catalog_update_table_auto_increment_next(database, plan->table.table_id, 1);
+    }
+    if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(database, &plan->table, 0, true);
     }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
@@ -46550,6 +46772,14 @@ static int execute_insert_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(
+            database,
+            &plan->table,
+            counters.affected_rows,
+            false
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
@@ -47713,6 +47943,14 @@ static int execute_insert_select_from_plan(
             insert_sql,
             plan,
             &affected_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(
+            database,
+            &plan->target.table,
+            affected_rows,
+            false
         );
     }
     if (rc == MYLITE_OK) {
@@ -49305,6 +49543,9 @@ static int execute_update_from_plan(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(database, &plan->table, affected_rows, false);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
@@ -49402,6 +49643,7 @@ static int execute_parent_update_cascade(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    int64_t affected_rows = 0;
     int sqlite_rc = SQLITE_OK;
     int rc = build_parent_update_cascade_sql(plan, foreign_key, updated_part_index, &sql);
 
@@ -49414,7 +49656,7 @@ static int execute_parent_update_cascade(
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
         if (sqlite_rc == SQLITE_DONE) {
-            rc = MYLITE_OK;
+            affected_rows = (int64_t)sqlite3_changes64(database->sqlite);
         } else if (sqlite_status_is_constraint(sqlite_rc)) {
             rc = handle_parent_update_cascade_constraint(
                 database,
@@ -49427,6 +49669,14 @@ static int execute_parent_update_cascade(
         }
     }
     rc = finalize_sqlite_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(
+            database,
+            &foreign_key->child_table,
+            affected_rows,
+            false
+        );
+    }
     free(sql);
     return rc;
 }
@@ -50246,6 +50496,36 @@ static int update_table_auto_increment_next(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to update auto-increment counter");
+    }
+    return rc;
+}
+
+static int touch_persistent_table_updated_time(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t affected_rows,
+    bool force
+) {
+    int rc = MYLITE_OK;
+
+    if (table == NULL) {
+        set_runtime_error(database, "invalid table descriptor for status metadata update");
+        return MYLITE_ERROR;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE || table->table_id <= 0) {
+        return MYLITE_OK;
+    }
+    if (!force && affected_rows <= 0) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_update_table_updated_time(
+        database,
+        table->table_id,
+        current_wall_clock_epoch()
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update table status metadata");
     }
     return rc;
 }
@@ -70229,6 +70509,9 @@ static int execute_delete_from_plan(
     rc = finalize_sqlite_statement(statement, rc);
     statement = NULL;
     if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(database, &plan->table, affected_rows, false);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
@@ -70292,6 +70575,7 @@ static int execute_parent_delete_cascade(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    int64_t affected_rows = 0;
     int sqlite_rc = SQLITE_OK;
     int rc = build_parent_delete_cascade_sql(plan, foreign_key, &sql);
 
@@ -70303,11 +70587,21 @@ static int execute_parent_delete_cascade(
     }
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
-        if (sqlite_rc != SQLITE_DONE) {
+        if (sqlite_rc == SQLITE_DONE) {
+            affected_rows = (int64_t)sqlite3_changes64(database->sqlite);
+        } else {
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
     rc = finalize_sqlite_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = touch_persistent_table_updated_time(
+            database,
+            &foreign_key->child_table,
+            affected_rows,
+            false
+        );
+    }
     free(sql);
     return rc;
 }
@@ -80618,7 +80912,52 @@ static int format_current_time_text(struct mylite_db *database, char *buffer, si
 }
 
 static int current_timestamp_session_parts(struct mylite_db *database, struct tm *out_time_parts) {
-    int64_t epoch = current_timestamp_epoch(database);
+    return session_time_parts_from_epoch(
+        database,
+        current_timestamp_epoch(database),
+        out_time_parts
+    );
+}
+
+static int format_session_timestamp_epoch_text(
+    struct mylite_db *database,
+    int64_t epoch,
+    char *buffer,
+    size_t buffer_size
+) {
+    struct tm time_parts;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        set_runtime_error(database, "invalid timestamp metadata buffer");
+        return MYLITE_ERROR;
+    }
+    if (session_time_parts_from_epoch(database, epoch, &time_parts) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%04d-%02d-%02d %02d:%02d:%02d",
+        time_parts.tm_year + 1900,
+        time_parts.tm_mon + 1,
+        time_parts.tm_mday,
+        time_parts.tm_hour,
+        time_parts.tm_min,
+        time_parts.tm_sec
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format timestamp metadata");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int session_time_parts_from_epoch(
+    struct mylite_db *database,
+    int64_t epoch,
+    struct tm *out_time_parts
+) {
     int offset_seconds = database == NULL ? 0
                                           : database->session.time_zone_offset_minutes *
                                                 time_zone_seconds_per_minute;
@@ -80650,6 +80989,15 @@ static int current_timestamp_session_parts(struct mylite_db *database, struct tm
     }
 #endif
     return MYLITE_OK;
+}
+
+static int64_t current_wall_clock_epoch(void) {
+    time_t now = time(NULL);
+
+    if (now < (time_t)0) {
+        return 0;
+    }
+    return (int64_t)now;
 }
 
 static int assign_text_value(
@@ -89307,34 +89655,7 @@ static int append_show_table_status(
     void *user_data
 ) {
     struct show_table_status_context *context = user_data;
-    int64_t row_count = 0;
-    int64_t average_row_length = 0;
-    char row_count_text[integer_text_capacity];
-    char average_row_length_text[integer_text_capacity];
-    char auto_increment_text[integer_text_capacity];
-    struct mylite_catalog_column_descriptor *columns = NULL;
-    size_t column_count = 0U;
-    bool has_auto_increment = false;
-    const char *values[show_table_status_result_column_count] = {
-        NULL,
-        "InnoDB",
-        "10",
-        "Dynamic",
-        row_count_text,
-        average_row_length_text,
-        "16384",
-        "0",
-        "0",
-        "0",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        table->default_collation,
-        NULL,
-        "",
-        "",
-    };
+    struct table_status_values status = {0};
     int rc = MYLITE_OK;
 
     if (table == NULL || context == NULL || context->database == NULL || context->result == NULL) {
@@ -89347,64 +89668,31 @@ static int append_show_table_status(
         return MYLITE_OK;
     }
 
-    rc = read_show_table_status_row_count(context->database, table, &row_count);
-    if (rc == MYLITE_NOMEM) {
-        set_nomem_error(context->database);
-        return rc;
-    }
-    if (rc != MYLITE_OK) {
-        set_runtime_error(context->database, "failed to read SHOW TABLE STATUS row count");
-        return MYLITE_ERROR;
-    }
-
-    if (row_count > 0) {
-        average_row_length = show_table_status_data_length / row_count;
-    }
-    rc = format_show_table_status_integer(
-        context->database,
-        row_count,
-        row_count_text,
-        sizeof(row_count_text)
-    );
-    if (rc == MYLITE_OK) {
-        rc = format_show_table_status_integer(
-            context->database,
-            average_row_length,
-            average_row_length_text,
-            sizeof(average_row_length_text)
-        );
-    }
+    rc = load_table_status_values(context->database, table, &status);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = load_table_columns(context->database, table->table_id, &columns, &column_count);
-    if (rc == MYLITE_OK) {
-        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-            if (column_descriptor_is_auto_increment(&columns[column_index])) {
-                has_auto_increment = true;
-                break;
-            }
-        }
-    }
-    free(columns);
-    if (rc != MYLITE_OK) {
-        set_runtime_error(context->database, "failed to read SHOW TABLE STATUS columns");
-        return MYLITE_ERROR;
-    }
-    if (has_auto_increment) {
-        rc = format_show_table_status_integer(
-            context->database,
-            table->auto_increment_next,
-            auto_increment_text,
-            sizeof(auto_increment_text)
-        );
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        values[show_table_status_auto_increment_column] = auto_increment_text;
-    }
 
-    values[0] = table->name;
+    const char *values[show_table_status_result_column_count] = {
+        table->name,
+        "InnoDB",
+        "10",
+        "Dynamic",
+        status.row_count_text,
+        status.average_row_length_text,
+        "16384",
+        "0",
+        status.index_length,
+        "0",
+        status.auto_increment,
+        status.create_time,
+        status.update_time,
+        NULL,
+        table->default_collation,
+        NULL,
+        "",
+        "",
+    };
 
     rc = mylite_result_append_text_row(context->result, values);
     if (rc == MYLITE_NOMEM) {

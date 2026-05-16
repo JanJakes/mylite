@@ -85915,7 +85915,8 @@ static int validate_comparison_predicate_column(
         !comparison_operator_is_string_predicate(node->operator_kind)) {
         set_unsupported_error(
             database,
-            "WHERE string predicates support only =, <=>, <>, !=, LIKE, REGEXP, and RLIKE"
+            "WHERE string predicates support only =, <=>, <>, !=, <, <=, >, >=, LIKE, REGEXP, "
+            "and RLIKE"
         );
         return MYLITE_ERROR;
     }
@@ -86418,6 +86419,10 @@ static bool comparison_operator_is_string_predicate(enum mylite_sql_ast_operator
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
@@ -86549,10 +86554,6 @@ static int plan_between_predicate(
     );
 
     if (rc == MYLITE_OK) {
-        if (column_descriptor_is_string_family(&node.column)) {
-            set_unsupported_error(database, "WHERE string predicates do not yet support BETWEEN");
-            return MYLITE_ERROR;
-        }
         if (column_descriptor_is_enum(&node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
@@ -86608,10 +86609,6 @@ static int plan_in_predicate(
     );
 
     if (rc == MYLITE_OK) {
-        if (column_descriptor_is_string_family(&node.column)) {
-            set_unsupported_error(database, "WHERE string predicates do not yet support IN");
-            return MYLITE_ERROR;
-        }
         if (column_descriptor_is_enum(&node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
             return MYLITE_ERROR;

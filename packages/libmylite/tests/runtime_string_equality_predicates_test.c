@@ -247,39 +247,11 @@ static int test_string_predicate_diagnostics(void) {
     failures += populate_strings(database);
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v > 'abc'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates support only =, <=>, <>, !=, LIKE, "
-                            "REGEXP, and RLIKE",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT id FROM strings WHERE v = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "WHERE string predicates support only string literals",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v IN ('abc')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates do not yet support IN",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v BETWEEN 'a' AND 'z'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE string predicates do not yet support BETWEEN",
         }
     );
     failures += execute_error(

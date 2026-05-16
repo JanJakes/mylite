@@ -137,6 +137,7 @@ enum {
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_values_function_deprecated = 1287,
     mysql_warning_truncated_incorrect_decimal = 1292,
+    mysql_warning_truncated_incorrect_temporal = 1292,
     mysql_error_incorrect_date_value = 1292,
     mysql_error_incorrect_time_value = 1292,
     mysql_warning_division_by_zero = 1365,
@@ -14847,6 +14848,11 @@ static bool normalize_iso_temporal_predicate_text(
     const struct temporal_predicate_normalization_input *input,
     char *out_text
 );
+static bool normalize_z_temporal_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+);
 static bool parse_temporal_predicate_offset(const char *text, int *out_offset_minutes);
 static bool shift_datetime_parts_by_minutes(
     const struct date_add_datetime_parts *parts,
@@ -16980,6 +16986,11 @@ static void set_incorrect_datetime_literal_error(
     const char *value_text
 );
 static void set_incorrect_timestamp_value_error(struct mylite_db *database, const char *value_text);
+static int append_incorrect_datetime_predicate_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name
+);
 static int append_bad_null_warning(struct mylite_db *database, const char *column_name);
 static int append_no_default_warning(struct mylite_db *database, const char *column_name);
 static int append_out_of_range_warning(
@@ -84609,7 +84620,6 @@ static int convert_predicate_datetime_literal(
     struct temporal_predicate_normalization_input normalization = {0};
     int rc = MYLITE_OK;
 
-    (void)column;
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "WHERE DATETIME predicates support only string literals");
@@ -84640,6 +84650,20 @@ static int convert_predicate_datetime_literal(
         free(text);
         return copy_text_value(database, normalized, out_value);
     }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        if (!predicate_datetime_text_admitted(database, normalized, datetime_text_length)) {
+            set_incorrect_datetime_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        rc = append_incorrect_datetime_predicate_warning(database, text, column->name);
+        if (rc != MYLITE_OK) {
+            free(text);
+            return rc;
+        }
+        free(text);
+        return copy_text_value(database, normalized, out_value);
+    }
     if (!predicate_datetime_text_admitted(database, text, text_length)) {
         set_incorrect_datetime_literal_error(database, text);
         free(text);
@@ -84661,7 +84685,6 @@ static int convert_predicate_timestamp_literal(
     struct temporal_predicate_normalization_input normalization = {0};
     int rc = MYLITE_OK;
 
-    (void)column;
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "WHERE TIMESTAMP predicates support only string literals");
@@ -84687,6 +84710,20 @@ static int convert_predicate_timestamp_literal(
             set_incorrect_timestamp_value_error(database, text);
             free(text);
             return MYLITE_ERROR;
+        }
+        free(text);
+        return copy_text_value(database, normalized, out_value);
+    }
+    if (normalize_z_temporal_predicate_text(text, text_length, normalized)) {
+        if (!predicate_timestamp_text_admitted(database, normalized, datetime_text_length)) {
+            set_incorrect_timestamp_value_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        rc = append_incorrect_datetime_predicate_warning(database, text, column->name);
+        if (rc != MYLITE_OK) {
+            free(text);
+            return rc;
         }
         free(text);
         return copy_text_value(database, normalized, out_value);
@@ -84741,6 +84778,27 @@ static bool normalize_iso_temporal_predicate_text(
         input->target_offset_minutes - source_offset_minutes,
         out_text
     );
+}
+
+static bool normalize_z_temporal_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+) {
+    if (text == NULL || out_text == NULL) {
+        return false;
+    }
+    if (text_length != datetime_text_length + 1U ||
+        (text[datetime_date_time_separator_offset] != ' ' &&
+         text[datetime_date_time_separator_offset] != 'T') ||
+        (text[datetime_text_length] != 'Z' && text[datetime_text_length] != 'z')) {
+        return false;
+    }
+
+    memcpy(out_text, text, datetime_text_length);
+    out_text[datetime_date_time_separator_offset] = ' ';
+    out_text[datetime_text_length] = '\0';
+    return datetime_text_has_canonical_shape(out_text, datetime_text_length);
 }
 
 static bool parse_temporal_predicate_offset(const char *text, int *out_offset_minutes) {
@@ -97523,6 +97581,36 @@ static void set_incorrect_timestamp_value_error(
         "HY000",
         message
     );
+}
+
+static int append_incorrect_datetime_predicate_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect datetime value: '%s' for column '%s' at row 1",
+        value_text,
+        column_name
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_temporal,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int append_bad_null_warning(struct mylite_db *database, const char *column_name) {

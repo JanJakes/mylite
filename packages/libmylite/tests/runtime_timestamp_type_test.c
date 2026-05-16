@@ -42,6 +42,7 @@ struct expected_query {
     const char *const *values;
     size_t column_count;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -168,6 +169,12 @@ static int test_timestamp_success_metadata_dml_and_persistence(void) {
     };
     static const char *const predicate_rows[] = {"1", "3"};
     static const char *const after_predicate_rows[] = {"1", "2"};
+    static const char *const temporal_z_less_rows[] = {"3"};
+    static const char *const temporal_z_warning_rows[] = {
+        "Warning",
+        "1292",
+        "Incorrect datetime value: '2024-02-29T03:04:05Z' for column 'd' at row 1",
+    };
     static const char *const nseq_rows[] = {"1"};
     static const char *const not_between_rows[] = {"2"};
     static const char *const not_in_rows[] = {"2", "3"};
@@ -469,6 +476,62 @@ static int test_timestamp_success_metadata_dml_and_persistence(void) {
         }
     );
     failures += expect_statement_ok(database, "SET time_zone = '+00:00'");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2024-02-29T03:04:05Z'",
+            .values = (const char *const[]){"3"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "timestamp trailing-Z equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = temporal_z_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "timestamp trailing-Z warning row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d < '2025-01-02T00:00:00Z'",
+            .values = temporal_z_less_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "timestamp trailing-Z less-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d BETWEEN '2024-01-01T00:00:00Z' "
+                   "AND '2025-12-31T23:59:59Z' ORDER BY id",
+            .values = predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 2U,
+            .context = "timestamp trailing-Z BETWEEN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d IN ('2025-01-02T00:00:00Z', "
+                   "'2024-02-29 03:04:05z') ORDER BY id",
+            .values = predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 2U,
+            .context = "timestamp trailing-Z IN predicate",
+        }
+    );
     failures += expect_statement_ok(
         database,
         "CREATE TABLE iso_ts (id INT NOT NULL, d TIMESTAMP NULL, flag INT NOT NULL DEFAULT 0)"
@@ -494,6 +557,42 @@ static int test_timestamp_success_metadata_dml_and_persistence(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "timestamp offset predicates feed update and delete",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE z_ts (id INT NOT NULL, d TIMESTAMP NULL, flag INT NOT NULL DEFAULT 0)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO z_ts VALUES "
+        "(1, '2016-01-15 00:00:00', 0), (2, '2016-01-15 01:00:00', 0)",
+        2
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE z_ts SET flag = 7 WHERE d = '2016-01-15T00:00:00Z'",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "DELETE FROM z_ts WHERE d = '2016-01-15 01:00:00Z'",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, flag FROM z_ts",
+            .values = (const char *const[]){"1", "7"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "timestamp trailing-Z predicates feed update and delete",
         }
     );
     failures += expect_query_values(
@@ -1161,11 +1260,20 @@ static int test_timestamp_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00Z'",
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00Q'",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_timestamp_value,
             .sqlstate = "HY000",
-            .message_part = "Incorrect TIMESTAMP value: '2024-01-01T00:00:00Z'",
+            .message_part = "Incorrect TIMESTAMP value: '2024-01-01T00:00:00Q'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00Z+00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_timestamp_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect TIMESTAMP value: '2024-01-01T00:00:00Z+00:00'",
         }
     );
 
@@ -1426,7 +1534,8 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
         }
     }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), query.warning_count, query.context);
     mylite_result_free(result);
 
     return failures;

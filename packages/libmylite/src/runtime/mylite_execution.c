@@ -1821,11 +1821,11 @@ struct planned_alter_table_modify_column {
     const char *unsupported_object_message;
     const char *rowid_alias_message;
     const char *integer_support_message;
-    const char *unsupported_primary_key_message;
-    const char *unsupported_secondary_index_message;
     const char *row_count_overflow_message;
     const char *failure_message;
     const char *rowid_alias;
+    struct loaded_index_info *indexes;
+    size_t index_count;
     int64_t affected_rows;
 };
 
@@ -8244,6 +8244,11 @@ static int find_loaded_foreign_key_by_name(
 );
 static int reject_table_referenced_by_foreign_key(struct mylite_db *database, int64_t table_id);
 static int reject_table_with_foreign_keys(struct mylite_db *database, int64_t table_id);
+static int reject_foreign_key_table_alter(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *message
+);
 static int reject_index_used_by_foreign_key(
     struct mylite_db *database,
     const struct mylite_catalog_index_descriptor *index
@@ -8695,6 +8700,23 @@ static void planned_column_from_catalog_descriptor(
 static int resolve_alter_table_column_replacement_plan(
     struct mylite_db *database,
     struct planned_alter_table_modify_column *out_plan
+);
+static int apply_alter_table_modify_primary_key_nullability(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int validate_alter_table_modify_indexes(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+);
+static int refresh_alter_table_modify_index_parts(struct planned_alter_table_modify_column *plan);
+static int validate_alter_table_modify_primary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
+);
+static int validate_alter_table_modify_fulltext_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
 );
 static int resolve_alter_table_modify_column_position(
     struct mylite_db *database,
@@ -15825,6 +15847,15 @@ static int build_alter_table_modify_copy_sql(
     const struct planned_alter_table_modify_column *plan,
     const char *temporary_physical_name,
     char **out_sql
+);
+static int build_alter_table_modify_indexes_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int append_alter_table_modify_index_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_modify_column *plan,
+    const struct loaded_index_info *index
 );
 static int build_alter_table_order_temporary_physical_name(
     const struct planned_alter_table_order_by *plan,
@@ -39877,6 +39908,38 @@ static int reject_table_with_foreign_keys(struct mylite_db *database, int64_t ta
     return MYLITE_OK;
 }
 
+static int reject_foreign_key_table_alter(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *message
+) {
+    struct foreign_key_exists_context context = {.found = false};
+    int rc = mylite_catalog_for_each_foreign_key_in_child_table(
+        database,
+        table_id,
+        collect_foreign_key_exists,
+        &context
+    );
+
+    if (rc == MYLITE_OK && !context.found) {
+        rc = mylite_catalog_for_each_foreign_key_for_parent_table(
+            database,
+            table_id,
+            collect_foreign_key_exists,
+            &context
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (context.found) {
+        set_unsupported_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int reject_index_used_by_foreign_key(
     struct mylite_db *database,
     const struct mylite_catalog_index_descriptor *index
@@ -42327,10 +42390,6 @@ static int plan_alter_table_modify_column(
     out_plan->integer_support_message =
         "ALTER TABLE MODIFY COLUMN supports only baseline integer, character, and temporal "
         "columns";
-    out_plan->unsupported_primary_key_message =
-        "ALTER TABLE MODIFY COLUMN does not yet support primary-key tables";
-    out_plan->unsupported_secondary_index_message =
-        "ALTER TABLE MODIFY COLUMN does not yet support secondary-index tables";
     out_plan->row_count_overflow_message =
         "too many rows to validate for ALTER TABLE MODIFY COLUMN";
     out_plan->failure_message = "failed to modify table column";
@@ -42394,10 +42453,6 @@ static int plan_alter_table_change_column(
     out_plan->integer_support_message =
         "ALTER TABLE CHANGE COLUMN supports only baseline integer, character, and temporal "
         "columns";
-    out_plan->unsupported_primary_key_message =
-        "ALTER TABLE CHANGE COLUMN does not yet support primary-key tables";
-    out_plan->unsupported_secondary_index_message =
-        "ALTER TABLE CHANGE COLUMN does not yet support secondary-index tables";
     out_plan->row_count_overflow_message =
         "too many rows to validate for ALTER TABLE CHANGE COLUMN";
     out_plan->failure_message = "failed to change table column";
@@ -43342,26 +43397,18 @@ static int resolve_alter_table_column_replacement_plan(
         set_unsupported_error(database, out_plan->unsupported_object_message);
         return MYLITE_ERROR;
     }
-    rc = reject_primary_key_table_alter(
-        database,
-        out_plan->table.table_id,
-        out_plan->unsupported_primary_key_message
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = reject_secondary_index_table_alter(
-        database,
-        out_plan->table.table_id,
-        out_plan->unsupported_secondary_index_message
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
     rc = reject_check_constraint_table_alter(
         database,
         out_plan->table.table_id,
         "ALTER TABLE column replacement does not yet support CHECK-constrained tables"
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = reject_foreign_key_table_alter(
+        database,
+        out_plan->table.table_id,
+        "ALTER TABLE column replacement does not yet support foreign-key constrained tables"
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -43396,12 +43443,152 @@ static int resolve_alter_table_column_replacement_plan(
         rc = resolve_alter_table_modify_column_position(database, columns, column_count, out_plan);
     }
     if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &out_plan->indexes,
+            &out_plan->index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_alter_table_modify_primary_key_nullability(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_modify_indexes(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
     }
 
     free(columns);
 
     return rc;
+}
+
+static int apply_alter_table_modify_primary_key_nullability(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    for (size_t index = 0U; index < out_plan->index_count; ++index) {
+        const struct loaded_index_info *key = &out_plan->indexes[index];
+
+        if (key->index.kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY ||
+            !loaded_index_contains_column_id(key, out_plan->original_column.column_id)) {
+            continue;
+        }
+        if (out_plan->column.nullability == MYLITE_SQL_AST_NULLABILITY_NULL) {
+            set_primary_key_part_null_error(database);
+            return MYLITE_ERROR;
+        }
+        if (out_plan->column.nullability == MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED) {
+            out_plan->column.is_nullable = false;
+        }
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_modify_indexes(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+) {
+    int rc = refresh_alter_table_modify_index_parts(plan);
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (key->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+            rc = validate_alter_table_modify_primary_index(database, key);
+        } else if (key->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+            rc = validate_loaded_index_part_list(
+                database,
+                key->parts,
+                key->part_count,
+                key->index.is_unique
+            );
+        } else if (key->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+            rc = validate_alter_table_modify_fulltext_index(database, key);
+        }
+    }
+
+    return rc;
+}
+
+static int refresh_alter_table_modify_index_parts(struct planned_alter_table_modify_column *plan) {
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        struct loaded_index_info *key = &plan->indexes[index];
+
+        for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
+            struct loaded_index_part *part = &key->parts[part_index];
+
+            if (part->index_column.column_id == plan->original_column.column_id) {
+                make_modify_target_descriptor(plan, &part->column);
+            }
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_modify_primary_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
+) {
+    uint64_t total = 0U;
+
+    if (index == NULL || index->part_count == 0U) {
+        set_runtime_error(database, "invalid primary-key descriptor");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        const struct loaded_index_part *part = &index->parts[part_index];
+        uint64_t part_bytes = 0U;
+        int rc = MYLITE_OK;
+
+        if (part->column.is_nullable) {
+            set_primary_key_part_null_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = column_descriptor_index_part_key_bytes(database, &part->column, &part_bytes);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (total > UINT64_MAX - part_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+        total += part_bytes;
+        if (total > innodb_max_key_length_bytes) {
+            set_key_too_long_error(database, innodb_max_key_length_bytes);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_modify_fulltext_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
+) {
+    if (index == NULL || index->part_count == 0U) {
+        set_runtime_error(database, "invalid FULLTEXT index descriptor");
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        struct planned_column column = {0};
+
+        planned_column_from_catalog_descriptor(&index->parts[part_index].column, NULL, &column);
+        int rc = validate_fulltext_index_column(database, &column);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static int resolve_alter_table_modify_column_position(
@@ -43621,6 +43808,7 @@ static void planned_alter_table_modify_column_deinit(
     }
 
     free(plan->columns);
+    loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_alter_table_modify_column){0};
 }
 
@@ -44009,6 +44197,15 @@ static int execute_physical_alter_table_modify_column(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_modify_indexes_sql(plan, &sql);
+    }
+    if (rc == MYLITE_OK && sql != NULL) {
         rc = execute_sqlite_schema_sql(database, sql);
     }
     free(sql);
@@ -89693,6 +89890,90 @@ static int build_alter_table_modify_copy_sql(
     }
 
     dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_alter_table_modify_indexes_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
+        rc = append_alter_table_modify_index_sql(&string, plan, &plan->indexes[index]);
+    }
+    if (rc == MYLITE_OK && string.length != 0U) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_alter_table_modify_index_sql(
+    struct dynamic_string *string,
+    const struct planned_alter_table_modify_column *plan,
+    const struct loaded_index_info *index
+) {
+    bool is_unique = index->index.is_unique;
+    int rc = MYLITE_OK;
+
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return MYLITE_OK;
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        is_unique = true;
+    }
+    if (string->length != 0U) {
+        rc = dynamic_string_append(string, "; ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "CREATE ");
+    }
+    if (rc == MYLITE_OK && is_unique) {
+        rc = dynamic_string_append(string, "UNIQUE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "INDEX ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, index->index.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " ON ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " (");
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        const struct loaded_index_part *part = &index->parts[part_index];
+
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(string, part, NULL);
+        }
+        if (rc == MYLITE_OK &&
+            part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+            rc = dynamic_string_append(string, " DESC");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
 
     return rc;
 }

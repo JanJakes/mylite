@@ -1143,6 +1143,7 @@ static int test_primary_key_type_and_mutation_coverage(void) {
 }
 
 static int test_primary_key_diagnostics(void) {
+    static const char *const keyed_rows[] = {"1", "10"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1325,13 +1326,15 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "ALTER TABLE DROP COLUMN does not yet support primary-key columns",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(database, "ALTER TABLE keyed MODIFY COLUMN v BIGINT", 1);
+    failures += expect_query_values(
         database,
-        "ALTER TABLE keyed MODIFY COLUMN v BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN does not yet support primary-key tables",
+        (struct expected_query){
+            .sql = "SELECT id, v FROM keyed",
+            .values = keyed_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "primary-key table after MODIFY COLUMN",
         }
     );
     failures += execute_error(

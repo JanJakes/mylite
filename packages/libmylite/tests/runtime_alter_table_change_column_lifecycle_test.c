@@ -37,6 +37,7 @@ enum {
     mysql_error_table_does_not_exist = 1146,
     mysql_error_invalid_default = 1067,
     mysql_error_invalid_use_of_null = 1138,
+    mysql_error_primary_key_part_null = 1171,
     mysql_error_data_out_of_range = 1264,
 };
 
@@ -55,6 +56,7 @@ struct expected_query {
 };
 
 static int test_change_column_success_persistence_and_dml(void);
+static int test_change_column_keyed_tables(void);
 static int test_change_column_diagnostics_and_rollback(void);
 static int test_change_column_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -84,6 +86,11 @@ static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int drop_physical_table(sqlite3 *connection, const char *physical_name);
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
+    const char *context
+);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
@@ -101,6 +108,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_change_column_success_persistence_and_dml();
+    failures += test_change_column_keyed_tables();
     failures += test_change_column_diagnostics_and_rollback();
     failures += test_change_column_independent_handles();
 
@@ -668,6 +676,250 @@ static int test_change_column_success_persistence_and_dml(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "changed table persists after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_change_column_keyed_tables(void) {
+    static const char *const rows_after_rename[] = {
+        "1",
+        "aa",
+        "100",
+        "2",
+        "bb",
+        "200",
+    };
+    static const char *const rows_after_indexed_type_change[] = {
+        "1",
+        "aa",
+        "100",
+        "2",
+        "bb",
+        "200",
+    };
+    static const char *const prefix_index_rows[] = {"kk", "10"};
+    static const char *const statistic_count_rows[] = {"3"};
+    static const char *const primary_column_rows[] = {"bigint", "NO", "PRI"};
+    static const char *const fulltext_show_create_rows[] = {
+        "fulltext_change",
+        "CREATE TABLE `fulltext_change` (\n"
+        "  `content` varchar(120) DEFAULT NULL,\n"
+        "  `title` varchar(40) DEFAULT NULL,\n"
+        "  FULLTEXT KEY `ft_body` (`content`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const fulltext_index_rows[] = {"FULLTEXT", "content"};
+    static const char *const fulltext_rows[] = {
+        "alpha body",
+        "first",
+        "beta body",
+        "second",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "keyed") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE keyed_change ("
+        "id INT NOT NULL PRIMARY KEY, "
+        "k VARCHAR(20) NOT NULL, "
+        "v INT, "
+        "KEY k_idx (k(10)), "
+        "KEY v_idx (v))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO keyed_change VALUES (1, 'aa', 100), (2, 'bb', 200)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(database, 3, "physical indexes before keyed change");
+
+    failures +=
+        expect_change_ok(database, "ALTER TABLE keyed_change CHANGE k kk VARCHAR(20) NOT NULL", 0);
+    failures += expect_physical_index_count(database, 3, "physical indexes after keyed rename");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, kk, v FROM keyed_change ORDER BY id",
+            .values = rows_after_rename,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows preserved after indexed change rename",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, SUB_PART FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_change' "
+                   "AND INDEX_NAME = 'k_idx'",
+            .values = prefix_index_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "prefix index follows changed column name",
+        }
+    );
+
+    failures += expect_change_ok(database, "ALTER TABLE keyed_change CHANGE v vv BIGINT", 2);
+    failures += expect_physical_index_count(
+        database,
+        3,
+        "physical indexes after keyed indexed-column rebuild"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, kk, vv FROM keyed_change ORDER BY id",
+            .values = rows_after_indexed_type_change,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "rows preserved after indexed change rebuild",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_change'",
+            .values = statistic_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "key descriptors preserved after indexed change rebuild",
+        }
+    );
+
+    failures += expect_change_ok(database, "ALTER TABLE keyed_change CHANGE id id BIGINT", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'keyed_change' "
+                   "AND COLUMN_NAME = 'id'",
+            .values = primary_column_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "primary key nullability preserved after change omitted nullability",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE keyed_change CHANGE id id BIGINT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_primary_key_part_null,
+            .sqlstate = "42000",
+            .message_part = "All parts of a PRIMARY KEY must be NOT NULL",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE fulltext_change ("
+        "body VARCHAR(100), "
+        "title VARCHAR(40), "
+        "FULLTEXT KEY ft_body (body))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO fulltext_change VALUES ('alpha body', 'first'), ('beta body', 'second')",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(
+        database,
+        3,
+        "metadata fulltext creates no physical index before change"
+    );
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE fulltext_change CHANGE body content VARCHAR(120)",
+        2
+    );
+    failures += expect_physical_index_count(
+        database,
+        3,
+        "metadata fulltext creates no physical index after change"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE fulltext_change",
+            .values = fulltext_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "fulltext follows changed column in SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_TYPE, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'fulltext_change' "
+                   "AND INDEX_NAME = 'ft_body'",
+            .values = fulltext_index_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "fulltext follows changed column in statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT content, title FROM fulltext_change ORDER BY title",
+            .values = fulltext_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "fulltext rows preserved after change",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_physical_index_count(
+        database,
+        3,
+        "metadata fulltext creates no physical index after reopen"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT content, title FROM fulltext_change ORDER BY title",
+            .values = fulltext_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "fulltext rows preserved after reopen",
         }
     );
 
@@ -1293,6 +1545,52 @@ static int drop_physical_table(sqlite3 *connection, const char *physical_name) {
     }
 
     return execute_sql(connection, sql);
+}
+
+static int expect_physical_index_count(
+    mylite_db *database,
+    int expected_count,
+    const char *context
+) {
+    enum { sqlite_use_nul_terminated_string = -1 };
+
+    sqlite3 *connection = mylite_connection_sqlite_for_test(database);
+    sqlite3_stmt *statement = NULL;
+    int actual_count = 0;
+    int rc = SQLITE_OK;
+
+    if (connection == NULL) {
+        fprintf(stderr, "%s: missing SQLite test connection\n", context);
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(
+        connection,
+        "SELECT count(*) FROM sqlite_schema "
+        "WHERE type = 'index' AND name GLOB '_mylite_user_index_*'",
+        sqlite_use_nul_terminated_string,
+        &statement,
+        NULL
+    );
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: prepare physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        actual_count = sqlite3_column_int(statement, 0);
+        rc = SQLITE_OK;
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && rc == SQLITE_OK) {
+        rc = SQLITE_ERROR;
+    }
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "%s: physical index query failed: %d\n", context, rc);
+        return 1;
+    }
+
+    return expect_int(actual_count, expected_count, context);
 }
 
 static int expect_int(int actual, int expected, const char *context) {

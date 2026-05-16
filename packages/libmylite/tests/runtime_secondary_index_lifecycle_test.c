@@ -763,24 +763,9 @@ static int test_secondary_index_diagnostics(void) {
             .message_part = "ALTER TABLE FORCE does not yet support secondary-index tables",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE indexed_rebuild MODIFY id BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN does not yet support secondary-index tables",
-        }
-    );
-    failures += execute_error(
-        database,
-        "ALTER TABLE indexed_rebuild CHANGE id changed BIGINT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ALTER TABLE CHANGE COLUMN does not yet support secondary-index tables",
-        }
-    );
+    failures += expect_statement_ok(database, "ALTER TABLE indexed_rebuild MODIFY id BIGINT");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE indexed_rebuild CHANGE id changed BIGINT");
 
     mylite_close(database);
     return failures;

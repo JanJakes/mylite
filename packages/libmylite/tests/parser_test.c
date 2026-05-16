@@ -62,6 +62,7 @@ static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
+static int test_charset_collation_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
 static int test_string_slice_functions(void);
@@ -328,6 +329,7 @@ int main(void) {
     failures += test_bit_count_function();
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
+    failures += test_charset_collation_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
     failures += test_string_slice_functions();
@@ -3346,6 +3348,85 @@ static int test_hex_function(void) {
     failures += parse_sql("CREATE TABLE hex_names (hex INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "hex identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_charset_collation_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CHARSET('abc'), COLLATION(v), CHARSET(CAST('ABC' AS BINARY)) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHARSET_FUNCTION, "charset function");
+    failures += expect_span_text(expression, "CHARSET('abc')", "charset span");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "charset literal");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_COLLATION_FUNCTION, "collation function");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "collation column");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHARSET_FUNCTION, "charset cast binary");
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_CAST_BINARY_EXPRESSION,
+        "charset cast binary argument"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "charset from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CHARSET ('a'), (COLLATION(CONVERT('A' USING BINARY))) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHARSET_FUNCTION, "spaced charset");
+    failures += expect_span_text(expression, "CHARSET ('a')", "spaced charset span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped collation");
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_COLLATION_FUNCTION,
+        "wrapped collation function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CHARSET();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT COLLATION('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+
+    failures += parse_sql("DO CHARSET('abc'), COLLATION(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "charset do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_CHARSET_FUNCTION, "do charset");
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_COLLATION_FUNCTION,
+        "do collation"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE charset_names (charset INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "charset identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

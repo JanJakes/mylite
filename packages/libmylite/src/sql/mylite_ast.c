@@ -728,6 +728,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "convert_binary_type_expression";
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return "convert_using_charset_expression";
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+        return "charset_function";
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
+        return "collation_function";
     case MYLITE_SQL_AST_COLUMN_POSITION_FIRST:
         return "column_position_first";
     case MYLITE_SQL_AST_COLUMN_POSITION_AFTER:

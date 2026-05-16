@@ -2634,6 +2634,14 @@ expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
 }
+expression(A) ::= CHARSET(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_CHARSET_FUNCTION, B, R);
+}
+expression(A) ::= COLLATION(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COLLATION_FUNCTION, B, R);
+}
 expression(A) ::= FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_FORMAT_FUNCTION, B, C, R);

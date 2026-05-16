@@ -2305,6 +2305,12 @@ enum planned_string_slice_function_kind {
     PLANNED_STRING_SLICE_FUNCTION_SUBSTRING = 3,
 };
 
+enum planned_charset_collation_function_kind {
+    PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
+    PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
+    PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION = 2,
+};
+
 struct string_slice_right_bounds {
     size_t text_length;
     uint64_t requested_length;
@@ -10130,6 +10136,50 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int charset_collation_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int charset_collation_scalar_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int charset_collation_concat_scalar_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int validate_charset_collation_concat_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_binary_string_argument
+);
+static int charset_collation_convert_using_charset_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int charset_collation_rand_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_charset,
+    const char **out_collation
+);
+static enum planned_charset_collation_function_kind charset_collation_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int charset_collation_select_result(
+    enum planned_charset_collation_function_kind function_kind,
+    const char *charset,
+    const char *collation,
+    const char **out_result
+);
 static int scalar_subquery_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11573,6 +11623,10 @@ static bool is_format_truncate_projection_expression(const struct mylite_sql_ast
 static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_charset_collation_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_string_metadata_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_convert_binary_type_projection_expression(
     const struct mylite_sql_ast_node *expression
@@ -15513,6 +15567,7 @@ static int plan_row_scalar_select_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_select *out_plan
@@ -15522,6 +15577,7 @@ static int append_row_scalar_select_item(
     struct planned_row_scalar_select *plan,
     const struct mylite_sql_ast_node *select_item,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
 );
@@ -15530,6 +15586,7 @@ static int plan_row_scalar_expression(
     const struct mylite_sql_ast_node *expression,
     bool has_source,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
@@ -15654,6 +15711,32 @@ static int plan_row_scalar_hex_column(
 static bool hex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
+);
+static int plan_row_scalar_charset_collation_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_table_descriptor *table,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_charset_collation_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_table_descriptor *table,
+    struct planned_row_scalar_expression *out_expression
+);
+static int charset_collation_column_result(
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const char **out_result
 );
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
@@ -18133,6 +18216,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COALESCE_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_NULLIF_FUNCTION:
@@ -22721,8 +22806,8 @@ static int execute_do_statement(
             "LOG()/LOG10()/LOG2()/POW()/POWER(), CEIL()/CEILING()/FLOOR()/ROUND(), "
             "CRC32()/HEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited FIELD(), and "
-            "limited string length, string case, and string slice functions, and top-level CASE "
-            "expressions"
+            "limited string length, string case, string slice, CHARSET(), and COLLATION() "
+            "functions, and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -31377,6 +31462,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COALESCE_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_NULLIF_FUNCTION:
@@ -51116,6 +51203,7 @@ static int plan_row_scalar_select(
     struct row_scalar_select_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
+    const struct mylite_catalog_table_descriptor *item_table = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -51158,11 +51246,15 @@ static int plan_row_scalar_select(
         return MYLITE_ERROR;
     }
 
+    if (out_plan->has_source) {
+        item_table = &out_plan->table;
+    }
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_select_items(
             database,
             select_list,
             item_source_context,
+            item_table,
             table_columns,
             table_column_count,
             out_plan
@@ -56259,9 +56351,7 @@ static bool select_statement_is_row_function_scalar_projection(
     while (select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
-        if (is_string_length_projection_expression(expression) ||
-            is_string_case_projection_expression(expression) ||
-            is_string_slice_projection_expression(expression) ||
+        if (is_string_metadata_projection_expression(expression) ||
             is_hex_projection_expression(expression)) {
             found_row_function = true;
         } else if (row_scalar_expression_contains_row_function(expression)) {
@@ -57098,6 +57188,9 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
         return string_slice_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
+        return charset_collation_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -58571,6 +58664,365 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
 
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return string_slice_function_kind(ast_kind) != PLANNED_STRING_SLICE_FUNCTION_NONE;
+}
+
+static int charset_collation_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_charset_collation_function_kind function_kind =
+        PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
+    const char *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_CHARSET_COLLATION_FUNCTION_NONE
+                                       : charset_collation_function_kind(expression->kind);
+    if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CHARSET() and COLLATION() support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    rc =
+        charset_collation_scalar_result(database, function_kind, child_at(expression, 0U), &result);
+    if (rc == MYLITE_OK) {
+        out_cell->value = result;
+    }
+    return rc;
+}
+
+static int charset_collation_scalar_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    const char *charset = "binary";
+    const char *collation = "binary";
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "CHARSET() and COLLATION() support only scalar metadata arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
+        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING) {
+            charset = database->session.character_set_connection;
+            collation = database->session.collation_connection;
+        }
+        return charset_collation_select_result(function_kind, charset, collation, out_result);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION: {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if ((operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+             operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
+            literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return charset_collation_select_result(function_kind, charset, collation, out_result);
+        }
+        break;
+    }
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        return charset_collation_select_result(
+            function_kind,
+            national_character_set_name,
+            national_collation_name,
+            out_result
+        );
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
+        int rc = charset_collation_rand_result(database, expression, &charset, &collation);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return charset_collation_select_result(function_kind, charset, collation, out_result);
+    }
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return charset_collation_select_result(function_kind, charset, collation, out_result);
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return charset_collation_convert_using_charset_result(
+            database,
+            function_kind,
+            expression,
+            out_result
+        );
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+        return charset_collation_concat_scalar_result(
+            database,
+            function_kind,
+            expression,
+            out_result
+        );
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "CHARSET() and COLLATION() support only scalar metadata arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int charset_collation_concat_scalar_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    bool has_binary_argument = false;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONCAT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U || arguments == NULL ||
+        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_unsupported_error(database, "CONCAT() requires one or more arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count == 0U) {
+        set_unsupported_error(database, "CONCAT() requires one or more arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U; argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        bool is_binary_argument = false;
+        int rc = MYLITE_OK;
+
+        rc = validate_charset_collation_concat_argument(database, argument, &is_binary_argument);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (is_binary_argument) {
+            has_binary_argument = true;
+        }
+        argument = argument->next_sibling;
+    }
+    if (argument != NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    if (has_binary_argument) {
+        return charset_collation_select_result(function_kind, "binary", "binary", out_result);
+    }
+    return charset_collation_select_result(
+        function_kind,
+        database->session.character_set_connection,
+        database->session.collation_connection,
+        out_result
+    );
+}
+
+static int validate_charset_collation_concat_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_binary_string_argument
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+
+    if (out_is_binary_string_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_binary_string_argument = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "CHARSET() and COLLATION() support only scalar metadata arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        *out_is_binary_string_argument =
+            mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_HEX;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION: {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+        if ((operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+             operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
+            literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        break;
+    }
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
+        const char *charset = NULL;
+        const char *collation = NULL;
+
+        return charset_collation_rand_result(database, expression, &charset, &collation);
+    }
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        *out_is_binary_string_argument = true;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION: {
+        struct session_scalar_cell cell = {0};
+        int rc = convert_using_charset_value(database, expression, &cell);
+
+        session_scalar_cell_deinit(&cell);
+        return rc;
+    }
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "CHARSET() and COLLATION() support only scalar metadata arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int charset_collation_convert_using_charset_result(
+    struct mylite_db *database,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = convert_using_charset_value(database, expression, &cell);
+
+    session_scalar_cell_deinit(&cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return charset_collation_select_result(
+        function_kind,
+        MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
+        MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+        out_result
+    );
+}
+
+static int charset_collation_rand_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_charset,
+    const char **out_collation
+) {
+    if (out_charset == NULL || out_collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_charset = "binary";
+    *out_collation = "binary";
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) == 0U) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) == 1U) {
+        uint32_t seed = 0U;
+
+        return rand_seed_value(database, child_at(expression, 0U), &seed);
+    }
+
+    set_unsupported_error(database, "RAND() supports only RAND() and RAND(seed)");
+    return MYLITE_ERROR;
+}
+
+static enum planned_charset_collation_function_kind charset_collation_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+        return PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET;
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
+        return PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION;
+    default:
+        return PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
+    }
+}
+
+static bool is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return charset_collation_function_kind(ast_kind) != PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
+}
+
+static int charset_collation_select_result(
+    enum planned_charset_collation_function_kind function_kind,
+    const char *charset,
+    const char *collation,
+    const char **out_result
+) {
+    if (out_result == NULL || charset == NULL || collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (function_kind) {
+    case PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET:
+        *out_result = charset;
+        return MYLITE_OK;
+    case PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION:
+        *out_result = collation;
+        return MYLITE_OK;
+    case PLANNED_CHARSET_COLLATION_FUNCTION_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
 }
 
 static int scalar_subquery_value(
@@ -69245,13 +69697,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_format_truncate_projection_expression(expression)) {
         return true;
     }
-    if (is_string_length_projection_expression(expression)) {
-        return true;
-    }
-    if (is_string_case_projection_expression(expression)) {
-        return true;
-    }
-    if (is_string_slice_projection_expression(expression)) {
+    if (is_string_metadata_projection_expression(expression)) {
         return true;
     }
     if (is_cast_binary_projection_expression(expression)) {
@@ -69676,6 +70122,33 @@ static bool is_string_slice_projection_expression(const struct mylite_sql_ast_no
     }
     return (argument_count == 2U ||
             string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
+}
+
+static bool is_charset_collation_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || !is_charset_collation_function_kind(expression->kind)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
+}
+
+static bool is_string_metadata_projection_expression(const struct mylite_sql_ast_node *expression) {
+    if (is_string_length_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_case_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_slice_projection_expression(expression)) {
+        return true;
+    }
+    return is_charset_collation_projection_expression(expression);
 }
 
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -82159,6 +82632,7 @@ static int plan_row_scalar_select_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_select *out_plan
@@ -82185,6 +82659,7 @@ static int plan_row_scalar_select_items(
             out_plan,
             item,
             source_context,
+            table,
             table_columns,
             table_column_count
         );
@@ -82203,6 +82678,7 @@ static int append_row_scalar_select_item(
     struct planned_row_scalar_select *plan,
     const struct mylite_sql_ast_node *select_item,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
 ) {
@@ -82223,6 +82699,7 @@ static int append_row_scalar_select_item(
         item.source_expression,
         plan->has_source,
         source_context,
+        table,
         table_columns,
         table_column_count,
         &item.expression
@@ -82257,6 +82734,7 @@ static int plan_row_scalar_expression(
     const struct mylite_sql_ast_node *expression,
     bool has_source,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
@@ -82359,6 +82837,18 @@ static int plan_row_scalar_expression(
             source_context,
             table_columns,
             table_column_count,
+            out_expression
+        );
+    }
+    if (is_charset_collation_function_kind(expression->kind)) {
+        return plan_row_scalar_charset_collation_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            table,
             out_expression
         );
     }
@@ -83149,6 +83639,130 @@ static bool hex_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_charset_collation_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_table_descriptor *table,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_charset_collation_function_kind function_kind =
+        PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
+    const struct mylite_sql_ast_node *argument = NULL;
+    const char *result = NULL;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_CHARSET_COLLATION_FUNCTION_NONE
+                                       : charset_collation_function_kind(expression->kind);
+    if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CHARSET() and COLLATION() support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+
+            rc = collect_column_reference_parts(database, argument, parts, &part_count);
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_charset_collation_column(
+            database,
+            argument,
+            function_kind,
+            source_context,
+            table_columns,
+            table_column_count,
+            table,
+            out_expression
+        );
+    }
+
+    rc = charset_collation_scalar_result(database, function_kind, argument, &result);
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = copy_text_value(database, result, &out_expression->value);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_charset_collation_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_charset_collation_function_kind function_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_table_descriptor *table,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    const char *result = NULL;
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT CHARSET() and COLLATION() support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = charset_collation_column_result(function_kind, table, &column, &result);
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = copy_text_value(database, result, &out_expression->value);
+    }
+    return rc;
+}
+
+static int charset_collation_column_result(
+    enum planned_charset_collation_function_kind function_kind,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const char **out_result
+) {
+    const char *charset = NULL;
+    const char *collation = NULL;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    charset = column_effective_character_set_name(table, column);
+    collation = column_effective_collation_name(table, column);
+    if (charset == NULL || collation == NULL) {
+        charset = "binary";
+        collation = "binary";
+    }
+    return charset_collation_select_result(function_kind, charset, collation, out_result);
+}
+
 static int plan_row_scalar_non_concat_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -83226,8 +83840,8 @@ static int plan_row_scalar_non_concat_expression(
     set_unsupported_error(
         database,
         "row-scalar SELECT supports only CONCAT(), FIELD(), DATE_FORMAT(), descriptor columns, "
-        "limited string length, string case, string slice, and HEX() functions, literals, "
-        "DATABASE(), and system variables"
+        "limited string length, string case, string slice, HEX(), CHARSET(), and COLLATION() "
+        "functions, literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
 }
@@ -84199,7 +84813,8 @@ static bool row_scalar_expression_contains_row_function(
             is_string_length_function_kind(current->kind) ||
             is_string_case_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
-            current->kind == MYLITE_SQL_AST_HEX_FUNCTION) {
+            current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
+            is_charset_collation_function_kind(current->kind)) {
             found = true;
             break;
         }

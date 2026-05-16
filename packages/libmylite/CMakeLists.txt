@@ -1583,6 +1583,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_temporary_table_like_test)
 
+  add_executable(mylite_runtime_temporary_create_table_select_test
+    tests/runtime_temporary_create_table_select_test.c
+  )
+  target_link_libraries(mylite_runtime_temporary_create_table_select_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_temporary_create_table_select_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_temporary_create_table_select_test)
+
   add_executable(mylite_runtime_temporary_auto_increment_test
     tests/runtime_temporary_auto_increment_test.c
   )
@@ -3239,6 +3250,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.temporary_table_like
     COMMAND mylite_runtime_temporary_table_like_test
+  )
+  add_test(
+    NAME libmylite.runtime.temporary_create_table_select
+    COMMAND mylite_runtime_temporary_create_table_select_test
   )
   add_test(
     NAME libmylite.runtime.temporary_auto_increment

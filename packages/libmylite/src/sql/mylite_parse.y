@@ -118,6 +118,9 @@ statement(A) ::= create_temporary_table_like_statement(B). {
 statement(A) ::= create_table_select_statement(B). {
     A = B;
 }
+statement(A) ::= create_temporary_table_select_statement(B). {
+    A = B;
+}
 statement(A) ::= create_index_statement(B). {
     A = B;
 }
@@ -686,6 +689,11 @@ create_table_select_statement(A) ::=
     CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) create_table_select_as_opt
     select_statement(S). {
     A = mylite_sql_parser_make_create_table_select_statement(state, C, E, T, S);
+}
+create_temporary_table_select_statement(A) ::=
+    CREATE(C) TEMPORARY TABLE create_if_not_exists_opt(E) table_name(T)
+    create_table_select_as_opt select_statement(S). {
+    A = mylite_sql_parser_make_create_temporary_table_select_statement(state, C, E, T, S);
 }
 
 create_index_statement(A) ::=

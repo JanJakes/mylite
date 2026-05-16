@@ -399,6 +399,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_HOUR_FUNCTION = 390,
     MYLITE_SQL_AST_MINUTE_FUNCTION = 391,
     MYLITE_SQL_AST_SECOND_FUNCTION = 392,
+    MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT = 393,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -13566,10 +13566,44 @@ static int test_create_table_select_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TEMPORARY TABLE copy AS SELECT * FROM source;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TEMPORARY TABLE IF NOT EXISTS copy AS SELECT * FROM source;",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    select_statement = child_at(statement, 1U);
+    if_not_exists = child_at(statement, 2U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT,
+        "create temporary table select statement"
+    );
+    failures += expect_span_text(table_name, "copy", "temporary ctas target");
+    failures += expect_node(
+        select_statement,
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "temporary ctas source select"
+    );
+    failures += expect_node(
+        if_not_exists,
+        MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE,
+        "temporary ctas if not exists clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TEMPORARY TABLE copy SELECT * FROM source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT,
+        "create temporary table select without as"
+    );
+    failures += expect_child_count(statement, 2U, "temporary ctas no-as child count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

@@ -489,7 +489,7 @@ static int test_create_table_select_diagnostics_and_noop_ordering(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TEMPORARY TABLE app.bad_temp AS SELECT id FROM app.src",
+        "CREATE TEMPORARY TABLE app.bad_temp(id INT) AS SELECT id FROM app.src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

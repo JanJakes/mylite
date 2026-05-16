@@ -114,7 +114,8 @@ This feature must not implement:
 
 - temporary `FULLTEXT` cloning;
 - temporary check-constraint cloning;
-- temporary `CREATE TABLE ... SELECT`;
+- temporary `CREATE TABLE ... SELECT`, which is specified separately by
+  `baseline-temporary-create-table-select`;
 - temporary `ALTER TABLE`, `RENAME TABLE`, `TRUNCATE TABLE`, standalone
   `CREATE INDEX`, or standalone `DROP INDEX`;
 - views, generated columns, triggers, stored routines, partitions, tablespaces,
@@ -363,6 +364,7 @@ Run:
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-ddl.md` to claim
 only the limited `CREATE TEMPORARY TABLE ... LIKE` and temporary-source
-cloning surface. Do not claim temporary fulltext, temporary checks,
-temporary CTAS, temporary ALTER, views, privileges, or full MySQL metadata
+cloning surface. Temporary CTAS is documented by
+`baseline-temporary-create-table-select`. Do not claim temporary fulltext,
+temporary checks, temporary ALTER, views, privileges, or full MySQL metadata
 parity.

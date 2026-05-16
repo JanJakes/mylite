@@ -6719,6 +6719,11 @@ static int execute_create_table_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_temporary_table_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_create_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -7812,6 +7817,11 @@ static int plan_create_table_select(
 );
 static void planned_create_table_select_deinit(struct planned_create_table_select *plan);
 static int create_table_select_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan,
+    int64_t *out_affected_rows
+);
+static int create_temporary_table_select_from_plan(
     struct mylite_db *database,
     struct planned_create_table_select *plan,
     int64_t *out_affected_rows
@@ -18070,6 +18080,8 @@ static int execute_parsed_statement(
         return execute_create_temporary_table_like_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
         return execute_create_table_select_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT:
+        return execute_create_temporary_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -21130,6 +21142,55 @@ static int execute_create_table_select_statement(
     }
     if (rc == MYLITE_OK && !finished) {
         rc = create_table_select_from_plan(database, &plan, &affected_rows);
+    }
+    planned_create_table_select_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, affected_rows);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_create_temporary_table_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_table_select plan = {0};
+    mylite_result *result = NULL;
+    bool finished = false;
+    int64_t affected_rows = 0;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        mylite_result_free(result);
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_create_table_select(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = maybe_finish_create_temporary_if_not_exists_noop(
+            database,
+            statement,
+            &plan.create_table,
+            &finished
+        );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = append_select_modifier_warnings(database, child_at(statement, 1U));
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = create_temporary_table_select_from_plan(database, &plan, &affected_rows);
     }
     planned_create_table_select_deinit(&plan);
     if (rc != MYLITE_OK) {
@@ -31390,6 +31451,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TEMPORARY_TABLE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -35876,6 +35938,98 @@ static int create_table_select_from_plan(
 
     ++database->session.sqlite_schema_generation;
 
+    return MYLITE_OK;
+}
+
+static int create_temporary_table_select_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan,
+    int64_t *out_affected_rows
+) {
+    struct mylite_temporary_catalog_table temporary_table = {0};
+    struct mylite_catalog_table_descriptor existing_table = {0};
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    bool existing_table_found = false;
+    bool physical_table_created = false;
+    int64_t table_id = 0;
+    int rc = MYLITE_OK;
+
+    *out_affected_rows = 0;
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        plan->create_table.target.schema.name,
+        plan->create_table.target.table_name,
+        &existing_table,
+        &existing_table_found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (existing_table_found) {
+        set_table_exists_error(database, plan->create_table.target.table_name);
+        return MYLITE_ERROR;
+    }
+    if (plan->source_locking_clause != MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        set_create_table_select_locking_clause_error(
+            database,
+            plan->source.source.table_name,
+            plan->create_table.target.table_name
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = infer_create_table_select_columns(database, plan);
+    if (rc == MYLITE_OK) {
+        rc = check_duplicate_column_names(
+            database,
+            plan->create_table.columns,
+            plan->create_table.column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_select_rows(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_allocate_table_identity(
+            &database->session.temporary_catalog,
+            &table_id,
+            physical_name,
+            sizeof(physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_temporary_table_descriptors(
+            database,
+            &plan->create_table,
+            table_id,
+            physical_name,
+            &temporary_table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_create_table(database, &plan->create_table, physical_name, true);
+        physical_table_created = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_create_table_select_copy(database, plan, physical_name, out_affected_rows);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_append_table(
+            &database->session.temporary_catalog,
+            &temporary_table
+        );
+    }
+    if (rc != MYLITE_OK) {
+        if (physical_table_created) {
+            (void)execute_physical_drop_table(database, physical_name);
+        }
+        mylite_temporary_catalog_table_deinit(&temporary_table);
+        set_internal_error_if_clear(database, rc, "failed to create temporary table from SELECT");
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
     return MYLITE_OK;
 }
 

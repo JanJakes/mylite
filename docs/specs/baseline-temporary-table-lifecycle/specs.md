@@ -9,10 +9,11 @@ table-definition subset, plus descriptor-driven read/write and metadata
 resolution for the temporary tables through the already supported single-table
 DML and introspection paths.
 
-The feature is intentionally not full MySQL temporary-table support. It does
-not implement temporary `LIKE`, temporary `CREATE TABLE ... SELECT`, temporary
-ALTER/RENAME/TRUNCATE, temporary DDL inside an active user transaction, or
-privilege behavior.
+The original lifecycle feature was intentionally not full MySQL temporary-table
+support. Later slices add temporary `LIKE`, temporary auto-increment, and
+temporary `CREATE TABLE ... SELECT`; temporary ALTER/RENAME/TRUNCATE,
+temporary DDL inside an active user transaction, and privilege behavior remain
+outside this lifecycle slice.
 
 ## Sources
 
@@ -260,9 +261,8 @@ The implementation must provide deterministic diagnostics for:
   slice before `baseline-temporary-auto-increment`;
 - unsupported temporary DDL in an active user transaction;
 - unsupported object kinds once non-base-table durable descriptors exist;
-- unsupported temporary `LIKE`, temporary CTAS, ALTER, RENAME, TRUNCATE,
-  standalone index DDL, triggers, cascades, foreign keys, privileges, and
-  metadata locks;
+- unsupported temporary ALTER, RENAME, TRUNCATE, standalone index DDL,
+  triggers, cascades, foreign keys, privileges, and metadata locks;
 - physical SQLite failures;
 - allocation failures;
 - public API misuse through existing public conventions.
@@ -308,7 +308,7 @@ Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-ddl.md` to mark
 `CREATE TEMPORARY TABLE` as limited, and to remove the blanket “no temporary
 tables” wording only for the exact supported subset. Update `DROP TABLE`,
 `SHOW COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, and metadata docs only where
-their temporary-table behavior changes. Do not overclaim temporary `LIKE`,
-temporary CTAS, temporary ALTER/RENAME/TRUNCATE, privileges, metadata locks,
-full information schema visibility, or exact temporary DDL inside user
-transactions.
+their temporary-table behavior changes. Later specs document temporary `LIKE`
+and temporary CTAS. Do not overclaim temporary ALTER/RENAME/TRUNCATE,
+privileges, metadata locks, full information schema visibility, or exact
+temporary DDL inside user transactions.

@@ -292,6 +292,78 @@ static int test_set_fixed_system_variables_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SET lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET LOCAL lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@SESSION.lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@LOCAL.lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@GLOBAL.lower_case_table_names = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a read only variable",
+        }
+    );
+    failures += execute_error(
+        database,
         "SET GLOBAL autocommit = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

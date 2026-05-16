@@ -6238,6 +6238,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_GTID_MODE = 39,
     SESSION_SYSTEM_VARIABLE_GTID_OWNED = 40,
     SESSION_SYSTEM_VARIABLE_GTID_PURGED = 41,
+    SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 42,
 };
 
 struct system_variable_component {
@@ -6290,6 +6291,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
+    {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"sql_auto_is_null", SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
     {"sql_big_selects", SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
     {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
@@ -20084,6 +20086,10 @@ static int apply_set_system_variable_statement(
     rc = resolve_set_system_variable_target(database, target_node, &target);
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES) {
+        set_read_only_system_variable_error(database, target.name);
+        return MYLITE_ERROR;
     }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
@@ -69082,6 +69088,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
@@ -69320,6 +69327,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_GTID_MODE:
     case SESSION_SYSTEM_VARIABLE_GTID_OWNED:
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
         return true;
     default:
         return false;
@@ -69337,6 +69345,7 @@ static bool system_variable_kind_allows_session_scope(enum session_system_variab
     case SESSION_SYSTEM_VARIABLE_GTID_EXECUTED:
     case SESSION_SYSTEM_VARIABLE_GTID_MODE:
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
+    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
         return false;
     default:
         return true;
@@ -69439,6 +69448,7 @@ static int show_system_variable_value(
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_WARNING_COUNT:
     case SESSION_SYSTEM_VARIABLE_ERROR_COUNT:
+    case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         *out_value = "0";

@@ -528,7 +528,7 @@ Performance Schema variable tables remain unsupported.
 | `long_query_time` | ❌ | Value, scope, SET, diagnostics |
 | `low_priority_updates` | ❌ | Value, scope, SET, diagnostics |
 | `lower_case_file_system` | ❌ | Value, scope, SET, diagnostics |
-| `lower_case_table_names` | ❌ | Value, scope, SET, diagnostics |
+| `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or `lower_case_file_system` |
 | `mandatory_roles` | ❌ | Value, scope, SET, diagnostics |
 | `master_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `max_allowed_packet` | ❌ | Value, scope, SET, diagnostics |

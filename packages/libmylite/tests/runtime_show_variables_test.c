@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 41,
-    global_variable_row_count = 37,
+    session_variable_row_count = 42,
+    global_variable_row_count = 38,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -129,6 +129,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"lower_case_table_names", "0"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -171,6 +172,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"lower_case_table_names", "0"},
         {"sql_auto_is_null", "OFF"},
         {"sql_big_selects", "ON"},
         {"sql_buffer_result", "OFF"},
@@ -292,6 +294,34 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "utf8mb3",
         },
         "show session includes global system charset"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES LIKE 'lower_case_table_names'",
+        (struct expected_variable_row){
+            .name = "lower_case_table_names",
+            .value = "0",
+        },
+        "show variables lower case table names"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'lower_case_table_names'",
+        (struct expected_variable_row){
+            .name = "lower_case_table_names",
+            .value = "0",
+        },
+        "show global variables lower case table names"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES WHERE Value = '0' AND "
+        "Variable_name IN ('autocommit','lower_case_table_names')",
+        (struct expected_variable_row){
+            .name = "lower_case_table_names",
+            .value = "0",
+        },
+        "show variables where lower case table names"
     );
     failures += expect_single_row(
         database,
@@ -478,6 +508,38 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .context = "gtid_owned scalar local",
         }
     );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@lower_case_table_names",
+            .expected = "0",
+            .context = "lower_case_table_names scalar default",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@GLOBAL.lower_case_table_names",
+            .expected = "0",
+            .context = "lower_case_table_names scalar global",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@LOWER_CASE_TABLE_NAMES",
+            .expected = "0",
+            .context = "lower_case_table_names scalar case-insensitive",
+        }
+    );
+    failures += expect_scalar_text(
+        database,
+        (struct expected_scalar_text_query){
+            .sql = "SELECT @@global.`lower_case_table_names`",
+            .expected = "0",
+            .context = "lower_case_table_names scalar quoted name",
+        }
+    );
 
     mylite_close(database);
     return failures;
@@ -659,6 +721,24 @@ static int test_show_variables_diagnostics(void) {
             .code = mysql_error_session_variable_only,
             .sqlstate = "HY000",
             .message_part = "Variable 'gtid_mode' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@SESSION.lower_case_table_names",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@LOCAL.lower_case_table_names",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "Variable 'lower_case_table_names' is a GLOBAL variable",
         }
     );
     failures += execute_error(

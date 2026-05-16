@@ -189,6 +189,14 @@ read-only in this phase. MyLite does not implement binary logging, GTID sets,
 replication channels, `SET GLOBAL gtid_purged`, GTID consistency enforcement,
 or privilege semantics.
 
+`lower_case_table_names` is also part of the fixed registry after the
+baseline-lower-case-table-names-system-variable slice. It has default,
+session/local `SHOW`, and global `SHOW` visibility, displays `0`, permits
+default/global scalar reads, and rejects session/local scalar reads as a global
+variable. The `SHOW VARIABLES WHERE` predicate evaluates over this row like any
+other fixed text row; it does not change MyLite's current case-sensitive
+catalog name-resolution behavior.
+
 ## Scope Semantics
 
 No explicit scope, `SESSION`, and `LOCAL` use the existing session-visible

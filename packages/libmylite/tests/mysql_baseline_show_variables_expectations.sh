@@ -119,6 +119,7 @@ supported_session_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'lower_case_table_names',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -150,6 +151,7 @@ collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
+lower_case_table_names|0
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF
@@ -191,6 +193,7 @@ supported_global_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'lower_case_table_names',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -221,6 +224,7 @@ collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 foreign_key_checks|ON
+lower_case_table_names|0
 sql_auto_is_null|OFF
 sql_big_selects|ON
 sql_buffer_result|OFF

@@ -100,6 +100,15 @@ static int test_set_connection_character_set_success_and_persistence(void) {
         "0",
     };
     static const char *const bin_collation_value[] = {"utf8mb4_bin"};
+    static const char *const bin_0900_charset_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_bin",
+        "0",
+        "0",
+        "0",
+    };
     static const char *const reopened_charset_values[] = {
         "utf8mb4",
         "utf8mb4",
@@ -171,6 +180,19 @@ static int test_set_connection_character_set_success_and_persistence(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "set names canonicalizes legacy collation",
+        }
+    );
+    failures += expect_set_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_bin");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@character_set_client, @@character_set_connection, "
+                   "@@character_set_results, @@collation_connection, @@warning_count, "
+                   "@@error_count, ROW_COUNT()",
+            .values = bin_0900_charset_values,
+            .column_count = charset_value_column_count,
+            .row_count = 1U,
+            .context = "set names 0900 binary collation values",
         }
     );
     failures += expect_set_ok(database, "SET NAMES utf8mb4");

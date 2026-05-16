@@ -166,6 +166,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE target (id INT)");
+    failures += execute_statement_ok(database, "CREATE TABLE bin_alter_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE qualified_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE rename_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE drop_target (id INT)");
@@ -237,6 +238,22 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             "alter preserves SQLite schema generation"
         );
     }
+    failures += expect_alter_ok(
+        database,
+        (struct alter_form){
+            .sql = "ALTER TABLE bin_alter_target DEFAULT COLLATE utf8mb4_0900_bin",
+            .context = "0900 binary default collation",
+        }
+    );
+    failures += expect_show_create_single_int(
+        database,
+        (struct show_create_expectation){
+            .show_sql = "SHOW CREATE TABLE bin_alter_target",
+            .table_name = "bin_alter_target",
+            .expected_collation = "utf8mb4_0900_bin",
+            .context = "show create 0900 binary altered table",
+        }
+    );
     before_table = after_table;
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {

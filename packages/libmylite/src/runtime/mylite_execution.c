@@ -509,6 +509,7 @@ static const struct utf8mb4_collation_descriptor utf8mb4_collations[] = {
     {"utf8mb4_unicode_ci", "224", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_unicode_520_ci", "246", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_0900_ai_ci", "255", "Yes", "Yes", "0", "NO PAD"},
+    {"utf8mb4_0900_bin", "309", "", "Yes", "1", "NO PAD"},
 };
 
 struct information_schema_keyword_row {
@@ -86839,7 +86840,8 @@ static bool column_effective_collation_is_binary(
     const char *collation_name = column_effective_collation_name(table, column);
 
     return (collation_name != NULL &&
-            text_equals_ascii_case_insensitive(collation_name, "utf8mb4_bin")) != 0;
+            (text_equals_ascii_case_insensitive(collation_name, "utf8mb4_bin") ||
+             text_equals_ascii_case_insensitive(collation_name, "utf8mb4_0900_bin"))) != 0;
 }
 
 static uint32_t result_metadata_utf8mb4_collation_id(const char *collation_name) {

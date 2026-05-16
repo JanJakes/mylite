@@ -127,6 +127,13 @@ static int test_information_schema_static_catalogs(void) {
         "Yes",
         "0",
         "NO PAD",
+        "utf8mb4_0900_bin",
+        "utf8mb4",
+        "309",
+        "",
+        "Yes",
+        "1",
+        "NO PAD",
     };
     static const char *const collation_applicability_columns[] = {
         "COLLATION_NAME",
@@ -134,6 +141,8 @@ static int test_information_schema_static_catalogs(void) {
     };
     static const char *const collation_applicability_values[] = {
         "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_bin",
         "utf8mb4",
         "utf8mb4_bin",
         "utf8mb4",
@@ -154,7 +163,7 @@ static int test_information_schema_static_catalogs(void) {
     static const char *const support_column[] = {"SUPPORT"};
     static const char *const support_value[] = {"DEFAULT"};
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const count_five[] = {"5"};
+    static const char *const count_six[] = {"6"};
     static const char *const count_zero[] = {"0"};
     static const char *const system_table_columns[] = {
         "TABLE_SCHEMA",
@@ -606,7 +615,7 @@ static int test_information_schema_static_catalogs(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATIONS",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_five,
+            .values = count_six,
             .row_count = 1U,
             .context = "collations count star",
         }
@@ -617,7 +626,7 @@ static int test_information_schema_static_catalogs(void) {
             .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
             .column_names = count_column,
             .column_count = 1U,
-            .values = count_five,
+            .values = count_six,
             .row_count = 1U,
             .context = "collation applicability count star",
         }
@@ -820,7 +829,7 @@ static int test_information_schema_static_catalogs(void) {
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
                 .column_names = count_column,
                 .column_count = 1U,
-                .values = count_five,
+                .values = count_six,
                 .row_count = 1U,
                 .context = "reopened collation applicability static rows",
             }
@@ -846,7 +855,7 @@ static int test_information_schema_static_catalogs(void) {
                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY",
                 .column_names = count_column,
                 .column_count = 1U,
-                .values = count_five,
+                .values = count_six,
                 .row_count = 1U,
                 .context = "second independent handle collation applicability rows",
             }

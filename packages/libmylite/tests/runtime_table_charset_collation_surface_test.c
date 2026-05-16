@@ -43,6 +43,7 @@ struct create_form {
     const char *table_name;
     const char *expected_collation;
     const char *context;
+    int is_temporary;
 };
 
 struct create_table_statement {
@@ -154,6 +155,23 @@ static int test_charset_collation_create_forms_persistence_and_preamble(void) {
             .table_name = "legacy_bin",
             .expected_collation = "utf8mb4_bin",
             .context = "legacy bin collation",
+        },
+        {
+            .create_sql = "CREATE TABLE bin_0900 (id INT) DEFAULT CHARSET=utf8mb4 "
+                          "COLLATE=utf8mb4_0900_bin",
+            .show_sql = "SHOW CREATE TABLE bin_0900",
+            .table_name = "bin_0900",
+            .expected_collation = "utf8mb4_0900_bin",
+            .context = "0900 bin collation",
+        },
+        {
+            .create_sql = "CREATE TEMPORARY TABLE temp_bin_0900 (id INT) "
+                          "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+            .show_sql = "SHOW CREATE TABLE temp_bin_0900",
+            .table_name = "temp_bin_0900",
+            .expected_collation = "utf8mb4_0900_bin",
+            .context = "temporary 0900 bin collation",
+            .is_temporary = 1,
         },
         {
             .create_sql = "CREATE TABLE legacy_unicode (id INT) DEFAULT CHARSET=utf8mb4 "
@@ -520,9 +538,10 @@ static int expect_show_create_single_int(mylite_db *database, struct create_form
     int written = snprintf(
         create_sql,
         sizeof(create_sql),
-        "CREATE TABLE `%s` (\n"
+        "CREATE %sTABLE `%s` (\n"
         "  `id` int DEFAULT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=%s",
+        expected.is_temporary != 0 ? "TEMPORARY " : "",
         expected.table_name,
         collation
     );

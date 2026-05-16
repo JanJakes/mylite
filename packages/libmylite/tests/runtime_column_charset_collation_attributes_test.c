@@ -17,8 +17,8 @@ enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16,
     query_capacity = 512,
-    attrs_column_count = 5,
-    altered_attrs_column_count = 6,
+    attrs_column_count = 6,
+    altered_attrs_column_count = 7,
     mysql_error_parse = 1064,
     mysql_error_unknown_character_set = 1115,
     mysql_error_collation_not_valid_for_character_set = 1253,
@@ -27,6 +27,7 @@ enum {
     mysql_collation_utf8mb4_unicode_ci_id = 224,
     mysql_collation_utf8mb4_unicode_520_ci_id = 246,
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+    mysql_collation_utf8mb4_0900_bin_id = 309,
 };
 
 struct expected_sql_error {
@@ -104,26 +105,18 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
         "inherited",
         "utf8mb4",
         "utf8mb4_general_ci",
+        "v0900",
+        "utf8mb4",
+        "utf8mb4_0900_bin",
     };
     static const char *const altered_metadata[] = {
-        "id",
-        NULL,
-        NULL,
-        "renamed",
-        "utf8mb4",
-        "utf8mb4_bin",
-        "t",
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "c",
-        "utf8mb4",
-        "utf8mb4_general_ci",
-        "inherited",
-        "utf8mb4",
-        "utf8mb4_general_ci",
-        "added",
-        "utf8mb4",
-        "utf8mb4_unicode_520_ci",
+        "id",        NULL,      NULL,
+        "renamed",   "utf8mb4", "utf8mb4_0900_bin",
+        "t",         "utf8mb4", "utf8mb4_0900_ai_ci",
+        "c",         "utf8mb4", "utf8mb4_0900_bin",
+        "inherited", "utf8mb4", "utf8mb4_general_ci",
+        "v0900",     "utf8mb4", "utf8mb4_0900_bin",
+        "added",     "utf8mb4", "utf8mb4_unicode_520_ci",
     };
     static const char *const ctas_metadata[] = {
         "v",
@@ -161,10 +154,12 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
         "v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, "
         "t TEXT CHARSET 'utf8mb4', "
         "c CHAR(2) COLLATE `utf8mb4_unicode_ci`, "
-        "inherited VARCHAR(3)"
+        "inherited VARCHAR(3), "
+        "v0900 VARCHAR(10) COLLATE utf8mb4_0900_bin"
         ") COLLATE=utf8mb4_general_ci"
     );
-    failures += execute_affected_ok(database, "INSERT INTO attrs VALUES(1, 'a', 'b', 'c', 'd')", 1);
+    failures +=
+        execute_affected_ok(database, "INSERT INTO attrs VALUES(1, 'a', 'b', 'c', 'd', 'e')", 1);
     failures += expect_column_character_metadata(
         database,
         "attrs",
@@ -186,6 +181,11 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
         database,
         "SHOW CREATE TABLE attrs",
         "`inherited` varchar(3) COLLATE utf8mb4_general_ci"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE attrs",
+        "`v0900` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin"
     );
     failures += expect_result_metadata(database);
 
@@ -221,12 +221,12 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
     );
     failures += execute_affected_ok(
         database,
-        "ALTER TABLE attrs MODIFY c CHAR(4) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci",
+        "ALTER TABLE attrs MODIFY c CHAR(4) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin",
         1
     );
     failures += execute_statement_ok(
         database,
-        "ALTER TABLE attrs CHANGE v renamed VARCHAR(10) COLLATE utf8mb4_bin"
+        "ALTER TABLE attrs CHANGE v renamed VARCHAR(10) COLLATE utf8mb4_0900_bin"
     );
     failures += expect_column_character_metadata(
         database,
@@ -238,7 +238,12 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
     failures += expect_show_create_contains(
         database,
         "SHOW CREATE TABLE attrs",
-        "`renamed` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+        "`renamed` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE attrs",
+        "`c` char(4) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin"
     );
 
     mylite_close(database);
@@ -309,6 +314,16 @@ static int test_column_charset_collation_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "CREATE TABLE bad_mismatch_0900(v VARCHAR(10) CHARACTER SET latin1 "
+        "COLLATE utf8mb4_0900_bin)",
+        (struct expected_sql_error){
+            mysql_error_collation_not_valid_for_character_set,
+            "42000",
+            "utf8mb4_0900_bin",
+        }
+    );
+    failures += execute_error(
+        database,
         "CREATE TABLE bad_national(v NCHAR(2) CHARACTER SET utf8mb4)",
         (struct expected_sql_error){mysql_error_parse, "42000", "NATIONAL character columns"}
     );
@@ -354,10 +369,10 @@ static int expect_column_character_metadata(
 
 static int expect_result_metadata(mylite_db *database) {
     mylite_result *result = NULL;
-    int failures = execute_ok(database, "SELECT v, c FROM attrs LIMIT 0", &result);
+    int failures = execute_ok(database, "SELECT v, c, v0900 FROM attrs LIMIT 0", &result);
 
     if (failures == 0) {
-        failures += expect_size(mylite_result_column_count(result), 2U, "metadata column count");
+        failures += expect_size(mylite_result_column_count(result), 3U, "metadata column count");
         failures += expect_uint32(
             mylite_result_column_charset_id(result, 0U),
             mysql_collation_utf8mb4_bin_id,
@@ -381,6 +396,20 @@ static int expect_result_metadata(mylite_db *database) {
             mylite_result_column_collation_id(result, 1U),
             mysql_collation_utf8mb4_unicode_ci_id,
             "unicode column collation id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_charset_id(result, 2U),
+            mysql_collation_utf8mb4_0900_bin_id,
+            "0900 binary column charset id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_collation_id(result, 2U),
+            mysql_collation_utf8mb4_0900_bin_id,
+            "0900 binary column collation id"
+        );
+        failures += expect_true(
+            (mylite_result_column_flags(result, 2U) & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
+            "0900 binary column metadata flag"
         );
     }
     mylite_result_free(result);

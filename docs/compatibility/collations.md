@@ -8,11 +8,11 @@ are compiled in MySQL 8.4.9.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` rows, `INFORMATION_SCHEMA.COLLATIONS` metadata, and `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` mappings for `utf8mb4_0900_ai_ci`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci`; no other collations, other character sets, or `mysql.collations` |
+| Collation catalog entries | 🟡 | Limited static `SHOW COLLATION` rows, `INFORMATION_SCHEMA.COLLATIONS` metadata, and `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` mappings for `utf8mb4_0900_ai_ci`, `utf8mb4_0900_bin`, `utf8mb4_general_ci`, `utf8mb4_bin`, `utf8mb4_unicode_ci`, and `utf8mb4_unicode_520_ci`; no other collations, other character sets, or `mysql.collations` |
 | Default collation selection | 🟡 | Limited `CREATE TABLE`, `CREATE TABLE ... LIKE`, `ALTER TABLE ... [DEFAULT] COLLATE`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, and `INFORMATION_SCHEMA.TABLES` preservation for admitted `utf8mb4` table default collations; limited explicit column `COLLATE` metadata for `CHAR`, `VARCHAR`, and bare `TEXT` family descriptors where the host DDL action admits that type; limited `SET NAMES utf8mb4 COLLATE admitted_collation` updates session readback; scalar `@@collation_server` / `@@collation_database` remain fixed defaults; admitted `CHAR` / `VARCHAR` primary and unique key enforcement still uses MyLite's fixed ASCII subset of `utf8mb4_0900_ai_ci`; no database defaults, conversion, general collation comparison/order/group/distinct semantics, full Unicode weights, mutable server/database state, or full charset/collation catalogs |
 | Function result introspection | 🟡 | Limited `CHARSET()` and `COLLATION()` support for admitted scalar arguments and descriptor-backed column metadata in no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection contexts; no full coercibility, expression metadata, general conversion, or comparison semantics |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
-| Binary collations | 🟡 | Limited metadata admission and session/table/column default preservation for `utf8mb4_bin`; no binary comparison or ordering semantics |
+| Binary collations | 🟡 | Limited metadata admission and session/table/column default preservation for `utf8mb4_bin` and `utf8mb4_0900_bin`; no binary comparison, `NO PAD` trailing-space comparison, or ordering semantics |
 | PAD SPACE and NO PAD collations | 🟡 | Limited default-mode `CHAR` storage/readback trims trailing spaces as verified for MySQL 8.4.9, limited static collation rows report MySQL 8.4.9 PAD attributes for the admitted collations, and admitted ASCII `CHAR` / `VARCHAR` primary and unique keys use MyLite's fixed ASCII key-collation subset; no general comparison semantics, non-ASCII string-key collation weights, or `PAD_CHAR_TO_FULL_LENGTH` mode |
 | Collation coercibility rules | ❌ | Coercibility and diagnostics |
 
@@ -291,7 +291,7 @@ are compiled in MySQL 8.4.9.
 | `utf8mb4_ru_0900_ai_ci` | ❌ | utf8mb4; id 306; sortlen 0; NO PAD |
 | `utf8mb4_ru_0900_as_cs` | ❌ | utf8mb4; id 307; sortlen 0; NO PAD |
 | `utf8mb4_zh_0900_as_cs` | ❌ | utf8mb4; id 308; sortlen 0; NO PAD |
-| `utf8mb4_0900_bin` | ❌ | utf8mb4; id 309; sortlen 1; NO PAD |
+| `utf8mb4_0900_bin` | 🟡 | Limited static catalog row, table/column default metadata preservation, `SET NAMES` session readback, and result-column collation metadata; utf8mb4; id 309; sortlen 1; NO PAD; no MySQL binary `NO PAD` comparison semantics |
 | `utf8mb4_nb_0900_ai_ci` | ❌ | utf8mb4; id 310; sortlen 0; NO PAD |
 | `utf8mb4_nb_0900_as_cs` | ❌ | utf8mb4; id 311; sortlen 0; NO PAD |
 | `utf8mb4_nn_0900_ai_ci` | ❌ | utf8mb4; id 312; sortlen 0; NO PAD |

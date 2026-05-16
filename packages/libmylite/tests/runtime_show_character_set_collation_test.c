@@ -89,6 +89,13 @@ static const char *const collation_rows[] = {
     "Yes",
     "0",
     "NO PAD",
+    "utf8mb4_0900_bin",
+    "utf8mb4",
+    "309",
+    "",
+    "Yes",
+    "1",
+    "NO PAD",
 };
 
 static const char *const collation_0900_row[collation_column_count] = {
@@ -98,6 +105,16 @@ static const char *const collation_0900_row[collation_column_count] = {
     "Yes",
     "Yes",
     "0",
+    "NO PAD",
+};
+
+static const char *const collation_0900_bin_row[collation_column_count] = {
+    "utf8mb4_0900_bin",
+    "utf8mb4",
+    "309",
+    "",
+    "Yes",
+    "1",
     "NO PAD",
 };
 
@@ -235,6 +252,15 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
     );
     failures += expect_result(
         database,
+        "SHOW COLLATION LIKE 'UTF8MB4_0900_BIN'",
+        collation_columns,
+        collation_column_count,
+        collation_0900_bin_row,
+        1U,
+        "show binary 0900 collation uppercase like"
+    );
+    failures += expect_result(
+        database,
         "SHOW COLLATION LIKE 'utf8mb4_unicode_ci'",
         collation_columns,
         collation_column_count,
@@ -343,10 +369,10 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
     );
     failures += expect_result(
         database,
-        "SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'",
+        "SHOW COLLATION LIKE 'utf8mb4_0900_bin'",
         collation_columns,
         collation_column_count,
-        collation_0900_row,
+        collation_0900_bin_row,
         1U,
         "reopened show collation"
     );
@@ -532,10 +558,10 @@ static int test_independent_show_character_set_and_collation_handles(void) {
     );
     failures += expect_result(
         second,
-        "SHOW COLLATION LIKE 'utf8mb4_0900_ai_ci'",
+        "SHOW COLLATION LIKE 'utf8mb4_0900_bin'",
         collation_columns,
         collation_column_count,
-        collation_0900_row,
+        collation_0900_bin_row,
         1U,
         "second handle collation"
     );

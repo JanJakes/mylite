@@ -53,6 +53,7 @@ static int test_independent_grouped_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_grouped_table(mylite_db *database, const char *table_name);
 static int create_empty_grouped_table(mylite_db *database, const char *table_name);
+static int create_string_grouped_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_grouped_query(mylite_db *database, struct expected_grouped_query query);
@@ -189,6 +190,73 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const having_group_alias_columns[] = {"k", "COUNT(*)"};
     static const char *const having_group_alias_values[] = {"1", "2"};
     static const char *const having_where_limit_values[] = {"2", "2"};
+    static const char *const name_group_columns[] = {"name", "COUNT(*)", "SUM(n)"};
+    static const char *const name_group_values[] = {
+        NULL,
+        "1",
+        "10",
+        "alice",
+        "2",
+        "50",
+        "bob",
+        "2",
+        "5",
+        "carol",
+        "1",
+        "7",
+    };
+    static const char *const name_count_columns[] = {"name", "COUNT(*)"};
+    static const char *const name_count_values[] = {
+        NULL,
+        "1",
+        "alice",
+        "2",
+        "bob",
+        "2",
+        "carol",
+        "1",
+    };
+    static const char *const label_group_columns[] = {"label", "COUNT(*)", "SUM(n)"};
+    static const char *const label_group_values[] = {
+        NULL,
+        "1",
+        "10",
+        "A",
+        "2",
+        "50",
+        "B",
+        "2",
+        "5",
+        "C",
+        "1",
+        "7",
+    };
+    static const char *const body_group_columns[] = {"body", "COUNT(*)", "SUM(n)"};
+    static const char *const body_group_values[] = {
+        NULL,
+        "2",
+        "17",
+        "essay",
+        "2",
+        "50",
+        "note",
+        "2",
+        "5",
+    };
+    static const char *const string_having_columns[] = {"k", "c"};
+    static const char *const string_having_desc_limit_values[] = {"bob", "2"};
+    static const char *const string_having_null_values[] = {NULL, "1"};
+    static const char *const string_where_offset_values[] = {"alice", "2", "BOB", "1"};
+    static const char *const string_desc_values[] = {
+        "carol",
+        "1",
+        "bob",
+        "2",
+        "alice",
+        "2",
+        NULL,
+        "1",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -213,6 +281,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     result = NULL;
     failures += create_empty_grouped_table(database, "empty_grouped_numbers");
     failures += create_grouped_table(database, "grouped_numbers");
+    failures += create_string_grouped_table(database, "string_grouped");
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -629,6 +698,102 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "empty table grouped count",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(*), SUM(n) FROM string_grouped GROUP BY name "
+                   "ORDER BY name",
+            .columns = name_group_columns,
+            .column_count = 3U,
+            .values = name_group_values,
+            .row_count = 4U,
+            .context = "varchar grouped case-insensitive key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT label, COUNT(*), SUM(n) FROM string_grouped GROUP BY label "
+                   "ORDER BY label",
+            .columns = label_group_columns,
+            .column_count = 3U,
+            .values = label_group_values,
+            .row_count = 4U,
+            .context = "char grouped trimmed key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT body, COUNT(*), SUM(n) FROM string_grouped GROUP BY body "
+                   "ORDER BY body",
+            .columns = body_group_columns,
+            .column_count = 3U,
+            .values = body_group_values,
+            .row_count = 3U,
+            .context = "text grouped case-insensitive key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING c > 1 ORDER BY k DESC LIMIT 1",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_desc_limit_values,
+            .row_count = 1U,
+            .context = "string grouped aggregate having order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING k IS NULL",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_null_values,
+            .row_count = 1U,
+            .context = "string grouped alias having is null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped WHERE n IS NOT NULL "
+                   "GROUP BY name HAVING c >= 1 ORDER BY k LIMIT 2 OFFSET 1",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_where_offset_values,
+            .row_count = 2U,
+            .context = "string grouped where before grouping offset",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "ORDER BY k DESC",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_desc_values,
+            .row_count = 4U,
+            .context = "string grouped descending order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "ORDER BY k LIMIT 0",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_columns,
+            .row_count = 0U,
+            .context = "string grouped limit zero",
+        }
+    );
     failures += expect_row_count(database, "-1", "row count after grouped select");
 
     catalog = mylite_connection_catalog_for_test(database);
@@ -672,8 +837,24 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "reopened grouped sum",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(*), SUM(n) FROM string_grouped GROUP BY name "
+                   "ORDER BY name",
+            .columns = name_group_columns,
+            .column_count = 3U,
+            .values = name_group_values,
+            .row_count = 4U,
+            .context = "reopened string grouped sum",
+        }
+    );
     failures +=
         execute_ok(database, "RENAME TABLE grouped_numbers TO renamed_grouped_numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "RENAME TABLE string_grouped TO renamed_string_grouped", &result);
     mylite_result_free(result);
     result = NULL;
     failures += expect_grouped_query(
@@ -687,7 +868,21 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "renamed table grouped count",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(*) FROM renamed_string_grouped GROUP BY name ORDER BY name",
+            .columns = name_count_columns,
+            .column_count = 2U,
+            .values = name_count_values,
+            .row_count = 4U,
+            .context = "renamed table string grouped count",
+        }
+    );
     failures += execute_ok(database, "DROP TABLE renamed_grouped_numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "DROP TABLE renamed_string_grouped", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_error(
@@ -697,6 +892,15 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.renamed_grouped_numbers' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT name, COUNT(*) FROM renamed_string_grouped GROUP BY name",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.renamed_string_grouped' doesn't exist",
         }
     );
 
@@ -736,6 +940,14 @@ static int test_grouped_diagnostics(void) {
     mylite_result_free(result);
     result = NULL;
     failures += create_grouped_table(database, "grouped_numbers");
+    failures += create_string_grouped_table(database, "string_grouped");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unsupported_group_keys(id INT NOT NULL, d DECIMAL(4,1) NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     failures += execute_error(
         database,
@@ -838,6 +1050,15 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT name, COUNT(*) FROM string_grouped GROUP BY name HAVING name > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "HAVING supports only integer grouped columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT g, BIT_OR(nn) AS bits FROM grouped_numbers GROUP BY g HAVING bits > 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -880,6 +1101,16 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_not_group_by,
             .sqlstate = "42000",
             .message_part = "Expression #1 of SELECT list is not in GROUP BY clause",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT d, COUNT(*) FROM unsupported_group_keys GROUP BY d",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP BY supports only integer and nonbinary string descriptor group columns",
         }
     );
     failures += execute_error(
@@ -1127,6 +1358,48 @@ static int create_empty_grouped_table(mylite_db *database, const char *table_nam
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         fprintf(stderr, "create empty grouped table SQL is too long for %s\n", table_name);
         return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_string_grouped_table(mylite_db *database, const char *table_name) {
+    char sql[sqlite_sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "CREATE TABLE %s (id INT NOT NULL, name VARCHAR(20) NULL, label CHAR(5) NULL, "
+        "body TEXT NULL, n INT NULL)",
+        table_name
+    );
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create string grouped table SQL is too long for %s\n", table_name);
+        return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "INSERT INTO %s VALUES "
+        "(1, NULL, NULL, NULL, 10), "
+        "(2, 'alice', 'A', 'essay', 20), "
+        "(3, 'Alice', 'A   ', 'Essay', 30), "
+        "(4, 'bob', 'B', 'note', NULL), "
+        "(5, 'BOB', 'B    ', 'Note', 5), "
+        "(6, 'carol', 'C', NULL, 7)",
+        table_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "insert string grouped table SQL is too long for %s\n", table_name);
+        return failures + 1;
     }
     failures += execute_ok(database, sql, &result);
     mylite_result_free(result);

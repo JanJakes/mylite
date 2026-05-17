@@ -9937,6 +9937,10 @@ static int plan_grouped_aggregate_group_column(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static int validate_grouped_aggregate_group_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_grouped_aggregate_functions(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -10281,6 +10285,13 @@ static int append_grouped_aggregate_sqlite_row(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
+);
+static int append_grouped_aggregate_group_cell(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
 );
 static int append_grouped_aggregate_sqlite_cell(
     struct mylite_db *database,
@@ -55210,7 +55221,6 @@ static int plan_grouped_aggregate_group_column(
     const struct mylite_sql_ast_node *group_item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *group_column_node = NULL;
     struct mylite_catalog_column_descriptor group_clause_column = {0};
-    struct integer_column_range group_range = {0};
     size_t group_clause_source_index = 0U;
     int rc = select_item_column_reference(group_item, &group_column_node);
 
@@ -55231,12 +55241,7 @@ static int plan_grouped_aggregate_group_column(
         &out_plan->group_column_source_index
     );
     if (rc == MYLITE_OK) {
-        rc = integer_range_for_column(
-            database,
-            &out_plan->group_column,
-            "GROUP BY supports only integer descriptor group columns",
-            &group_range
-        );
+        rc = validate_grouped_aggregate_group_column(database, &out_plan->group_column);
     }
     if (rc == MYLITE_OK) {
         out_plan->group_expression = child_at(group_item, 0U);
@@ -55254,12 +55259,7 @@ static int plan_grouped_aggregate_group_column(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = integer_range_for_column(
-            database,
-            &group_clause_column,
-            "GROUP BY supports only integer descriptor group columns",
-            &group_range
-        );
+        rc = validate_grouped_aggregate_group_column(database, &group_clause_column);
     }
     if (rc == MYLITE_OK && !planned_grouped_aggregate_columns_match(
                                &group_clause_column,
@@ -55280,6 +55280,23 @@ static int plan_grouped_aggregate_group_column(
     }
 
     return rc;
+}
+
+static int validate_grouped_aggregate_group_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+
+    if (column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+    return integer_range_for_column(
+        database,
+        column,
+        "GROUP BY supports only integer and nonbinary string descriptor group columns",
+        &range
+    );
 }
 
 static int plan_grouped_aggregate_functions(
@@ -59537,13 +59554,8 @@ static int append_grouped_aggregate_sqlite_row(
     struct mylite_result_cell *cells = NULL;
     char (*aggregate_buffers)[integer_text_capacity + sizeof(".0000")] = NULL;
     char group_text[integer_text_capacity];
-    const char *group_value = NULL;
     int sqlite_column_index = 1;
-    int rc = sqlite_integer_result_text(statement, 0, group_text, sizeof(group_text), &group_value);
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
+    int rc = MYLITE_OK;
 
     cells = calloc(plan->aggregate_count + 1U, sizeof(*cells));
     aggregate_buffers = calloc(plan->aggregate_count, sizeof(*aggregate_buffers));
@@ -59554,11 +59566,13 @@ static int append_grouped_aggregate_sqlite_row(
         return MYLITE_NOMEM;
     }
 
-    cells[0] = (struct mylite_result_cell){
-        .bytes = group_value,
-        .size = group_value == NULL ? 0U : strlen(group_value),
-        .is_null = group_value == NULL,
-    };
+    rc = append_grouped_aggregate_group_cell(
+        statement,
+        plan,
+        &cells[0],
+        group_text,
+        sizeof(group_text)
+    );
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
         rc = append_grouped_aggregate_sqlite_cell(
@@ -59581,6 +59595,35 @@ static int append_grouped_aggregate_sqlite_row(
     free(cells);
     free(aggregate_buffers);
 
+    return rc;
+}
+
+static int append_grouped_aggregate_group_cell(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
+) {
+    const char *value = NULL;
+    int rc = MYLITE_OK;
+
+    *out_cell = (struct mylite_result_cell){.is_null = true};
+    if (sqlite3_column_type(statement, 0) == SQLITE_NULL) {
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_string_family(&plan->group_column)) {
+        return append_selected_sqlite_text_value(statement, 0U, out_cell);
+    }
+
+    rc = sqlite_integer_result_text(statement, 0, buffer, buffer_size, &value);
+    if (rc == MYLITE_OK && value != NULL) {
+        *out_cell = (struct mylite_result_cell){
+            .bytes = value,
+            .size = strlen(value),
+            .is_null = false,
+        };
+    }
     return rc;
 }
 
@@ -104166,7 +104209,7 @@ static int build_grouped_aggregate_sql(
         rc = dynamic_string_append(&string, " GROUP BY ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_descriptor_column_name_sql_for_source(
+        rc = append_descriptor_value_sql_for_source(
             &string,
             &plan->group_column,
             plan->group_column_source_index,
@@ -104429,7 +104472,7 @@ static int append_grouped_having_operand_sql(
     const struct planned_grouped_aggregate *plan
 ) {
     if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
-        return append_descriptor_column_name_sql_for_source(
+        return append_descriptor_value_sql_for_source(
             string,
             &plan->group_column,
             plan->group_column_source_index,

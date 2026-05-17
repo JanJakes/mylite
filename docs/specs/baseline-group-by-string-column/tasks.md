@@ -12,15 +12,15 @@
   snippet, runtime semantics, generated SQL shape, diagnostics, and test plan.
 - [x] Add a MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Implement descriptor validation for string grouped keys.
-- [ ] Generate collation-aware SQLite `GROUP BY` expressions for string grouped
+- [x] Implement descriptor validation for string grouped keys.
+- [x] Generate collation-aware SQLite `GROUP BY` expressions for string grouped
   keys.
-- [ ] Add grouped result readback for string group keys.
-- [ ] Add C runtime tests for success, diagnostics, persistence, labels,
+- [x] Add grouped result readback for string group keys.
+- [x] Add C runtime tests for success, diagnostics, persistence, labels,
   ordering, limiting, and file-format safety.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, result semantics,
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, result semantics,
   descriptor authority, scope control, performance path, and compatibility
   wording.
-- [ ] Commit and push the implementation slice.
+- [x] Commit and push the implementation slice.

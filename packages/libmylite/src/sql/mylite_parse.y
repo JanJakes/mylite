@@ -127,6 +127,9 @@ statement(A) ::= create_index_statement(B). {
 statement(A) ::= create_schema_statement(B). {
     A = B;
 }
+statement(A) ::= alter_schema_statement(B). {
+    A = B;
+}
 statement(A) ::= drop_table_statement(B). {
     A = B;
 }
@@ -792,11 +795,15 @@ option_name(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
-create_schema_statement(A) ::= CREATE(C) DATABASE create_schema_if_not_exists_opt(E) identifier(S). {
-    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S);
+create_schema_statement(A) ::=
+    CREATE(C) DATABASE create_schema_if_not_exists_opt(E) identifier(S) schema_option_list_opt(O).
+{
+    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S, O);
 }
-create_schema_statement(A) ::= CREATE(C) SCHEMA create_schema_if_not_exists_opt(E) identifier(S). {
-    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S);
+create_schema_statement(A) ::=
+    CREATE(C) SCHEMA create_schema_if_not_exists_opt(E) identifier(S) schema_option_list_opt(O).
+{
+    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S, O);
 }
 
 create_schema_if_not_exists_opt(A) ::= . {
@@ -804,6 +811,65 @@ create_schema_if_not_exists_opt(A) ::= . {
 }
 create_schema_if_not_exists_opt(A) ::= IF(I) NOT EXISTS(E). {
     A = mylite_sql_parser_make_create_schema_if_not_exists_clause(state, I, E);
+}
+
+alter_schema_statement(A) ::= ALTER(T) DATABASE alter_schema_name_opt(S) schema_option_list(O). {
+    A = mylite_sql_parser_make_alter_schema_default_charset_collation_statement(state, T, S, O);
+}
+alter_schema_statement(A) ::= ALTER(T) SCHEMA alter_schema_name_opt(S) schema_option_list(O). {
+    A = mylite_sql_parser_make_alter_schema_default_charset_collation_statement(state, T, S, O);
+}
+
+alter_schema_name_opt(A) ::= . {
+    A = NULL;
+}
+alter_schema_name_opt(A) ::= IDENTIFIER(S). {
+    A = mylite_sql_parser_make_identifier(state, S);
+}
+alter_schema_name_opt(A) ::= QUOTED_IDENTIFIER(S). {
+    A = mylite_sql_parser_make_identifier(state, S);
+}
+
+schema_option_list_opt(A) ::= . {
+    A = NULL;
+}
+schema_option_list_opt(A) ::= schema_option_list(B). {
+    A = B;
+}
+
+schema_option_list(A) ::= schema_option(B). {
+    A = mylite_sql_parser_make_table_option_list(state, B);
+}
+schema_option_list(A) ::= schema_option_list(B) schema_option(C). {
+    A = mylite_sql_parser_append_table_option(state, B, C);
+}
+
+schema_option(A) ::= default_opt CHARSET(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+schema_option(A) ::= default_opt CHARSET(C) equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_charset_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
+}
+schema_option(A) ::= default_opt CHARACTER(C) SET equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+schema_option(A) ::= default_opt CHARACTER(C) SET equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_charset_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
+}
+schema_option(A) ::= default_opt COLLATE(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+schema_option(A) ::= default_opt COLLATE(C) equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_collation_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
 }
 
 drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name_list(T). {

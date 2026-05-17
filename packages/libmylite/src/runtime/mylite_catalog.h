@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 21
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 21
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 22
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 22
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -75,6 +75,8 @@ struct mylite_catalog {
 struct mylite_catalog_schema_descriptor {
     int64_t schema_id;
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -500,6 +502,14 @@ int mylite_catalog_update_table_default_charset_collation_in_mutation(
     const char *default_collation,
     struct mylite_catalog_table_descriptor *out_table
 );
+int mylite_catalog_update_schema_default_charset_collation_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t schema_id,
+    const char *default_charset,
+    const char *default_collation,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
 int mylite_catalog_update_table_auto_increment_next(
     struct mylite_db *database,
     int64_t table_id,
@@ -586,6 +596,13 @@ int mylite_catalog_try_read_primary_index_by_table_id(
 int mylite_catalog_create_schema(
     struct mylite_db *database,
     const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+int mylite_catalog_create_schema_with_defaults(
+    struct mylite_db *database,
+    const char *name,
+    const char *default_charset,
+    const char *default_collation,
     struct mylite_catalog_schema_descriptor *out_schema
 );
 int mylite_catalog_read_schema_by_name(

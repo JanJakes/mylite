@@ -14397,6 +14397,33 @@ static int test_schema_lifecycle_statements(void) {
     failures += expect_child_count(statement, 1U, "create database child count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "CREATE DATABASE configured DEFAULT CHARACTER SET utf8mb4 "
+        "COLLATE='utf8mb4_unicode_ci';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create database options");
+    failures += expect_span_text(child_at(statement, 0U), "configured", "create options name");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "create database option list"
+    );
+    failures += expect_node(
+        child_at(child_at(statement, 1U), 0U),
+        MYLITE_SQL_AST_TABLE_CHARSET_OPTION,
+        "create database charset option"
+    );
+    failures += expect_node(
+        child_at(child_at(statement, 1U), 1U),
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "create database collation option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE SCHEMA `select`;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create schema");
@@ -14413,6 +14440,46 @@ static int test_schema_lifecycle_statements(void) {
         child_at(statement, 1U),
         MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE,
         "create database if marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER DATABASE configured DEFAULT COLLATE utf8mb4_0900_bin;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT,
+        "alter database options"
+    );
+    failures += expect_child_count(statement, 2U, "alter database option child count");
+    failures += expect_span_text(child_at(statement, 0U), "configured", "alter database name");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "alter database option list"
+    );
+    failures += expect_node(
+        child_at(child_at(statement, 1U), 0U),
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "alter database collation option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER SCHEMA DEFAULT CHARSET=binary;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT,
+        "alter selected schema options"
+    );
+    failures += expect_child_count(statement, 1U, "alter selected schema option child count");
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "alter selected schema option list"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -19117,7 +19184,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE DATABASE app DEFAULT CHARACTER SET utf8mb4;",
+        "CREATE DATABASE app DEFAULT ENCRYPTION='N';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

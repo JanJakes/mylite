@@ -1322,6 +1322,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "truncate_table_statement";
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return "create_schema_statement";
+    case MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT:
+        return "alter_schema_default_charset_collation_statement";
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return "drop_schema_statement";
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:

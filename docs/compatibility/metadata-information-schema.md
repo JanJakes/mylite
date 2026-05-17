@@ -75,7 +75,7 @@ MyLite does not implement a privilege engine or writable system views.
 | `INFORMATION_SCHEMA.ROLE_TABLE_GRANTS` | ❌ | Table shape and diagnostics |
 | `INFORMATION_SCHEMA.ROUTINES` | 🟡 | Queryable synthetic system view with MySQL 8.4.9-shaped columns, empty user rows until MyLite implements real stored routine descriptors, and matching `INFORMATION_SCHEMA.TABLES` / `INFORMATION_SCHEMA.COLUMNS` metadata; no stored routine DDL, `CALL`, routine execution, parameter descriptors, stored definitions, definers, or privileges |
 | `INFORMATION_SCHEMA.SCHEMA_PRIVILEGES` | 🟡 | Queryable empty synthetic schema-privilege metadata view with MySQL 8.4.9-shaped columns and matching system metadata; no schema grant descriptors, accounts, roles, grants, revokes, privilege filtering, or enforcement |
-| `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema` and MyLite catalog schemas with fixed charset/collation/default-encryption metadata; no `mysql`, `performance_schema`, `sys`, privileges, or schema options |
+| `INFORMATION_SCHEMA.SCHEMATA` | 🟡 | Limited queryable synthetic rows for `information_schema` and MyLite catalog schemas with descriptor-owned default charset/collation metadata and fixed default-encryption metadata; no `mysql`, `performance_schema`, `sys`, privileges, encryption mutation, or full schema option catalog |
 | `INFORMATION_SCHEMA.SCHEMATA_EXTENSIONS` | ❌ | Schema options |
 | `INFORMATION_SCHEMA.ST_GEOMETRY_COLUMNS` | ❌ | Columns in each table that store spatial data |
 | `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` | ❌ | Available spatial reference systems |

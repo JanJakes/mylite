@@ -726,7 +726,7 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
     );
     failures += execute_error(
         database,
-        "CREATE DATABASE options DEFAULT CHARACTER SET utf8mb4",
+        "CREATE DATABASE options DEFAULT ENCRYPTION='N'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

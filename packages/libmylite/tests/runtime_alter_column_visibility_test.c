@@ -731,6 +731,10 @@ static int make_catalog_look_like_v3(sqlite3 *sqlite) {
         "ALTER TABLE _mylite_catalog_tables DROP COLUMN updated_time_utc_epoch"
     );
     failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_charset");
+    failures +=
+        execute_sql(sqlite, "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_collation");
+    failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_auto_increment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN is_visible");
     failures += execute_sql(

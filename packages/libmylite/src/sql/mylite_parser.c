@@ -1376,7 +1376,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *if_not_exists_clause,
-    struct mylite_sql_ast_node *schema_name
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *schema_options
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -1386,6 +1387,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     }
     if (schema_name != NULL) {
         span = span_join(span, schema_name->span);
+    }
+    if (schema_options != NULL) {
+        span = span_join(span, schema_options->span);
     }
 
     statement = make_node(state, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, span);
@@ -1397,6 +1401,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     if (if_not_exists_clause != NULL) {
         mylite_sql_ast_node_append_child(statement, if_not_exists_clause);
     }
+    if (schema_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, schema_options);
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_default_charset_collation_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *schema_options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_options != NULL) {
+        span = span_join(span, schema_options->span);
+    } else if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+
+    statement =
+        make_node(state, MYLITE_SQL_AST_ALTER_SCHEMA_DEFAULT_CHARSET_COLLATION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    if (schema_name != NULL) {
+        mylite_sql_ast_node_append_child(statement, schema_name);
+    }
+    mylite_sql_ast_node_append_child(statement, schema_options);
     return statement;
 }
 

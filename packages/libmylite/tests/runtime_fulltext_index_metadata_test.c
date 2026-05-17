@@ -1107,6 +1107,8 @@ static int make_catalog_look_like_v18(sqlite3 *connection) {
         "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_indexes_v19;"
         "DROP TABLE _mylite_catalog_indexes_v19;"
+        "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_charset;"
+        "ALTER TABLE _mylite_catalog_schemas DROP COLUMN default_collation;"
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 18, minimum_reader_schema_version = 18;"
         "COMMIT;";

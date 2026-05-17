@@ -21,6 +21,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_invalid_default = 1067,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
 };
@@ -51,15 +52,24 @@ struct create_table_statement {
     const char *context;
 };
 
+struct expected_show_create_text {
+    const char *show_sql;
+    const char *table_name;
+    const char *create_sql;
+    const char *context;
+};
+
 static const char *const show_create_columns[show_create_column_count] = {
     "Table",
     "Create Table",
 };
 
 static int test_charset_collation_create_forms_persistence_and_preamble(void);
+static int test_table_default_binary_charset_inheritance(void);
 static int test_charset_collation_diagnostics(void);
 static int test_independent_charset_collation_handles(void);
 static int expect_show_create_single_int(mylite_db *database, struct create_form expected);
+static int expect_show_create_text(mylite_db *database, struct expected_show_create_text expected);
 static int expect_single_row_result(
     mylite_db *database,
     const char *sql,
@@ -99,6 +109,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_charset_collation_create_forms_persistence_and_preamble();
+    failures += test_table_default_binary_charset_inheritance();
     failures += test_charset_collation_diagnostics();
     failures += test_independent_charset_collation_handles();
 
@@ -344,6 +355,329 @@ static int test_charset_collation_create_forms_persistence_and_preamble(void) {
     return failures;
 }
 
+static int test_table_default_binary_charset_inheritance(void) {
+    static const char binary_default_create[] = "CREATE TABLE `binary_default` (\n"
+                                                "  `id` int DEFAULT NULL,\n"
+                                                "  `v` varbinary(10) DEFAULT NULL,\n"
+                                                "  `c` binary(3) DEFAULT NULL,\n"
+                                                "  `txt` blob,\n"
+                                                "  `tiny` tinyblob,\n"
+                                                "  `med` mediumblob,\n"
+                                                "  `lon` longblob\n"
+                                                ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char collate_binary_create[] = "CREATE TABLE `collate_binary` (\n"
+                                                "  `v` varbinary(5) DEFAULT NULL,\n"
+                                                "  `txt` blob\n"
+                                                ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char both_binary_create[] = "CREATE TABLE `both_binary` (\n"
+                                             "  `v` varbinary(5) DEFAULT NULL\n"
+                                             ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char binary_override_create[] =
+        "CREATE TABLE `binary_override` (\n"
+        "  `v` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,\n"
+        "  `c` char(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,\n"
+        "  `txt` blob\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char temp_binary_create[] = "CREATE TEMPORARY TABLE `temp_binary` (\n"
+                                             "  `v` varbinary(3) DEFAULT NULL,\n"
+                                             "  `c` binary(2) DEFAULT NULL\n"
+                                             ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char enum_set_binary_create[] = "CREATE TABLE `enum_set_binary` (\n"
+                                                 "  `e` enum('a','b') DEFAULT NULL,\n"
+                                                 "  `s` set('x','y') DEFAULT NULL\n"
+                                                 ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char like_binary_create[] = "CREATE TABLE `like_binary` (\n"
+                                             "  `id` int DEFAULT NULL,\n"
+                                             "  `v` varbinary(10) DEFAULT NULL,\n"
+                                             "  `c` binary(3) DEFAULT NULL,\n"
+                                             "  `txt` blob,\n"
+                                             "  `tiny` tinyblob,\n"
+                                             "  `med` mediumblob,\n"
+                                             "  `lon` longblob\n"
+                                             ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char *const table_collation_columns[] = {"TABLE_COLLATION"};
+    static const char *const binary_table_collation[] = {"binary"};
+    static const char *const v_metadata_columns[] = {
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+    };
+    static const char *const v_metadata_values[] = {
+        "varbinary",
+        "varbinary(10)",
+        NULL,
+        NULL,
+        "10",
+        "10",
+    };
+    static const char *const text_metadata_values[] = {
+        "blob",
+        "blob",
+        NULL,
+        NULL,
+        "65535",
+        "65535",
+    };
+    static const char *const show_full_columns[] = {
+        "Field",
+        "Type",
+        "Collation",
+        "Null",
+        "Key",
+        "Default",
+        "Extra",
+        "Privileges",
+        "Comment",
+    };
+    static const char *const show_full_v_values[] = {
+        "v",
+        "varbinary(10)",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+    };
+    static const char *const data_columns[] = {
+        "HEX(v)",
+        "LENGTH(v)",
+        "HEX(c)",
+        "LENGTH(c)",
+        "HEX(txt)",
+        "LENGTH(txt)",
+        "HEX(tiny)",
+        "HEX(med)",
+        "HEX(lon)",
+    };
+    static const char *const data_values[] = {
+        "6162",
+        "2",
+        "787900",
+        "3",
+        "68656C6C6F",
+        "5",
+        "7469",
+        "6D6564",
+        "6C6F6E67",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "binary-table-default") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary default file");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE binary_default("
+        "id INT, v VARCHAR(10), c CHAR(3), txt TEXT, tiny TINYTEXT, "
+        "med MEDIUMTEXT, lon LONGTEXT"
+        ") DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE binary_default",
+            .table_name = "binary_default",
+            .create_sql = binary_default_create,
+            .context = "binary default show create",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'binary_default'",
+        (struct expected_single_row_result){
+            .columns = table_collation_columns,
+            .values = binary_table_collation,
+            .column_count = sizeof(table_collation_columns) / sizeof(table_collation_columns[0]),
+        },
+        "binary default table collation"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT DATA_TYPE, COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, "
+        "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'binary_default' AND COLUMN_NAME = 'v'",
+        (struct expected_single_row_result){
+            .columns = v_metadata_columns,
+            .values = v_metadata_values,
+            .column_count = sizeof(v_metadata_columns) / sizeof(v_metadata_columns[0]),
+        },
+        "binary default varbinary information_schema"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT DATA_TYPE, COLUMN_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, "
+        "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'binary_default' AND COLUMN_NAME = 'txt'",
+        (struct expected_single_row_result){
+            .columns = v_metadata_columns,
+            .values = text_metadata_values,
+            .column_count = sizeof(v_metadata_columns) / sizeof(v_metadata_columns[0]),
+        },
+        "binary default blob information_schema"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SHOW FULL COLUMNS FROM binary_default LIKE 'v'",
+        (struct expected_single_row_result){
+            .columns = show_full_columns,
+            .values = show_full_v_values,
+            .column_count = sizeof(show_full_columns) / sizeof(show_full_columns[0]),
+        },
+        "binary default show full columns"
+    );
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO binary_default VALUES(1, 'ab', 'xy', 'hello', 'ti', 'med', 'long')"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT HEX(v), LENGTH(v), HEX(c), LENGTH(c), HEX(txt), LENGTH(txt), "
+        "HEX(tiny), HEX(med), HEX(lon) FROM binary_default",
+        (struct expected_single_row_result){
+            .columns = data_columns,
+            .values = data_values,
+            .column_count = sizeof(data_columns) / sizeof(data_columns[0]),
+        },
+        "binary default stored values"
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE collate_binary(v VARCHAR(5), txt TEXT) COLLATE=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE collate_binary",
+            .table_name = "collate_binary",
+            .create_sql = collate_binary_create,
+            .context = "binary collate-only show create",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE both_binary(v VARCHAR(5)) DEFAULT CHARACTER SET binary COLLATE binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE both_binary",
+            .table_name = "both_binary",
+            .create_sql = both_binary_create,
+            .context = "binary charset and collation show create",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE binary_override("
+        "v VARCHAR(10) CHARACTER SET utf8mb4, "
+        "c CHAR(2) COLLATE utf8mb4_bin, "
+        "txt TEXT"
+        ") DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE binary_override",
+            .table_name = "binary_override",
+            .create_sql = binary_override_create,
+            .context = "binary table default explicit column override",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TEMPORARY TABLE temp_binary(v VARCHAR(3), c CHAR(2)) DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE temp_binary",
+            .table_name = "temp_binary",
+            .create_sql = temp_binary_create,
+            .context = "temporary binary default show create",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE enum_set_binary(e ENUM('a','b'), s SET('x','y')) DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE enum_set_binary",
+            .table_name = "enum_set_binary",
+            .create_sql = enum_set_binary_create,
+            .context = "enum set binary default show create",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE like_binary LIKE binary_default");
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE like_binary",
+            .table_name = "like_binary",
+            .create_sql = like_binary_create,
+            .context = "binary default create like",
+        }
+    );
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "binary table default preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary default file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE binary_default",
+            .table_name = "binary_default",
+            .create_sql = binary_default_create,
+            .context = "reopened binary default show create",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT HEX(v), LENGTH(v), HEX(c), LENGTH(c), HEX(txt), LENGTH(txt), "
+        "HEX(tiny), HEX(med), HEX(lon) FROM binary_default",
+        (struct expected_single_row_result){
+            .columns = data_columns,
+            .values = data_values,
+            .column_count = sizeof(data_columns) / sizeof(data_columns[0]),
+        },
+        "reopened binary default stored values"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_charset_collation_diagnostics(void) {
     static const char raw_nul_charset_sql[] =
         "CREATE TABLE raw_nul_charset (id INT) DEFAULT CHARSET='utf8"
@@ -413,6 +747,52 @@ static int test_charset_collation_diagnostics(void) {
             .code = mysql_error_unknown_collation,
             .sqlstate = "HY000",
             .message_part = "Unknown collation: 'nosuch_collation'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_utf8_mismatch (id INT) DEFAULT CHARSET=binary "
+        "COLLATE=utf8mb4_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE utf8_binary_mismatch (id INT) DEFAULT CHARSET=utf8mb4 COLLATE=binary",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'binary' is not valid for CHARACTER SET 'utf8mb4'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_default_value (v VARCHAR(10) DEFAULT 'ab') DEFAULT CHARSET=binary",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_key (v VARCHAR(10), KEY v_idx(v)) DEFAULT CHARSET=binary",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Secondary indexes do not yet support this column type",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE legacy_unicode DEFAULT CHARSET=binary",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
         }
     );
     failures += execute_error(
@@ -551,6 +931,24 @@ static int expect_show_create_single_int(mylite_db *database, struct create_form
         fprintf(stderr, "%s: failed to build expected SHOW CREATE TABLE text\n", expected.context);
         return 1;
     }
+
+    return expect_single_row_result(
+        database,
+        expected.show_sql,
+        (struct expected_single_row_result){
+            .columns = show_create_columns,
+            .values = values,
+            .column_count = show_create_column_count,
+        },
+        expected.context
+    );
+}
+
+static int expect_show_create_text(mylite_db *database, struct expected_show_create_text expected) {
+    const char *const values[show_create_column_count] = {
+        expected.table_name,
+        expected.create_sql,
+    };
 
     return expect_single_row_result(
         database,

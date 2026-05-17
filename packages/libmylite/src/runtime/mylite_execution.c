@@ -8009,11 +8009,13 @@ static int validate_create_table_engine_option(
 );
 static int validate_create_table_charset_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *charset_option
+    const struct mylite_sql_ast_node *charset_option,
+    bool allow_binary
 );
 static int validate_create_table_collation_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *collation_option
+    const struct mylite_sql_ast_node *collation_option,
+    bool allow_binary
 );
 static int validate_table_charset_collation_option_values(
     struct mylite_db *database,
@@ -8021,6 +8023,43 @@ static int validate_table_charset_collation_option_values(
     const char *charset_name,
     bool has_collation,
     const char *collation_name
+);
+static int validate_table_charset_collation_option_values_with_binary(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name,
+    bool allow_binary
+);
+static int classify_table_charset_option_value(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool allow_binary,
+    bool *out_is_binary,
+    bool *out_is_utf8mb4,
+    bool *out_is_known_non_utf8mb4
+);
+static int classify_table_collation_option_value(
+    struct mylite_db *database,
+    bool has_collation,
+    const char *collation_name,
+    bool allow_binary,
+    bool *out_is_binary,
+    bool *out_is_utf8mb4,
+    bool *out_is_known_non_utf8mb4
+);
+static int validate_table_charset_collation_option_pair(
+    struct mylite_db *database,
+    const char *charset_name,
+    bool charset_is_binary,
+    bool charset_is_utf8mb4,
+    bool charset_is_known_non_utf8mb4,
+    const char *collation_name,
+    bool collation_is_binary,
+    bool collation_is_utf8mb4,
+    bool collation_is_known_non_utf8mb4
 );
 static int copy_table_charset_option_name(
     struct mylite_db *database,
@@ -8037,12 +8076,14 @@ static int copy_table_collation_option_name(
 static int apply_table_charset_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *charset_option,
+    bool allow_binary,
     char *default_charset,
     size_t default_charset_size
 );
 static int apply_table_collation_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *collation_option,
+    bool allow_binary,
     char *default_collation,
     size_t default_collation_size
 );
@@ -12530,6 +12571,16 @@ static int plan_create_table_item(
     size_t *column_index,
     const struct mylite_sql_ast_node **primary_key
 );
+static int apply_create_table_default_binary_charset_to_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+);
+static bool create_table_column_has_explicit_charset_or_collation(
+    const struct mylite_sql_ast_node *column_node
+);
+static bool planned_create_table_default_charset_is_binary(const struct planned_create_table *plan);
 static int count_create_table_column_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *item_list,
@@ -31320,6 +31371,11 @@ static int append_show_create_table_table_options(
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_auto_increment_option(database, string, plan);
     }
+    if (rc == MYLITE_OK && charset_name_is_binary(plan->table.default_charset) &&
+        collation_name_is_binary(plan->table.default_collation)) {
+        rc = dynamic_string_append(string, " DEFAULT CHARSET=binary");
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " DEFAULT CHARSET=");
     }
@@ -32564,16 +32620,17 @@ static int plan_create_table(
         return rc;
     }
 
-    rc = plan_create_table_items(database, item_list, out_plan);
-    if (rc != MYLITE_OK) {
-        planned_create_table_deinit(out_plan);
-        return rc;
-    }
     rc = apply_create_table_charset_collation_options(
         database,
         create_table_options_node(statement),
         out_plan
     );
+    if (rc != MYLITE_OK) {
+        planned_create_table_deinit(out_plan);
+        return rc;
+    }
+
+    rc = plan_create_table_items(database, item_list, out_plan);
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
         return rc;
@@ -32662,6 +32719,14 @@ static int plan_create_table_item(
             return MYLITE_ERROR;
         }
         rc = plan_column(database, item, &out_plan->columns[current_column_index]);
+        if (rc == MYLITE_OK) {
+            rc = apply_create_table_default_binary_charset_to_column(
+                database,
+                out_plan,
+                item,
+                &out_plan->columns[current_column_index]
+            );
+        }
         if (rc == MYLITE_OK && child_with_kind(item, MYLITE_SQL_AST_INLINE_PRIMARY_KEY) != NULL) {
             rc = apply_create_table_inline_primary_key(
                 database,
@@ -32696,6 +32761,56 @@ static int plan_create_table_item(
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
+}
+
+static int apply_create_table_default_binary_charset_to_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+) {
+    int rc = MYLITE_OK;
+
+    if (!planned_create_table_default_charset_is_binary(plan)) {
+        return MYLITE_OK;
+    }
+    if (create_table_column_has_explicit_charset_or_collation(column_node)) {
+        return MYLITE_OK;
+    }
+    if (planned_column_is_national_char_or_varchar(column)) {
+        return MYLITE_OK;
+    }
+    if (!planned_column_allows_charset_collation_attributes(column)) {
+        return MYLITE_OK;
+    }
+
+    rc = normalize_column_to_binary_string_descriptor(database, column);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    column->character_set_name[0] = '\0';
+    column->collation_name[0] = '\0';
+    return validate_column_default(database, column->default_node, column);
+}
+
+static bool create_table_column_has_explicit_charset_or_collation(
+    const struct mylite_sql_ast_node *column_node
+) {
+    return (child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE) != NULL ||
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE) != NULL) != 0;
+}
+
+static bool planned_create_table_default_charset_is_binary(
+    const struct planned_create_table *plan
+) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (!charset_name_is_binary(plan->default_charset)) {
+        return false;
+    }
+    return collation_name_is_binary(plan->default_collation);
 }
 
 static int count_create_table_column_items(
@@ -36998,12 +37113,13 @@ static int validate_create_table_options(
         table_option = table_option->next_sibling;
     }
     if (rc == MYLITE_OK) {
-        rc = validate_table_charset_collation_option_values(
+        rc = validate_table_charset_collation_option_values_with_binary(
             database,
             has_charset,
             charset_name,
             has_collation,
-            collation_name
+            collation_name,
+            true
         );
     }
 
@@ -37076,10 +37192,10 @@ static int validate_create_table_option(
         return validate_create_table_engine_option(database, table_option);
     }
     if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
-        return validate_create_table_charset_option(database, table_option);
+        return validate_create_table_charset_option(database, table_option, true);
     }
     if (table_option->kind == MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
-        return validate_create_table_collation_option(database, table_option);
+        return validate_create_table_collation_option(database, table_option, true);
     }
     if (table_option->kind == MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION) {
         return MYLITE_OK;
@@ -37095,6 +37211,8 @@ static int apply_create_table_charset_collation_options(
     struct planned_create_table *plan
 ) {
     const struct mylite_sql_ast_node *table_option = NULL;
+    bool has_charset_option = false;
+    bool has_collation_option = false;
 
     if (plan == NULL) {
         set_runtime_error(database, "invalid charset/collation table plan");
@@ -37110,12 +37228,23 @@ static int apply_create_table_charset_collation_options(
 
     table_option = child_at(table_options, 0U);
     while (table_option != NULL) {
+        if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
+            has_charset_option = true;
+        } else if (table_option->kind == MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
+            has_collation_option = true;
+        }
+        table_option = table_option->next_sibling;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (table_option != NULL) {
         int rc = MYLITE_OK;
 
         if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
             rc = apply_table_charset_option(
                 database,
                 table_option,
+                true,
                 plan->default_charset,
                 sizeof(plan->default_charset)
             );
@@ -37123,6 +37252,7 @@ static int apply_create_table_charset_collation_options(
             rc = apply_table_collation_option(
                 database,
                 table_option,
+                true,
                 plan->default_collation,
                 sizeof(plan->default_collation)
             );
@@ -37131,6 +37261,21 @@ static int apply_create_table_charset_collation_options(
             return rc;
         }
         table_option = table_option->next_sibling;
+    }
+    if (has_charset_option && !has_collation_option) {
+        if (charset_name_is_binary(plan->default_charset)) {
+            memcpy(plan->default_collation, "binary", sizeof("binary"));
+        } else {
+            memcpy(
+                plan->default_collation,
+                MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+                sizeof(MYLITE_CATALOG_DEFAULT_TABLE_COLLATION)
+            );
+        }
+    }
+    if (!has_charset_option && has_collation_option &&
+        collation_name_is_binary(plan->default_collation)) {
+        memcpy(plan->default_charset, "binary", sizeof("binary"));
     }
 
     return MYLITE_OK;
@@ -37225,7 +37370,8 @@ static int validate_create_table_engine_option(
 
 static int validate_create_table_charset_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *charset_option
+    const struct mylite_sql_ast_node *charset_option,
+    bool allow_binary
 ) {
     char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
@@ -37239,6 +37385,9 @@ static int validate_create_table_charset_option(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    if (allow_binary && charset_name_is_binary(charset_name)) {
+        return MYLITE_OK;
+    }
     if (!text_equals_ascii_case_insensitive(charset_name, "utf8mb4")) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
@@ -37249,7 +37398,8 @@ static int validate_create_table_charset_option(
 
 static int validate_create_table_collation_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *collation_option
+    const struct mylite_sql_ast_node *collation_option,
+    bool allow_binary
 ) {
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
@@ -37262,6 +37412,9 @@ static int validate_create_table_collation_option(
     );
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (allow_binary && collation_name_is_binary(collation_name)) {
+        return MYLITE_OK;
     }
     if (utf8mb4_collation_by_name(collation_name) == NULL) {
         set_unknown_collation_error(database, collation_name);
@@ -37278,43 +37431,165 @@ static int validate_table_charset_collation_option_values(
     bool has_collation,
     const char *collation_name
 ) {
+    return validate_table_charset_collation_option_values_with_binary(
+        database,
+        has_charset,
+        charset_name,
+        has_collation,
+        collation_name,
+        false
+    );
+}
+
+static int validate_table_charset_collation_option_values_with_binary(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name,
+    bool allow_binary
+) {
+    bool charset_is_binary = false;
     bool charset_is_utf8mb4 = false;
     bool charset_is_known_non_utf8mb4 = false;
+    bool collation_is_binary = false;
     bool collation_is_utf8mb4 = false;
     bool collation_is_known_non_utf8mb4 = false;
+    int rc = MYLITE_OK;
 
-    if (has_charset) {
-        charset_is_utf8mb4 = text_equals_ascii_case_insensitive(charset_name, "utf8mb4");
-        charset_is_known_non_utf8mb4 = charset_name_is_known_non_utf8mb4(charset_name);
-        if (!charset_is_utf8mb4 && !charset_is_known_non_utf8mb4) {
-            set_unknown_character_set_error(database, charset_name);
-            return MYLITE_ERROR;
-        }
+    rc = classify_table_charset_option_value(
+        database,
+        has_charset,
+        charset_name,
+        allow_binary,
+        &charset_is_binary,
+        &charset_is_utf8mb4,
+        &charset_is_known_non_utf8mb4
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if (has_collation) {
-        collation_is_utf8mb4 = utf8mb4_collation_by_name(collation_name) != NULL;
-        collation_is_known_non_utf8mb4 = collation_name_is_known_non_utf8mb4(collation_name);
-        if (!collation_is_utf8mb4 && !collation_is_known_non_utf8mb4) {
-            set_unknown_collation_error(database, collation_name);
-            return MYLITE_ERROR;
-        }
+
+    rc = classify_table_collation_option_value(
+        database,
+        has_collation,
+        collation_name,
+        allow_binary,
+        &collation_is_binary,
+        &collation_is_utf8mb4,
+        &collation_is_known_non_utf8mb4
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
     }
+
     if (has_charset && has_collation) {
-        if (charset_is_utf8mb4 && collation_is_known_non_utf8mb4) {
-            set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
-            return MYLITE_ERROR;
-        }
-        if (charset_is_known_non_utf8mb4 && collation_is_utf8mb4) {
-            set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
-            return MYLITE_ERROR;
+        rc = validate_table_charset_collation_option_pair(
+            database,
+            charset_name,
+            charset_is_binary,
+            charset_is_utf8mb4,
+            charset_is_known_non_utf8mb4,
+            collation_name,
+            collation_is_binary,
+            collation_is_utf8mb4,
+            collation_is_known_non_utf8mb4
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
         }
     }
-    if (has_charset && !charset_is_utf8mb4) {
+    if (has_charset && !charset_is_utf8mb4 && !charset_is_binary) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
     }
-    if (has_collation && !collation_is_utf8mb4) {
+    if (has_collation && !collation_is_utf8mb4 && !collation_is_binary) {
         set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int classify_table_charset_option_value(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool allow_binary,
+    bool *out_is_binary,
+    bool *out_is_utf8mb4,
+    bool *out_is_known_non_utf8mb4
+) {
+    *out_is_binary = false;
+    *out_is_utf8mb4 = false;
+    *out_is_known_non_utf8mb4 = false;
+    if (!has_charset) {
+        return MYLITE_OK;
+    }
+
+    if (allow_binary) {
+        *out_is_binary = charset_name_is_binary(charset_name);
+    }
+    *out_is_utf8mb4 = text_equals_ascii_case_insensitive(charset_name, "utf8mb4");
+    *out_is_known_non_utf8mb4 = charset_name_is_known_non_utf8mb4(charset_name);
+    if (!*out_is_binary && !*out_is_utf8mb4 && !*out_is_known_non_utf8mb4) {
+        set_unknown_character_set_error(database, charset_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int classify_table_collation_option_value(
+    struct mylite_db *database,
+    bool has_collation,
+    const char *collation_name,
+    bool allow_binary,
+    bool *out_is_binary,
+    bool *out_is_utf8mb4,
+    bool *out_is_known_non_utf8mb4
+) {
+    *out_is_binary = false;
+    *out_is_utf8mb4 = false;
+    *out_is_known_non_utf8mb4 = false;
+    if (!has_collation) {
+        return MYLITE_OK;
+    }
+
+    if (allow_binary) {
+        *out_is_binary = collation_name_is_binary(collation_name);
+    }
+    *out_is_utf8mb4 = utf8mb4_collation_by_name(collation_name) != NULL;
+    *out_is_known_non_utf8mb4 = collation_name_is_known_non_utf8mb4(collation_name);
+    if (!*out_is_binary && !*out_is_utf8mb4 && !*out_is_known_non_utf8mb4) {
+        set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_table_charset_collation_option_pair(
+    struct mylite_db *database,
+    const char *charset_name,
+    bool charset_is_binary,
+    bool charset_is_utf8mb4,
+    bool charset_is_known_non_utf8mb4,
+    const char *collation_name,
+    bool collation_is_binary,
+    bool collation_is_utf8mb4,
+    bool collation_is_known_non_utf8mb4
+) {
+    if (charset_is_binary != collation_is_binary) {
+        set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
+        return MYLITE_ERROR;
+    }
+    if (charset_is_utf8mb4 && collation_is_known_non_utf8mb4) {
+        set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
+        return MYLITE_ERROR;
+    }
+    if (charset_is_known_non_utf8mb4 && collation_is_utf8mb4) {
+        set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
         return MYLITE_ERROR;
     }
 
@@ -37369,13 +37644,32 @@ static int copy_table_collation_option_name(
 static int apply_table_charset_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *charset_option,
+    bool allow_binary,
     char *default_charset,
     size_t default_charset_size
 ) {
-    int rc = validate_create_table_charset_option(database, charset_option);
+    char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = validate_create_table_charset_option(database, charset_option, allow_binary);
 
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    rc = copy_table_charset_option_name(
+        database,
+        charset_option,
+        charset_name,
+        sizeof(charset_name)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (allow_binary && charset_name_is_binary(charset_name)) {
+        if (default_charset_size < sizeof("binary")) {
+            set_runtime_error(database, "table charset descriptor is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(default_charset, "binary", sizeof("binary"));
+        return MYLITE_OK;
     }
     if (default_charset_size < sizeof(MYLITE_CATALOG_DEFAULT_TABLE_CHARSET)) {
         set_runtime_error(database, "table charset descriptor is too small");
@@ -37392,6 +37686,7 @@ static int apply_table_charset_option(
 static int apply_table_collation_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *collation_option,
+    bool allow_binary,
     char *default_collation,
     size_t default_collation_size
 ) {
@@ -37417,6 +37712,14 @@ static int apply_table_collation_option(
     );
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (allow_binary && collation_name_is_binary(collation_name)) {
+        if (default_collation_size < sizeof("binary")) {
+            set_runtime_error(database, "table collation descriptor is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(default_collation, "binary", sizeof("binary"));
+        return MYLITE_OK;
     }
     collation = utf8mb4_collation_by_name(collation_name);
     if (collation == NULL) {
@@ -45252,6 +45555,7 @@ static int apply_alter_table_default_charset_collation_options(
             rc = apply_table_charset_option(
                 database,
                 table_option,
+                false,
                 plan->default_charset,
                 sizeof(plan->default_charset)
             );
@@ -45259,6 +45563,7 @@ static int apply_alter_table_default_charset_collation_options(
             rc = apply_table_collation_option(
                 database,
                 table_option,
+                false,
                 plan->default_collation,
                 sizeof(plan->default_collation)
             );

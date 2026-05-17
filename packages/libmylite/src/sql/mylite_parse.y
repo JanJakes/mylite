@@ -748,11 +748,29 @@ table_option(A) ::= ENGINE(E) equal_opt option_name(N). {
 table_option(A) ::= default_opt CHARSET(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_charset_option(state, C, N);
 }
+table_option(A) ::= default_opt CHARSET(C) equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_charset_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
+}
 table_option(A) ::= default_opt CHARACTER(C) SET equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_charset_option(state, C, N);
 }
+table_option(A) ::= default_opt CHARACTER(C) SET equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_charset_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
+}
 table_option(A) ::= default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+table_option(A) ::= default_opt COLLATE(C) equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_collation_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
 }
 table_option(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V). {
     A = mylite_sql_parser_make_table_auto_increment_option(

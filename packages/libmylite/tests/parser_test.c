@@ -48,6 +48,7 @@ static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
+static int test_concat_ws_function(void);
 static int test_field_function(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
@@ -321,6 +322,7 @@ int main(void) {
     failures += test_ifnull_function();
     failures += test_coalesce_function();
     failures += test_concat_function();
+    failures += test_concat_ws_function();
     failures += test_field_function();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
@@ -1897,6 +1899,99 @@ static int test_concat_function(void) {
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
     failures += expect_span_text(first_expression, "concat", "concat identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_concat_ws_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CONCAT_WS('-', 'a', 'b'), concat_ws('-', v, id) AS label "
+        "FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, "concat_ws function");
+    failures += expect_span_text(first_expression, "CONCAT_WS('-', 'a', 'b')", "concat_ws span");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "concat_ws args");
+    failures += expect_child_count(arguments, 3U, "concat_ws three arguments");
+    failures += expect_literal(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "concat_ws separator"
+    );
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_STRING, "concat_ws first");
+    failures +=
+        expect_literal(child_at(arguments, 2U), MYLITE_SQL_AST_LITERAL_STRING, "concat_ws second");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, "lower concat_ws");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 3U, "concat_ws row arguments");
+    failures += expect_node(child_at(arguments, 1U), MYLITE_SQL_AST_IDENTIFIER, "concat_ws column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "concat_ws alias"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "concat_ws from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT_WS();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR,
+        "concat_ws zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONCAT_WS(',');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONCAT_WS_FUNCTION,
+        "concat_ws one argument function"
+    );
+    arguments = child_at(first_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "concat_ws one argument");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT concat_ws FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat_ws identifier");
+    failures += expect_span_text(first_expression, "concat_ws", "concat_ws identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO CONCAT_WS('-', 'a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    first_expression = child_at(expression_list, 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, "do concat_ws");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CONCAT_WS (',', 'a', 'b') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, "concat_ws whitespace");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

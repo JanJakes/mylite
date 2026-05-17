@@ -332,6 +332,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->previous_row_count = -1;
     session->found_rows = 1U;
     session->last_insert_id = 0U;
+    session->auto_increment_increment = 1U;
+    session->auto_increment_offset = 1U;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->user_transaction_active = false;

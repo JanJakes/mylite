@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 46,
-    global_variable_row_count = 42,
+    session_variable_row_count = 48,
+    global_variable_row_count = 44,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -111,6 +111,8 @@ int main(void) {
 
 static int test_show_variables_values_scopes_and_filters(void) {
     const char *const expected_session_rows[session_variable_row_count][variable_column_count] = {
+        {"auto_increment_increment", "1"},
+        {"auto_increment_offset", "1"},
         {"autocommit", "ON"},
         {"character_set_client", "utf8mb4"},
         {"character_set_connection", "utf8mb4"},
@@ -159,6 +161,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"warning_count", "0"},
     };
     const char *const expected_global_rows[global_variable_row_count][variable_column_count] = {
+        {"auto_increment_increment", "1"},
+        {"auto_increment_offset", "1"},
         {"autocommit", "ON"},
         {"character_set_client", "utf8mb4"},
         {"character_set_connection", "utf8mb4"},

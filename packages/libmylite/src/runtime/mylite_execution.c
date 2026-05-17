@@ -146,6 +146,7 @@ enum {
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_values_function_deprecated = 1287,
+    mysql_warning_truncated_incorrect_auto_increment = 1292,
     mysql_warning_truncated_incorrect_decimal = 1292,
     mysql_warning_truncated_incorrect_temporal = 1292,
     mysql_error_incorrect_date_value = 1292,
@@ -6283,6 +6284,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 44,
     SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 45,
     SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 46,
+    SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT = 47,
+    SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET = 48,
 };
 
 struct system_variable_component {
@@ -6318,6 +6321,8 @@ struct resolved_set_system_variable_target {
 };
 
 static const struct system_variable_descriptor system_variable_descriptors[] = {
+    {"auto_increment_increment", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT, true, true},
+    {"auto_increment_offset", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET, true, true},
     {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT, true, true},
     {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT, true, true},
     {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION, true, true},
@@ -6587,6 +6592,35 @@ static int apply_set_transaction_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_auto_increment_step_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int parse_set_auto_increment_step_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static const struct mylite_sql_ast_node *unwrap_auto_increment_step_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+);
+static void copy_auto_increment_step_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
+);
+static int set_incorrect_system_variable_argument_type_error(
+    struct mylite_db *database,
+    const char *variable_name
+);
+static int append_truncated_incorrect_auto_increment_warning(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
 );
 static int validate_set_fixed_uint64_value(
     struct mylite_db *database,
@@ -11643,6 +11677,16 @@ static int system_variable_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int format_session_scalar_uint64_value(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+);
+static uint64_t auto_increment_step_system_variable_value(
+    const struct mylite_db *database,
+    enum session_system_variable_kind kind,
+    bool global_scope
+);
 static const char *default_sql_mode_value(void);
 static const struct mylite_diagnostics *system_variable_count_diagnostics(
     const struct mylite_db *database
@@ -11666,6 +11710,13 @@ static int show_system_variable_value(
     struct mylite_db *database,
     enum session_system_variable_kind kind,
     bool global_scope,
+    char *integer_buffer,
+    size_t integer_buffer_size,
+    const char **out_value
+);
+static int format_show_system_variable_uint64_value(
+    struct mylite_db *database,
+    uint64_t value,
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
@@ -14225,7 +14276,26 @@ static int assign_generated_auto_increment_value(
     size_t row_index,
     int64_t generated_value
 );
-static int next_auto_increment_after_value(
+static int generated_auto_increment_value_for_lower_bound(
+    struct mylite_db *database,
+    int64_t lower_bound,
+    const struct integer_column_range *range,
+    int64_t *out_value
+);
+static int next_auto_increment_after_generated_value(
+    const struct mylite_db *database,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+);
+static int next_auto_increment_after_explicit_insert_value(
+    int64_t current_next,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+);
+static int next_auto_increment_after_update_value(
+    struct mylite_db *database,
     int64_t current_next,
     int64_t value,
     const struct integer_column_range *range,
@@ -14245,6 +14315,7 @@ static int execute_insert_plan_row_with_retries(
     struct insert_execution_counters *counters
 );
 static int finish_successful_insert_plan_row(
+    struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     struct insert_execution_counters *counters
@@ -14288,11 +14359,13 @@ static int execute_insert_plan_row(
     int *out_sqlite_step_rc
 );
 static int advance_auto_increment_after_insert_row(
+    const struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
 );
 static int advance_auto_increment_after_duplicate_attempt(
+    const struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
@@ -20846,6 +20919,10 @@ static int apply_set_system_variable_statement(
         target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         return apply_set_transaction_system_variable_value(database, &target, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
+        target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+        return apply_set_auto_increment_step_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -21227,6 +21304,207 @@ static int apply_set_transaction_system_variable_value(
     }
 
     return apply_transaction_system_variable_characteristics(database, target, &characteristics);
+}
+
+static int apply_set_auto_increment_step_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = 1U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid auto-increment system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL auto-increment system variable assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_auto_increment_step_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
+        database->session.auto_increment_increment = value;
+    } else if (target->kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+        database->session.auto_increment_offset = value;
+    } else {
+        set_runtime_error(database, "invalid auto-increment system variable kind");
+        return MYLITE_ERROR;
+    }
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_auto_increment_step_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    enum { max_auto_increment_step_value = 65535U };
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid auto-increment system variable output");
+        return MYLITE_ERROR;
+    }
+    *out_value = 1U;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return append_truncated_incorrect_auto_increment_warning(database, variable_name, "0");
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+
+    if (negative) {
+        return append_truncated_incorrect_auto_increment_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+    if (parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK ||
+        magnitude > max_auto_increment_step_value) {
+        *out_value = max_auto_increment_step_value;
+        return append_truncated_incorrect_auto_increment_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+    if (magnitude == 0U) {
+        return append_truncated_incorrect_auto_increment_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *unwrap_auto_increment_step_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+
+    if (out_negative != NULL) {
+        *out_negative = false;
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return literal_node;
+    }
+
+    switch (mylite_sql_ast_node_operator(literal_node)) {
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        if (out_negative != NULL) {
+            *out_negative = true;
+        }
+        break;
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+        break;
+    default:
+        return NULL;
+    }
+
+    return unwrap_parenthesized_expression(child_at(literal_node, 0U));
+}
+
+static void copy_auto_increment_step_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t copied = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    if (value_node != NULL && value_node->span.text != NULL) {
+        copied = value_node->span.length < buffer_size ? value_node->span.length : buffer_size - 1U;
+        memcpy(buffer, value_node->span.text, copied);
+    }
+    buffer[copied] = '\0';
+}
+
+static int set_incorrect_system_variable_argument_type_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect argument type to variable '%s'",
+        variable_name == NULL ? "unknown" : variable_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_argument_type,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int append_truncated_incorrect_auto_increment_warning(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%s'",
+        variable_name == NULL ? "auto_increment" : variable_name,
+        value_text == NULL ? "" : value_text
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_auto_increment,
+        "HY000",
+        message
+    );
 }
 
 static int apply_set_sql_mode_value(
@@ -44529,7 +44807,12 @@ static int read_alter_table_auto_increment_row_next(
             } else if (column_type == SQLITE_INTEGER) {
                 const int64_t max_value = (int64_t)sqlite3_column_int64(statement, 0);
                 if (max_value > 0) {
-                    rc = next_auto_increment_after_value(1, max_value, range, out_row_next);
+                    rc = next_auto_increment_after_explicit_insert_value(
+                        1,
+                        max_value,
+                        range,
+                        out_row_next
+                    );
                 }
             } else {
                 set_physical_sqlite_row_error(database);
@@ -48396,23 +48679,44 @@ static int plan_insert_auto_increment_row_value(
         return rc;
     }
     if (generated) {
-        if (*next_value <= 0 || (uint64_t)*next_value > range->positive_max) {
+        int64_t generated_value = 0;
+
+        rc = generated_auto_increment_value_for_lower_bound(
+            database,
+            *next_value,
+            range,
+            &generated_value
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (generated_value <= 0 || (uint64_t)generated_value > range->positive_max) {
             set_failed_read_auto_increment_error(database);
             return MYLITE_ERROR;
         }
-        rc = assign_generated_auto_increment_value(database, plan, row_index, *next_value);
+        rc = assign_generated_auto_increment_value(database, plan, row_index, generated_value);
         if (rc == MYLITE_OK) {
             plan->rows[row_index].generated_auto_increment = true;
         }
         if (rc == MYLITE_OK && !plan->generated_auto_increment) {
-            plan->first_generated_auto_increment = *next_value;
+            plan->first_generated_auto_increment = generated_value;
             plan->generated_auto_increment = true;
         }
         if (rc == MYLITE_OK) {
-            rc = next_auto_increment_after_value(*next_value, *next_value, range, next_value);
+            rc = next_auto_increment_after_generated_value(
+                database,
+                generated_value,
+                range,
+                next_value
+            );
         }
     } else if (!value->is_text && value->integer > 0) {
-        rc = next_auto_increment_after_value(*next_value, value->integer, range, next_value);
+        rc = next_auto_increment_after_explicit_insert_value(
+            *next_value,
+            value->integer,
+            range,
+            next_value
+        );
     }
     if (rc != MYLITE_OK) {
         set_unsupported_error(database, "AUTO_INCREMENT counter is out of range");
@@ -48466,7 +48770,82 @@ static int assign_generated_auto_increment_value(
     return MYLITE_OK;
 }
 
-static int next_auto_increment_after_value(
+static int generated_auto_increment_value_for_lower_bound(
+    struct mylite_db *database,
+    int64_t lower_bound,
+    const struct integer_column_range *range,
+    int64_t *out_value
+) {
+    uint64_t increment = 1U;
+    uint64_t offset = 1U;
+    uint64_t candidate = 0U;
+
+    if (out_value == NULL || range == NULL || lower_bound <= 0) {
+        return MYLITE_ERROR;
+    }
+    *out_value = 0;
+    increment = database->session.auto_increment_increment;
+    offset = database->session.auto_increment_offset;
+    if (offset > increment) {
+        set_unsupported_error(
+            database,
+            "AUTO_INCREMENT allocation with offset greater than increment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if ((uint64_t)lower_bound <= offset) {
+        candidate = offset;
+    } else {
+        uint64_t delta = (uint64_t)lower_bound - offset;
+        uint64_t steps = delta / increment;
+
+        if (delta % increment != 0U) {
+            ++steps;
+        }
+        if (steps > (UINT64_MAX - offset) / increment) {
+            return MYLITE_ERROR;
+        }
+        candidate = offset + (steps * increment);
+    }
+    if (candidate > (uint64_t)INT64_MAX) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)candidate;
+    return MYLITE_OK;
+}
+
+static int next_auto_increment_after_generated_value(
+    const struct mylite_db *database,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+) {
+    uint64_t increment = 1U;
+
+    if (out_next == NULL || database == NULL || range == NULL || value <= 0 ||
+        (uint64_t)value > range->positive_max) {
+        return MYLITE_ERROR;
+    }
+    if ((uint64_t)value == range->positive_max) {
+        *out_next = value;
+        return MYLITE_OK;
+    }
+
+    increment = database->session.auto_increment_increment;
+    if (range->positive_max - (uint64_t)value < increment) {
+        if (range->positive_max > (uint64_t)INT64_MAX) {
+            return MYLITE_ERROR;
+        }
+        *out_next = (int64_t)range->positive_max;
+        return MYLITE_OK;
+    }
+    *out_next = value + (int64_t)increment;
+    return MYLITE_OK;
+}
+
+static int next_auto_increment_after_explicit_insert_value(
     int64_t current_next,
     int64_t value,
     const struct integer_column_range *range,
@@ -48488,6 +48867,33 @@ static int next_auto_increment_after_value(
     }
     *out_next = value + 1;
     return MYLITE_OK;
+}
+
+static int next_auto_increment_after_update_value(
+    struct mylite_db *database,
+    int64_t current_next,
+    int64_t value,
+    const struct integer_column_range *range,
+    int64_t *out_next
+) {
+    int64_t lower_bound = 0;
+
+    if (out_next == NULL || range == NULL || current_next <= 0 || value <= 0) {
+        return MYLITE_ERROR;
+    }
+    *out_next = current_next;
+    if (value < current_next) {
+        return MYLITE_OK;
+    }
+    if ((uint64_t)value > range->positive_max) {
+        return MYLITE_ERROR;
+    }
+    if ((uint64_t)value == range->positive_max) {
+        *out_next = value;
+        return MYLITE_OK;
+    }
+    lower_bound = value + 1;
+    return generated_auto_increment_value_for_lower_bound(database, lower_bound, range, out_next);
 }
 
 static void planned_insert_deinit(struct planned_insert *plan) {
@@ -48649,7 +49055,7 @@ static int execute_insert_plan_row_with_retries(
         rc = execute_insert_plan_row(statement, plan, row_index, &sqlite_step_rc);
         if (rc == MYLITE_OK) {
             row_complete = true;
-            rc = finish_successful_insert_plan_row(plan, row_index, counters);
+            rc = finish_successful_insert_plan_row(database, plan, row_index, counters);
         } else if (sqlite_status_is_constraint(sqlite_step_rc)) {
             rc = handle_insert_plan_constraint(
                 database,
@@ -48668,6 +49074,7 @@ static int execute_insert_plan_row_with_retries(
 }
 
 static int finish_successful_insert_plan_row(
+    struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     struct insert_execution_counters *counters
@@ -48679,6 +49086,7 @@ static int finish_successful_insert_plan_row(
     }
 
     return advance_auto_increment_after_insert_row(
+        database,
         plan,
         row_index,
         &counters->auto_increment_next_after_rows
@@ -48727,6 +49135,7 @@ static int handle_insert_plan_constraint(
         *out_row_complete = rc == MYLITE_OK;
         if (rc == MYLITE_OK && plan->has_auto_increment) {
             rc = advance_auto_increment_after_duplicate_attempt(
+                database,
                 plan,
                 row_index,
                 &counters->auto_increment_next_after_rows
@@ -48921,6 +49330,7 @@ static int execute_insert_plan_row(
 }
 
 static int advance_auto_increment_after_insert_row(
+    const struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
@@ -48932,7 +49342,16 @@ static int advance_auto_increment_after_insert_row(
         return MYLITE_OK;
     }
 
-    return next_auto_increment_after_value(
+    if (plan->rows[row_index].generated_auto_increment) {
+        return next_auto_increment_after_generated_value(
+            database,
+            auto_value->integer,
+            &plan->auto_increment_range,
+            auto_increment_next_after_rows
+        );
+    }
+
+    return next_auto_increment_after_explicit_insert_value(
         *auto_increment_next_after_rows,
         auto_value->integer,
         &plan->auto_increment_range,
@@ -48941,6 +49360,7 @@ static int advance_auto_increment_after_insert_row(
 }
 
 static int advance_auto_increment_after_duplicate_attempt(
+    const struct mylite_db *database,
     const struct planned_insert *plan,
     size_t row_index,
     int64_t *auto_increment_next_after_rows
@@ -48949,7 +49369,12 @@ static int advance_auto_increment_after_duplicate_attempt(
         return MYLITE_OK;
     }
 
-    return advance_auto_increment_after_insert_row(plan, row_index, auto_increment_next_after_rows);
+    return advance_auto_increment_after_insert_row(
+        database,
+        plan,
+        row_index,
+        auto_increment_next_after_rows
+    );
 }
 
 static void record_inserted_generated_auto_increment(
@@ -52246,7 +52671,8 @@ static int advance_auto_increment_after_update(
         &range
     );
     if (rc == MYLITE_OK) {
-        rc = next_auto_increment_after_value(
+        rc = next_auto_increment_after_update_value(
+            database,
             next_value,
             assignment_value->integer,
             &range,
@@ -65054,6 +65480,14 @@ static int hex_numeric_system_variable_value(
     }
 
     switch (variable) {
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+        out_value->integer = auto_increment_step_system_variable_value(
+            database,
+            variable,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
@@ -70842,6 +71276,17 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
         out_cell->value = "";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+        return format_session_scalar_uint64_value(
+            database,
+            auto_increment_step_system_variable_value(
+                database,
+                variable,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
@@ -70934,6 +71379,40 @@ static int system_variable_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static int format_session_scalar_uint64_value(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = format_uint64(database, value, out_cell->integer_text, sizeof(out_cell->integer_text));
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->integer_text;
+    }
+    return rc;
+}
+
+static uint64_t auto_increment_step_system_variable_value(
+    const struct mylite_db *database,
+    enum session_system_variable_kind kind,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return 1U;
+    }
+    if (kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT) {
+        return database->session.auto_increment_increment;
+    }
+    if (kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
+        return database->session.auto_increment_offset;
+    }
+    return 1U;
 }
 
 static const char *transaction_isolation_system_variable_value(
@@ -71101,6 +71580,8 @@ static const struct system_variable_descriptor *system_variable_descriptor_for_k
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind) {
     switch (kind) {
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
@@ -71243,6 +71724,15 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_GTID_PURGED:
         *out_value = "";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
+    case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+        return format_show_system_variable_uint64_value(
+            database,
+            auto_increment_step_system_variable_value(database, kind, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
@@ -71325,6 +71815,25 @@ static int show_system_variable_value(
 
     set_runtime_error(database, "unsupported SHOW VARIABLES value");
     return MYLITE_ERROR;
+}
+
+static int format_show_system_variable_uint64_value(
+    struct mylite_db *database,
+    uint64_t value,
+    char *integer_buffer,
+    size_t integer_buffer_size,
+    const char **out_value
+) {
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = format_uint64(database, value, integer_buffer, integer_buffer_size);
+    if (rc == MYLITE_OK) {
+        *out_value = integer_buffer;
+    }
+    return rc;
 }
 
 static int format_timestamp_system_variable_value(

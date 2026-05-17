@@ -100,6 +100,8 @@ struct mylite_session_state {
     int64_t previous_row_count;
     uint64_t found_rows;
     uint64_t last_insert_id;
+    uint64_t auto_increment_increment;
+    uint64_t auto_increment_offset;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     struct mylite_session_savepoint *savepoints;

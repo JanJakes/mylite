@@ -19,10 +19,14 @@ enum {
     query_capacity = 512,
     attrs_column_count = 6,
     altered_attrs_column_count = 7,
+    binary_attrs_column_count = 9,
+    binary_attrs_projection_count = 7,
+    binary_alter_projection_count = 8,
     mysql_error_parse = 1064,
     mysql_error_unknown_character_set = 1115,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
+    mysql_collation_binary_id = 63,
     mysql_collation_utf8mb4_bin_id = 46,
     mysql_collation_utf8mb4_unicode_ci_id = 224,
     mysql_collation_utf8mb4_unicode_520_ci_id = 246,
@@ -45,6 +49,7 @@ struct expected_query {
 };
 
 static int test_column_charset_collation_metadata_lifecycle(void);
+static int test_binary_column_charset_collation_normalization(void);
 static int test_column_charset_collation_diagnostics(void);
 static int expect_column_character_metadata(
     mylite_db *database,
@@ -54,6 +59,7 @@ static int expect_column_character_metadata(
     const char *context
 );
 static int expect_result_metadata(mylite_db *database);
+static int expect_binary_result_metadata(mylite_db *database);
 static int expect_query_result(mylite_db *database, struct expected_query expected);
 static int expect_show_create_contains(mylite_db *database, const char *sql, const char *needle);
 static int execute_statement_ok(mylite_db *database, const char *sql);
@@ -83,6 +89,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_column_charset_collation_metadata_lifecycle();
+    failures += test_binary_column_charset_collation_normalization();
     failures += test_column_charset_collation_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -270,6 +277,211 @@ static int test_column_charset_collation_metadata_lifecycle(void) {
     return failures;
 }
 
+static int test_binary_column_charset_collation_normalization(void) {
+    static const char *const binary_column_values[] = {
+        "renamed", "varbinary",  "varbinary(10)", NULL, NULL, "10",         "10",
+        "c",       "binary",     "binary(4)",     NULL, NULL, "4",          "4",
+        "t",       "tinyblob",   "tinyblob",      NULL, NULL, "255",        "255",
+        "b",       "blob",       "blob",          NULL, NULL, "65535",      "65535",
+        "m",       "mediumblob", "mediumblob",    NULL, NULL, "16777215",   "16777215",
+        "l",       "longblob",   "longblob",      NULL, NULL, "4294967295", "4294967295",
+        "z",       "varbinary",  "varbinary(0)",  NULL, NULL, "0",          "0",
+        "cz",      "binary",     "binary(0)",     NULL, NULL, "0",          "0",
+        "added",   "varbinary",  "varbinary(2)",  NULL, NULL, "2",          "2",
+    };
+    static const char *const updated_hex_values[] = {
+        "7A",
+        "62000000",
+        "74696E79",
+        "626C6F62",
+        "6D656469756D",
+        "6C6F6E67",
+        "",
+        "",
+        "7879",
+    };
+    static const char *const altered_hex_values[] = {
+        "1",
+        "6162",
+        "2",
+        "78790000",
+        "4",
+        "68656C6C6F",
+        "5",
+        NULL,
+        "2",
+        "",
+        "0",
+        "7A000000",
+        "4",
+        "",
+        "0",
+        NULL,
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "binary") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary charset file");
+    failures += execute_affected_ok(database, "CREATE DATABASE app", 1);
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE binary_attrs("
+        "v VARCHAR(10) CHARACTER SET binary, "
+        "c CHAR(3) COLLATE binary, "
+        "t TINYTEXT CHARSET binary, "
+        "b TEXT COLLATE binary, "
+        "m MEDIUMTEXT CHARACTER SET binary, "
+        "l LONGTEXT COLLATE binary, "
+        "z VARCHAR(0) CHARACTER SET binary, "
+        "cz CHAR(0) COLLATE binary)"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE binary_attrs",
+        "`v` varbinary(10)"
+    );
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`c` binary(3)");
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`t` tinyblob");
+    failures += expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`b` blob");
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`m` mediumblob");
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`l` longblob");
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE binary_attrs ADD added VARCHAR(2) COLLATE binary"
+    );
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE binary_attrs MODIFY c CHAR(4) CHARACTER SET binary"
+    );
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE binary_attrs CHANGE v renamed VARCHAR(10) COLLATE binary"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE binary_attrs",
+        "`renamed` varbinary(10)"
+    );
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_attrs", "`c` binary(4)");
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE binary_attrs",
+        "`added` varbinary(2)"
+    );
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, CHARACTER_SET_NAME, "
+                   "COLLATION_NAME, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'binary_attrs' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = binary_column_values,
+            .column_count = binary_attrs_projection_count,
+            .row_count = binary_attrs_column_count,
+            .context = "binary charset information_schema columns",
+        }
+    );
+    failures += expect_binary_result_metadata(database);
+    failures += execute_affected_ok(
+        database,
+        "INSERT INTO binary_attrs VALUES('a', 'b', 'tiny', 'blob', 'medium', 'long', '', '', "
+        "'xy')",
+        1
+    );
+    failures += execute_affected_ok(database, "UPDATE binary_attrs SET renamed = 'z'", 1);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE binary_alter(id INT, v VARCHAR(10), c CHAR(3), txt TEXT)"
+    );
+    failures += execute_affected_ok(
+        database,
+        "INSERT INTO binary_alter VALUES(1, 'ab', 'xy', 'hello'), (2, '', 'z', '')",
+        2
+    );
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE binary_alter ADD added VARCHAR(2) COLLATE binary"
+    );
+    failures += execute_affected_ok(
+        database,
+        "ALTER TABLE binary_alter MODIFY c CHAR(4) CHARACTER SET binary",
+        2
+    );
+    failures += execute_affected_ok(
+        database,
+        "ALTER TABLE binary_alter CHANGE v renamed VARCHAR(10) COLLATE binary",
+        2
+    );
+    failures += execute_affected_ok(
+        database,
+        "ALTER TABLE binary_alter MODIFY txt TEXT CHARACTER SET binary",
+        2
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE binary_alter",
+        "`renamed` varbinary(10)"
+    );
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_alter", "`c` binary(4)");
+    failures +=
+        expect_show_create_contains(database, "SHOW CREATE TABLE binary_alter", "`txt` blob");
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, HEX(renamed), LENGTH(renamed), HEX(c), LENGTH(c), HEX(txt), "
+                   "LENGTH(txt), HEX(added) FROM binary_alter ORDER BY id",
+            .values = altered_hex_values,
+            .column_count = binary_alter_projection_count,
+            .row_count = 2U,
+            .context = "nonbinary to binary ALTER values",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "binary charset file preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary charset file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(renamed), HEX(c), HEX(t), HEX(b), HEX(m), HEX(l), HEX(z), "
+                   "HEX(cz), HEX(added) FROM binary_attrs",
+            .values = updated_hex_values,
+            .column_count = binary_attrs_column_count,
+            .row_count = 1U,
+            .context = "reopened binary charset DML values",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_column_charset_collation_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -320,6 +532,24 @@ static int test_column_charset_collation_diagnostics(void) {
             mysql_error_collation_not_valid_for_character_set,
             "42000",
             "utf8mb4_0900_bin",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_utf8_binary(v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE binary)",
+        (struct expected_sql_error){
+            mysql_error_collation_not_valid_for_character_set,
+            "42000",
+            "COLLATION 'binary' is not valid for CHARACTER SET 'utf8mb4'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_binary_utf8(v VARCHAR(10) CHARACTER SET binary COLLATE utf8mb4_bin)",
+        (struct expected_sql_error){
+            mysql_error_collation_not_valid_for_character_set,
+            "42000",
+            "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'",
         }
     );
     failures += execute_error(
@@ -411,6 +641,42 @@ static int expect_result_metadata(mylite_db *database) {
             (mylite_result_column_flags(result, 2U) & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
             "0900 binary column metadata flag"
         );
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_binary_result_metadata(mylite_db *database) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(
+        database,
+        "SELECT renamed, c, t, b, m, l, z, cz, added FROM binary_attrs LIMIT 0",
+        &result
+    );
+
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            binary_attrs_column_count,
+            "binary metadata column count"
+        );
+        for (size_t column_index = 0U; column_index < binary_attrs_column_count; ++column_index) {
+            failures += expect_uint32(
+                mylite_result_column_charset_id(result, column_index),
+                mysql_collation_binary_id,
+                "binary charset result metadata id"
+            );
+            failures += expect_uint32(
+                mylite_result_column_collation_id(result, column_index),
+                mysql_collation_binary_id,
+                "binary collation result metadata id"
+            );
+            failures += expect_true(
+                (mylite_result_column_flags(result, column_index) &
+                 MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
+                "binary result metadata flag"
+            );
+        }
     }
     mylite_result_free(result);
     return failures;

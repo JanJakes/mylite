@@ -9200,6 +9200,22 @@ static int test_column_charset_collation_attribute_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE column_binary_charset (v VARCHAR(10) CHARACTER SET binary, "
+        "c CHAR(3) COLLATE binary);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    charset_option = child_at(column, 2U);
+    failures += expect_span_text(child_at(charset_option, 0U), "binary", "binary charset name");
+    column = child_at(columns, 1U);
+    collation_option = child_at(column, 2U);
+    failures += expect_span_text(child_at(collation_option, 0U), "binary", "binary collation name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE column_charset_equal (v VARCHAR(10) CHARACTER SET=utf8mb4);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

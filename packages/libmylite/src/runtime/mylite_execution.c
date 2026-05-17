@@ -496,8 +496,21 @@ static const char national_character_set_warning_message[] =
     "to be unambiguous.";
 static const char string_key_collation_name[] = "utf8mb4_0900_ai_ci";
 
-struct utf8mb4_collation_descriptor {
+struct character_set_descriptor {
     const char *name;
+    const char *default_collation;
+    const char *description;
+    const char *maxlen;
+};
+
+static const struct character_set_descriptor supported_character_sets[] = {
+    {"binary", "binary", "Binary pseudo charset", "1"},
+    {"utf8mb4", "utf8mb4_0900_ai_ci", "UTF-8 Unicode", "4"},
+};
+
+struct collation_descriptor {
+    const char *name;
+    const char *character_set;
     const char *id;
     const char *is_default;
     const char *compiled;
@@ -505,13 +518,14 @@ struct utf8mb4_collation_descriptor {
     const char *pad_attribute;
 };
 
-static const struct utf8mb4_collation_descriptor utf8mb4_collations[] = {
-    {"utf8mb4_general_ci", "45", "", "Yes", "1", "PAD SPACE"},
-    {"utf8mb4_bin", "46", "", "Yes", "1", "PAD SPACE"},
-    {"utf8mb4_unicode_ci", "224", "", "Yes", "8", "PAD SPACE"},
-    {"utf8mb4_unicode_520_ci", "246", "", "Yes", "8", "PAD SPACE"},
-    {"utf8mb4_0900_ai_ci", "255", "Yes", "Yes", "0", "NO PAD"},
-    {"utf8mb4_0900_bin", "309", "", "Yes", "1", "NO PAD"},
+static const struct collation_descriptor supported_collations[] = {
+    {"binary", "binary", "63", "Yes", "Yes", "1", "NO PAD"},
+    {"utf8mb4_general_ci", "utf8mb4", "45", "", "Yes", "1", "PAD SPACE"},
+    {"utf8mb4_bin", "utf8mb4", "46", "", "Yes", "1", "PAD SPACE"},
+    {"utf8mb4_unicode_ci", "utf8mb4", "224", "", "Yes", "8", "PAD SPACE"},
+    {"utf8mb4_unicode_520_ci", "utf8mb4", "246", "", "Yes", "8", "PAD SPACE"},
+    {"utf8mb4_0900_ai_ci", "utf8mb4", "255", "Yes", "Yes", "0", "NO PAD"},
+    {"utf8mb4_0900_bin", "utf8mb4", "309", "", "Yes", "1", "NO PAD"},
 };
 
 struct information_schema_keyword_row {
@@ -2398,6 +2412,11 @@ struct planned_insert_select {
 };
 
 struct insert_select_execution_statements {
+    sqlite3_stmt *select_statement;
+    sqlite3_stmt *insert_statement;
+};
+
+struct alter_table_modify_copy_statements {
     sqlite3_stmt *select_statement;
     sqlite3_stmt *insert_statement;
 };
@@ -8044,7 +8063,9 @@ static int decode_table_option_string_literal(
     char **out_name,
     struct table_option_name_policy policy
 );
-static const struct utf8mb4_collation_descriptor *utf8mb4_collation_by_name(const char *name);
+static const struct collation_descriptor *utf8mb4_collation_by_name(const char *name);
+static bool charset_name_is_binary(const char *name);
+static bool collation_name_is_binary(const char *name);
 static bool charset_name_is_known_non_utf8mb4(const char *name);
 static bool collation_name_is_known_non_utf8mb4(const char *name);
 static void set_collation_not_valid_for_charset_error(
@@ -9088,6 +9109,13 @@ static int validate_existing_integer_for_column(
 static int validate_existing_text_for_column(
     struct mylite_db *database,
     const unsigned char *text,
+    int byte_count,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static int validate_existing_binary_bytes_for_column(
+    struct mylite_db *database,
+    const void *bytes,
     int byte_count,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
@@ -13014,6 +13042,35 @@ static int apply_column_charset_collation_attributes(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *column
 );
+static bool column_charset_collation_requests_binary(
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+);
+static int apply_column_binary_charset_collation_attributes(
+    struct mylite_db *database,
+    struct planned_column *column,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+);
+static int validate_column_binary_charset_collation_attributes(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+);
+static int normalize_column_to_binary_string_descriptor(
+    struct mylite_db *database,
+    struct planned_column *column
+);
+static int normalize_column_to_binary_text_descriptor(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int copy_column_charset_attribute_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *charset_attribute,
@@ -13633,6 +13690,10 @@ static bool modify_column_integer_value_domain_matches(
     const struct planned_column *replacement_column
 );
 static bool modify_column_char_varchar_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool modify_column_binary_string_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
@@ -16453,6 +16514,43 @@ static int build_alter_table_modify_copy_sql(
     const char *temporary_physical_name,
     char **out_sql
 );
+static bool alter_table_modify_needs_binary_copy_materialization(
+    const struct planned_alter_table_modify_column *plan
+);
+static int execute_physical_alter_table_modify_copy_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name
+);
+static int build_alter_table_modify_select_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int build_alter_table_modify_insert_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int execute_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    struct alter_table_modify_copy_statements *statements,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+);
+static int materialize_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+);
+static int bind_alter_table_modify_copy_row(
+    sqlite3_stmt *insert_statement,
+    const struct planned_alter_table_modify_column *plan,
+    const struct planned_value *values
+);
+static void deinit_alter_table_modify_copy_row(struct planned_value *values, size_t column_count);
 static int build_alter_table_modify_indexes_sql(
     const struct planned_alter_table_modify_column *plan,
     char **out_sql
@@ -20274,7 +20372,7 @@ static int apply_set_connection_character_set_statement(
 ) {
     const struct mylite_sql_ast_node *collation = NULL;
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const struct utf8mb4_collation_descriptor *collation_descriptor = NULL;
+    const struct collation_descriptor *collation_descriptor = NULL;
     int rc = validate_set_connection_character_set_statement(database, statement, allow_collation);
 
     if (rc != MYLITE_OK) {
@@ -24574,14 +24672,24 @@ static int append_information_schema_character_sets_system_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 ) {
-    const char *values[information_schema_character_sets_column_count] = {
-        "utf8mb4",
-        "utf8mb4_0900_ai_ci",
-        "UTF-8 Unicode",
-        "4",
-    };
+    int rc = MYLITE_OK;
 
-    return append_information_schema_row(database, rows, values);
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK &&
+         row_index < sizeof(supported_character_sets) / sizeof(supported_character_sets[0]);
+         ++row_index) {
+        const struct character_set_descriptor *charset = &supported_character_sets[row_index];
+        const char *values[information_schema_character_sets_column_count] = {
+            charset->name,
+            charset->default_collation,
+            charset->description,
+            charset->maxlen,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
 }
 
 static int append_information_schema_collations_system_row(
@@ -24590,13 +24698,13 @@ static int append_information_schema_collations_system_row(
 ) {
     int rc = MYLITE_OK;
 
-    for (size_t row_index = 0U;
-         rc == MYLITE_OK && row_index < sizeof(utf8mb4_collations) / sizeof(utf8mb4_collations[0]);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < sizeof(supported_collations) /
+                                                                   sizeof(supported_collations[0]);
          ++row_index) {
-        const struct utf8mb4_collation_descriptor *collation = &utf8mb4_collations[row_index];
+        const struct collation_descriptor *collation = &supported_collations[row_index];
         const char *values[information_schema_collations_column_count] = {
             collation->name,
-            "utf8mb4",
+            collation->character_set,
             collation->id,
             collation->is_default,
             collation->compiled,
@@ -24616,13 +24724,13 @@ static int append_information_schema_collation_applicability_system_rows(
 ) {
     int rc = MYLITE_OK;
 
-    for (size_t row_index = 0U;
-         rc == MYLITE_OK && row_index < sizeof(utf8mb4_collations) / sizeof(utf8mb4_collations[0]);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < sizeof(supported_collations) /
+                                                                   sizeof(supported_collations[0]);
          ++row_index) {
-        const struct utf8mb4_collation_descriptor *collation = &utf8mb4_collations[row_index];
+        const struct collation_descriptor *collation = &supported_collations[row_index];
         const char *values[information_schema_collation_applicability_column_count] = {
             collation->name,
-            "utf8mb4",
+            collation->character_set,
         };
 
         rc = append_information_schema_row(database, rows, values);
@@ -28444,12 +28552,6 @@ static int execute_show_character_set_statement(
         "Default collation",
         "Maxlen",
     };
-    static const char *const values[show_character_set_result_column_count] = {
-        "utf8mb4",
-        "UTF-8 Unicode",
-        "utf8mb4_0900_ai_ci",
-        "4",
-    };
     struct show_like_filter filter = {
         .has_pattern = false,
         .pattern = NULL,
@@ -28473,10 +28575,23 @@ static int execute_show_character_set_statement(
             set_nomem_error(database);
         }
     }
-    if (rc == MYLITE_OK && show_like_filter_matches(&filter, values[0], false)) {
-        rc = mylite_result_append_text_row(result, values);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
+    for (size_t row_index = 0U;
+         rc == MYLITE_OK &&
+         row_index < sizeof(supported_character_sets) / sizeof(supported_character_sets[0]);
+         ++row_index) {
+        const struct character_set_descriptor *charset = &supported_character_sets[row_index];
+        const char *const values[show_character_set_result_column_count] = {
+            charset->name,
+            charset->description,
+            charset->default_collation,
+            charset->maxlen,
+        };
+
+        if (show_like_filter_matches(&filter, values[0], false)) {
+            rc = mylite_result_append_text_row(result, values);
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+            }
         }
     }
     if (rc != MYLITE_OK) {
@@ -28526,13 +28641,13 @@ static int execute_show_collation_statement(
             set_nomem_error(database);
         }
     }
-    for (size_t row_index = 0U;
-         rc == MYLITE_OK && row_index < sizeof(utf8mb4_collations) / sizeof(utf8mb4_collations[0]);
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < sizeof(supported_collations) /
+                                                                   sizeof(supported_collations[0]);
          ++row_index) {
-        const struct utf8mb4_collation_descriptor *collation = &utf8mb4_collations[row_index];
+        const struct collation_descriptor *collation = &supported_collations[row_index];
         const char *const values[show_collation_result_column_count] = {
             collation->name,
-            "utf8mb4",
+            collation->character_set,
             collation->id,
             collation->is_default,
             collation->compiled,
@@ -37281,7 +37396,7 @@ static int apply_table_collation_option(
     size_t default_collation_size
 ) {
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    const struct utf8mb4_collation_descriptor *collation = NULL;
+    const struct collation_descriptor *collation = NULL;
     int rc = MYLITE_OK;
 
     if (collation_option == NULL ||
@@ -37474,17 +37589,32 @@ static int append_decoded_table_option_name_escape(
     }
 }
 
-static const struct utf8mb4_collation_descriptor *utf8mb4_collation_by_name(const char *name) {
+static const struct collation_descriptor *utf8mb4_collation_by_name(const char *name) {
     if (name == NULL) {
         return NULL;
     }
-    for (size_t index = 0U; index < sizeof(utf8mb4_collations) / sizeof(utf8mb4_collations[0]);
+    for (size_t index = 0U; index < sizeof(supported_collations) / sizeof(supported_collations[0]);
          ++index) {
-        if (text_equals_ascii_case_insensitive(name, utf8mb4_collations[index].name)) {
-            return &utf8mb4_collations[index];
+        if (strcmp(supported_collations[index].character_set, "utf8mb4") == 0 &&
+            text_equals_ascii_case_insensitive(name, supported_collations[index].name)) {
+            return &supported_collations[index];
         }
     }
     return NULL;
+}
+
+static bool charset_name_is_binary(const char *name) {
+    if (name == NULL) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(name, "binary");
+}
+
+static bool collation_name_is_binary(const char *name) {
+    if (name == NULL) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(name, "binary");
 }
 
 static bool charset_name_is_known_non_utf8mb4(const char *name) {
@@ -45740,12 +45870,18 @@ static int complete_alter_table_modify_column_plan(
         &out_plan->original_column,
         &out_plan->column
     );
+    bool supports_binary_string_replacement = modify_column_binary_string_replacement_supported(
+        &out_plan->original_column,
+        &out_plan->column
+    );
     bool supports_temporal_replacement =
         modify_column_temporal_replacement_supported(&out_plan->original_column, &out_plan->column);
     int rc = MYLITE_OK;
 
-    if (!supports_char_varchar_replacement && !supports_temporal_replacement &&
+    if (!supports_char_varchar_replacement && !supports_binary_string_replacement &&
+        !supports_temporal_replacement &&
         (column_descriptor_is_string_family(&out_plan->original_column) ||
+         column_descriptor_is_binary_string_family(&out_plan->original_column) ||
          column_descriptor_is_json(&out_plan->original_column) ||
          column_descriptor_is_bit(&out_plan->original_column) ||
          column_descriptor_is_decimal(&out_plan->original_column) ||
@@ -45758,6 +45894,7 @@ static int complete_alter_table_modify_column_plan(
          column_descriptor_is_enum(&out_plan->original_column) ||
          column_descriptor_is_set(&out_plan->original_column) ||
          planned_column_is_string_family(&out_plan->column) ||
+         planned_column_is_binary_string_family(&out_plan->column) ||
          planned_column_is_json(&out_plan->column) || planned_column_is_bit(&out_plan->column) ||
          planned_column_is_enum(&out_plan->column) || planned_column_is_set(&out_plan->column) ||
          planned_column_is_decimal(&out_plan->column) ||
@@ -46099,6 +46236,17 @@ static int validate_modify_column_existing_rows(
                 row_number,
                 plan->integer_support_message
             );
+        } else if (
+            column_descriptor_is_binary_string_family(&target_column) &&
+            (sqlite_type == SQLITE_TEXT || sqlite_type == SQLITE_BLOB)
+        ) {
+            rc = validate_existing_binary_bytes_for_column(
+                database,
+                sqlite3_column_blob(statement, 0),
+                sqlite3_column_bytes(statement, 0),
+                &target_column,
+                row_number
+            );
         } else if (sqlite_type == SQLITE_TEXT) {
             rc = validate_existing_text_for_column(
                 database,
@@ -46214,6 +46362,36 @@ static int validate_existing_text_for_column(
     return MYLITE_ERROR;
 }
 
+static int validate_existing_binary_bytes_for_column(
+    struct mylite_db *database,
+    const void *bytes,
+    int byte_count,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    char *copy = NULL;
+    size_t copy_length = 0U;
+    int rc = MYLITE_OK;
+
+    if ((bytes == NULL && byte_count != 0) || byte_count < 0) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    copy_length = (size_t)byte_count;
+    copy = malloc(copy_length + 1U);
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (copy_length != 0U) {
+        memcpy(copy, bytes, copy_length);
+    }
+    copy[copy_length] = '\0';
+    rc = convert_binary_bytes_for_column(database, column, row_number, false, &copy, &copy_length);
+    free(copy);
+    return rc;
+}
+
 static void make_modify_target_descriptor(
     const struct planned_alter_table_modify_column *plan,
     struct mylite_catalog_column_descriptor *out_column
@@ -46280,10 +46458,18 @@ static int execute_physical_alter_table_modify_column(
     sql = NULL;
 
     if (rc == MYLITE_OK) {
-        rc = build_alter_table_modify_copy_sql(plan, temporary_physical_name, &sql);
-    }
-    if (rc == MYLITE_OK) {
-        rc = execute_sqlite_schema_sql(database, sql);
+        if (alter_table_modify_needs_binary_copy_materialization(plan)) {
+            rc = execute_physical_alter_table_modify_copy_rows(
+                database,
+                plan,
+                temporary_physical_name
+            );
+        } else {
+            rc = build_alter_table_modify_copy_sql(plan, temporary_physical_name, &sql);
+            if (rc == MYLITE_OK) {
+                rc = execute_sqlite_schema_sql(database, sql);
+            }
+        }
     }
     free(sql);
     sql = NULL;
@@ -73362,6 +73548,21 @@ static int apply_column_charset_collation_attributes(
             sizeof(collation_name)
         );
     }
+    if (rc == MYLITE_OK && column_charset_collation_requests_binary(
+                               has_charset,
+                               charset_name,
+                               has_collation,
+                               collation_name
+                           )) {
+        return apply_column_binary_charset_collation_attributes(
+            database,
+            column,
+            has_charset,
+            charset_name,
+            has_collation,
+            collation_name
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = validate_table_charset_collation_option_values(
             database,
@@ -73383,8 +73584,7 @@ static int apply_column_charset_collation_attributes(
         );
     }
     if (has_collation) {
-        const struct utf8mb4_collation_descriptor *collation =
-            utf8mb4_collation_by_name(collation_name);
+        const struct collation_descriptor *collation = utf8mb4_collation_by_name(collation_name);
 
         if (collation == NULL) {
             set_unknown_collation_error(database, collation_name);
@@ -73393,6 +73593,173 @@ static int apply_column_charset_collation_attributes(
         snprintf(column->collation_name, sizeof(column->collation_name), "%s", collation->name);
     }
 
+    return MYLITE_OK;
+}
+
+static bool column_charset_collation_requests_binary(
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+) {
+    return ((has_charset && charset_name_is_binary(charset_name)) ||
+            (has_collation && collation_name_is_binary(collation_name))) != 0;
+}
+
+static int apply_column_binary_charset_collation_attributes(
+    struct mylite_db *database,
+    struct planned_column *column,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+) {
+    int rc = validate_column_binary_charset_collation_attributes(
+        database,
+        has_charset,
+        charset_name,
+        has_collation,
+        collation_name
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = normalize_column_to_binary_string_descriptor(database, column);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    column->character_set_name[0] = '\0';
+    column->collation_name[0] = '\0';
+    return MYLITE_OK;
+}
+
+static int validate_column_binary_charset_collation_attributes(
+    struct mylite_db *database,
+    bool has_charset,
+    const char *charset_name,
+    bool has_collation,
+    const char *collation_name
+) {
+    bool charset_is_binary = false;
+    bool charset_is_utf8mb4 = false;
+    bool charset_is_known_non_utf8mb4 = false;
+    bool collation_is_binary = false;
+    bool collation_is_utf8mb4 = false;
+    bool collation_is_known_non_utf8mb4 = false;
+
+    if (has_charset) {
+        charset_is_binary = charset_name_is_binary(charset_name);
+        charset_is_utf8mb4 = text_equals_ascii_case_insensitive(charset_name, "utf8mb4");
+        charset_is_known_non_utf8mb4 = charset_name_is_known_non_utf8mb4(charset_name);
+    }
+    if (has_collation) {
+        collation_is_binary = collation_name_is_binary(collation_name);
+        collation_is_utf8mb4 = utf8mb4_collation_by_name(collation_name) != NULL;
+        collation_is_known_non_utf8mb4 = collation_name_is_known_non_utf8mb4(collation_name);
+    }
+
+    if (has_charset && !charset_is_binary && !charset_is_utf8mb4 && !charset_is_known_non_utf8mb4) {
+        set_unknown_character_set_error(database, charset_name);
+        return MYLITE_ERROR;
+    }
+    if (has_collation && !collation_is_binary && !collation_is_utf8mb4 &&
+        !collation_is_known_non_utf8mb4) {
+        set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+    if (has_charset && has_collation && charset_is_binary != collation_is_binary) {
+        set_collation_not_valid_for_charset_error(database, collation_name, charset_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int normalize_column_to_binary_string_descriptor(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    static const char unsupported_message[] =
+        "column binary charset supports only baseline CHAR, VARCHAR, and TEXT descriptors";
+    size_t length = 0U;
+    int rc = MYLITE_OK;
+
+    if (planned_column_is_char(column)) {
+        rc = parse_char_descriptor_length(
+            database,
+            column->logical_type,
+            unsupported_message,
+            &length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return assign_binary_descriptor_type(
+            database,
+            column,
+            "BINARY(%" PRIu64 ")",
+            (uint64_t)length
+        );
+    }
+    if (planned_column_is_varchar(column)) {
+        rc = parse_varchar_descriptor_length(
+            database,
+            column->logical_type,
+            unsupported_message,
+            &length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return assign_binary_descriptor_type(
+            database,
+            column,
+            "VARBINARY(%" PRIu64 ")",
+            (uint64_t)length
+        );
+    }
+    if (planned_column_is_text_family(column)) {
+        return normalize_column_to_binary_text_descriptor(database, column);
+    }
+
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
+}
+
+static int normalize_column_to_binary_text_descriptor(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    const char *logical_type = NULL;
+
+    if (strcmp(column->logical_type, "TINYTEXT") == 0) {
+        logical_type = "TINYBLOB";
+    } else if (strcmp(column->logical_type, "TEXT") == 0) {
+        logical_type = "BLOB";
+    } else if (strcmp(column->logical_type, "MEDIUMTEXT") == 0) {
+        logical_type = "MEDIUMBLOB";
+    } else if (strcmp(column->logical_type, "LONGTEXT") == 0) {
+        logical_type = "LONGBLOB";
+    }
+    if (logical_type == NULL) {
+        set_unsupported_error(
+            database,
+            "column binary charset supports only baseline TEXT descriptors"
+        );
+        return MYLITE_ERROR;
+    }
+
+    snprintf(
+        column->logical_type_storage,
+        sizeof(column->logical_type_storage),
+        "%s",
+        logical_type
+    );
+    snprintf(column->physical_type_storage, sizeof(column->physical_type_storage), "BLOB");
+    column->logical_type = column->logical_type_storage;
+    column->physical_type = column->physical_type_storage;
     return MYLITE_OK;
 }
 
@@ -77749,6 +78116,16 @@ static bool modify_column_char_varchar_replacement_supported(
 ) {
     return (column_descriptor_is_char_or_varchar(original_column) &&
             planned_column_is_char_or_varchar(replacement_column)) != 0;
+}
+
+static bool modify_column_binary_string_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    bool original_is_string = (column_descriptor_is_string_family(original_column) ||
+                               column_descriptor_is_binary_string_family(original_column)) != 0;
+
+    return (original_is_string && planned_column_is_binary_string_family(replacement_column)) != 0;
 }
 
 static bool modify_column_temporal_replacement_supported(
@@ -87583,7 +87960,7 @@ static bool column_effective_collation_is_binary(
 }
 
 static uint32_t result_metadata_utf8mb4_collation_id(const char *collation_name) {
-    const struct utf8mb4_collation_descriptor *collation = NULL;
+    const struct collation_descriptor *collation = NULL;
     struct mylite_sql_source_span id_span = {0};
     uint64_t id = 0U;
 
@@ -94408,6 +94785,291 @@ static int build_alter_table_modify_copy_sql(
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static bool alter_table_modify_needs_binary_copy_materialization(
+    const struct planned_alter_table_modify_column *plan
+) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+
+        if (column->column_id == plan->original_column.column_id &&
+            column_descriptor_is_binary_string_family(column)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static int execute_physical_alter_table_modify_copy_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name
+) {
+    struct alter_table_modify_copy_statements statements = {0};
+    struct planned_value *values = NULL;
+    char *select_sql = NULL;
+    char *insert_sql = NULL;
+    size_t row_number = 0U;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    if (plan->column_count > (size_t)INT_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(plan->column_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = build_alter_table_modify_select_sql(plan, &select_sql);
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_modify_insert_sql(plan, temporary_physical_name, &insert_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, select_sql, &statements.select_statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, insert_sql, &statements.insert_statement);
+    }
+    while (rc == MYLITE_OK &&
+           (sqlite_rc = sqlite3_step(statements.select_statement)) == SQLITE_ROW) {
+        if (row_number >= (size_t)INT64_MAX) {
+            set_runtime_error(database, plan->row_count_overflow_message);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        ++row_number;
+        rc = execute_alter_table_modify_copy_row(database, &statements, plan, row_number, values);
+        deinit_alter_table_modify_copy_row(values, plan->column_count);
+    }
+    if (rc == MYLITE_OK && sqlite_rc != SQLITE_DONE) {
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    deinit_alter_table_modify_copy_row(values, plan->column_count);
+    rc = finalize_sqlite_statement(statements.insert_statement, rc);
+    statements.insert_statement = NULL;
+    rc = finalize_sqlite_statement(statements.select_statement, rc);
+    free(values);
+    free(select_sql);
+    free(insert_sql);
+    return rc;
+}
+
+static int build_alter_table_modify_select_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const char *source_name = plan->columns[column_index].name;
+
+        if (plan->columns[column_index].column_id == plan->original_column.column_id) {
+            source_name = plan->original_column.name;
+        }
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, source_name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ORDER BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_alter_table_modify_insert_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, temporary_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") VALUES (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_parameters(&string, plan->column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int execute_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    struct alter_table_modify_copy_statements *statements,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+) {
+    int sqlite_rc = SQLITE_OK;
+    int rc = materialize_alter_table_modify_copy_row(
+        database,
+        statements->select_statement,
+        plan,
+        row_number,
+        values
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = bind_alter_table_modify_copy_row(statements->insert_statement, plan, values);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    sqlite_rc = sqlite3_step(statements->insert_statement);
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    sqlite_rc = sqlite3_reset(statements->insert_statement);
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    sqlite_rc = sqlite3_clear_bindings(statements->insert_statement);
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int materialize_alter_table_modify_copy_row(
+    struct mylite_db *database,
+    sqlite3_stmt *select_statement,
+    const struct planned_alter_table_modify_column *plan,
+    size_t row_number,
+    struct planned_value *values
+) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+        int rc = MYLITE_OK;
+
+        if (column_index > (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        if (column->column_id == plan->original_column.column_id &&
+            column_descriptor_is_binary_string_family(column)) {
+            if (sqlite3_column_type(select_statement, (int)column_index) == SQLITE_NULL) {
+                values[column_index] = (struct planned_value){.is_null = true};
+            } else {
+                rc = materialize_sqlite_binary_string_value(
+                    database,
+                    select_statement,
+                    (int)column_index,
+                    column,
+                    row_number,
+                    &values[column_index]
+                );
+            }
+        } else {
+            rc = materialize_insert_select_raw_value(
+                database,
+                select_statement,
+                (int)column_index,
+                &values[column_index]
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_alter_table_modify_copy_row(
+    sqlite3_stmt *insert_statement,
+    const struct planned_alter_table_modify_column *plan,
+    const struct planned_value *values
+) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        int rc = MYLITE_OK;
+
+        if (column_index >= (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        rc = bind_planned_value_parameter(
+            insert_statement,
+            (int)column_index + 1,
+            &values[column_index]
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static void deinit_alter_table_modify_copy_row(struct planned_value *values, size_t column_count) {
+    if (values == NULL) {
+        return;
+    }
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        planned_value_deinit(&values[column_index]);
+    }
 }
 
 static int build_alter_table_modify_indexes_sql(

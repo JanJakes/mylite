@@ -43,6 +43,24 @@ static const char *const character_set_row[character_set_column_count] = {
     "4",
 };
 
+static const char *const character_set_binary_row[character_set_column_count] = {
+    "binary",
+    "Binary pseudo charset",
+    "binary",
+    "1",
+};
+
+static const char *const character_set_rows[] = {
+    "binary",
+    "Binary pseudo charset",
+    "binary",
+    "1",
+    "utf8mb4",
+    "UTF-8 Unicode",
+    "utf8mb4_0900_ai_ci",
+    "4",
+};
+
 static const char *const collation_columns[collation_column_count] = {
     "Collation",
     "Charset",
@@ -54,6 +72,13 @@ static const char *const collation_columns[collation_column_count] = {
 };
 
 static const char *const collation_rows[] = {
+    "binary",
+    "binary",
+    "63",
+    "Yes",
+    "Yes",
+    "1",
+    "NO PAD",
     "utf8mb4_general_ci",
     "utf8mb4",
     "45",
@@ -93,6 +118,16 @@ static const char *const collation_rows[] = {
     "utf8mb4",
     "309",
     "",
+    "Yes",
+    "1",
+    "NO PAD",
+};
+
+static const char *const collation_binary_row[collation_column_count] = {
+    "binary",
+    "binary",
+    "63",
+    "Yes",
     "Yes",
     "1",
     "NO PAD",
@@ -183,9 +218,18 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_row,
-        1U,
+        character_set_rows,
+        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
         "show character set"
+    );
+    failures += expect_result(
+        database,
+        "SHOW CHARACTER SET LIKE 'BINARY'",
+        character_set_columns,
+        character_set_column_count,
+        character_set_binary_row,
+        1U,
+        "show binary character set uppercase like"
     );
     failures += expect_result(
         database,
@@ -231,6 +275,15 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         collation_rows,
         sizeof(collation_rows) / sizeof(collation_rows[0]) / collation_column_count,
         "show collation"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION LIKE 'BINARY'",
+        collation_columns,
+        collation_column_count,
+        collation_binary_row,
+        1U,
+        "show binary collation uppercase like"
     );
     failures += expect_result(
         database,
@@ -304,8 +357,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_row,
-        1U,
+        character_set_rows,
+        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
         "show character set without schema"
     );
     failures += execute_statement_ok(database, "CREATE DATABASE app");
@@ -322,8 +375,8 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
         "SHOW CHARACTER SET",
         character_set_columns,
         character_set_column_count,
-        character_set_row,
-        1U,
+        character_set_rows,
+        sizeof(character_set_rows) / sizeof(character_set_rows[0]) / character_set_column_count,
         "show character set with selected schema"
     );
     failures += expect_result(

@@ -50,6 +50,7 @@ struct expected_query {
 };
 
 static int test_add_column_success_descriptor_persistence_and_dml(void);
+static int test_add_column_positioning(void);
 static int test_add_column_diagnostics(void);
 static int test_add_column_physical_failure_preserves_catalog(void);
 static int test_add_column_independent_handles(void);
@@ -98,6 +99,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_add_column_success_descriptor_persistence_and_dml();
+    failures += test_add_column_positioning();
     failures += test_add_column_diagnostics();
     failures += test_add_column_physical_failure_preserves_catalog();
     failures += test_add_column_independent_handles();
@@ -478,7 +480,349 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     return failures;
 }
 
+static int test_add_column_positioning(void) {
+    static const char *const first_rows[] = {"0", "1", "10", "0", "2", NULL};
+    static const char *const positioned_rows[] = {
+        "0",
+        "1",
+        NULL,
+        "10",
+        "0",
+        "2",
+        NULL,
+        NULL,
+    };
+    static const char *const inserted_rows[] = {
+        "0",
+        "1",
+        "5",
+        "10",
+        "0",
+        "2",
+        NULL,
+        NULL,
+        "8",
+        "3",
+        "9",
+        "30",
+    };
+    static const char *const show_columns_rows[] = {
+        "first_col", "int", "NO",  "", NULL, "", "id",   "int", "NO",  "", NULL, "",
+        "after_id",  "int", "YES", "", NULL, "", "tail", "int", "YES", "", NULL, "",
+    };
+    static const char *const show_create_rows[] = {
+        "positioned",
+        "CREATE TABLE `positioned` (\n"
+        "  `first_col` int NOT NULL,\n"
+        "  `id` int NOT NULL,\n"
+        "  `after_id` int DEFAULT NULL,\n"
+        "  `tail` int DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_rows[] = {
+        "first_col",
+        "1",
+        "id",
+        "2",
+        "after_id",
+        "3",
+        "tail",
+        "4",
+    };
+    static const char *const after_last_rows[] = {"1", "2", NULL};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor before_table = {0};
+    struct mylite_catalog_table_descriptor after_first = {0};
+    struct mylite_catalog_table_descriptor after_positioned = {0};
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation_before = 0U;
+    uint64_t sqlite_generation_before = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "positioning") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open positioning database");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE positioned (id INT NOT NULL, tail INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO positioned VALUES (1, 10), (2, NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read positioning schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "positioned", &before_table),
+        MYLITE_OK,
+        "read positioned table before add"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        catalog_generation_before = catalog->generation;
+    }
+    if (session != NULL) {
+        sqlite_generation_before = session->sqlite_schema_generation;
+    }
+
+    failures += execute_ok(
+        database,
+        "ALTER TABLE positioned ADD COLUMN first_col INT NOT NULL FIRST",
+        &result
+    );
+    failures += expect_ddl_result(result, "first-position add result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "positioned", &after_first),
+        MYLITE_OK,
+        "read positioned table after first add"
+    );
+    failures += expect_uint64(
+        after_first.descriptor_version,
+        before_table.descriptor_version + 1U,
+        "first-position add bumps table descriptor version"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before + 1U,
+            "first-position add bumps catalog generation"
+        );
+        catalog_generation_before = catalog->generation;
+    }
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before + 1U,
+            "first-position add bumps SQLite schema generation"
+        );
+        sqlite_generation_before = session->sqlite_schema_generation;
+    }
+    failures += expect_column_descriptor(
+        database,
+        before_table.table_id,
+        "first_col",
+        1,
+        "INT",
+        false,
+        "first-position added column descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        before_table.table_id,
+        "id",
+        2,
+        "INT",
+        false,
+        "first-position shifted id descriptor"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM positioned ORDER BY id",
+            .values = first_rows,
+            .row_count = 2U,
+            .column_count = 3U,
+            .context = "select star after first-position add",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "ALTER TABLE positioned ADD COLUMN after_id INT AFTER id", &result);
+    failures += expect_ddl_result(result, "after-position add result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(
+            database,
+            schema.schema_id,
+            "positioned",
+            &after_positioned
+        ),
+        MYLITE_OK,
+        "read positioned table after after add"
+    );
+    failures += expect_uint64(
+        after_positioned.descriptor_version,
+        after_first.descriptor_version + 1U,
+        "after-position add bumps table descriptor version"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before + 1U,
+            "after-position add bumps catalog generation"
+        );
+    }
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before + 1U,
+            "after-position add bumps SQLite schema generation"
+        );
+    }
+    failures += expect_column_descriptor(
+        database,
+        before_table.table_id,
+        "after_id",
+        3,
+        "INT",
+        true,
+        "after-position added column descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        before_table.table_id,
+        "tail",
+        4,
+        "INT",
+        true,
+        "after-position shifted tail descriptor"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM positioned ORDER BY id",
+            .values = positioned_rows,
+            .row_count = 2U,
+            .column_count = 4U,
+            .context = "select star after after-position add",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM positioned",
+            .values = show_columns_rows,
+            .row_count = 4U,
+            .column_count = show_columns_column_count,
+            .context = "show columns after positioned add",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE positioned",
+            .values = show_create_rows,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "show create table after positioned add",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'positioned' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .row_count = 4U,
+            .column_count = 2U,
+            .context = "information schema after positioned add",
+        }
+    );
+
+    failures += execute_ok(database, "UPDATE positioned SET after_id = 5 WHERE id = 1", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "update positioned column");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO positioned VALUES (8, 3, 9, 30)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "insert positioned row value");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM positioned ORDER BY id",
+            .values = inserted_rows,
+            .row_count = 3U,
+            .column_count = 4U,
+            .context = "row-value insert after positioned add",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE after_last (id INT NOT NULL, tail INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO after_last VALUES (1, 2)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "ALTER TABLE after_last ADD COLUMN added INT AFTER tail", &result);
+    failures += expect_ddl_result(result, "after-last add result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM after_last",
+            .values = after_last_rows,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "after-last positioned add",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen positioning database");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM positioned ORDER BY id",
+            .values = inserted_rows,
+            .row_count = 3U,
+            .column_count = 4U,
+            .context = "reopen preserves positioned add order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'positioned' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .row_count = 4U,
+            .column_count = 2U,
+            .context = "reopen information schema after positioned add",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_add_column_diagnostics(void) {
+    static const char *const qualified_rows[] = {"0", "1", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -502,6 +846,31 @@ static int test_add_column_diagnostics(void) {
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE app.qualified (id INT NOT NULL, tail INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO app.qualified VALUES (1, 2)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "ALTER TABLE app.qualified ADD COLUMN first_col INT NOT NULL FIRST",
+        &result
+    );
+    failures += expect_ddl_result(result, "qualified positioned add without selected schema");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT * FROM app.qualified",
+            .values = qualified_rows,
+            .row_count = 1U,
+            .column_count = 3U,
+            .context = "qualified positioned add rows",
+        }
+    );
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
@@ -538,6 +907,15 @@ static int test_add_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "ALTER TABLE numbers ADD COLUMN id INT FIRST",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_column,
+            .sqlstate = "42S21",
+            .message_part = "Duplicate column name 'id'",
+        }
+    );
+    failures += execute_error(
+        database,
         "ALTER TABLE _mylite_private ADD COLUMN added INT",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
@@ -565,20 +943,29 @@ static int test_add_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers ADD COLUMN added INT FIRST",
+        "ALTER TABLE numbers ADD COLUMN added INT AFTER missing",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'numbers'",
         }
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers ADD COLUMN added INT AFTER id",
+        "ALTER TABLE numbers ADD COLUMN self_ref INT AFTER self_ref",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'self_ref' in 'numbers'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ADD COLUMN added INT AFTER _mylite_private",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_column_name,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "Incorrect column name '_mylite_private'",
         }
     );
     failures += execute_error(
@@ -678,7 +1065,7 @@ static int test_add_column_physical_failure_preserves_catalog(void) {
 
     failures += execute_error(
         database,
-        "ALTER TABLE broken ADD COLUMN added INT",
+        "ALTER TABLE broken ADD COLUMN added INT FIRST",
         (struct expected_sql_error){
             .code = mysql_error_unknown,
             .sqlstate = "HY000",
@@ -715,6 +1102,15 @@ static int test_add_column_physical_failure_preserves_catalog(void) {
         mylite_catalog_read_column_by_name(database, before_table.table_id, "added", &column),
         MYLITE_ERROR,
         "physical failure does not add column descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        before_table.table_id,
+        "id",
+        1,
+        "INT",
+        false,
+        "physical failure preserves original column ordinal"
     );
 
     mylite_close(database);

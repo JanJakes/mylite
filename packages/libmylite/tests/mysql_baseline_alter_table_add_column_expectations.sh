@@ -227,14 +227,6 @@ expect_upstream_accepts \
     "ALTER TABLE types ADD COLUMN defaulted INT DEFAULT 5;" \
     "$DATABASE"
 expect_upstream_accepts \
-    "first positioning accepted upstream outside mylite slice" \
-    "ALTER TABLE types ADD COLUMN first_col INT FIRST;" \
-    "$DATABASE"
-expect_upstream_accepts \
-    "after positioning accepted upstream outside mylite slice" \
-    "ALTER TABLE types ADD COLUMN after_col INT AFTER id;" \
-    "$DATABASE"
-expect_upstream_accepts \
     "parenthesized add list accepted upstream outside mylite slice" \
     "ALTER TABLE types ADD (parenthesized_col INT);" \
     "$DATABASE"

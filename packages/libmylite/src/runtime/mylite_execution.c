@@ -1670,7 +1670,11 @@ struct planned_alter_table_add_column {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct planned_column column;
-    int64_t ordinal_position;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+    size_t target_column_index;
+    bool changes_position;
+    char after_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
 struct planned_alter_table_add_primary_key {
@@ -8310,14 +8314,26 @@ static int plan_alter_table_add_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_column *out_plan
 );
+static int plan_alter_table_add_column_position(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_add_column *out_plan
+);
 static int reject_nonempty_temporal_add_column_without_default(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
     const struct planned_column *column
 );
+static void planned_alter_table_add_column_deinit(struct planned_alter_table_add_column *plan);
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
+);
+static int reorder_catalog_columns_after_add(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan,
+    const struct mylite_catalog_column_descriptor *inserted_column
 );
 static int plan_alter_table_add_primary_key(
     struct mylite_db *database,
@@ -22757,10 +22773,12 @@ static int execute_alter_table_add_column_statement(
         rc = alter_table_add_column_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
+        planned_alter_table_add_column_deinit(&plan);
         mylite_result_free(result);
         return rc;
     }
 
+    planned_alter_table_add_column_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -39579,12 +39597,75 @@ static int plan_alter_table_add_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        out_plan->ordinal_position = (int64_t)column_count + 1;
+        out_plan->columns = columns;
+        out_plan->column_count = column_count;
+        columns = NULL;
+        rc = plan_alter_table_add_column_position(database, child_at(statement, 2U), out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_add_column_deinit(out_plan);
     }
 
     free(columns);
 
     return rc;
+}
+
+static int plan_alter_table_add_column_position(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_add_column *out_plan
+) {
+    size_t after_column_index = 0U;
+    int rc = MYLITE_OK;
+
+    out_plan->target_column_index = out_plan->column_count;
+    if (position == NULL) {
+        return MYLITE_OK;
+    }
+
+    if (position->kind == MYLITE_SQL_AST_COLUMN_POSITION_FIRST) {
+        out_plan->target_column_index = 0U;
+        out_plan->changes_position = out_plan->target_column_index != out_plan->column_count;
+        return MYLITE_OK;
+    }
+    if (position->kind != MYLITE_SQL_AST_COLUMN_POSITION_AFTER) {
+        set_runtime_error(database, "invalid ALTER TABLE ADD COLUMN position");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(
+        child_at(position, 0U),
+        out_plan->after_column_name,
+        sizeof(out_plan->after_column_name),
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_catalog_name_is_reserved(out_plan->after_column_name)) {
+        set_reserved_name_error(database, "column", out_plan->after_column_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = find_column_index(
+        out_plan->columns,
+        out_plan->column_count,
+        out_plan->after_column_name,
+        &after_column_index
+    );
+    if (rc != MYLITE_OK) {
+        set_unknown_column_in_table_error(
+            database,
+            out_plan->after_column_name,
+            out_plan->table.name
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_plan->target_column_index = after_column_index + 1U;
+    out_plan->changes_position = out_plan->target_column_index != out_plan->column_count;
+    return MYLITE_OK;
 }
 
 static int reject_nonempty_temporal_add_column_without_default(
@@ -39614,11 +39695,21 @@ static int reject_nonempty_temporal_add_column_without_default(
     return MYLITE_ERROR;
 }
 
+static void planned_alter_table_add_column_deinit(struct planned_alter_table_add_column *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->columns);
+    *plan = (struct planned_alter_table_add_column){0};
+}
+
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    struct mylite_catalog_column_descriptor inserted_column = {0};
     int rc = mylite_catalog_begin_mutation(database, &mutation);
 
     if (rc == MYLITE_OK) {
@@ -39626,7 +39717,7 @@ static int alter_table_add_column_from_plan(
             database,
             &mutation,
             plan->table.table_id,
-            plan->ordinal_position,
+            (int64_t)plan->column_count + 1,
             plan->column.name,
             plan->column.logical_type,
             plan->column.physical_type,
@@ -39639,8 +39730,11 @@ static int alter_table_add_column_from_plan(
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
             plan->column.collation_name,
-            NULL
+            &inserted_column
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = reorder_catalog_columns_after_add(database, &mutation, plan, &inserted_column);
     }
     if (rc == MYLITE_OK) {
         rc = execute_physical_alter_table_add_column(database, plan);
@@ -39667,6 +39761,65 @@ static int alter_table_add_column_from_plan(
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
+}
+
+static int reorder_catalog_columns_after_add(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_column *plan,
+    const struct mylite_catalog_column_descriptor *inserted_column
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t new_column_count = 0U;
+    size_t source_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!plan->changes_position) {
+        return MYLITE_OK;
+    }
+    if (plan->column_count == SIZE_MAX) {
+        set_runtime_error(database, "failed to plan add-column reorder");
+        return MYLITE_ERROR;
+    }
+
+    new_column_count = plan->column_count + 1U;
+    if (inserted_column == NULL || inserted_column->column_id <= 0 ||
+        plan->target_column_index >= new_column_count ||
+        new_column_count > SIZE_MAX / sizeof(*columns)) {
+        set_runtime_error(database, "failed to plan add-column reorder");
+        return MYLITE_ERROR;
+    }
+
+    columns = calloc(new_column_count, sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = 0U; index < new_column_count; ++index) {
+        if (index == plan->target_column_index) {
+            columns[index] = *inserted_column;
+            continue;
+        }
+        if (source_index >= plan->column_count) {
+            free(columns);
+            set_runtime_error(database, "failed to build add-column reorder");
+            return MYLITE_ERROR;
+        }
+        columns[index] = plan->columns[source_index];
+        ++source_index;
+    }
+
+    const struct mylite_catalog_column_reorder reorder = {
+        .table_id = plan->table.table_id,
+        .columns = columns,
+        .column_count = new_column_count,
+        .metadata_replaced_column_id = inserted_column->column_id,
+    };
+
+    rc = mylite_catalog_reorder_columns_in_mutation(database, mutation, &reorder);
+    free(columns);
+    return rc;
 }
 
 static int execute_physical_alter_table_add_column(

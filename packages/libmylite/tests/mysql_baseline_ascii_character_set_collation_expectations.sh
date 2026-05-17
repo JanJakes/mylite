@@ -211,17 +211,17 @@ expect_value \
     "$(run_mysql "USE ${DATABASE}; SHOW FULL COLUMNS FROM explicit_attrs;")"
 
 information_schema_columns_expected=$(cat <<\EXPECTED
-id	int	NULL	NULL	int
-v	varchar	ascii	ascii_general_ci	varchar(10)
-c	char	ascii	ascii_bin	char(5)
-t	text	ascii	ascii_general_ci	text
-vc	varchar	ascii	ascii_bin	varchar(10)
+id	int	NULL	NULL	NULL	NULL	int
+v	varchar	ascii	ascii_general_ci	10	10	varchar(10)
+c	char	ascii	ascii_bin	5	5	char(5)
+t	text	ascii	ascii_general_ci	65535	65535	text
+vc	varchar	ascii	ascii_bin	10	10	varchar(10)
 EXPECTED
 )
 expect_value \
     "information schema explicit columns" \
     "$information_schema_columns_expected" \
-    "$(run_mysql "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='explicit_attrs' ORDER BY ORDINAL_POSITION;")"
+    "$(run_mysql "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_SET_NAME, COLLATION_NAME, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='explicit_attrs' ORDER BY ORDINAL_POSITION;")"
 
 expect_error \
     "ascii charset utf8mb4 collation mismatch" \

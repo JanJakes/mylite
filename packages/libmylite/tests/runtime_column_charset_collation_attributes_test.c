@@ -19,6 +19,12 @@ enum {
     query_capacity = 512,
     attrs_column_count = 6,
     altered_attrs_column_count = 7,
+    ascii_attrs_column_count = 5,
+    ascii_attrs_length_projection_count = 3,
+    ascii_result_column_count = 4,
+    ascii_varchar_display_length = 10,
+    ascii_char_display_length = 5,
+    ascii_text_display_length = 65535,
     binary_attrs_column_count = 9,
     binary_attrs_projection_count = 7,
     binary_alter_projection_count = 8,
@@ -27,6 +33,8 @@ enum {
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_unknown_collation = 1273,
     mysql_collation_binary_id = 63,
+    mysql_collation_ascii_general_ci_id = 11,
+    mysql_collation_ascii_bin_id = 65,
     mysql_collation_utf8mb4_bin_id = 46,
     mysql_collation_utf8mb4_unicode_ci_id = 224,
     mysql_collation_utf8mb4_unicode_520_ci_id = 246,
@@ -50,6 +58,7 @@ struct expected_query {
 
 static int test_column_charset_collation_metadata_lifecycle(void);
 static int test_binary_column_charset_collation_normalization(void);
+static int test_ascii_column_charset_collation_metadata(void);
 static int test_column_charset_collation_diagnostics(void);
 static int expect_column_character_metadata(
     mylite_db *database,
@@ -59,6 +68,7 @@ static int expect_column_character_metadata(
     const char *context
 );
 static int expect_result_metadata(mylite_db *database);
+static int expect_ascii_result_metadata(mylite_db *database);
 static int expect_binary_result_metadata(mylite_db *database);
 static int expect_query_result(mylite_db *database, struct expected_query expected);
 static int expect_show_create_contains(mylite_db *database, const char *sql, const char *needle);
@@ -90,6 +100,7 @@ int main(void) {
 
     failures += test_column_charset_collation_metadata_lifecycle();
     failures += test_binary_column_charset_collation_normalization();
+    failures += test_ascii_column_charset_collation_metadata();
     failures += test_column_charset_collation_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -482,6 +493,156 @@ static int test_binary_column_charset_collation_normalization(void) {
     return failures;
 }
 
+static int test_ascii_column_charset_collation_metadata(void) {
+    static const char *const ascii_metadata[] = {
+        "id",
+        NULL,
+        NULL,
+        "v",
+        "ascii",
+        "ascii_general_ci",
+        "c",
+        "ascii",
+        "ascii_bin",
+        "t",
+        "ascii",
+        "ascii_general_ci",
+        "vc",
+        "ascii",
+        "ascii_bin",
+    };
+    static const char *const ascii_lengths[] = {
+        "id",
+        NULL,
+        NULL,
+        "v",
+        "10",
+        "10",
+        "c",
+        "5",
+        "5",
+        "t",
+        "65535",
+        "65535",
+        "vc",
+        "10",
+        "10",
+    };
+    static const char *const ascii_values[] = {"A", "B", "text", "bin"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "ascii") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open ascii charset file");
+    failures += execute_affected_ok(database, "CREATE DATABASE app", 1);
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ascii_attrs("
+        "id INT, "
+        "v VARCHAR(10) CHARACTER SET ascii, "
+        "c CHAR(5) CHARACTER SET ascii COLLATE ascii_bin, "
+        "t TEXT COLLATE ascii_general_ci, "
+        "vc VARCHAR(10) COLLATE ascii_bin)"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_attrs",
+        "`v` varchar(10) CHARACTER SET ascii COLLATE ascii_general_ci"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_attrs",
+        "`c` char(5) CHARACTER SET ascii COLLATE ascii_bin"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_attrs",
+        "`t` text CHARACTER SET ascii COLLATE ascii_general_ci"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ascii_attrs",
+        "`vc` varchar(10) CHARACTER SET ascii COLLATE ascii_bin"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "ascii_attrs",
+        ascii_metadata,
+        ascii_attrs_column_count,
+        "ascii column charset metadata"
+    );
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'ascii_attrs' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = ascii_lengths,
+            .column_count = ascii_attrs_length_projection_count,
+            .row_count = ascii_attrs_column_count,
+            .context = "ascii column character lengths",
+        }
+    );
+    failures += expect_ascii_result_metadata(database);
+    failures += execute_statement_ok(database, "CREATE TABLE like_ascii LIKE ascii_attrs");
+    failures += expect_column_character_metadata(
+        database,
+        "like_ascii",
+        ascii_metadata,
+        ascii_attrs_column_count,
+        "ascii like column charset metadata"
+    );
+    failures += execute_affected_ok(
+        database,
+        "INSERT INTO ascii_attrs VALUES(1, 'a', 'B', 'text', 'bin')",
+        1
+    );
+    failures += execute_affected_ok(database, "UPDATE ascii_attrs SET v = 'A' WHERE id = 1", 1);
+    failures += expect_query_result(
+        database,
+        (struct expected_query){
+            .sql = "SELECT v, c, t, vc FROM ascii_attrs",
+            .values = ascii_values,
+            .column_count = ascii_result_column_count,
+            .row_count = 1U,
+            .context = "ascii charset DML values",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "ascii charset file preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen ascii charset file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_column_character_metadata(
+        database,
+        "ascii_attrs",
+        ascii_metadata,
+        ascii_attrs_column_count,
+        "reopened ascii column charset metadata"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_column_charset_collation_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -550,6 +711,24 @@ static int test_column_charset_collation_diagnostics(void) {
             mysql_error_collation_not_valid_for_character_set,
             "42000",
             "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'binary'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_ascii_utf8(v VARCHAR(10) CHARACTER SET ascii COLLATE utf8mb4_bin)",
+        (struct expected_sql_error){
+            mysql_error_collation_not_valid_for_character_set,
+            "42000",
+            "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'ascii'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_utf8_ascii(v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE ascii_bin)",
+        (struct expected_sql_error){
+            mysql_error_collation_not_valid_for_character_set,
+            "42000",
+            "COLLATION 'ascii_bin' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(
@@ -640,6 +819,89 @@ static int expect_result_metadata(mylite_db *database) {
         failures += expect_true(
             (mylite_result_column_flags(result, 2U) & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
             "0900 binary column metadata flag"
+        );
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_ascii_result_metadata(mylite_db *database) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SELECT v, c, t, vc FROM ascii_attrs LIMIT 0", &result);
+
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            ascii_result_column_count,
+            "ascii metadata column count"
+        );
+        failures += expect_uint32(
+            mylite_result_column_charset_id(result, 0U),
+            mysql_collation_ascii_general_ci_id,
+            "ascii general charset id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_collation_id(result, 0U),
+            mysql_collation_ascii_general_ci_id,
+            "ascii general collation id"
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_display_length(result, 0U),
+            ascii_varchar_display_length,
+            "ascii varchar display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_charset_id(result, 1U),
+            mysql_collation_ascii_bin_id,
+            "ascii binary charset id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_collation_id(result, 1U),
+            mysql_collation_ascii_bin_id,
+            "ascii binary collation id"
+        );
+        failures += expect_true(
+            (mylite_result_column_flags(result, 1U) & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
+            "ascii binary metadata flag"
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_display_length(result, 1U),
+            ascii_char_display_length,
+            "ascii char display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_charset_id(result, 2U),
+            mysql_collation_ascii_general_ci_id,
+            "ascii text charset id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_collation_id(result, 2U),
+            mysql_collation_ascii_general_ci_id,
+            "ascii text collation id"
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_display_length(result, 2U),
+            ascii_text_display_length,
+            "ascii text display length"
+        );
+        failures += expect_uint32(
+            mylite_result_column_charset_id(result, 3U),
+            mysql_collation_ascii_bin_id,
+            "ascii varchar binary charset id"
+        );
+        failures += expect_uint32(
+            mylite_result_column_collation_id(result, 3U),
+            mysql_collation_ascii_bin_id,
+            "ascii varchar binary collation id"
+        );
+        failures += expect_true(
+            (mylite_result_column_flags(result, 3U) & MYLITE_RESULT_COLUMN_FLAG_BINARY) != 0U,
+            "ascii varchar binary metadata flag"
+        );
+        failures += expect_int64(
+            (int64_t)mylite_result_column_display_length(result, 3U),
+            ascii_varchar_display_length,
+            "ascii varchar binary display length"
         );
     }
     mylite_result_free(result);

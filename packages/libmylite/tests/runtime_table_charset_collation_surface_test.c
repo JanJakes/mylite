@@ -285,6 +285,42 @@ static int test_charset_collation_create_forms_persistence_and_preamble(void) {
         );
         failures += expect_show_create_single_int(database, forms[form_index]);
     }
+    failures += execute_create_table_ok(
+        database,
+        (struct create_table_statement){
+            .sql = "CREATE TABLE ascii_charset (id INT) DEFAULT CHARSET=ascii",
+            .context = "ascii default charset",
+        }
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE ascii_charset",
+            .table_name = "ascii_charset",
+            .create_sql = "CREATE TABLE `ascii_charset` (\n"
+                          "  `id` int DEFAULT NULL\n"
+                          ") ENGINE=InnoDB DEFAULT CHARSET=ascii",
+            .context = "ascii default charset show create",
+        }
+    );
+    failures += execute_create_table_ok(
+        database,
+        (struct create_table_statement){
+            .sql = "CREATE TABLE ascii_collate (id INT) DEFAULT COLLATE=ascii_bin",
+            .context = "ascii default collate",
+        }
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE ascii_collate",
+            .table_name = "ascii_collate",
+            .create_sql = "CREATE TABLE `ascii_collate` (\n"
+                          "  `id` int DEFAULT NULL\n"
+                          ") ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_bin",
+            .context = "ascii default collate show create",
+        }
+    );
     failures += expect_single_row_result(
         database,
         "SELECT TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES "
@@ -766,6 +802,24 @@ static int test_charset_collation_diagnostics(void) {
             .code = mysql_error_collation_not_valid_for_character_set,
             .sqlstate = "42000",
             .message_part = "COLLATION 'binary' is not valid for CHARACTER SET 'utf8mb4'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE ascii_utf8_mismatch (id INT) DEFAULT CHARSET=ascii COLLATE=utf8mb4_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'ascii'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE utf8_ascii_mismatch (id INT) DEFAULT CHARSET=utf8mb4 COLLATE=ascii_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'ascii_bin' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(

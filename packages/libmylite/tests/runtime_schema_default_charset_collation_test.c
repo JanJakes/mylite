@@ -308,7 +308,7 @@ static int test_binary_defaults_and_independent_handles(void) {
     failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
     failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
     failures += execute_statement_ok(first, "CREATE DATABASE app DEFAULT CHARSET=binary");
-    failures += execute_statement_ok(second, "CREATE DATABASE app DEFAULT CHARSET=utf8mb4");
+    failures += execute_statement_ok(second, "CREATE DATABASE app DEFAULT CHARSET=ascii");
 
     failures += expect_result_contains(
         first,
@@ -331,8 +331,8 @@ static int test_binary_defaults_and_independent_handles(void) {
         "SHOW CREATE DATABASE app",
         0U,
         1U,
-        "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
-        "second handle default schema show create"
+        "DEFAULT CHARACTER SET ascii",
+        "ascii schema show create"
     );
 
     failures += execute_statement_ok(first, "USE app");
@@ -352,6 +352,16 @@ static int test_binary_defaults_and_independent_handles(void) {
         1U,
         "DEFAULT CHARSET=binary",
         "binary schema table default"
+    );
+    failures += execute_statement_ok(second, "USE app");
+    failures += execute_statement_ok(second, "CREATE TABLE ascii_inherited (v VARCHAR(10))");
+    failures += expect_result_contains(
+        second,
+        "SHOW CREATE TABLE ascii_inherited",
+        0U,
+        1U,
+        "DEFAULT CHARSET=ascii",
+        "ascii schema table default"
     );
 
     mylite_close(first);
@@ -399,6 +409,24 @@ static int test_schema_default_diagnostics(void) {
             .code = mysql_error_collation_not_valid_for_character_set,
             .sqlstate = "42000",
             .message_part = "not valid for CHARACTER SET 'binary'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE DATABASE bad CHARACTER SET ascii COLLATE utf8mb4_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "not valid for CHARACTER SET 'ascii'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE DATABASE bad CHARACTER SET utf8mb4 COLLATE ascii_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(

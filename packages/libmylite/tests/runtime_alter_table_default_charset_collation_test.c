@@ -167,6 +167,7 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE bin_alter_target (id INT)");
+    failures += execute_statement_ok(database, "CREATE TABLE ascii_alter_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE qualified_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE rename_target (id INT)");
     failures += execute_statement_ok(database, "CREATE TABLE drop_target (id INT)");
@@ -254,6 +255,32 @@ static int test_alter_table_default_charset_success_persistence_and_preamble(voi
             .context = "show create 0900 binary altered table",
         }
     );
+    failures += expect_alter_ok(
+        database,
+        (struct alter_form){
+            .sql = "ALTER TABLE ascii_alter_target DEFAULT CHARSET=ascii",
+            .context = "ascii default charset",
+        }
+    );
+    {
+        static const char *const ascii_show_values[] = {
+            "ascii_alter_target",
+            "CREATE TABLE `ascii_alter_target` (\n"
+            "  `id` int DEFAULT NULL\n"
+            ") ENGINE=InnoDB DEFAULT CHARSET=ascii",
+        };
+
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE ascii_alter_target",
+                .values = ascii_show_values,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "show create ascii altered table",
+            }
+        );
+    }
     before_table = after_table;
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -552,6 +579,24 @@ static int test_alter_table_default_charset_diagnostics(void) {
             .sqlstate = "42000",
             .message_part =
                 "COLLATION 'latin1_swedish_ci' is not valid for CHARACTER SET 'utf8mb4'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE target DEFAULT CHARSET=ascii COLLATE=utf8mb4_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'utf8mb4_bin' is not valid for CHARACTER SET 'ascii'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE target DEFAULT CHARSET=utf8mb4 COLLATE=ascii_bin",
+        (struct expected_sql_error){
+            .code = mysql_error_collation_not_valid_for_character_set,
+            .sqlstate = "42000",
+            .message_part = "COLLATION 'ascii_bin' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
     failures += execute_error(

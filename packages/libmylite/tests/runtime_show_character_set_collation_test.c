@@ -50,10 +50,21 @@ static const char *const character_set_binary_row[character_set_column_count] = 
     "1",
 };
 
+static const char *const character_set_ascii_row[character_set_column_count] = {
+    "ascii",
+    "US ASCII",
+    "ascii_general_ci",
+    "1",
+};
+
 static const char *const character_set_rows[] = {
     "binary",
     "Binary pseudo charset",
     "binary",
+    "1",
+    "ascii",
+    "US ASCII",
+    "ascii_general_ci",
     "1",
     "utf8mb4",
     "UTF-8 Unicode",
@@ -79,6 +90,20 @@ static const char *const collation_rows[] = {
     "Yes",
     "1",
     "NO PAD",
+    "ascii_bin",
+    "ascii",
+    "65",
+    "",
+    "Yes",
+    "1",
+    "PAD SPACE",
+    "ascii_general_ci",
+    "ascii",
+    "11",
+    "Yes",
+    "Yes",
+    "1",
+    "PAD SPACE",
     "utf8mb4_general_ci",
     "utf8mb4",
     "45",
@@ -131,6 +156,26 @@ static const char *const collation_binary_row[collation_column_count] = {
     "Yes",
     "1",
     "NO PAD",
+};
+
+static const char *const collation_ascii_bin_row[collation_column_count] = {
+    "ascii_bin",
+    "ascii",
+    "65",
+    "",
+    "Yes",
+    "1",
+    "PAD SPACE",
+};
+
+static const char *const collation_ascii_general_row[collation_column_count] = {
+    "ascii_general_ci",
+    "ascii",
+    "11",
+    "Yes",
+    "Yes",
+    "1",
+    "PAD SPACE",
 };
 
 static const char *const collation_0900_row[collation_column_count] = {
@@ -242,6 +287,15 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
     );
     failures += expect_result(
         database,
+        "SHOW CHARACTER SET LIKE 'ASCII'",
+        character_set_columns,
+        character_set_column_count,
+        character_set_ascii_row,
+        1U,
+        "show ascii character set uppercase like"
+    );
+    failures += expect_result(
+        database,
         "SHOW CHARACTER SET LIKE 'utf%mb4'",
         character_set_columns,
         character_set_column_count,
@@ -284,6 +338,24 @@ static int test_show_character_set_and_collation_values_filters_and_state(void) 
         collation_binary_row,
         1U,
         "show binary collation uppercase like"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION LIKE 'ASCII\\_GENERAL\\_CI'",
+        collation_columns,
+        collation_column_count,
+        collation_ascii_general_row,
+        1U,
+        "show ascii general collation escaped underscore"
+    );
+    failures += expect_result(
+        database,
+        "SHOW COLLATION LIKE 'ascii_bin'",
+        collation_columns,
+        collation_column_count,
+        collation_ascii_bin_row,
+        1U,
+        "show ascii binary collation"
     );
     failures += expect_result(
         database,
@@ -413,19 +485,19 @@ static int test_show_character_set_and_collation_schema_independence_and_persist
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen persistence file");
     failures += expect_result(
         database,
-        "SHOW CHARACTER SET LIKE 'utf8mb4'",
+        "SHOW CHARACTER SET LIKE 'ascii'",
         character_set_columns,
         character_set_column_count,
-        character_set_row,
+        character_set_ascii_row,
         1U,
         "reopened show character set"
     );
     failures += expect_result(
         database,
-        "SHOW COLLATION LIKE 'utf8mb4_0900_bin'",
+        "SHOW COLLATION LIKE 'ascii_bin'",
         collation_columns,
         collation_column_count,
-        collation_0900_bin_row,
+        collation_ascii_bin_row,
         1U,
         "reopened show collation"
     );
@@ -602,19 +674,19 @@ static int test_independent_show_character_set_and_collation_handles(void) {
     failures += execute_statement_ok(second, "USE secondapp");
     failures += expect_result(
         first,
-        "SHOW CHARACTER SET LIKE 'utf8mb4'",
+        "SHOW CHARACTER SET LIKE 'ascii'",
         character_set_columns,
         character_set_column_count,
-        character_set_row,
+        character_set_ascii_row,
         1U,
         "first handle character set"
     );
     failures += expect_result(
         second,
-        "SHOW COLLATION LIKE 'utf8mb4_0900_bin'",
+        "SHOW COLLATION LIKE 'ascii_general_ci'",
         collation_columns,
         collation_column_count,
-        collation_0900_bin_row,
+        collation_ascii_general_row,
         1U,
         "second handle collation"
     );

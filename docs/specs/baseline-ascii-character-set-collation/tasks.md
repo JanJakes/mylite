@@ -5,15 +5,14 @@
   shorthand.
 - [x] Write the independently authored feature spec and MyLite grammar notes.
 - [x] Add the MySQL 8.4.9 expectation script.
-- [ ] Add static `ascii` charset/collation rows to `SHOW` and
+- [x] Add static `ascii` charset/collation rows to `SHOW` and
   `INFORMATION_SCHEMA`.
-- [ ] Generalize schema/table/column charset and collation validation from the
+- [x] Generalize schema/table/column charset and collation validation from the
   existing `utf8mb4`/`binary` branches to admitted supported descriptors.
-- [ ] Preserve descriptor metadata through create, alter, clone, reopen, and
+- [x] Preserve descriptor metadata through create, alter, clone, reopen, and
   independent handles.
-- [ ] Add runtime coverage for metadata, diagnostics, persistence, and file
+- [x] Add runtime coverage for metadata, diagnostics, persistence, and file
   safety.
-- [ ] Update compatibility documentation with limited wording.
-- [ ] Run the MySQL expectation script, focused CTests, and full check workflow.
-- [ ] Review, commit, and push to `origin/main`.
-
+- [x] Update compatibility documentation with limited wording.
+- [x] Run the MySQL expectation script, focused CTests, and full check workflow.
+- [x] Review, commit, and push to `origin/main`.

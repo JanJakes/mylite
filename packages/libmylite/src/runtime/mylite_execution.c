@@ -12,6 +12,7 @@
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
 #include "mylite_string_case.h"
+#include "mylite_string_search.h"
 #include "mylite_string_trim.h"
 #include "mylite_temporal_extract.h"
 #include "sqlite3.h"
@@ -2298,6 +2299,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_HEX = 10,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM = 11,
     PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT = 12,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH = 13,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2333,6 +2335,13 @@ enum planned_string_slice_function_kind {
     PLANNED_STRING_SLICE_FUNCTION_SUBSTRING = 3,
 };
 
+enum planned_string_search_function_kind {
+    PLANNED_STRING_SEARCH_FUNCTION_NONE = 0,
+    PLANNED_STRING_SEARCH_FUNCTION_LOCATE = 1,
+    PLANNED_STRING_SEARCH_FUNCTION_INSTR = 2,
+    PLANNED_STRING_SEARCH_FUNCTION_POSITION = 3,
+};
+
 enum planned_charset_collation_function_kind {
     PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
     PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
@@ -2360,6 +2369,7 @@ struct planned_row_scalar_expression {
     enum planned_string_case_function_kind string_case_kind;
     enum planned_string_trim_function_kind string_trim_kind;
     enum planned_string_slice_function_kind string_slice_kind;
+    enum planned_string_search_function_kind string_search_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     struct planned_value value;
     struct mylite_catalog_column_descriptor column;
@@ -10348,6 +10358,35 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int string_search_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_string_search_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_string_search_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_position,
+    bool *out_is_null
+);
+static int format_string_search_result(
+    struct mylite_db *database,
+    int64_t result,
+    struct session_scalar_cell *out_cell
+);
+static enum planned_string_search_function_kind string_search_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool is_string_search_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int charset_collation_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11836,6 +11875,7 @@ static bool is_string_length_projection_expression(const struct mylite_sql_ast_n
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_trim_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_charset_collation_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -15983,6 +16023,42 @@ static bool string_slice_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_string_search_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_search_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_search_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_search_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_search_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_hex_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16805,6 +16881,11 @@ static int append_row_scalar_string_slice_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_string_search_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_left_right_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -17531,6 +17612,11 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_slice_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_search_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -18717,6 +18803,11 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -32478,6 +32569,11 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -58434,6 +58530,10 @@ static const char *argument_count_error_node_function_name(
         return "LTRIM";
     case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
         return "RTRIM";
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+        return "LOCATE";
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+        return "INSTR";
     default:
         break;
     }
@@ -58527,6 +58627,10 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
         return string_slice_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+        return string_search_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
         return charset_collation_function_value(database, expression, out_cell);
@@ -58678,6 +58782,12 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "RTRIM");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "LOCATE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "INSTR");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return date_format_function_value(database, expression, out_cell);
@@ -60364,6 +60474,246 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
 
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return string_slice_function_kind(ast_kind) != PLANNED_STRING_SLICE_FUNCTION_NONE;
+}
+
+static int string_search_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_search_function_kind function_kind = PLANNED_STRING_SEARCH_FUNCTION_NONE;
+    struct session_scalar_cell first_cell = {0};
+    struct session_scalar_cell second_cell = {0};
+    char *owned_first_text = NULL;
+    char *owned_second_text = NULL;
+    const char *needle = NULL;
+    const char *haystack = NULL;
+    size_t needle_length = 0U;
+    size_t haystack_length = 0U;
+    int64_t position = 1;
+    int64_t result = 0;
+    size_t argument_count = 0U;
+    bool first_is_null = false;
+    bool second_is_null = false;
+    bool position_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_SEARCH_FUNCTION_NONE
+                                       : string_search_function_kind(expression->kind);
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE ||
+        (argument_count != 2U && argument_count != 3U) ||
+        (function_kind != PLANNED_STRING_SEARCH_FUNCTION_LOCATE && argument_count != 2U)) {
+        set_unsupported_error(
+            database,
+            "string search functions support LOCATE(substr,str[,pos]), INSTR(str,substr), "
+            "and POSITION(substr IN str)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_search_text_argument(
+        database,
+        child_at(expression, 0U),
+        &first_cell,
+        &owned_first_text,
+        &needle,
+        &needle_length,
+        &first_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_search_text_argument(
+            database,
+            child_at(expression, 1U),
+            &second_cell,
+            &owned_second_text,
+            &haystack,
+            &haystack_length,
+            &second_is_null
+        );
+    }
+    if (rc == MYLITE_OK && argument_count == 3U) {
+        rc = evaluate_string_search_position_argument(
+            database,
+            child_at(expression, 2U),
+            &position,
+            &position_is_null
+        );
+    }
+    if (rc != MYLITE_OK || first_is_null || second_is_null || position_is_null) {
+        free(owned_first_text);
+        free(owned_second_text);
+        session_scalar_cell_deinit(&first_cell);
+        session_scalar_cell_deinit(&second_cell);
+        return rc;
+    }
+
+    if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_INSTR) {
+        const char *tmp_text = needle;
+        size_t tmp_length = needle_length;
+
+        needle = haystack;
+        needle_length = haystack_length;
+        haystack = tmp_text;
+        haystack_length = tmp_length;
+    }
+    rc = mylite_string_search_locate_ascii_ci_value(
+        database,
+        needle,
+        needle_length,
+        haystack,
+        haystack_length,
+        position,
+        &result
+    );
+    if (rc == MYLITE_OK) {
+        rc = format_string_search_result(database, result, out_cell);
+    }
+
+    free(owned_first_text);
+    free(owned_second_text);
+    session_scalar_cell_deinit(&first_cell);
+    session_scalar_cell_deinit(&second_cell);
+    return rc;
+}
+
+static int evaluate_string_search_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string search functions support only string, integer, boolean, NULL, "
+            "session scalar, and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "string search functions support only string literals",
+                "string search function literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_string_search_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_position,
+    bool *out_is_null
+) {
+    if (out_position == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_position = 0;
+    *out_is_null = false;
+
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "LOCATE() position supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    return string_slice_signed_integer_value(
+        database,
+        expression,
+        "LOCATE() position supports only integer, boolean, and NULL literals",
+        "LOCATE() position literals must fit the signed 64-bit range",
+        out_position,
+        out_is_null
+    );
+}
+
+static int format_string_search_result(
+    struct mylite_db *database,
+    int64_t result,
+    struct session_scalar_cell *out_cell
+) {
+    int written = 0;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, result);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format string search result");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static enum planned_string_search_function_kind string_search_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+        return PLANNED_STRING_SEARCH_FUNCTION_LOCATE;
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+        return PLANNED_STRING_SEARCH_FUNCTION_INSTR;
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+        return PLANNED_STRING_SEARCH_FUNCTION_POSITION;
+    default:
+        return PLANNED_STRING_SEARCH_FUNCTION_NONE;
+    }
+}
+
+static bool is_string_search_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_search_function_kind(ast_kind) != PLANNED_STRING_SEARCH_FUNCTION_NONE;
 }
 
 static int charset_collation_function_value(
@@ -71925,6 +72275,34 @@ static bool is_string_slice_projection_expression(const struct mylite_sql_ast_no
             string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
 }
 
+static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression) {
+    enum planned_string_search_function_kind function_kind = PLANNED_STRING_SEARCH_FUNCTION_NONE;
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+
+    function_kind = string_search_function_kind(expression->kind);
+    argument_count = mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE) {
+        return false;
+    }
+    if (argument_count != 2U && argument_count != 3U) {
+        return false;
+    }
+    if (function_kind != PLANNED_STRING_SEARCH_FUNCTION_LOCATE && argument_count != 2U) {
+        return false;
+    }
+    if (!string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) ||
+        !string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))) {
+        return false;
+    }
+    return (argument_count == 2U ||
+            string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
+}
+
 static bool is_charset_collation_projection_expression(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -71950,6 +72328,9 @@ static bool is_string_metadata_projection_expression(const struct mylite_sql_ast
         return true;
     }
     if (is_string_slice_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_search_projection_expression(expression)) {
         return true;
     }
     return is_charset_collation_projection_expression(expression);
@@ -84860,6 +85241,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (is_string_search_function_kind(expression->kind)) {
+        return plan_row_scalar_string_search_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_HEX_FUNCTION) {
         return plan_row_scalar_hex_expression(
             database,
@@ -85750,6 +86142,262 @@ static bool string_slice_column_descriptor_is_supported(
     set_unsupported_error(
         database,
         "string slice functions support only integer, DECIMAL, nonbinary string, YEAR, and "
+        "temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_search_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_search_function_kind function_kind = PLANNED_STRING_SEARCH_FUNCTION_NONE;
+    const struct mylite_sql_ast_node *needle = NULL;
+    const struct mylite_sql_ast_node *haystack = NULL;
+    const struct mylite_sql_ast_node *position = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_SEARCH_FUNCTION_NONE
+                                       : string_search_function_kind(expression->kind);
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE ||
+        (argument_count != 2U && argument_count != 3U) ||
+        (function_kind != PLANNED_STRING_SEARCH_FUNCTION_LOCATE && argument_count != 2U)) {
+        set_unsupported_error(
+            database,
+            "string search functions support LOCATE(substr,str[,pos]), INSTR(str,substr), "
+            "and POSITION(substr IN str)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (function_kind == PLANNED_STRING_SEARCH_FUNCTION_INSTR) {
+        haystack = child_at(expression, 0U);
+        needle = child_at(expression, 1U);
+    } else {
+        needle = child_at(expression, 0U);
+        haystack = child_at(expression, 1U);
+    }
+    if (argument_count == 3U) {
+        position = child_at(expression, 2U);
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(3U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH;
+    out_expression->string_search_kind = function_kind;
+    out_expression->argument_count = 3U;
+
+    rc = plan_row_scalar_string_search_text_argument(
+        database,
+        needle,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string search functions support only string, integer, boolean, NULL, session scalar, "
+        "system variable, and descriptor column substring arguments",
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_search_text_argument(
+            database,
+            haystack,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "string search functions support only string, integer, boolean, NULL, session scalar, "
+            "system variable, and descriptor column string arguments",
+            &out_expression->arguments[1]
+        );
+    }
+    if (rc == MYLITE_OK && position != NULL) {
+        rc = plan_row_scalar_string_search_position_argument(
+            database,
+            position,
+            &out_expression->arguments[2]
+        );
+    } else if (rc == MYLITE_OK) {
+        out_expression->arguments[2].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[2].value = (struct planned_value){.is_null = false, .integer = 1};
+    }
+    return rc;
+}
+
+static int plan_row_scalar_string_search_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_search_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "string search functions do not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_search_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "LOCATE() position supports only integer, boolean, and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "LOCATE() position supports only integer, boolean, and NULL literals",
+        "LOCATE() position literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_search_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string search functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_search_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_search_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "string search functions do not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "string search functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "string search functions support only integer, DECIMAL, nonbinary string, YEAR, and "
         "temporal columns"
     );
     return false;
@@ -87267,6 +87915,7 @@ static bool row_scalar_expression_contains_row_function(
             is_string_case_function_kind(current->kind) ||
             is_string_trim_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
+            is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
             found = true;
@@ -96498,6 +97147,8 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+        return append_row_scalar_string_search_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return append_row_scalar_hex_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
@@ -96532,6 +97183,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
@@ -96951,6 +97603,37 @@ static int append_row_scalar_string_slice_expression_sql(
         return append_row_scalar_substring_expression_sql(string, expression, next_parameter);
     }
     return append_row_scalar_left_right_expression_sql(string, expression, next_parameter);
+}
+
+static int append_row_scalar_string_search_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 3U ||
+        expression->string_search_kind == PLANNED_STRING_SEARCH_FUNCTION_NONE) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_locate_ascii_ci(");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 3U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_row_scalar_left_right_expression_sql(
@@ -101309,6 +101992,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+        return bind_row_scalar_string_search_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return bind_row_scalar_hex_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
@@ -101343,6 +102032,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
@@ -101493,6 +102183,26 @@ static int bind_row_scalar_string_slice_expression_parameters(
         );
     }
     return bind_row_scalar_left_right_expression_parameters(statement, expression, parameter_index);
+}
+
+static int bind_row_scalar_string_search_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 3U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 3U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_row_scalar_left_right_expression_parameters(

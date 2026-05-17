@@ -1,0 +1,22 @@
+#ifndef MYLITE_RUNTIME_MYLITE_STRING_SEARCH_H
+#define MYLITE_RUNTIME_MYLITE_STRING_SEARCH_H
+
+#include <mylite/mylite.h>
+
+#include "sqlite3.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+int mylite_string_search_locate_ascii_ci_value(
+    struct mylite_db *database,
+    const char *needle,
+    size_t needle_length,
+    const char *haystack,
+    size_t haystack_length,
+    int64_t position,
+    int64_t *out_position
+);
+int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite);
+
+#endif

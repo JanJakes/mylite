@@ -1022,6 +1022,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "substr_function";
     case MYLITE_SQL_AST_MID_FUNCTION:
         return "mid_function";
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+        return "locate_function";
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+        return "locate_argument_count_error";
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+        return "instr_function";
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+        return "instr_argument_count_error";
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+        return "position_function";
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return "abs_function";
     case MYLITE_SQL_AST_ABS_ARGUMENT_COUNT_ERROR:

@@ -68,6 +68,7 @@ static int test_string_length_functions(void);
 static int test_string_case_functions(void);
 static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
+static int test_string_search_functions(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -338,6 +339,7 @@ int main(void) {
     failures += test_string_case_functions();
     failures += test_string_trim_functions();
     failures += test_string_slice_functions();
+    failures += test_string_search_functions();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -4088,6 +4090,135 @@ static int test_string_slice_functions(void) {
         fprintf(stderr, "left join after left function: expected left outer join kind\n");
         ++failures;
     }
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_search_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LOCATE('bar', s), LOCATE('bar', s, +2), INSTR(s, 'bar'), "
+        "POSITION('bar' IN s) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LOCATE_FUNCTION, "locate function");
+    failures += expect_child_count(expression, 2U, "locate arity");
+    failures += expect_span_text(expression, "LOCATE('bar', s)", "locate span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LOCATE_FUNCTION, "locate position");
+    failures += expect_child_count(expression, 3U, "locate position arity");
+    failures += expect_operator(
+        child_at(expression, 2U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "locate signed position"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_INSTR_FUNCTION, "instr function");
+    failures += expect_child_count(expression, 2U, "instr arity");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_POSITION_FUNCTION, "position function");
+    failures += expect_child_count(expression, 2U, "position arity");
+    failures += expect_span_text(expression, "POSITION('bar' IN s)", "position span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LOCATE ('a','abc'), INSTR ('abc','a') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_LOCATE_FUNCTION,
+        "spaced locate"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_INSTR_FUNCTION,
+        "spaced instr"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LOCATE();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR,
+        "locate zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LOCATE('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR,
+        "locate one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LOCATE('a','abc',1,2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR,
+        "locate many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT INSTR();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR,
+        "instr zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT INSTR('abc');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR,
+        "instr one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT INSTR('abc','a','x');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR,
+        "instr many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT POSITION ('a' IN 'abc');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+
+    failures += parse_sql(
+        "DO LOCATE('a','abc'), INSTR('abc','a'), POSITION('a' IN 'abc');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "string search do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LOCATE_FUNCTION, "do locate");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_INSTR_FUNCTION, "do instr");
+    failures +=
+        expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_POSITION_FUNCTION, "do position");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE string_search_words (locate INT, instr INT, position INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "search identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

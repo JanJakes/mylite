@@ -470,11 +470,11 @@ tests.
 | `FROM_BASE64()` | ❌ | Base64 decode. | [string functions](docs/compatibility/functions-string.md) |
 | `HEX()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; string and binary values are rendered as uppercase byte hex, integer/boolean and supported numeric scalar/system-variable values use MySQL-style unsigned 64-bit numeric hex, and `NULL` yields `NULL`. | [string functions](docs/compatibility/functions-string.md) |
 | `INSERT()` | ❌ | Insert substring. | [string functions](docs/compatibility/functions-string.md) |
-| `INSTR()` | ❌ | First substring index. | [string functions](docs/compatibility/functions-string.md) |
+| `INSTR()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; ASCII case-insensitive first substring index over admitted scalar and descriptor-backed values. | [string functions](docs/compatibility/functions-string.md) |
 | `LCASE()` | 🟡 | Limited `LOWER()` synonym for ASCII-only scalar and row-scalar projection. | [string functions](docs/compatibility/functions-string.md) |
 | `LEFT()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values with literal integer/boolean/`NULL` lengths; UTF-8 text is sliced by character position. | [string functions](docs/compatibility/functions-string.md) |
 | `LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; byte length for admitted scalar and descriptor-backed values. | [string functions](docs/compatibility/functions-string.md) |
-| `LOCATE()` | ❌ | Substring position. | [string functions](docs/compatibility/functions-string.md) |
+| `LOCATE()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; ASCII case-insensitive first substring position with optional literal integer/boolean/`NULL` start position. | [string functions](docs/compatibility/functions-string.md) |
 | `LOWER()` | 🟡 | Limited ASCII-only no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed values; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, or general expression metadata. | [string functions](docs/compatibility/functions-string.md) |
 | `LPAD()` | ❌ | Left padding. | [string functions](docs/compatibility/functions-string.md) |
 | `LTRIM()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; trims leading ASCII space from admitted scalar and descriptor-backed text-convertible values. | [string functions](docs/compatibility/functions-string.md) |
@@ -482,7 +482,7 @@ tests.
 | `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `OCTET_LENGTH()` | 🟡 | Limited `LENGTH()` synonym. | [string functions](docs/compatibility/functions-string.md) |
 | `ORD()` | ❌ | Leftmost character code. | [string functions](docs/compatibility/functions-string.md) |
-| `POSITION()` | ❌ | LOCATE synonym. | [string functions](docs/compatibility/functions-string.md) |
+| `POSITION()` | 🟡 | Limited `POSITION(substr IN str)` synonym for the supported two-argument `LOCATE()` subset. | [string functions](docs/compatibility/functions-string.md) |
 | `QUOTE()` | ❌ | SQL string quoting. | [string functions](docs/compatibility/functions-string.md) |
 | `REGEXP_INSTR()` | ❌ | Regex match index. | [string functions](docs/compatibility/functions-string.md) |
 | `REGEXP_LIKE()` | ❌ | Regex match predicate. | [string functions](docs/compatibility/functions-string.md) |

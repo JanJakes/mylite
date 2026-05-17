@@ -2884,6 +2884,23 @@ expression(A) ::= RIGHT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_RIGHT_FUNCTION, B, C, R);
 }
+expression(A) ::= LOCATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_LOCATE_FUNCTION, B, C, R);
+}
+expression(A) ::=
+    LOCATE(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_LOCATE_FUNCTION, B, C, D, R);
+}
+expression(A) ::= INSTR(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_INSTR_FUNCTION, B, C, R);
+}
+expression(A) ::= POSITION(T) LPAREN(L) expression(B) IN expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_POSITION_FUNCTION, B, C, R);
+}
 expression(A) ::= SUBSTRING(T) LPAREN(L) expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBSTRING_FUNCTION, B, C, R);
@@ -3422,6 +3439,40 @@ expression(A) ::=
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= LOCATE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LOCATE(T) LPAREN expression(B) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    LOCATE(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D)
+    COMMA function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR, E, R);
+}
+expression(A) ::= INSTR(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= INSTR(T) LPAREN expression(B) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::=
+    INSTR(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= LOWER(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4068,6 +4119,15 @@ identifier(A) ::= SUBSTR(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= MID(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= LOCATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= INSTR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= POSITION(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= OCTET_LENGTH(T). {

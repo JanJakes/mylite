@@ -229,6 +229,9 @@ Add a fast C runtime test, preferably `runtime_string_order_lifecycle`, covering
 - trailing-space visibility for `VARCHAR` / `TEXT` and canonical `CHAR`
   readback;
 - `UPDATE ... WHERE string_predicate ORDER BY string_column LIMIT row_count`;
+- WP-shaped `UPDATE ... WHERE string_predicate ORDER BY string_column LIMIT
+  row_count` over a `VARCHAR(191)` key and `LONGTEXT` value table without an
+  explicit id column;
 - `UPDATE ... ORDER BY text_column` without `LIMIT` accepted for the admitted
   constant assignment case;
 - `DELETE ... ORDER BY string_column LIMIT row_count`;

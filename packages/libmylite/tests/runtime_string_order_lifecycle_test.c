@@ -213,6 +213,14 @@ static int test_string_order_dml_and_persistence(void) {
         "5",
         "all",
     };
+    static const char *const after_wp_update[] = {
+        "a",
+        "x",
+        "b",
+        "old",
+        "c",
+        "old",
+    };
     static const char *const after_order_delete[] = {"2", "b", "4", "c", "5", "aa"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -255,6 +263,27 @@ static int test_string_order_dml_and_persistence(void) {
             .context = "ordered update without limit accepted",
         }
     );
+    failures += execute_ok(database, "CREATE TABLE wp_update (k VARCHAR(191), v LONGTEXT)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO wp_update VALUES ('b', 'old'), ('a', 'old'), ('c', 'old')",
+        NULL
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE wp_update SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT k, v FROM wp_update ORDER BY k",
+            .values = after_wp_update,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "wp shaped ordered limited update without explicit id",
+        }
+    );
     failures += populate_update_rows(database, "del");
     failures += expect_dml_ok(database, "DELETE FROM del WHERE id <> 999 ORDER BY k LIMIT 2", 2);
     failures += expect_query_values(
@@ -280,6 +309,16 @@ static int test_string_order_dml_and_persistence(void) {
             .column_count = 2U,
             .row_count = (size_t)five_row_update_count,
             .context = "ordered string update persisted after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT k, v FROM wp_update ORDER BY k",
+            .values = after_wp_update,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "wp shaped ordered update persisted after reopen",
         }
     );
 

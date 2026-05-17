@@ -153,6 +153,20 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id) FROM upd_desc;" \
     "$DATABASE"
 
+wp_ordered_update_expected=$(cat <<\EXPECTED
+1	0	a:x,b:old,c:old
+EXPECTED
+)
+expect_output \
+    "wp shaped ordered limited update without explicit id" \
+    "$wp_ordered_update_expected" \
+    "DROP TABLE IF EXISTS wp_update; "\
+"CREATE TABLE wp_update (k VARCHAR(191), v LONGTEXT); "\
+"INSERT INTO wp_update VALUES ('b', 'old'), ('a', 'old'), ('c', 'old'); "\
+"UPDATE wp_update SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(k, ':', v) ORDER BY k) FROM wp_update;" \
+    "$DATABASE"
+
 delete_order_expected=$(cat <<\EXPECTED
 2	0	2:b,4:c,5:aa
 EXPECTED

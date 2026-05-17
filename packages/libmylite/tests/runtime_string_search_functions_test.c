@@ -37,6 +37,8 @@ struct expected_query {
 
 static int test_no_source_dual_and_do_string_searches(void);
 static int test_table_backed_string_searches_and_reopen(void);
+static int test_no_source_dual_and_do_find_in_set(void);
+static int test_table_backed_find_in_set_predicates_and_dml(void);
 static int test_string_search_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -76,6 +78,8 @@ int main(void) {
 
     failures += test_no_source_dual_and_do_string_searches();
     failures += test_table_backed_string_searches_and_reopen();
+    failures += test_no_source_dual_and_do_find_in_set();
+    failures += test_table_backed_find_in_set_predicates_and_dml();
     failures += test_string_search_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -312,6 +316,334 @@ static int test_table_backed_string_searches_and_reopen(void) {
     return failures;
 }
 
+static int test_no_source_dual_and_do_find_in_set(void) {
+    static const char *const columns_no_source[] = {
+        "hit",    "missing",   "n1",     "n2",        "n3",           "empty0",   "empty1",
+        "empty2", "empty3",    "empty4", "empty5",    "comma_search", "folded",   "space1",
+        "space2", "duplicate", "num",    "bool_true", "bool_false",   "negative",
+    };
+    static const char *const values_no_source[] = {
+        "2", "0", NULL, NULL, NULL, "0", "0", "2", "1", "2",
+        "0", "0", "1",  "0",  "2",  "2", "2", "2", "1", "2",
+    };
+    static const char *const columns_dual[] = {"spaced", "alias"};
+    static const char *const values_dual[] = {"2", "2"};
+    static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_after_select[] = {"-1", "0"};
+    static const char *const values_after_do[] = {"0", "0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "find-no-source", path, sizeof(path));
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT FIND_IN_SET('b','a,b,c') AS hit, "
+                   "FIND_IN_SET('x','a,b,c') AS missing, FIND_IN_SET(NULL,'a,b') AS n1, "
+                   "FIND_IN_SET('a',NULL) AS n2, FIND_IN_SET(NULL,NULL) AS n3, "
+                   "FIND_IN_SET('','') AS empty0, FIND_IN_SET('','a') AS empty1, "
+                   "FIND_IN_SET('', 'a,') AS empty2, FIND_IN_SET('', ',a') AS empty3, "
+                   "FIND_IN_SET('', 'a,,b') AS empty4, FIND_IN_SET('a','') AS empty5, "
+                   "FIND_IN_SET('a,b','a,b') AS comma_search, "
+                   "FIND_IN_SET('abc','ABC,def') AS folded, "
+                   "FIND_IN_SET('b','a, b,c') AS space1, "
+                   "FIND_IN_SET(' b','a, b,c') AS space2, "
+                   "FIND_IN_SET('b','a,b,b') AS duplicate, "
+                   "FIND_IN_SET(2,'1,2,3') AS num, FIND_IN_SET(TRUE,'0,1,2') AS bool_true, "
+                   "FIND_IN_SET(FALSE,'0,1') AS bool_false, "
+                   "FIND_IN_SET(-1,'0,-1') AS negative",
+            .columns = columns_no_source,
+            .column_count = sizeof(columns_no_source) / sizeof(columns_no_source[0]),
+            .values = values_no_source,
+            .row_count = 1U,
+            .context = "no-source find_in_set values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT FIND_IN_SET ('b','a,b') AS spaced, "
+                   "FIND_IN_SET('green','red,green') AS alias FROM DUAL",
+            .columns = columns_dual,
+            .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
+            .values = values_dual,
+            .row_count = 1U,
+            .context = "dual find_in_set",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_select,
+            .row_count = 1U,
+            .context = "row count after find_in_set select",
+        }
+    );
+
+    failures += execute_ok(database, "DO FIND_IN_SET('x', 'a,x'), FIND_IN_SET(NULL, 'a')", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "find_in_set do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "find_in_set do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "find_in_set do affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "find_in_set do warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_do,
+            .row_count = 1U,
+            .context = "row count after find_in_set do",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_table_backed_find_in_set_predicates_and_dml(void) {
+    static const char *const columns_table[] = {
+        "id",
+        "i_pos",
+        "d_pos",
+        "v_pos",
+        "tx_pos",
+        "year_pos",
+        "date_pos",
+        "time_pos",
+        "datetime_pos",
+        "timestamp_pos",
+        "enum_pos",
+    };
+    static const char *const values_table[] = {
+        "1", "1",  "1",  "2",  "2",  "1",  "1",  "1",  "1",  "1",  "1",
+        "2", NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+    };
+    static const char *const columns_id[] = {"id"};
+    static const char *const values_red[] = {"1", "5"};
+    static const char *const values_zero[] = {"2", "3"};
+    static const char *const values_null[] = {"4"};
+    static const char *const values_not_null[] = {"1", "2", "3", "5"};
+    static const char *const columns_update[] = {"id", "note"};
+    static const char *const values_after_update[] = {
+        "1",
+        "hit",
+        "2",
+        "start",
+        "3",
+        "hit",
+        "4",
+        "start",
+        "5",
+        "start",
+    };
+    static const char *const values_after_delete[] = {"1", "hit", "4", "start", "5", "start"};
+    static const char *const values_reopen[] = {"1", "hit", "4", "start", "5", "start"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    mylite_file_preamble_init(expected_preamble);
+    failures += open_app_database(&database, "find-table", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE typed("
+        "id INT, i INT, d DECIMAL(6,2), v VARCHAR(40), tx TEXT, y YEAR, da DATE, ti TIME, "
+        "dt DATETIME, ts TIMESTAMP, e ENUM('alpha','beta'), s SET('red','green','blue'))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO typed VALUES "
+        "(1, 123, -12.30, 'red,green', 'alpha,beta', 2024, '2024-01-02', "
+        "'03:04:05', '2024-01-02 03:04:05', '2024-01-02 03:04:06', 'alpha', "
+        "'red,blue'), "
+        "(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, FIND_IN_SET('123', i) AS i_pos, "
+                   "FIND_IN_SET('-12.30', d) AS d_pos, FIND_IN_SET('green', v) AS v_pos, "
+                   "FIND_IN_SET('beta', tx) AS tx_pos, FIND_IN_SET('2024', y) AS year_pos, "
+                   "FIND_IN_SET('2024-01-02', da) AS date_pos, "
+                   "FIND_IN_SET('03:04:05', ti) AS time_pos, "
+                   "FIND_IN_SET('2024-01-02 03:04:05', dt) AS datetime_pos, "
+                   "FIND_IN_SET('2024-01-02 03:04:06', ts) AS timestamp_pos, "
+                   "FIND_IN_SET('alpha', e) AS enum_pos "
+                   "FROM typed ORDER BY id",
+            .columns = columns_table,
+            .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
+            .values = values_table,
+            .row_count = 2U,
+            .context = "table find_in_set descriptor types",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('blue', s) FROM typed",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIND_IN_SET() does not support SET columns",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE p(id INT, tags VARCHAR(40))", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO p VALUES (1, 'red,green'), (2, 'blue'), (3, ''), (4, NULL), (5, 'Red')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM p WHERE FIND_IN_SET('red', tags) ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_red,
+            .row_count = 2U,
+            .context = "find_in_set truth predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM p WHERE FIND_IN_SET('red', tags) > 0 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_red,
+            .row_count = 2U,
+            .context = "find_in_set comparison predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM p WHERE FIND_IN_SET('red', tags) = 0 ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_zero,
+            .row_count = 2U,
+            .context = "find_in_set zero predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM p WHERE FIND_IN_SET('red', tags) IS NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_null,
+            .row_count = 1U,
+            .context = "find_in_set is null predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM p WHERE FIND_IN_SET('red', tags) IS NOT NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_not_null,
+            .row_count = 4U,
+            .context = "find_in_set is not null predicate",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE dml(id INT, tags VARCHAR(40), note VARCHAR(10))", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO dml VALUES "
+        "(1, 'red', 'start'), (2, 'blue', 'start'), (3, 'red,blue', 'start'), "
+        "(4, NULL, 'start'), (5, '', 'start')",
+        NULL
+    );
+    failures +=
+        execute_ok(database, "UPDATE dml SET note = 'hit' WHERE FIND_IN_SET('red', tags)", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "find update columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "find update rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 2, "find update affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "find update warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, note FROM dml ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_after_update,
+            .row_count = sizeof(values_after_update) / sizeof(values_after_update[0]) /
+                         (sizeof(columns_update) / sizeof(columns_update[0])),
+            .context = "find_in_set update rows",
+        }
+    );
+    failures +=
+        execute_ok(database, "DELETE FROM dml WHERE FIND_IN_SET('blue', tags) > 0", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "find delete columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "find delete rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 2, "find delete affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "find delete warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, note FROM dml ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_after_delete,
+            .row_count = sizeof(values_after_delete) / sizeof(values_after_delete[0]) /
+                         (sizeof(columns_update) / sizeof(columns_update[0])),
+            .context = "find_in_set delete rows",
+        }
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "find_in_set preamble unchanged"
+    );
+
+    mylite_close(database);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen find_in_set file");
+    failures += execute_ok(database, "USE app", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, note FROM dml ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_reopen,
+            .row_count = sizeof(values_reopen) / sizeof(values_reopen[0]) /
+                         (sizeof(columns_update) / sizeof(columns_update[0])),
+            .context = "find_in_set reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_string_search_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -472,6 +804,144 @@ static int test_string_search_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT LOCATE(?, 'abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'FIND_IN_SET'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'FIND_IN_SET'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a','a','extra')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'FIND_IN_SET'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a', missing) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE FIND_IN_SET('a', missing)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a', f) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIND_IN_SET() does not support approximate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a', b) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIND_IN_SET() does not support binary columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET(LOCATE('a', v), v) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIND_IN_SET() supports only string",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('\xC3\xA9', '\xC3\xA9')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string search functions support only ASCII text values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET('a', v) FROM t WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string search functions support only ASCII text values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE FIND_IN_SET('a', v) = '1'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t ORDER BY FIND_IN_SET('a', v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'FIND_IN_SET'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE t SET v = FIND_IN_SET('a', v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'FIND_IN_SET'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET(X'61', 'abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIND_IN_SET() supports only string",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FIND_IN_SET(?, 'abc')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

@@ -20,6 +20,7 @@ enum {
 };
 
 static void string_search_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void find_in_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int locate_ascii_ci_position(
     struct mylite_db *database,
     const char *needle,
@@ -28,6 +29,20 @@ static int locate_ascii_ci_position(
     size_t haystack_length,
     int64_t position,
     int64_t *out_position
+);
+static int find_in_set_ascii_ci_position(
+    const char *search,
+    size_t search_length,
+    const char *list,
+    size_t list_length,
+    int64_t *out_position
+);
+static bool ascii_text_contains_comma(const char *text, size_t text_length);
+static bool ascii_text_segment_equals_ci(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
 );
 static bool ascii_text_is_supported(const char *text, size_t text_length);
 static bool ascii_bytes_equal_ci(unsigned char left, unsigned char right);
@@ -65,6 +80,27 @@ int mylite_string_search_locate_ascii_ci_value(
     );
 }
 
+int mylite_string_search_find_in_set_ascii_ci_value(
+    struct mylite_db *database,
+    const char *search,
+    size_t search_length,
+    const char *list,
+    size_t list_length,
+    int64_t *out_position
+) {
+    if (search == NULL || list == NULL || out_position == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_position = 0;
+    if (!ascii_text_is_supported(search, search_length) ||
+        !ascii_text_is_supported(list, list_length)) {
+        set_string_search_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return find_in_set_ascii_ci_position(search, search_length, list, list_length, out_position);
+}
+
 int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -74,6 +110,19 @@ int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = string_search_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_find_in_set_ascii_ci",
+            .argument_count = 2,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = find_in_set_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -145,6 +194,55 @@ static void string_search_sqlite_callback(
     sqlite3_result_int64(context, (sqlite3_int64)result);
 }
 
+static void find_in_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct mylite_db *database = NULL;
+    const unsigned char *search = NULL;
+    const unsigned char *list = NULL;
+    int search_length = 0;
+    int list_length = 0;
+    int64_t result = 0;
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite FIND_IN_SET callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    database = mylite_sqlite_bootstrap_owner_from_context(context);
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite FIND_IN_SET owner", -1);
+        return;
+    }
+
+    search = sqlite3_value_text(argv[0]);
+    list = sqlite3_value_text(argv[1]);
+    search_length = sqlite3_value_bytes(argv[0]);
+    list_length = sqlite3_value_bytes(argv[1]);
+    if (search == NULL || list == NULL || search_length < 0 || list_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_string_search_find_in_set_ascii_ci_value(
+        database,
+        (const char *)search,
+        (size_t)search_length,
+        (const char *)list,
+        (size_t)list_length,
+        &result
+    );
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "MyLite FIND_IN_SET failed", -1);
+        return;
+    }
+
+    sqlite3_result_int64(context, (sqlite3_int64)result);
+}
+
 static int locate_ascii_ci_position(
     struct mylite_db *database,
     const char *needle,
@@ -196,6 +294,72 @@ static int locate_ascii_ci_position(
     }
 
     return MYLITE_OK;
+}
+
+static int find_in_set_ascii_ci_position(
+    const char *search,
+    size_t search_length,
+    const char *list,
+    size_t list_length,
+    int64_t *out_position
+) {
+    size_t member_start = 0U;
+    int64_t position = 1;
+
+    if (search == NULL || list == NULL || out_position == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_position = 0;
+    if (list_length == 0U || ascii_text_contains_comma(search, search_length)) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; index <= list_length; ++index) {
+        if (index == list_length || list[index] == ',') {
+            if (ascii_text_segment_equals_ci(
+                    search,
+                    search_length,
+                    list + member_start,
+                    index - member_start
+                )) {
+                *out_position = position;
+                return MYLITE_OK;
+            }
+            member_start = index + 1U;
+            ++position;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static bool ascii_text_contains_comma(const char *text, size_t text_length) {
+    if (text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (text[index] == ',') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ascii_text_segment_equals_ci(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+) {
+    if (left == NULL || right == NULL || left_length != right_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < left_length; ++index) {
+        if (!ascii_bytes_equal_ci((unsigned char)left[index], (unsigned char)right[index])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool ascii_text_is_supported(const char *text, size_t text_length) {

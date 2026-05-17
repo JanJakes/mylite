@@ -8,6 +8,12 @@ forms that target the synthetic `information_schema` schema are rejected before
 catalog lookup with MySQL-compatible `1044 / 42000` access denied diagnostics.
 This does not imply a privilege engine or writable system views.
 
+The shared descriptor `WHERE` subset used by supported single-table `UPDATE`
+and `DELETE` also admits limited ASCII `FIND_IN_SET(value, list)` predicates
+over flat scalar values and descriptor-backed integer, exact `DECIMAL`,
+nonbinary string, baseline `TEXT`, `ENUM`, `YEAR`, and temporal values. `SET`
+column member-ordinal behavior remains unsupported.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `DELETE` (single-table) | 🟡 | Limited persistent or shadowing session temporary base-table `DELETE FROM table` with optional baseline descriptor `WHERE` predicate boolean expression, including keyword `NOT`, `AND`/`&&`, `XOR`, `OR`/`\|\|`, limited `BETWEEN` range predicates, limited `IN` membership predicates, compatible `BIT` literal predicates, descriptor-column `IS [NOT] TRUE` / `FALSE` / `UNKNOWN`, limited ASCII `CHAR`, `VARCHAR`, and baseline `TEXT` family string-literal equality/null-safe equality/inequality/range/membership predicates plus limited `LIKE` / `NOT LIKE` pattern predicates and limited `REGEXP` / `RLIKE` / `NOT REGEXP` / `NOT RLIKE` ASCII regular-expression predicates, and limited `YEAR`, canonical `DATE` / `TIME`, and canonical plus limited `T`-separator, numeric-offset, and single trailing-`Z`/`z` truncation-warning `DATETIME` / `TIMESTAMP` string-literal predicates, one unqualified integer, `BIT`, `YEAR`, `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, or ASCII nonbinary string (`CHAR`, `VARCHAR`, baseline `TEXT` family) descriptor `ORDER BY` column, optional `ASC`/`DESC`, exact affected rows, `LIMIT row_count` using unsigned decimal literals in signed 64-bit range, parent-side rejection for rows referenced by supported `RESTRICT` / `NO ACTION` foreign-key descriptors, and direct non-recursive `ON DELETE CASCADE` child removal for supported foreign-key descriptors without changing parent affected-row counts; admitted string comparisons, ranges, membership, and ordering use MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation, and `TIME` range predicates and ordering use signed total-second semantics; no aliases, partitions, modifiers, joined deletes, `USING`, non-ASCII string predicate literals or full Unicode string ordering, full ordering, LIMIT offset forms, triggers, recursive cascades beyond the current direct FK action subset, or privilege semantics |

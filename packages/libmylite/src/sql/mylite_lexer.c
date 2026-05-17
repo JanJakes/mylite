@@ -480,6 +480,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"FILE_BLOCK_SIZE", 0U},
         {"FILTER", 0U},
         {"FINISH", 0U},
+        {"FIND_IN_SET", 0U},
         {"FIRST", 0U},
         {"FIRST_VALUE", MYLITE_SQL_KEYWORD_RESERVED},
         {"FIXED", 0U},

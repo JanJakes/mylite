@@ -1076,6 +1076,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "field_function";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         return "field_argument_count_error";
+    case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+        return "find_in_set_function";
+    case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+        return "find_in_set_argument_count_error";
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
         return "scalar_subquery";
     case MYLITE_SQL_AST_PI_FUNCTION:

@@ -69,6 +69,7 @@ static int test_string_case_functions(void);
 static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
 static int test_string_search_functions(void);
+static int test_find_in_set_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -340,6 +341,7 @@ int main(void) {
     failures += test_string_trim_functions();
     failures += test_string_slice_functions();
     failures += test_string_search_functions();
+    failures += test_find_in_set_function();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -4219,6 +4221,140 @@ static int test_string_search_functions(void) {
     );
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "search identifiers");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_find_in_set_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT FIND_IN_SET('b', 'a,b'), find_in_set(v, 'x,y') AS pos FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_FIND_IN_SET_FUNCTION, "find_in_set function");
+    failures += expect_child_count(expression, 2U, "find_in_set arity");
+    failures += expect_span_text(expression, "FIND_IN_SET('b', 'a,b')", "find_in_set span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_FIND_IN_SET_FUNCTION, "lower find_in_set");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "find column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "find alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FIND_IN_SET();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR,
+        "find_in_set zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FIND_IN_SET('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR,
+        "find_in_set one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT FIND_IN_SET('a','a','extra');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR,
+        "find_in_set many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO FIND_IN_SET('x', 'a,x');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "find_in_set do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_FUNCTION,
+        "do find_in_set"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE FIND_IN_SET('red', tags);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "find where");
+    failures += expect_node(predicate, MYLITE_SQL_AST_FIND_IN_SET_FUNCTION, "find truth predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE FIND_IN_SET('red', tags) > 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_COMPARISON_PREDICATE, "find comparison predicate");
+    failures += expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_GREATER, "find comparison op");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_FUNCTION,
+        "find comparison lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE FIND_IN_SET('red', tags) IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IS_NULL_PREDICATE, "find is null");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, "find is not null op");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_FIND_IN_SET_FUNCTION,
+        "find is null lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t SET note = 'hit' WHERE FIND_IN_SET('red', tags);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(result.root, 0U),
+        MYLITE_SQL_AST_UPDATE_STATEMENT,
+        "find update predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "DELETE FROM t WHERE FIND_IN_SET('blue', tags) > 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(result.root, 0U),
+        MYLITE_SQL_AST_DELETE_STATEMENT,
+        "find delete predicate"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

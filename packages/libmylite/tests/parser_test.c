@@ -2178,6 +2178,22 @@ static int test_json_valid_function(void) {
 }
 
 static int test_cast_binary_expression(void) {
+    enum {
+        cast_basic_char_item = 0,
+        cast_basic_signed_item = 1,
+        cast_basic_signed_integer_item = 2,
+        cast_basic_signed_int_item = 3,
+        cast_basic_unsigned_item = 4,
+        cast_basic_unsigned_integer_item = 5,
+        cast_basic_unsigned_int_item = 6,
+        convert_basic_char_item = 0,
+        convert_basic_signed_item = 1,
+        convert_basic_signed_integer_item = 2,
+        convert_basic_signed_int_item = 3,
+        convert_basic_unsigned_item = 4,
+        convert_basic_unsigned_integer_item = 5,
+        convert_basic_unsigned_int_item = 6,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
@@ -2228,7 +2244,55 @@ static int test_cast_binary_expression(void) {
     failures +=
         parse_sql("SELECT CAST('ABC' AS BINARY(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT CAST('ABC' AS CHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SELECT CAST('ABC' AS CHAR), CAST('1' AS SIGNED), "
+        "CAST('1' AS SIGNED INTEGER), CAST('1' AS SIGNED INT), "
+        "CAST('1' AS UNSIGNED), CAST('1' AS UNSIGNED INTEGER), "
+        "CAST('1' AS UNSIGNED INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_char_item), 0U),
+        MYLITE_SQL_AST_CAST_CHAR_EXPRESSION,
+        "cast char expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_signed_item), 0U),
+        MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION,
+        "cast signed expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_signed_integer_item), 0U),
+        MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION,
+        "cast signed integer expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_signed_int_item), 0U),
+        MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION,
+        "cast signed int expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_unsigned_item), 0U),
+        MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION,
+        "cast unsigned expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_unsigned_integer_item), 0U),
+        MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION,
+        "cast unsigned integer expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, cast_basic_unsigned_int_item), 0U),
+        MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION,
+        "cast unsigned int expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('ABC' AS CHAR(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('1' AS INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2352,7 +2416,56 @@ static int test_cast_binary_expression(void) {
     failures +=
         parse_sql("SELECT CONVERT('ABC', BINARY(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT CONVERT('ABC', CHAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SELECT CONVERT('ABC', CHAR), CONVERT('1', SIGNED), "
+        "CONVERT('1', SIGNED INTEGER), CONVERT('1', SIGNED INT), "
+        "CONVERT('1', UNSIGNED), CONVERT('1', UNSIGNED INTEGER), "
+        "CONVERT('1', UNSIGNED INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_char_item), 0U),
+        MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION,
+        "convert char type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_signed_item), 0U),
+        MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION,
+        "convert signed type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_signed_integer_item), 0U),
+        MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION,
+        "convert signed integer type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_signed_int_item), 0U),
+        MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION,
+        "convert signed int type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_unsigned_item), 0U),
+        MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION,
+        "convert unsigned type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_unsigned_integer_item), 0U),
+        MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION,
+        "convert unsigned integer type expression"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, convert_basic_unsigned_int_item), 0U),
+        MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION,
+        "convert unsigned int type expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CONVERT('ABC', CHAR(5));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CONVERT('1', INTEGER);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT CONVERT('ABC', BINARY, 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

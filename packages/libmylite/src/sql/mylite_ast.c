@@ -722,10 +722,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "binary_expression";
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return "cast_binary_expression";
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+        return "cast_char_expression";
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+        return "cast_signed_expression";
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+        return "cast_unsigned_expression";
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
         return "convert_using_binary_expression";
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
         return "convert_binary_type_expression";
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+        return "convert_char_type_expression";
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+        return "convert_signed_type_expression";
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+        return "convert_unsigned_type_expression";
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return "convert_using_charset_expression";
     case MYLITE_SQL_AST_CHARSET_FUNCTION:

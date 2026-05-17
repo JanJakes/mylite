@@ -63,6 +63,7 @@
 %type join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
+%type cast_basic_target { enum mylite_sql_ast_node_kind }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -2642,14 +2643,58 @@ expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
 expression(A) ::= CAST(T) LPAREN expression(V) AS BINARY RPAREN(R). {
     A = mylite_sql_parser_make_cast_binary_expression(state, T, V, R);
 }
+expression(A) ::= CAST(T) LPAREN expression(V) AS cast_basic_target(K) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(state, T, K, V, R);
+}
 expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA BINARY RPAREN(R). {
     A = mylite_sql_parser_make_convert_binary_type_expression(state, T, V, R);
+}
+expression(A) ::= CONVERT(T) LPAREN expression(V) COMMA cast_basic_target(K) RPAREN(R). {
+    switch (K) {
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+        A = mylite_sql_parser_make_one_argument_function(
+            state, T, MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION, V, R);
+        break;
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+        A = mylite_sql_parser_make_one_argument_function(
+            state, T, MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION, V, R);
+        break;
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+        A = mylite_sql_parser_make_one_argument_function(
+            state, T, MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION, V, R);
+        break;
+    default:
+        A = NULL;
+        break;
+    }
 }
 expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_binary_expression(state, T, V, R);
 }
 expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
+}
+
+cast_basic_target(A) ::= CHAR. {
+    A = MYLITE_SQL_AST_CAST_CHAR_EXPRESSION;
+}
+cast_basic_target(A) ::= SIGNED. {
+    A = MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION;
+}
+cast_basic_target(A) ::= SIGNED INTEGER_TYPE. {
+    A = MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION;
+}
+cast_basic_target(A) ::= SIGNED INT. {
+    A = MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION;
+}
+cast_basic_target(A) ::= UNSIGNED. {
+    A = MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION;
+}
+cast_basic_target(A) ::= UNSIGNED INTEGER_TYPE. {
+    A = MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION;
+}
+cast_basic_target(A) ::= UNSIGNED INT. {
+    A = MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION;
 }
 expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
     A = mylite_sql_parser_make_no_space_two_argument_function(

@@ -151,6 +151,8 @@ enum {
     mysql_warning_values_function_deprecated = 1287,
     mysql_warning_truncated_incorrect_auto_increment = 1292,
     mysql_warning_truncated_incorrect_decimal = 1292,
+    mysql_warning_truncated_incorrect_integer = 1292,
+    mysql_warning_cast_complement = 1105,
     mysql_warning_truncated_incorrect_temporal = 1292,
     mysql_error_incorrect_date_value = 1292,
     mysql_error_incorrect_time_value = 1292,
@@ -525,6 +527,7 @@ static const double logarithm_base_two = 2.0;
 static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
+static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;
 static const unsigned char ascii_max_byte = 0x7fU;
 static const char national_character_set_name[] = "utf8mb3";
 static const char national_collation_name[] = "utf8mb3_general_ci";
@@ -6083,8 +6086,12 @@ struct session_scalar_cell {
     char datetime_text[datetime_text_length + 1U];
     size_t staged_division_by_zero_warning_count;
     size_t staged_invalid_logarithm_warning_count;
+    bool has_staged_truncated_integer_warning;
+    const char *staged_truncated_integer_text;
     bool has_staged_truncated_decimal_warning;
-    char staged_truncated_decimal_text[integer_text_capacity];
+    char staged_truncated_decimal_text[literal_projection_text_capacity];
+    size_t staged_signed_complement_warning_count;
+    size_t staged_unsigned_complement_warning_count;
 };
 
 struct scalar_exact_decimal {
@@ -6101,6 +6108,31 @@ struct scalar_decimal_places {
     bool is_negative;
     bool overflowed;
     uint64_t magnitude;
+};
+
+enum scalar_integer_cast_target {
+    SCALAR_INTEGER_CAST_SIGNED,
+    SCALAR_INTEGER_CAST_UNSIGNED,
+};
+
+struct scalar_integer_cast_parse {
+    bool is_negative;
+    bool saw_digits;
+    bool overflowed;
+    bool has_truncated_integer_warning;
+    uint64_t magnitude;
+};
+
+struct scalar_integer_cast_digit_source {
+    const char *text;
+    size_t offset;
+    uint64_t limit;
+};
+
+struct scalar_integer_cast_messages {
+    const char *unsupported;
+    const char *signed_value;
+    const char *embedded_nul;
 };
 
 struct scalar_text_conversion_messages {
@@ -10386,10 +10418,16 @@ static int accumulate_staged_warning_count(
 );
 static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count);
 static int append_invalid_logarithm_warnings(struct mylite_db *database, size_t warning_count);
+static int append_truncated_incorrect_integer_warning(
+    struct mylite_db *database,
+    const char *value_text
+);
 static int append_truncated_incorrect_decimal_warning(
     struct mylite_db *database,
     const char *value_text
 );
+static int append_signed_complement_warnings(struct mylite_db *database, size_t warning_count);
+static int append_unsigned_complement_warnings(struct mylite_db *database, size_t warning_count);
 static int copy_scalar_projection_column_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11136,7 +11174,37 @@ static int cast_binary_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int cast_char_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int cast_signed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int cast_unsigned_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int convert_binary_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int convert_char_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int convert_signed_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int convert_unsigned_type_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -11157,6 +11225,83 @@ static int scalar_text_conversion_input_value(
     const struct scalar_text_conversion_messages *messages,
     struct session_scalar_cell *out_cell
 );
+static int scalar_integer_cast_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum scalar_integer_cast_target target,
+    const struct scalar_integer_cast_messages *messages,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_integer_cast_string_value(
+    struct mylite_db *database,
+    const char *text,
+    enum scalar_integer_cast_target target,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_integer_cast_decimal_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    enum scalar_integer_cast_target target,
+    struct session_scalar_cell *out_cell
+);
+static void parse_scalar_integer_cast_string(
+    const char *text,
+    struct scalar_integer_cast_parse *out_parse
+);
+static void parse_scalar_integer_cast_digits(
+    struct scalar_integer_cast_digit_source source,
+    struct scalar_integer_cast_parse *inout_parse,
+    size_t *out_end_offset
+);
+static void parse_scalar_integer_cast_decimal_literal(
+    const struct mylite_sql_source_span *span,
+    uint64_t limit,
+    struct scalar_integer_cast_parse *out_parse
+);
+static int stage_truncated_integer_warning(
+    const char *input_text,
+    struct session_scalar_cell *cell
+);
+static int stage_cast_truncated_decimal_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct session_scalar_cell *cell
+);
+static int format_signed_cast_value(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+);
+static int format_negative_signed_cast_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+);
+static int format_twos_complement_signed_cast_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+);
+static int format_signed_cast_text(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+);
+static int format_unsigned_cast_value(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+);
+static int format_unsigned_magnitude_value(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+);
+static bool scalar_integer_cast_is_ascii_space(unsigned char byte);
 static int date_interval_second_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12230,7 +12375,13 @@ static bool is_charset_collation_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_string_metadata_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_conversion_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_cast_convert_basic_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_convert_binary_type_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -19304,7 +19455,13 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
@@ -24872,7 +25029,8 @@ static int execute_do_statement(
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
             "RADIANS()/ACOS()/ASIN()/SIN()/COS()/TAN()/COT()/ATAN()/ATAN2()/EXP()/LN()/"
             "LOG()/LOG10()/LOG2()/POW()/POWER(), CEIL()/CEILING()/FLOOR()/ROUND(), "
-            "CRC32()/HEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY), limited "
+            "CRC32()/HEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
+            "SIGNED/UNSIGNED), limited CONVERT(value, BINARY/CHAR/SIGNED/UNSIGNED), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
             "extract, limited FIELD(), limited CONCAT_WS(), limited JSON_VALID(), and limited "
             "string length, string case, string slice, CHARSET(), and COLLATION() functions, and "
@@ -25020,7 +25178,8 @@ static int execute_select_statement(
             "RADIANS()/ACOS()/ASIN()/SIN()/COS()/TAN()/COT()/ATAN()/ATAN2()/EXP()/LN()/"
             "LOG()/LOG10()/LOG2()/POW()/POWER()/CEIL()/CEILING()/FLOOR()/ROUND()/"
             "CRC32()/FORMAT()/TRUNCATE(), and "
-            "CAST(value AS BINARY), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
+            "CAST(value AS BINARY/CHAR/SIGNED/UNSIGNED), CONVERT(value, BINARY/CHAR/SIGNED/"
+            "UNSIGNED), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
             "limited JSON_VALID(), string length, string case, string trim, and string slice "
             "functions"
         );
@@ -33472,7 +33631,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
@@ -60333,10 +60498,28 @@ static int append_session_scalar_cell_warnings(
     if (cell == NULL) {
         return MYLITE_MISUSE;
     }
-    if (cell->has_staged_truncated_decimal_warning) {
+    if (cell->has_staged_truncated_integer_warning) {
+        rc = append_truncated_incorrect_integer_warning(
+            database,
+            cell->staged_truncated_integer_text
+        );
+    }
+    if (rc == MYLITE_OK && cell->has_staged_truncated_decimal_warning) {
         rc = append_truncated_incorrect_decimal_warning(
             database,
             cell->staged_truncated_decimal_text
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_signed_complement_warnings(
+            database,
+            cell->staged_signed_complement_warning_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_unsigned_complement_warnings(
+            database,
+            cell->staged_unsigned_complement_warning_count
         );
     }
     if (rc == MYLITE_OK) {
@@ -60404,11 +60587,55 @@ static int append_invalid_logarithm_warnings(struct mylite_db *database, size_t 
     return rc;
 }
 
+static int append_truncated_incorrect_integer_warning(
+    struct mylite_db *database,
+    const char *value_text
+) {
+    static const char prefix[] = "Truncated incorrect INTEGER value: '";
+    static const char suffix[] = "'";
+    char *message = NULL;
+    size_t value_length = 0U;
+    size_t message_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    value_length = strlen(value_text);
+    if (value_length > SIZE_MAX - sizeof(prefix) - sizeof(suffix)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    message_length = (sizeof(prefix) - 1U) + value_length + (sizeof(suffix) - 1U);
+    message = (char *)malloc(message_length + 1U);
+    if (message == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    memcpy(message, prefix, sizeof(prefix) - 1U);
+    memcpy(message + sizeof(prefix) - 1U, value_text, value_length);
+    memcpy(message + sizeof(prefix) - 1U + value_length, suffix, sizeof(suffix));
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_integer,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    free(message);
+    return rc;
+}
+
 static int append_truncated_incorrect_decimal_warning(
     struct mylite_db *database,
     const char *value_text
 ) {
-    char message[sizeof("Truncated incorrect DECIMAL value: ''") + integer_text_capacity];
+    char
+        message[sizeof("Truncated incorrect DECIMAL value: ''") + literal_projection_text_capacity];
     int written = 0;
     int rc = MYLITE_OK;
 
@@ -60431,6 +60658,42 @@ static int append_truncated_incorrect_decimal_warning(
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }
+    return rc;
+}
+
+static int append_signed_complement_warnings(struct mylite_db *database, size_t warning_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < warning_count; ++index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_cast_complement,
+            "HY000",
+            "Cast to signed converted positive out-of-range integer to its negative complement"
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static int append_unsigned_complement_warnings(struct mylite_db *database, size_t warning_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < warning_count; ++index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_cast_complement,
+            "HY000",
+            "Cast to unsigned converted negative integer to its positive complement"
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+
     return rc;
 }
 
@@ -60865,8 +61128,20 @@ static int session_scalar_value(
         return truncate_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
         return cast_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+        return cast_char_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+        return cast_signed_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+        return cast_unsigned_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
         return convert_binary_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+        return convert_char_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+        return convert_signed_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+        return convert_unsigned_type_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
         return convert_using_binary_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
@@ -68399,6 +68674,102 @@ static int cast_binary_value(
     );
 }
 
+static int cast_char_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_text_conversion_messages messages = {
+        .unsupported = "CAST AS CHAR supports only string, integer, boolean, and NULL values",
+        .signed_value = "CAST AS CHAR supports only signed integer values",
+        .string_unsupported = "CAST AS CHAR supports only string literals",
+        .embedded_nul = "CAST AS CHAR does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_CHAR_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CAST AS CHAR supports only bare CHAR casts");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &messages,
+        out_cell
+    );
+}
+
+static int cast_signed_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_integer_cast_messages messages = {
+        .unsupported = "CAST AS SIGNED supports only string, integer, boolean, and NULL values",
+        .signed_value = "CAST AS SIGNED supports only signed integer values",
+        .embedded_nul = "CAST AS SIGNED does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CAST AS SIGNED supports only signed integer casts");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_integer_cast_input_value(
+        database,
+        child_at(expression, 0U),
+        SCALAR_INTEGER_CAST_SIGNED,
+        &messages,
+        out_cell
+    );
+}
+
+static int cast_unsigned_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_integer_cast_messages messages = {
+        .unsupported = "CAST AS UNSIGNED supports only string, integer, boolean, and NULL values",
+        .signed_value = "CAST AS UNSIGNED supports only signed integer values",
+        .embedded_nul = "CAST AS UNSIGNED does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CAST AS UNSIGNED supports only unsigned integer casts");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_integer_cast_input_value(
+        database,
+        child_at(expression, 0U),
+        SCALAR_INTEGER_CAST_UNSIGNED,
+        &messages,
+        out_cell
+    );
+}
+
 static int convert_binary_type_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -68430,6 +68801,111 @@ static int convert_binary_type_value(
     return scalar_text_conversion_input_value(
         database,
         child_at(expression, 0U),
+        &messages,
+        out_cell
+    );
+}
+
+static int convert_char_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_text_conversion_messages messages = {
+        .unsupported =
+            "CONVERT(value, CHAR) supports only string, integer, boolean, and NULL values",
+        .signed_value = "CONVERT(value, CHAR) supports only signed integer values",
+        .string_unsupported = "CONVERT(value, CHAR) supports only string literals",
+        .embedded_nul = "CONVERT(value, CHAR) does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "CONVERT(value, CHAR) supports only CONVERT(value, CHAR)");
+        return MYLITE_ERROR;
+    }
+
+    return scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &messages,
+        out_cell
+    );
+}
+
+static int convert_signed_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_integer_cast_messages messages = {
+        .unsupported =
+            "CONVERT(value, SIGNED) supports only string, integer, boolean, and NULL values",
+        .signed_value = "CONVERT(value, SIGNED) supports only signed integer values",
+        .embedded_nul = "CONVERT(value, SIGNED) does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(
+            database,
+            "CONVERT(value, SIGNED) supports only CONVERT(value, SIGNED)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return scalar_integer_cast_input_value(
+        database,
+        child_at(expression, 0U),
+        SCALAR_INTEGER_CAST_SIGNED,
+        &messages,
+        out_cell
+    );
+}
+
+static int convert_unsigned_type_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct scalar_integer_cast_messages messages = {
+        .unsupported =
+            "CONVERT(value, UNSIGNED) supports only string, integer, boolean, and NULL values",
+        .signed_value = "CONVERT(value, UNSIGNED) supports only signed integer values",
+        .embedded_nul = "CONVERT(value, UNSIGNED) does not support embedded NUL bytes",
+    };
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(
+            database,
+            "CONVERT(value, UNSIGNED) supports only CONVERT(value, UNSIGNED)"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return scalar_integer_cast_input_value(
+        database,
+        child_at(expression, 0U),
+        SCALAR_INTEGER_CAST_UNSIGNED,
         &messages,
         out_cell
     );
@@ -68627,6 +69103,434 @@ static int scalar_text_conversion_input_value(
 
     set_unsupported_error(database, messages->unsupported);
     return MYLITE_ERROR;
+}
+
+static int scalar_integer_cast_input_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum scalar_integer_cast_target target,
+    const struct scalar_integer_cast_messages *messages,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool is_negative = false;
+    bool has_sign = false;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (messages == NULL) {
+        return MYLITE_MISUSE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        has_sign = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, messages->signed_value);
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (has_sign && literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, messages->signed_value);
+        return MYLITE_ERROR;
+    }
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING: {
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal(
+            database,
+            literal,
+            messages->unsupported,
+            messages->embedded_nul,
+            &out_cell->owned_text,
+            &text_length
+        );
+
+        (void)text_length;
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return scalar_integer_cast_string_value(database, out_cell->owned_text, target, out_cell);
+    }
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return scalar_integer_cast_decimal_literal_value(
+            database,
+            literal,
+            is_negative,
+            target,
+            out_cell
+        );
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        return format_unsigned_magnitude_value(database, 1U, out_cell);
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        return format_unsigned_magnitude_value(database, 0U, out_cell);
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(database, messages->unsupported);
+    return MYLITE_ERROR;
+}
+
+static int scalar_integer_cast_string_value(
+    struct mylite_db *database,
+    const char *text,
+    enum scalar_integer_cast_target target,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_integer_cast_parse parse = {
+        .is_negative = false,
+        .saw_digits = false,
+        .overflowed = false,
+        .has_truncated_integer_warning = false,
+        .magnitude = 0U,
+    };
+
+    if (text == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    parse_scalar_integer_cast_string(text, &parse);
+    if (parse.has_truncated_integer_warning) {
+        int rc = stage_truncated_integer_warning(text, out_cell);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (target == SCALAR_INTEGER_CAST_SIGNED) {
+        if (!parse.is_negative && parse.magnitude > (uint64_t)INT64_MAX && !parse.overflowed) {
+            out_cell->staged_signed_complement_warning_count = 1U;
+        }
+        return format_signed_cast_value(database, parse.is_negative, parse.magnitude, out_cell);
+    }
+
+    if (parse.is_negative && parse.saw_digits && !parse.overflowed) {
+        out_cell->staged_unsigned_complement_warning_count = 1U;
+    }
+    return format_unsigned_cast_value(database, parse.is_negative, parse.magnitude, out_cell);
+}
+
+static int scalar_integer_cast_decimal_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    enum scalar_integer_cast_target target,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_integer_cast_parse parse = {
+        .is_negative = false,
+        .saw_digits = false,
+        .overflowed = false,
+        .has_truncated_integer_warning = false,
+        .magnitude = 0U,
+    };
+    uint64_t limit = UINT64_MAX;
+
+    if (literal == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (is_negative) {
+        limit = scalar_integer_cast_int64_min_magnitude;
+    }
+    parse_scalar_integer_cast_decimal_literal(&literal->span, limit, &parse);
+    parse.is_negative = is_negative;
+    if (parse.overflowed) {
+        int rc = stage_cast_truncated_decimal_warning(database, literal, is_negative, out_cell);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!is_negative && target == SCALAR_INTEGER_CAST_SIGNED) {
+            parse.magnitude = (uint64_t)INT64_MAX;
+        }
+    }
+
+    if (target == SCALAR_INTEGER_CAST_SIGNED) {
+        return format_signed_cast_value(database, parse.is_negative, parse.magnitude, out_cell);
+    }
+    return format_unsigned_cast_value(database, parse.is_negative, parse.magnitude, out_cell);
+}
+
+static void parse_scalar_integer_cast_string(
+    const char *text,
+    struct scalar_integer_cast_parse *out_parse
+) {
+    size_t offset = 0U;
+    size_t digit_end = 0U;
+    uint64_t limit = UINT64_MAX;
+
+    *out_parse = (struct scalar_integer_cast_parse){
+        .is_negative = false,
+        .saw_digits = false,
+        .overflowed = false,
+        .has_truncated_integer_warning = false,
+        .magnitude = 0U,
+    };
+    while (scalar_integer_cast_is_ascii_space((unsigned char)text[offset])) {
+        ++offset;
+    }
+    if (text[offset] == '+' || text[offset] == '-') {
+        out_parse->is_negative = text[offset] == '-';
+        ++offset;
+    }
+    if (out_parse->is_negative) {
+        limit = scalar_integer_cast_int64_min_magnitude;
+    }
+    parse_scalar_integer_cast_digits(
+        (struct scalar_integer_cast_digit_source){
+            .text = text,
+            .offset = offset,
+            .limit = limit,
+        },
+        out_parse,
+        &digit_end
+    );
+    if (!out_parse->saw_digits) {
+        out_parse->has_truncated_integer_warning = true;
+        out_parse->magnitude = 0U;
+        return;
+    }
+
+    offset = digit_end;
+    while (scalar_integer_cast_is_ascii_space((unsigned char)text[offset])) {
+        ++offset;
+    }
+    if (text[offset] != '\0') {
+        out_parse->has_truncated_integer_warning = true;
+    }
+}
+
+static void parse_scalar_integer_cast_digits(
+    struct scalar_integer_cast_digit_source source,
+    struct scalar_integer_cast_parse *inout_parse,
+    size_t *out_end_offset
+) {
+    size_t offset = source.offset;
+
+    while (source.text[offset] >= '0' && source.text[offset] <= '9') {
+        uint64_t digit = (uint64_t)(source.text[offset] - '0');
+
+        inout_parse->saw_digits = true;
+        if (!inout_parse->overflowed &&
+            inout_parse->magnitude > (source.limit - digit) / decimal_base) {
+            inout_parse->overflowed = true;
+            inout_parse->has_truncated_integer_warning = true;
+            inout_parse->magnitude = source.limit;
+        } else if (!inout_parse->overflowed) {
+            inout_parse->magnitude = (inout_parse->magnitude * decimal_base) + digit;
+        }
+        ++offset;
+    }
+
+    if (out_end_offset != NULL) {
+        *out_end_offset = offset;
+    }
+}
+
+static void parse_scalar_integer_cast_decimal_literal(
+    const struct mylite_sql_source_span *span,
+    uint64_t limit,
+    struct scalar_integer_cast_parse *out_parse
+) {
+    *out_parse = (struct scalar_integer_cast_parse){
+        .is_negative = false,
+        .saw_digits = false,
+        .overflowed = false,
+        .has_truncated_integer_warning = false,
+        .magnitude = 0U,
+    };
+    if (span == NULL || span->text == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < span->length; ++index) {
+        uint64_t digit = 0U;
+
+        if (span->text[index] < '0' || span->text[index] > '9') {
+            return;
+        }
+        digit = (uint64_t)(span->text[index] - '0');
+        out_parse->saw_digits = true;
+        if (!out_parse->overflowed && out_parse->magnitude > (limit - digit) / decimal_base) {
+            out_parse->overflowed = true;
+            out_parse->magnitude = limit;
+        } else if (!out_parse->overflowed) {
+            out_parse->magnitude = (out_parse->magnitude * decimal_base) + digit;
+        }
+    }
+}
+
+static int stage_truncated_integer_warning(
+    const char *input_text,
+    struct session_scalar_cell *cell
+) {
+    if (input_text == NULL || cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    cell->has_staged_truncated_integer_warning = true;
+    cell->staged_truncated_integer_text = input_text;
+    return MYLITE_OK;
+}
+
+static int stage_cast_truncated_decimal_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct session_scalar_cell *cell
+) {
+    size_t output_offset = 0U;
+    size_t required_size = 0U;
+
+    if (literal == NULL || literal->span.text == NULL || cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    required_size = literal->span.length + 1U;
+    if (is_negative) {
+        ++required_size;
+    }
+    if (required_size > sizeof(cell->staged_truncated_decimal_text)) {
+        set_unsupported_error(
+            database,
+            "CAST integer conversion supports at most 81 decimal digits in warning text"
+        );
+        return MYLITE_ERROR;
+    }
+    if (is_negative) {
+        cell->staged_truncated_decimal_text[output_offset] = '-';
+        ++output_offset;
+    }
+    memcpy(
+        cell->staged_truncated_decimal_text + output_offset,
+        literal->span.text,
+        literal->span.length
+    );
+    output_offset += literal->span.length;
+    cell->staged_truncated_decimal_text[output_offset] = '\0';
+    cell->has_staged_truncated_decimal_warning = true;
+    return MYLITE_OK;
+}
+
+static int format_signed_cast_value(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+) {
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (is_negative) {
+        return format_negative_signed_cast_value(database, magnitude, out_cell);
+    }
+    if (magnitude <= (uint64_t)INT64_MAX) {
+        return format_unsigned_magnitude_value(database, magnitude, out_cell);
+    }
+    return format_twos_complement_signed_cast_value(database, magnitude, out_cell);
+}
+
+static int format_negative_signed_cast_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+) {
+    if (magnitude == 0U) {
+        return format_unsigned_magnitude_value(database, 0U, out_cell);
+    }
+    return format_signed_cast_text(database, magnitude, out_cell);
+}
+
+static int format_twos_complement_signed_cast_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+) {
+    return format_signed_cast_text(database, UINT64_C(0) - magnitude, out_cell);
+}
+
+static int format_signed_cast_text(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+) {
+    int written = 0;
+
+    if (magnitude == scalar_integer_cast_int64_min_magnitude) {
+        written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "-9223372036854775808"
+        );
+    } else {
+        written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "-%" PRIu64,
+            magnitude
+        );
+    }
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format CAST signed integer value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int format_unsigned_cast_value(
+    struct mylite_db *database,
+    bool is_negative,
+    uint64_t magnitude,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t value = magnitude;
+
+    if (is_negative) {
+        value = UINT64_C(0) - magnitude;
+    }
+    return format_unsigned_magnitude_value(database, value, out_cell);
+}
+
+static int format_unsigned_magnitude_value(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+) {
+    int written = 0;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRIu64, value);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format CAST unsigned integer value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static bool scalar_integer_cast_is_ascii_space(unsigned char byte) {
+    return (byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\v' ||
+            byte == '\f') != 0;
 }
 
 static int date_format_function_value(
@@ -72881,6 +73785,20 @@ static void copy_session_scalar_cell(
                 source->staged_division_by_zero_warning_count;
             destination->staged_invalid_logarithm_warning_count =
                 source->staged_invalid_logarithm_warning_count;
+            destination->has_staged_truncated_integer_warning =
+                source->has_staged_truncated_integer_warning;
+            destination->staged_truncated_integer_text = source->staged_truncated_integer_text;
+            destination->has_staged_truncated_decimal_warning =
+                source->has_staged_truncated_decimal_warning;
+            memcpy(
+                destination->staged_truncated_decimal_text,
+                source->staged_truncated_decimal_text,
+                sizeof(destination->staged_truncated_decimal_text)
+            );
+            destination->staged_signed_complement_warning_count =
+                source->staged_signed_complement_warning_count;
+            destination->staged_unsigned_complement_warning_count =
+                source->staged_unsigned_complement_warning_count;
         }
         return;
     }
@@ -72888,6 +73806,20 @@ static void copy_session_scalar_cell(
         source->staged_division_by_zero_warning_count;
     destination->staged_invalid_logarithm_warning_count =
         source->staged_invalid_logarithm_warning_count;
+    destination->has_staged_truncated_integer_warning =
+        source->has_staged_truncated_integer_warning;
+    destination->staged_truncated_integer_text = source->staged_truncated_integer_text;
+    destination->has_staged_truncated_decimal_warning =
+        source->has_staged_truncated_decimal_warning;
+    memcpy(
+        destination->staged_truncated_decimal_text,
+        source->staged_truncated_decimal_text,
+        sizeof(destination->staged_truncated_decimal_text)
+    );
+    destination->staged_signed_complement_warning_count =
+        source->staged_signed_complement_warning_count;
+    destination->staged_unsigned_complement_warning_count =
+        source->staged_unsigned_complement_warning_count;
     if (source->value == source->integer_text) {
         memcpy(destination->integer_text, source->integer_text, sizeof(destination->integer_text));
         destination->value = destination->integer_text;
@@ -74761,16 +75693,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_string_metadata_projection_expression(expression)) {
         return true;
     }
-    if (is_cast_binary_projection_expression(expression)) {
-        return true;
-    }
-    if (is_convert_binary_type_projection_expression(expression)) {
-        return true;
-    }
-    if (is_convert_using_binary_projection_expression(expression)) {
-        return true;
-    }
-    if (is_convert_using_charset_projection_expression(expression)) {
+    if (is_scalar_conversion_projection_expression(expression)) {
         return true;
     }
     if (is_date_interval_second_projection_expression(expression)) {
@@ -74787,6 +75710,16 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     }
     return (is_json_valid_projection_expression(expression) ||
             is_date_format_numeric_equal_expression(expression)) != 0;
+}
+
+static bool is_scalar_conversion_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (is_cast_binary_projection_expression(expression) ||
+            is_cast_convert_basic_projection_expression(expression) ||
+            is_convert_binary_type_projection_expression(expression) ||
+            is_convert_using_binary_projection_expression(expression) ||
+            is_convert_using_charset_projection_expression(expression)) != 0;
 }
 
 static bool is_scalar_subquery_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -75322,6 +76255,27 @@ static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_nod
     return mylite_sql_ast_node_child_count(expression) == 1U;
 }
 
+static bool is_cast_convert_basic_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
+        return mylite_sql_ast_node_child_count(expression) == 1U;
+    default:
+        return false;
+    }
+}
+
 static bool is_convert_binary_type_projection_expression(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -75849,7 +76803,13 @@ static bool is_scalar_value_projection_attempt_expression(
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_UNSIGNED_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_SIGNED_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:

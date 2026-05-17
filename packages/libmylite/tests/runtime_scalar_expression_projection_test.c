@@ -28,6 +28,14 @@ enum {
     convert_using_binary_label_column_count = 3,
     convert_using_charset_column_count = 7,
     convert_integer_boundary_column_count = 2,
+    cast_convert_basic_char_column_count = 7,
+    cast_convert_basic_integer_column_count = 7,
+    cast_convert_basic_unsigned_column_count = 6,
+    cast_convert_basic_boundary_column_count = 4,
+    cast_convert_basic_label_column_count = 7,
+    cast_convert_basic_status_column_count = 2,
+    show_warning_column_count = 3,
+    cast_convert_basic_unsigned_warning_count = 4,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
 };
@@ -44,6 +52,8 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
+    int64_t affected_rows;
     const char *context;
 };
 
@@ -220,6 +230,115 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     static const char *const convert_integer_boundary_values[] = {
         convert_integer_boundary_value,
         convert_integer_boundary_value,
+    };
+    static const char *const cast_convert_basic_char_columns[] = {
+        "CAST('ABC' AS CHAR)",
+        "CONVERT('ABC', CHAR)",
+        "CAST(123 AS CHAR)",
+        "CONVERT(-7, CHAR)",
+        "CAST(NULL AS CHAR)",
+        "CAST(TRUE AS CHAR)",
+        "CONVERT(FALSE, CHAR)",
+    };
+    static const char *const cast_convert_basic_char_values[] =
+        {"ABC", "ABC", "123", "-7", NULL, "1", "0"};
+    static const char *const cast_convert_basic_signed_columns[] = {
+        "CAST('ABC' AS SIGNED)",
+        "CONVERT('ABC', SIGNED)",
+        "CAST('123abc' AS SIGNED)",
+        "CAST('  -12x' AS SIGNED)",
+        "CAST(NULL AS SIGNED)",
+        "CAST(TRUE AS SIGNED)",
+        "CAST(FALSE AS SIGNED)",
+    };
+    static const char *const cast_convert_basic_signed_values[] =
+        {"0", "0", "123", "-12", NULL, "1", "0"};
+    static const char *const cast_convert_basic_unsigned_columns[] = {
+        "CAST('ABC' AS UNSIGNED)",
+        "CONVERT('ABC', UNSIGNED)",
+        "CAST('-1' AS UNSIGNED)",
+        "CAST(-1 AS UNSIGNED)",
+        "CAST('18446744073709551615' AS UNSIGNED)",
+        "CAST('18446744073709551616' AS UNSIGNED)",
+    };
+    static const char *const cast_convert_basic_unsigned_values[] = {
+        "0",
+        "0",
+        "18446744073709551615",
+        "18446744073709551615",
+        "18446744073709551615",
+        "18446744073709551615",
+    };
+    static const char *const cast_convert_basic_boundary_columns[] = {
+        "CAST('9223372036854775808' AS SIGNED)",
+        "CAST('-9223372036854775809' AS SIGNED)",
+        "CAST(18446744073709551616 AS SIGNED)",
+        "CAST(-9223372036854775809 AS UNSIGNED)",
+    };
+    static const char *const cast_convert_basic_boundary_values[] = {
+        "-9223372036854775808",
+        "-9223372036854775808",
+        "9223372036854775807",
+        "9223372036854775808",
+    };
+    static const char *const cast_convert_basic_label_columns[] = {
+        "CAST('1' AS SIGNED)",
+        "signed_value",
+        "(CAST('2' AS UNSIGNED))",
+        "CAST(123 AS CHAR)",
+        "CONVERT('3', SIGNED)",
+        "CONVERT('4', UNSIGNED INTEGER)",
+        "CONVERT('ABC', CHAR)",
+    };
+    static const char *const cast_convert_basic_label_values[] =
+        {"1", "1", "2", "123", "3", "4", "ABC"};
+    static const char *const cast_convert_basic_status_columns[] = {
+        "ROW_COUNT()",
+        "@@warning_count"
+    };
+    static const char *const cast_convert_basic_do_status_values[] = {"0", "2"};
+    static const char *const show_warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const signed_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'ABC'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'ABC'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '123abc'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '  -12x'",
+    };
+    static const char *const unsigned_warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'ABC'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'ABC'",
+        "Warning",
+        "1105",
+        "Cast to unsigned converted negative integer to its positive complement",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '18446744073709551616'",
+    };
+    static const char *const boundary_warning_values[] = {
+        "Warning",
+        "1105",
+        "Cast to signed converted positive out-of-range integer to its negative complement",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '-9223372036854775809'",
+        "Warning",
+        "1292",
+        "Truncated incorrect DECIMAL value: '18446744073709551616'",
+        "Warning",
+        "1292",
+        "Truncated incorrect DECIMAL value: '-9223372036854775809'",
     };
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"-1"};
@@ -405,6 +524,109 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .context = "convert integer boundary and mixed-case charset",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS CHAR), CONVERT('ABC', CHAR), CAST(123 AS CHAR), "
+                   "CONVERT(-7, CHAR), CAST(NULL AS CHAR), CAST(TRUE AS CHAR), "
+                   "CONVERT(FALSE, CHAR)",
+            .columns = cast_convert_basic_char_columns,
+            .column_count = cast_convert_basic_char_column_count,
+            .values = cast_convert_basic_char_values,
+            .row_count = 1U,
+            .context = "cast convert char target values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS SIGNED), CONVERT('ABC', SIGNED), "
+                   "CAST('123abc' AS SIGNED), CAST('  -12x' AS SIGNED), "
+                   "CAST(NULL AS SIGNED), CAST(TRUE AS SIGNED), CAST(FALSE AS SIGNED)",
+            .columns = cast_convert_basic_signed_columns,
+            .column_count = cast_convert_basic_integer_column_count,
+            .values = cast_convert_basic_signed_values,
+            .row_count = 1U,
+            .warning_count = 4U,
+            .context = "cast convert signed target values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = signed_warning_values,
+            .row_count = 4U,
+            .context = "cast convert signed warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('ABC' AS UNSIGNED), CONVERT('ABC', UNSIGNED), "
+                   "CAST('-1' AS UNSIGNED), CAST(-1 AS UNSIGNED), "
+                   "CAST('18446744073709551615' AS UNSIGNED), "
+                   "CAST('18446744073709551616' AS UNSIGNED)",
+            .columns = cast_convert_basic_unsigned_columns,
+            .column_count = cast_convert_basic_unsigned_column_count,
+            .values = cast_convert_basic_unsigned_values,
+            .row_count = 1U,
+            .warning_count = cast_convert_basic_unsigned_warning_count,
+            .context = "cast convert unsigned target values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = unsigned_warning_values,
+            .row_count = cast_convert_basic_unsigned_warning_count,
+            .context = "cast convert unsigned warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('9223372036854775808' AS SIGNED), "
+                   "CAST('-9223372036854775809' AS SIGNED), "
+                   "CAST(18446744073709551616 AS SIGNED), "
+                   "CAST(-9223372036854775809 AS UNSIGNED)",
+            .columns = cast_convert_basic_boundary_columns,
+            .column_count = cast_convert_basic_boundary_column_count,
+            .values = cast_convert_basic_boundary_values,
+            .row_count = 1U,
+            .warning_count = 4U,
+            .context = "cast convert integer boundaries",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = boundary_warning_values,
+            .row_count = 4U,
+            .context = "cast convert boundary warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('1' AS SIGNED), CAST('1' AS SIGNED) AS signed_value, "
+                   "(CAST('2' AS UNSIGNED)), CAST(123 AS CHAR), CONVERT('3', SIGNED), "
+                   "CONVERT('4', UNSIGNED INTEGER), CONVERT('ABC', CHAR)",
+            .columns = cast_convert_basic_label_columns,
+            .column_count = cast_convert_basic_label_column_count,
+            .values = cast_convert_basic_label_values,
+            .row_count = 1U,
+            .context = "cast convert labels and target synonyms",
+        }
+    );
 
     failures += execute_ok(database, "DO CAST('ABC' AS BINARY), CAST(NULL AS BINARY)", &result);
     if (result != NULL) {
@@ -461,6 +683,7 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     }
     mylite_result_free(result);
     result = NULL;
+
     failures += expect_query(
         database,
         (struct expected_query){
@@ -470,6 +693,32 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
             .values = do_row_count_values,
             .row_count = 1U,
             .context = "row count after scalar do",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "DO CONVERT('ABC', SIGNED), CONVERT('-1', UNSIGNED), CAST(NULL AS CHAR)",
+        &result
+    );
+    if (result != NULL) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "cast convert do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "cast convert do rows");
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 0, "cast convert do affected");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 2U, "cast convert do warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = cast_convert_basic_status_columns,
+            .column_count = cast_convert_basic_status_column_count,
+            .values = cast_convert_basic_do_status_values,
+            .row_count = 1U,
+            .context = "row count and warning count after cast convert do",
         }
     );
 
@@ -603,11 +852,30 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CAST('ABC' AS CHAR)",
+        "SELECT CAST('ABC' AS CHAR(2))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST('1' AS INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CAST(1 + 2 AS SIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS SIGNED supports only string, integer, boolean, and NULL values",
         }
     );
     failures += execute_error(
@@ -675,11 +943,30 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CONVERT('ABC', CHAR)",
+        "SELECT CONVERT('ABC', CHAR(2))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('1', INTEGER)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT(1 + 2, UNSIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CONVERT(value, UNSIGNED) supports only string, integer, boolean, and NULL values",
         }
     );
     failures += execute_error(
@@ -784,6 +1071,24 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT CAST(id AS SIGNED) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CONVERT('ABC', CHAR) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT CONVERT('ABC' USING utf8mb4) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -799,6 +1104,16 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .sqlstate = "42000",
             .message_part =
                 "CAST AS BINARY supports only string, integer, boolean, and NULL values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DO CAST(1 + 2 AS SIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "CAST AS SIGNED supports only string, integer, boolean, and NULL values",
         }
     );
     failures += execute_error(
@@ -982,8 +1297,10 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
     failures +=
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), expected.affected_rows, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

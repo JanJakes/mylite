@@ -509,6 +509,7 @@ static int test_insert_ignore_schema_resolution_and_diagnostics(void) {
     static const char *const shape_error_messages[] = {
         "Column count doesn't match value count at row 2",
     };
+    static const char *const insert_select_count[] = {"2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -624,13 +625,31 @@ static int test_insert_ignore_schema_resolution_and_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         }
     );
+    failures += execute_statement_ok(database, "INSERT INTO simple VALUES (9, 9)");
+    failures += expect_dml_ok(
+        database,
+        (struct expected_dml){
+            .sql = "INSERT LOW_PRIORITY IGNORE INTO simple SELECT id, nn FROM simple",
+            .affected_rows = 1,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM simple",
+            .values = insert_select_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "insert ignore select copied row",
+        }
+    );
     failures += execute_error(
         database,
-        "INSERT LOW_PRIORITY IGNORE INTO simple SELECT id, nn FROM simple",
+        "INSERT DELAYED IGNORE INTO simple SELECT id, nn FROM simple",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "INSERT IGNORE ... SELECT does not support DELAYED",
         }
     );
 

@@ -73,8 +73,8 @@ repo artifact plus the official MySQL 8.4 documentation.
 
 The implementation must add:
 
-- parser and AST support for `IGNORE` after no priority modifier,
-  `LOW_PRIORITY`, or `HIGH_PRIORITY` on `INSERT ... SELECT`;
+- parser and AST support for `IGNORE` after the existing optional insert
+  modifier on `INSERT ... SELECT`, with runtime acceptance limited below;
 - support for optional `INTO` and the existing table-name and target-column
   subset;
 - runtime acceptance for table-backed descriptor source `SELECT` statements
@@ -98,7 +98,7 @@ This feature must not implement:
 - missing/default/null/range conversion differences beyond the existing strict
   `INSERT ... SELECT` behavior;
 - row-scalar no-source or `FROM DUAL` `INSERT IGNORE ... SELECT`;
-- `DELAYED IGNORE` on `INSERT ... SELECT`;
+- execution of `DELAYED IGNORE` on `INSERT ... SELECT`;
 - `PARTITION`, `TABLE`, row constructors, joins, CTEs, query-expression
   parentheses, locking behavior beyond existing no-op source locking clauses,
   triggers, cascades, privileges, protocol insert-id metadata, or arbitrary
@@ -164,28 +164,20 @@ insert_select_statement(A) ::=
     A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S, M, NULL);
 }
 insert_select_statement(A) ::=
-    INSERT(I) insert_select_ignore_prefix_opt(M) IGNORE(G) INTO table_name(T)
+    INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T)
     insert_column_list_opt(C) select_statement(S). {
     A = mylite_sql_parser_make_insert_select_statement(
         state, I, T, C, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
     );
 }
-
-insert_select_ignore_prefix_opt(A) ::= . {
-    A = NULL;
-}
-insert_select_ignore_prefix_opt(A) ::= LOW_PRIORITY(T). {
-    A = mylite_sql_parser_make_insert_low_priority_modifier(state, T);
-}
-insert_select_ignore_prefix_opt(A) ::= HIGH_PRIORITY(T). {
-    A = mylite_sql_parser_make_insert_high_priority_modifier(state, T);
-}
 ```
 
 The existing no-`IGNORE` productions still use `insert_modifier_opt`, so
 `INSERT DELAYED ... SELECT` remains in the existing MyLite compatibility slice.
-The `IGNORE` productions use a narrower prefix so `DELAYED IGNORE` remains
-unsupported for `INSERT ... SELECT`.
+`DELAYED IGNORE ... SELECT` is parsed to preserve AST consistency with other
+`INSERT` forms, then rejected by runtime before mutation because official
+MySQL 8.4 `INSERT ... SELECT` syntax admits `LOW_PRIORITY` and `HIGH_PRIORITY`
+but not `DELAYED` for that form.
 
 ## Semantics
 
@@ -201,11 +193,12 @@ existing diagnostics. `IGNORE` does not demote these errors in this slice.
 
 ### Runtime Acceptance
 
-If the parsed statement contains `IGNORE`, runtime planning accepts it only
-when the source is the table-backed descriptor `SELECT` path. Row-scalar
-no-source and `FROM DUAL` sources are rejected with a deterministic unsupported
-diagnostic because those paths reuse the normal one-row insert planner where
-full `IGNORE` would need duplicate/default/null/range warning demotion.
+If the parsed statement contains `IGNORE`, runtime accepts it only when the
+source is the table-backed descriptor `SELECT` path and the modifier is not
+`DELAYED`. Row-scalar no-source and `FROM DUAL` sources are rejected with a
+deterministic unsupported diagnostic because those paths reuse the normal
+one-row insert planner where full `IGNORE` would need duplicate/default/null/
+range warning demotion.
 
 Table-backed execution keeps the current algorithm:
 
@@ -243,6 +236,7 @@ Unsupported or failing cases use existing diagnostics where they already
 exist:
 
 - syntax errors for invalid modifier order or unsupported grammar shapes;
+- unsupported errors for `DELAYED IGNORE ... SELECT`;
 - missing default schema, unknown schema, unknown table, reserved target/source
   names, unsupported object kind, and read-only target errors from descriptor
   resolution;

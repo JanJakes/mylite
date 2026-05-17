@@ -18362,7 +18362,7 @@ static int test_replace_modifier_statements(void) {
 }
 
 static int test_insert_modifier_statements(void) {
-    const size_t low_priority_ignore_values_child_count = 5U;
+    const size_t priority_ignore_child_count = 5U;
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
@@ -18424,7 +18424,7 @@ static int test_insert_modifier_statements(void) {
         expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "low priority ignore values");
     failures += expect_child_count(
         statement,
-        low_priority_ignore_values_child_count,
+        priority_ignore_child_count,
         "low priority ignore values child count"
     );
     failures += expect_node(
@@ -18531,6 +18531,79 @@ static int test_insert_modifier_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "INSERT IGNORE INTO app.simple_lifecycle (id) SELECT id FROM app.source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, "ignore insert select");
+    failures += expect_child_count(statement, 4U, "ignore insert select child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "ignore insert select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY IGNORE INTO app.simple_lifecycle (id) "
+        "SELECT id FROM app.source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "low priority ignore insert select"
+    );
+    failures += expect_child_count(
+        statement,
+        priority_ignore_child_count,
+        "low priority ignore insert select child count"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER,
+        "low priority ignore insert select priority modifier"
+    );
+    failures += expect_node(
+        child_at(statement, 4U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "low priority ignore insert select ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT HIGH_PRIORITY IGNORE simple_lifecycle SELECT * FROM source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "high priority ignore insert select"
+    );
+    failures += expect_child_count(
+        statement,
+        priority_ignore_child_count,
+        "high priority ignore insert select child count"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER,
+        "high priority ignore insert select priority modifier"
+    );
+    failures += expect_node(
+        child_at(statement, 4U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "high priority ignore insert select ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT DELAYED simple_lifecycle SELECT * FROM source_lifecycle;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -18543,6 +18616,34 @@ static int test_insert_modifier_statements(void) {
         child_at(statement, 3U),
         MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
         "delayed insert select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT DELAYED IGNORE simple_lifecycle SELECT * FROM source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "delayed ignore insert select"
+    );
+    failures += expect_child_count(
+        statement,
+        priority_ignore_child_count,
+        "delayed ignore insert select child count"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
+        "delayed ignore insert select delayed modifier"
+    );
+    failures += expect_node(
+        child_at(statement, 4U),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "delayed ignore insert select ignore modifier"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -20676,7 +20777,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "INSERT LOW_PRIORITY IGNORE INTO t SELECT id FROM src;",
+        "INSERT IGNORE LOW_PRIORITY INTO t SELECT id FROM src;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

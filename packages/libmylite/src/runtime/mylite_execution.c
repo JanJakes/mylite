@@ -24791,8 +24791,14 @@ static int execute_insert_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    int rc = append_insert_delayed_warning_if_needed(database, statement);
+    int rc = MYLITE_OK;
 
+    if (child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL &&
+        child_with_kind(statement, MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER) != NULL) {
+        set_unsupported_error(database, "INSERT IGNORE ... SELECT does not support DELAYED");
+        return MYLITE_ERROR;
+    }
+    rc = append_insert_delayed_warning_if_needed(database, statement);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -51152,6 +51158,7 @@ static int plan_insert_select(
     const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_statement = child_at(statement, 2U);
     struct primary_key_info primary_key = primary_key_info_init();
+    bool ignore = child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     bool row_scalar_source = insert_select_source_is_row_scalar(select_statement);
     int rc = MYLITE_OK;
 
@@ -51189,6 +51196,13 @@ static int plan_insert_select(
             out_plan->target_indexes,
             out_plan->target_count
         );
+    }
+    if (rc == MYLITE_OK && ignore && row_scalar_source) {
+        set_unsupported_error(
+            database,
+            "INSERT IGNORE ... SELECT does not support row-scalar sources"
+        );
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_select_source(database, statement, row_scalar_source, out_plan);

@@ -135,6 +135,7 @@ static int test_insert_select_success_persistence_and_visibility(void) {
     };
     static const char *const row_count_one[] = {"1"};
     static const char *const persisted_rows[] = {"3", "13", "44"};
+    static const char *const ignore_rows[] = {"1", "11", "2", "12", "3", "13"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -256,6 +257,31 @@ static int test_insert_select_success_persistence_and_visibility(void) {
         "INSERT INTO visible_copy SELECT * FROM visible_copy WHERE id = 1",
         1
     );
+    failures +=
+        execute_ok(database, "CREATE TABLE ignore_dst(id INT NOT NULL, nn INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT IGNORE INTO ignore_dst(id, nn) "
+        "SELECT id, nn FROM src WHERE id < 3 ORDER BY id",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT LOW_PRIORITY IGNORE INTO ignore_dst(id, nn) SELECT id, nn FROM src WHERE id = 3",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nn FROM ignore_dst ORDER BY id",
+            .values = ignore_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "insert ignore select copied rows",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -280,6 +306,16 @@ static int test_insert_select_success_persistence_and_visibility(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "persisted insert select row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nn FROM ignore_dst ORDER BY id",
+            .values = ignore_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "persisted insert ignore select rows",
         }
     );
     failures += execute_ok(database, "RENAME TABLE dst TO renamed_dst", &result);
@@ -727,6 +763,15 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "INSERT IGNORE INTO app.missing_dst(id) SELECT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_dst' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
         "INSERT INTO _mylite_reserved(id) SELECT id FROM app.src",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
@@ -741,6 +786,39 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
             .message_part = "Incorrect table name",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE keyed_dst(id INT NOT NULL PRIMARY KEY, nn INT NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO keyed_dst(id, nn) SELECT id, nn FROM src",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT ... SELECT into primary-key tables is not supported",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unique_dst(id INT NOT NULL, nn INT NOT NULL, UNIQUE KEY uniq_id (id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO unique_dst(id, nn) SELECT id, nn FROM src",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT ... SELECT into unique-index tables is not supported",
         }
     );
 
@@ -777,6 +855,15 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "INSERT IGNORE INTO required_target(id) SELECT id FROM src WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'must' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
         "INSERT INTO required_target(id, must) SELECT id, n FROM src WHERE id = 2",
         (struct expected_sql_error){
             .code = mysql_error_bad_null,
@@ -786,7 +873,25 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "INSERT IGNORE INTO required_target(id, must) SELECT id, n FROM src WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'must' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
         "INSERT INTO dst(id, i) SELECT id, b FROM src ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 2",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO dst(id, i) SELECT id, b FROM src ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
@@ -868,11 +973,20 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT IGNORE INTO dst(id) SELECT id FROM src",
+        "INSERT IGNORE INTO dst(id) SELECT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "INSERT IGNORE ... SELECT does not support row-scalar sources",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO dst(id) SELECT 1 FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT IGNORE ... SELECT does not support row-scalar sources",
         }
     );
     failures += execute_error(

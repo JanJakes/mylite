@@ -870,12 +870,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "foreign_key_on_delete_restrict";
     case MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_NO_ACTION:
         return "foreign_key_on_delete_no_action";
+    case MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_SET_NULL:
+        return "foreign_key_on_delete_set_null";
     case MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_CASCADE:
         return "foreign_key_on_update_cascade";
     case MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_RESTRICT:
         return "foreign_key_on_update_restrict";
     case MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_NO_ACTION:
         return "foreign_key_on_update_no_action";
+    case MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_SET_NULL:
+        return "foreign_key_on_update_set_null";
     case MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION:
         return "check_constraint_definition";
     case MYLITE_SQL_AST_CHECK_ENFORCEMENT_ENFORCED:

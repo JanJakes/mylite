@@ -13143,7 +13143,28 @@ static int test_create_table_foreign_key_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE child (parent_id INT, FOREIGN KEY (parent_id) REFERENCES parent (id) "
-        "ON DELETE SET NULL);",
+        "ON DELETE SET NULL ON UPDATE SET NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    foreign_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    actions = child_at(foreign_key, 3U);
+    failures += expect_child_count(actions, 2U, "set null fk action count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_SET_NULL,
+        "delete set null action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_SET_NULL,
+        "update set null action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE child (parent_id INT, FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON DELETE SET DEFAULT);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

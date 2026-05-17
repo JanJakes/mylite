@@ -30,6 +30,7 @@ enum {
     mysql_error_foreign_key_cascade_duplicate = 1761,
     mysql_error_failed_to_open_referenced_table = 1824,
     mysql_error_duplicate_foreign_key = 1826,
+    mysql_error_column_not_null_for_set_null = 1830,
     mysql_error_foreign_key_column_incompatible = 3780,
     mysql_error_foreign_key_missing_unique = 6125,
 };
@@ -58,6 +59,7 @@ static int test_composite_foreign_key_lifecycle(void);
 static int test_alter_table_add_foreign_key_lifecycle(void);
 static int test_foreign_key_symbol_action_metadata(void);
 static int test_foreign_key_cascade_actions(void);
+static int test_foreign_key_set_null_actions(void);
 static int test_alter_table_drop_foreign_key_lifecycle(void);
 static int test_foreign_key_diagnostics(void);
 static int test_drop_foreign_key_diagnostics(void);
@@ -109,6 +111,7 @@ int main(void) {
     failures += test_alter_table_add_foreign_key_lifecycle();
     failures += test_foreign_key_symbol_action_metadata();
     failures += test_foreign_key_cascade_actions();
+    failures += test_foreign_key_set_null_actions();
     failures += test_alter_table_drop_foreign_key_lifecycle();
     failures += test_foreign_key_diagnostics();
     failures += test_drop_foreign_key_diagnostics();
@@ -661,11 +664,21 @@ static int test_foreign_key_symbol_action_metadata(void) {
         "NO ACTION",
         "NO ACTION",
     };
+    static const char *const create_set_null_referential[] = {
+        "fk_set_null",
+        "SET NULL",
+        "SET NULL",
+    };
     static const char *const alter_symbol_statistics[] = {"idx_pid", "1", "parent_id"};
     static const char *const alter_symbol_referential[] = {
         "child_alter_symbol_ibfk_1",
         "NO ACTION",
         "CASCADE",
+    };
+    static const char *const alter_set_null_referential[] = {
+        "fk_alter_set_null",
+        "SET NULL",
+        "SET NULL",
     };
     mylite_db *database = NULL;
     mylite_result *show_create_result = NULL;
@@ -811,6 +824,35 @@ static int test_foreign_key_symbol_action_metadata(void) {
         }
     );
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_set_null (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_set_null FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON DELETE SET NULL ON UPDATE SET NULL)"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE child_set_null", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "ON DELETE SET NULL ON UPDATE SET NULL",
+            "SHOW CREATE renders SET NULL foreign-key actions"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_set_null'",
+            create_set_null_referential,
+            1U,
+            3U,
+            "SET NULL metadata",
+        }
+    );
+
     failures +=
         expect_statement_ok(database, "CREATE TABLE child_alter_symbol (id INT, parent_id INT)");
     failures += expect_statement_ok(
@@ -860,6 +902,29 @@ static int test_foreign_key_symbol_action_metadata(void) {
             1U,
             3U,
             "alter foreign-key action metadata",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_alter_set_null (id INT, parent_id INT NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE child_alter_set_null ADD CONSTRAINT fk_alter_set_null "
+        "FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON UPDATE SET NULL ON DELETE SET NULL"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_alter_set_null'",
+            alter_set_null_referential,
+            1U,
+            3U,
+            "alter SET NULL action metadata",
         }
     );
 
@@ -1035,6 +1100,287 @@ static int test_foreign_key_cascade_actions(void) {
         (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
     );
 
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_set_null_actions(void) {
+    static const char *const delete_limited_values[] = {
+        "10",
+        "1",
+        "11",
+        NULL,
+        "12",
+        NULL,
+        "13",
+        "3",
+    };
+    static const char *const delete_final_values[] = {
+        "10",
+        "1",
+        "11",
+        NULL,
+        "12",
+        NULL,
+        "13",
+        NULL,
+    };
+    static const char *const composite_delete_values[] = {
+        "30",
+        NULL,
+        NULL,
+        "31",
+        NULL,
+        "2",
+        "32",
+        "3",
+        "4",
+    };
+    static const char *const update_values[] = {"20", NULL, "21", "2", "22", NULL};
+    static const char *const limited_update_values[] = {"60", NULL, "61", "2", "62", "3"};
+    static const char *const composite_update_values[] = {"40", NULL, NULL, "41", NULL, "6"};
+    static const char *const alter_delete_values[] = {"50", NULL};
+    static const char *const rollback_delete_null_values[] = {"70", "1"};
+    static const char *const rollback_delete_restrict_values[] = {"71", "1"};
+    static const char *const rollback_update_null_values[] = {"80", "1"};
+    static const char *const rollback_update_restrict_values[] = {"81", "1"};
+    mylite_db *database = NULL;
+    mylite_result *show_create_result = NULL;
+    int failures = open_seeded_memory(&database);
+
+    failures += expect_statement_ok(database, "CREATE TABLE psetdel (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE csetdel (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_csetdel_parent FOREIGN KEY (parent_id) REFERENCES psetdel (id) "
+        "ON DELETE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO psetdel VALUES (1), (2), (3)", 3);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO csetdel VALUES (10,1), (11,2), (12,NULL), (13,3)", 4);
+    failures += expect_dml_ok(database, "DELETE FROM psetdel WHERE id >= 2 ORDER BY id LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM csetdel ORDER BY id",
+            delete_limited_values,
+            4U,
+            2U,
+            "limited parent DELETE sets matching child rows to NULL",
+        }
+    );
+    failures += expect_dml_ok(database, "DELETE FROM psetdel WHERE id = 3", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM csetdel ORDER BY id",
+            delete_final_values,
+            4U,
+            2U,
+            "parent DELETE SET NULL leaves nullable child rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE psetpair (a INT, b INT, PRIMARY KEY (a,b))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE csetpair (id INT PRIMARY KEY, a INT NULL, b INT NULL, "
+        "CONSTRAINT fk_csetpair_parent FOREIGN KEY (a,b) REFERENCES psetpair (a,b) "
+        "ON DELETE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO psetpair VALUES (1,2), (3,4)", 2);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO csetpair VALUES (30,1,2), (31,NULL,2), (32,3,4)", 3);
+    failures += expect_dml_ok(database, "DELETE FROM psetpair WHERE a = 1 AND b = 2", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, a, b FROM csetpair ORDER BY id",
+            composite_delete_values,
+            3U,
+            3U,
+            "composite parent DELETE SET NULL clears every child key part",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE psetupd (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE csetupd (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_csetupd_parent FOREIGN KEY (parent_id) REFERENCES psetupd (id) "
+        "ON UPDATE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO psetupd VALUES (1), (2)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO csetupd VALUES (20,1), (21,2), (22,NULL)", 3);
+    failures += expect_dml_ok(database, "UPDATE psetupd SET id = 11 WHERE id = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM csetupd ORDER BY id",
+            update_values,
+            3U,
+            2U,
+            "parent UPDATE SET NULL clears matching child rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE psetuplim (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE csetuplim (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_csetuplim_parent FOREIGN KEY (parent_id) REFERENCES psetuplim (id) "
+        "ON UPDATE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO psetuplim VALUES (1), (2), (3)", 3);
+    failures += expect_dml_ok(database, "INSERT INTO csetuplim VALUES (60,1), (61,2), (62,3)", 3);
+    failures += expect_dml_ok(database, "UPDATE psetuplim SET id = 11 ORDER BY id LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM csetuplim ORDER BY id",
+            limited_update_values,
+            3U,
+            2U,
+            "limited parent UPDATE SET NULL clears selected child rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE psetuppair (a INT, b INT, PRIMARY KEY (a,b))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE csetuppair (id INT PRIMARY KEY, a INT NULL, b INT NULL, "
+        "CONSTRAINT fk_csetuppair_parent FOREIGN KEY (a,b) REFERENCES psetuppair (a,b) "
+        "ON UPDATE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO psetuppair VALUES (5,6)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO csetuppair VALUES (40,5,6), (41,NULL,6)", 2);
+    failures += expect_dml_ok(database, "UPDATE psetuppair SET a = 7 WHERE a = 5 AND b = 6", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, a, b FROM csetuppair ORDER BY id",
+            composite_update_values,
+            2U,
+            3U,
+            "composite parent UPDATE SET NULL clears every child key part",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE psetalter (id INT PRIMARY KEY)");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE csetalter (id INT PRIMARY KEY, pid INT NULL)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE csetalter ADD CONSTRAINT fk_csetalter_parent FOREIGN KEY (pid) "
+        "REFERENCES psetalter (id) ON DELETE SET NULL"
+    );
+    failures += execute_ok(database, "SHOW CREATE TABLE csetalter", &show_create_result);
+    if (failures == 0) {
+        failures += expect_contains(
+            mylite_result_value_text(show_create_result, 0U, 1U),
+            "ON DELETE SET NULL",
+            "SHOW CREATE renders alter-added SET NULL action"
+        );
+    }
+    mylite_result_free(show_create_result);
+    show_create_result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO psetalter VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO csetalter VALUES (50,1)", 1);
+    failures += expect_dml_ok(database, "DELETE FROM psetalter WHERE id = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, pid FROM csetalter",
+            alter_delete_values,
+            1U,
+            2U,
+            "alter-added parent DELETE SET NULL clears child rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE prollback_delete (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE crollback_delete_null (id INT PRIMARY KEY, pid INT NULL, "
+        "FOREIGN KEY (pid) REFERENCES prollback_delete (id) ON DELETE SET NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE crollback_delete_restrict (id INT PRIMARY KEY, pid INT NULL, "
+        "FOREIGN KEY (pid) REFERENCES prollback_delete (id))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO prollback_delete VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO crollback_delete_null VALUES (70,1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO crollback_delete_restrict VALUES (71,1)", 1);
+    failures += execute_error(
+        database,
+        "DELETE FROM prollback_delete WHERE id = 1",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, pid FROM crollback_delete_null",
+            rollback_delete_null_values,
+            1U,
+            2U,
+            "failed parent DELETE rolls back SET NULL child update",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, pid FROM crollback_delete_restrict",
+            rollback_delete_restrict_values,
+            1U,
+            2U,
+            "failed parent DELETE preserves restricting child row",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE prollback_update (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE crollback_update_null (id INT PRIMARY KEY, pid INT NULL, "
+        "FOREIGN KEY (pid) REFERENCES prollback_update (id) ON UPDATE SET NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE crollback_update_restrict (id INT PRIMARY KEY, pid INT NULL, "
+        "FOREIGN KEY (pid) REFERENCES prollback_update (id))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO prollback_update VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO crollback_update_null VALUES (80,1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO crollback_update_restrict VALUES (81,1)", 1);
+    failures += execute_error(
+        database,
+        "UPDATE prollback_update SET id = 2 WHERE id = 1",
+        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, pid FROM crollback_update_null",
+            rollback_update_null_values,
+            1U,
+            2U,
+            "failed parent UPDATE rolls back SET NULL child update",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, pid FROM crollback_update_restrict",
+            rollback_update_restrict_values,
+            1U,
+            2U,
+            "failed parent UPDATE preserves restricting child row",
+        }
+    );
+
+    mylite_result_free(show_create_result);
     mylite_close(database);
     return failures;
 }
@@ -1302,6 +1648,31 @@ static int test_foreign_key_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "CREATE TABLE child_set_null_not_null (id INT, parent_id INT NOT NULL, "
+        "CONSTRAINT fk_not_null FOREIGN KEY (parent_id) REFERENCES parent_signed (id) "
+        "ON DELETE SET NULL)",
+        (struct expected_sql_error){
+            mysql_error_column_not_null_for_set_null,
+            "HY000",
+            "cannot be NOT NULL",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_alter_set_null_not_null (id INT, parent_id INT NOT NULL)"
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE child_alter_set_null_not_null ADD FOREIGN KEY (parent_id) "
+        "REFERENCES parent_signed (id) ON UPDATE SET NULL",
+        (struct expected_sql_error){
+            mysql_error_column_not_null_for_set_null,
+            "HY000",
+            "cannot be NOT NULL",
+        }
+    );
+    failures += execute_error(
+        database,
         "CREATE TABLE child_duplicate_fk_index_symbol (a INT, b INT, "
         "FOREIGN KEY fk_idx (a) REFERENCES parent_signed (id), "
         "FOREIGN KEY fk_idx (b) REFERENCES parent_signed (id))",
@@ -1404,6 +1775,9 @@ static int test_foreign_key_persistence(void) {
     static const char *const composite_values[] = {"20", "1", "2", "21", "3", "4"};
     static const char *const action_values[] = {"30", "9"};
     static const char *const action_rules[] = {"fk_action_persist", "CASCADE", "CASCADE"};
+    static const char *const set_null_action_values[] = {"40", NULL};
+    static const char *const set_null_action_rules[] =
+        {"fk_set_null_persist", "SET NULL", "SET NULL"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1445,6 +1819,15 @@ static int test_foreign_key_persistence(void) {
     );
     failures += expect_dml_ok(database, "INSERT INTO parent_action VALUES (1)", 1);
     failures += expect_dml_ok(database, "INSERT INTO child_action_persist VALUES (30,1)", 1);
+    failures += expect_statement_ok(database, "CREATE TABLE parent_set_null (id INT PRIMARY KEY)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE child_set_null_persist (id INT PRIMARY KEY, parent_id INT NULL, "
+        "CONSTRAINT fk_set_null_persist FOREIGN KEY (parent_id) REFERENCES parent_set_null (id) "
+        "ON UPDATE SET NULL ON DELETE SET NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO parent_set_null VALUES (1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO child_set_null_persist VALUES (40,1)", 1);
     mylite_close(database);
     database = NULL;
 
@@ -1453,6 +1836,7 @@ static int test_foreign_key_persistence(void) {
     failures += expect_dml_ok(database, "INSERT INTO child VALUES (11, 2)", 1);
     failures += expect_dml_ok(database, "INSERT INTO child_pair VALUES (21,3,4)", 1);
     failures += expect_dml_ok(database, "UPDATE parent_action SET id = 9 WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE parent_set_null SET id = 8 WHERE id = 1", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -1493,6 +1877,28 @@ static int test_foreign_key_persistence(void) {
             1U,
             3U,
             "foreign-key action metadata persists after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT id, parent_id FROM child_set_null_persist ORDER BY id",
+            set_null_action_values,
+            1U,
+            2U,
+            "foreign-key SET NULL actions persist after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            "SELECT CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE "
+            "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+            "WHERE CONSTRAINT_SCHEMA = 'app' AND TABLE_NAME = 'child_set_null_persist'",
+            set_null_action_rules,
+            1U,
+            3U,
+            "foreign-key SET NULL action metadata persists after reopen",
         }
     );
 

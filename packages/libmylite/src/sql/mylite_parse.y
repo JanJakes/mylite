@@ -4866,6 +4866,10 @@ foreign_key_action_clause(A) ::= ON(O) DELETE NO ACTION(A1). {
     A = mylite_sql_parser_make_foreign_key_action(
         state, O, A1, MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_NO_ACTION);
 }
+foreign_key_action_clause(A) ::= ON(O) DELETE SET NULL(N). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, N, MYLITE_SQL_AST_FOREIGN_KEY_ON_DELETE_SET_NULL);
+}
 foreign_key_action_clause(A) ::= ON(O) UPDATE CASCADE(C). {
     A = mylite_sql_parser_make_foreign_key_action(
         state, O, C, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_CASCADE);
@@ -4877,6 +4881,10 @@ foreign_key_action_clause(A) ::= ON(O) UPDATE RESTRICT(R). {
 foreign_key_action_clause(A) ::= ON(O) UPDATE NO ACTION(A1). {
     A = mylite_sql_parser_make_foreign_key_action(
         state, O, A1, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_NO_ACTION);
+}
+foreign_key_action_clause(A) ::= ON(O) UPDATE SET NULL(N). {
+    A = mylite_sql_parser_make_foreign_key_action(
+        state, O, N, MYLITE_SQL_AST_FOREIGN_KEY_ON_UPDATE_SET_NULL);
 }
 
 index_name_opt(A) ::= . {

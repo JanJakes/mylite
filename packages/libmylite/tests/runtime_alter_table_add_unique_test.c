@@ -565,6 +565,18 @@ static int test_alter_add_unique_validation_dml_and_drop(void) {
 }
 
 static int test_alter_add_unique_diagnostics(void) {
+    static const char *const named_constraint_row[] = {"u_id", "UNIQUE"};
+    static const char *const explicit_index_constraint_row[] = {"visible", "UNIQUE"};
+    static const char *const constraint_form_rows[] = {
+        "b",
+        "UNIQUE",
+        "k_c",
+        "UNIQUE",
+        "uq_d",
+        "UNIQUE",
+        "visible",
+        "UNIQUE",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -667,13 +679,63 @@ static int test_alter_add_unique_diagnostics(void) {
         database,
         "ALTER TABLE prefix_diag ADD UNIQUE u_prefix (a(2), b(2))"
     );
-    failures += execute_error(
+    failures +=
+        expect_alter_unique_ok(database, "ALTER TABLE diag ADD CONSTRAINT u_id UNIQUE (id)");
+    failures += expect_query_values(
         database,
-        "ALTER TABLE diag ADD CONSTRAINT u_id UNIQUE (id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM "
+                   "INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'diag' AND CONSTRAINT_NAME = 'u_id'",
+            .values = named_constraint_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "named ALTER ADD CONSTRAINT UNIQUE metadata",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE explicit_constraint (a INT, b INT)");
+    failures += expect_alter_unique_ok(
+        database,
+        "ALTER TABLE explicit_constraint ADD CONSTRAINT ignored UNIQUE KEY visible (b)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM "
+                   "INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'explicit_constraint' AND CONSTRAINT_NAME = 'visible'",
+            .values = explicit_index_constraint_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "ALTER ADD CONSTRAINT UNIQUE explicit index metadata",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE constraint_forms (b INT, c INT, d INT, e INT)");
+    failures +=
+        expect_alter_unique_ok(database, "ALTER TABLE constraint_forms ADD CONSTRAINT UNIQUE (b)");
+    failures += expect_alter_unique_ok(
+        database,
+        "ALTER TABLE constraint_forms ADD CONSTRAINT UNIQUE KEY k_c (c)"
+    );
+    failures += expect_alter_unique_ok(
+        database,
+        "ALTER TABLE constraint_forms ADD CONSTRAINT uq_d UNIQUE KEY (d)"
+    );
+    failures += expect_alter_unique_ok(
+        database,
+        "ALTER TABLE constraint_forms ADD CONSTRAINT ignored UNIQUE visible (e)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM "
+                   "INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'constraint_forms' ORDER BY CONSTRAINT_NAME",
+            .values = constraint_form_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "ALTER ADD CONSTRAINT UNIQUE visible name variants",
         }
     );
     failures += execute_error(

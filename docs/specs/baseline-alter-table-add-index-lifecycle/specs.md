@@ -113,7 +113,8 @@ Supported:
 Deferred:
 
 - `ADD UNIQUE` and `ADD CONSTRAINT UNIQUE` in this phase; see the later limited
-  `ALTER TABLE ... ADD UNIQUE` slice for the supported unique-index subset;
+  `ALTER TABLE ... ADD UNIQUE` slice for the supported unique-index and named
+  unique-constraint subset;
 - `ADD FULLTEXT`, `ADD SPATIAL`, `ADD FOREIGN KEY`, and check constraints;
 - `DROP INDEX` / `DROP KEY`, `RENAME INDEX` / `RENAME KEY`, and index
   visibility changes;

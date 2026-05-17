@@ -1183,6 +1183,11 @@ alter_table_add_index_statement(A) ::=
 }
 
 alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD named_unique_constraint_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+}
+
+alter_table_add_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD fulltext_index_definition(I). {
     A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
 }
@@ -4408,6 +4413,10 @@ named_unique_constraint_definition(A) ::=
 named_unique_constraint_definition(A) ::=
     CONSTRAINT identifier UNIQUE(U) unique_index_keyword_required identifier(N) LPAREN
     secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier UNIQUE(U) identifier(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
 }
 

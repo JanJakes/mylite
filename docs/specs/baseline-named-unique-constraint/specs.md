@@ -58,6 +58,9 @@ named_unique_constraint ::=
 named_unique_constraint ::=
     CONSTRAINT identifier UNIQUE unique_index_keyword_required identifier LPAREN secondary_index_part_list RPAREN.
 
+named_unique_constraint ::=
+    CONSTRAINT identifier UNIQUE identifier LPAREN secondary_index_part_list RPAREN.
+
 unique_index_keyword_opt ::= .
 unique_index_keyword_opt ::= KEY.
 unique_index_keyword_opt ::= INDEX.
@@ -73,10 +76,11 @@ The first form uses the constraint identifier as the unique index name. The
 second form covers `CONSTRAINT UNIQUE (...)` and
 `CONSTRAINT UNIQUE KEY index_name (...)`. The third form covers
 `CONSTRAINT constraint_name UNIQUE KEY index_name (...)` and the matching
-`INDEX` spelling. When an explicit index name appears after `KEY` or `INDEX`,
-that name is authoritative, matching observed MySQL 8.4.9 behavior. The
-existing unprefixed `UNIQUE`, `UNIQUE KEY`, and `UNIQUE INDEX` table-level
-forms remain unchanged.
+`INDEX` spelling. The fourth form covers MySQL's no-keyword shorthand
+`CONSTRAINT constraint_name UNIQUE index_name (...)`. When an explicit index
+name appears after `KEY`, `INDEX`, or directly after `UNIQUE`, that name is
+authoritative, matching observed MySQL 8.4.9 behavior. The existing unprefixed
+`UNIQUE`, `UNIQUE KEY`, and `UNIQUE INDEX` table-level forms remain unchanged.
 
 The `secondary_index_part_list` is exactly the currently supported MyLite
 unique-index key-part subset:
@@ -91,9 +95,6 @@ unique-index key-part subset:
 
 This phase does not add:
 
-- `ALTER TABLE ... ADD CONSTRAINT name UNIQUE ...`;
-- MySQL's accepted `CONSTRAINT constraint_name UNIQUE index_name (...)`
-  shorthand without `KEY` or `INDEX` before the explicit index name;
 - named primary-key constraints;
 - table-qualified, expression, functional, ordinal, fulltext, spatial, binary,
   JSON, or multi-valued key parts beyond existing unique-index support;
@@ -103,6 +104,9 @@ This phase does not add:
   descriptor-owned unique secondary index.
 
 Unsupported forms continue to use the existing parser or planner diagnostics.
+The later `baseline-alter-table-add-unique-lifecycle` slice admits
+`ALTER TABLE ... ADD CONSTRAINT [symbol] UNIQUE ...` by lowering it to the same
+visible unique-index descriptor model.
 
 ## Semantic Model
 

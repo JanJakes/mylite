@@ -311,6 +311,13 @@ static int test_named_unique_constraint_variants_prefixes_and_diagnostics(void) 
         "  UNIQUE KEY `visible` (`a`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const explicit_no_keyword_rows[] = {
+        "explicit_no_keyword",
+        "CREATE TABLE `explicit_no_keyword` (\n"
+        "  `a` int DEFAULT NULL,\n"
+        "  UNIQUE KEY `visible` (`a`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
     static const char *const prefix_show_create_rows[] = {
         "prefix_named",
         "CREATE TABLE `prefix_named` (\n"
@@ -410,6 +417,10 @@ static int test_named_unique_constraint_variants_prefixes_and_diagnostics(void) 
         database,
         "CREATE TABLE explicit_name (a INT, CONSTRAINT ignored UNIQUE KEY visible (a))"
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE explicit_no_keyword (a INT, CONSTRAINT ignored UNIQUE visible (a))"
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -448,6 +459,16 @@ static int test_named_unique_constraint_variants_prefixes_and_diagnostics(void) 
             .column_count = 2U,
             .row_count = 1U,
             .context = "CONSTRAINT name UNIQUE KEY explicit index name",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE explicit_no_keyword",
+            .values = explicit_no_keyword_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "CONSTRAINT name UNIQUE explicit no-keyword index name",
         }
     );
     failures += expect_statement_ok(

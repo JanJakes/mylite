@@ -124,7 +124,6 @@ prefix indexes are not part of this phase.
 
 Deferred:
 
-- `ALTER TABLE ... ADD CONSTRAINT name UNIQUE ...`;
 - multi-action `ALTER TABLE`;
 - composite unique prefix keys;
 - primary prefix keys;

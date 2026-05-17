@@ -217,6 +217,48 @@ expect_output \
 "SHOW CREATE TABLE forms;" \
     "$DATABASE"
 
+named_constraint_expected=$(cat <<\EXPECTED
+0	0
+constraint_forms	CREATE TABLE `constraint_forms` (
+  `id` int DEFAULT NULL,
+  `a` int DEFAULT NULL,
+  `b` int DEFAULT NULL,
+  `c` int DEFAULT NULL,
+  `d` int DEFAULT NULL,
+  `e` int DEFAULT NULL,
+  `f` int DEFAULT NULL,
+  UNIQUE KEY `uq_a` (`a`),
+  UNIQUE KEY `b` (`b`),
+  UNIQUE KEY `k_c` (`c`),
+  UNIQUE KEY `uq_d` (`d`),
+  UNIQUE KEY `k_e` (`e`),
+  UNIQUE KEY `visible` (`f`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+b	UNIQUE
+k_c	UNIQUE
+k_e	UNIQUE
+uq_a	UNIQUE
+uq_d	UNIQUE
+visible	UNIQUE
+EXPECTED
+)
+expect_output \
+    "add constraint unique visible names" \
+    "$named_constraint_expected" \
+    "CREATE TABLE constraint_forms (id INT, a INT, b INT, c INT, d INT, e INT, f INT); "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT uq_a UNIQUE (a); "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT UNIQUE (b); "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT UNIQUE KEY k_c (c); "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT uq_d UNIQUE KEY (d); "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT uq_e UNIQUE KEY k_e (e); "\
+"ALTER TABLE constraint_forms ADD CONSTRAINT ignored UNIQUE visible (f); "\
+"SHOW CREATE TABLE constraint_forms; "\
+"SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'constraint_forms' "\
+"ORDER BY CONSTRAINT_NAME;" \
+    "$DATABASE"
+
 schema_expected=$(cat <<\EXPECTED
 q	CREATE TABLE `q` (
   `id` int DEFAULT NULL,
@@ -383,12 +425,6 @@ expect_error \
     "near 'PRIMARY (v)'" \
     "CREATE TABLE unquoted_primary (id INT, v INT); "\
 "ALTER TABLE unquoted_primary ADD UNIQUE PRIMARY (v);" \
-    "$DATABASE"
-
-expect_upstream_accepts \
-    "mysql accepts named unique constraints" \
-    "CREATE TABLE deferred_constraint (id INT, v INT); "\
-"ALTER TABLE deferred_constraint ADD CONSTRAINT uq_v UNIQUE (v);" \
     "$DATABASE"
 
 expect_upstream_accepts \

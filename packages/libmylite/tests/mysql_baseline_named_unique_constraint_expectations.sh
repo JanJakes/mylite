@@ -133,8 +133,14 @@ explicit_index_name	CREATE TABLE `explicit_index_name` (
   `a` int DEFAULT NULL,
   UNIQUE KEY `idx` (`a`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+explicit_no_keyword_name	CREATE TABLE `explicit_no_keyword_name` (
+  `a` int DEFAULT NULL,
+  UNIQUE KEY `idx2` (`a`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 idx
 idx
+idx2
+idx2
 EXPECTED
 )
 expect_output \
@@ -144,14 +150,20 @@ expect_output \
 "CREATE TABLE unique_key_form (a INT, CONSTRAINT c_key UNIQUE KEY (a)); "\
 "CREATE TABLE unique_index_form (a INT, CONSTRAINT c_idx UNIQUE INDEX (a)); "\
 "CREATE TABLE explicit_index_name (a INT, CONSTRAINT ignored UNIQUE KEY idx (a)); "\
+"CREATE TABLE explicit_no_keyword_name (a INT, CONSTRAINT ignored UNIQUE idx2 (a)); "\
 "SHOW CREATE TABLE no_symbol; "\
 "SHOW CREATE TABLE unique_key_form; "\
 "SHOW CREATE TABLE unique_index_form; "\
 "SHOW CREATE TABLE explicit_index_name; "\
+"SHOW CREATE TABLE explicit_no_keyword_name; "\
 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "\
 "WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'explicit_index_name'; "\
 "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS "\
-"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'explicit_index_name';" \
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'explicit_index_name'; "\
+"SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'explicit_no_keyword_name'; "\
+"SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'explicit_no_keyword_name';" \
     "$DATABASE"
 
 prefix_expected=$(cat <<\EXPECTED
@@ -241,17 +253,6 @@ expect_output \
 "CREATE TABLE same_two (a INT, CONSTRAINT reused UNIQUE (a)); "\
 "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "\
 "WHERE TABLE_SCHEMA = '${DATABASE}' AND CONSTRAINT_NAME = 'reused';" \
-    "$DATABASE"
-
-expect_upstream_accepts \
-    "MySQL accepts deferred no-keyword explicit named unique index" \
-    "CREATE TABLE deferred_no_keyword_name (a INT, CONSTRAINT c UNIQUE idx (a));" \
-    "$DATABASE"
-
-expect_upstream_accepts \
-    "MySQL accepts deferred ALTER ADD CONSTRAINT UNIQUE" \
-    "CREATE TABLE deferred_alter_add (a INT); "\
-"ALTER TABLE deferred_alter_add ADD CONSTRAINT c UNIQUE (a);" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_named_unique_constraint_expectations: ok"

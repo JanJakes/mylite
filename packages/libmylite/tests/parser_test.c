@@ -12069,9 +12069,15 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE deferred_named_unique (a INT, CONSTRAINT c UNIQUE visible (a));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE explicit_no_keyword_name (a INT, CONSTRAINT c UNIQUE visible (a));",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        child_at(child_at(items, 1U), 0U),
+        "visible",
+        "constraint unique no-keyword explicit visible index name"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -12809,8 +12815,82 @@ static int test_alter_table_add_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE add_idx ADD CONSTRAINT uq_v UNIQUE (v);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT,
+        "alter add constraint unique statement"
+    );
+    secondary_index = child_at(statement, 1U);
+    failures += expect_node(
+        secondary_index,
+        MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION,
+        "alter add constraint unique definition"
+    );
+    failures += expect_span_text(secondary_index, "UNIQUE (v)", "alter add constraint unique span");
+    failures +=
+        expect_span_text(child_at(secondary_index, 0U), "uq_v", "alter add constraint unique name");
+    key_parts = child_at(secondary_index, 1U);
+    failures += expect_child_count(key_parts, 1U, "alter add constraint unique part count");
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "v",
+        "alter add constraint unique part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD CONSTRAINT uq_key UNIQUE KEY visible (v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        child_at(secondary_index, 0U),
+        "visible",
+        "alter add constraint unique explicit index name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE add_idx ADD CONSTRAINT UNIQUE (v);", MYLITE_SQL_PARSE_OK, &result);
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures +=
+        expect_child_count(secondary_index, 1U, "alter add constraint unnamed unique child count");
+    key_parts = child_at(secondary_index, 0U);
+    failures += expect_span_text(
+        child_at(child_at(key_parts, 0U), 0U),
+        "v",
+        "alter add constraint unnamed unique part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD CONSTRAINT uq_key UNIQUE KEY (v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        child_at(secondary_index, 0U),
+        "uq_key",
+        "alter add constraint unique key name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD CONSTRAINT uq_key UNIQUE visible (v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_span_text(
+        child_at(secondary_index, 0U),
+        "visible",
+        "alter add constraint unique no-keyword explicit index name"
     );
     mylite_sql_parse_result_deinit(&result);
 

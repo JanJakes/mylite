@@ -6,19 +6,23 @@ This phase adds the next focused index/constraint DDL building block for
 persistent MyLite base tables:
 
 ```sql
-ALTER TABLE table_name ADD UNIQUE [INDEX|KEY] [index_name] (column_name)
+ALTER TABLE table_name ADD UNIQUE [INDEX|KEY] [index_name] (key_part[, ...])
+ALTER TABLE table_name ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY]
+    [index_name] (key_part[, ...])
 ```
 
-The supported form creates one descriptor-owned single-column unique secondary
-index after table creation, validates existing row values before mutating the
-catalog, creates one generated SQLite unique index, and exposes the new key
-through the existing descriptor-driven DML, `SHOW`, `CREATE TABLE ... LIKE`,
-and limited `INFORMATION_SCHEMA` paths.
+The supported forms create one descriptor-owned unique secondary index after
+table creation, validate existing row values before mutating the catalog,
+create one generated SQLite unique index, and expose the new key through the
+existing descriptor-driven DML, `SHOW`, `CREATE TABLE ... LIKE`, and limited
+`INFORMATION_SCHEMA` paths.
 
-This is intentionally not full MySQL unique-constraint DDL. It does not add
-named `CONSTRAINT` syntax, composite or prefix keys, descending or functional
-key parts, index options, multiple alter actions, foreign-key dependency
-handling, or optimizer guarantees.
+This is intentionally not full MySQL unique-constraint DDL. Named
+`CONSTRAINT` syntax lowers to the same descriptor-owned unique-index model used
+by create-time named unique constraints; MyLite does not store a separate
+unique-constraint descriptor. It does not add functional key parts, index
+options, multiple alter actions, foreign-key dependency handling, or optimizer
+guarantees.
 
 ## Sources
 
@@ -72,6 +76,18 @@ Runtime probes for this phase establish:
   `NON_UNIQUE = 0`. `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` and
   `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` expose one unique constraint named after
   the index.
+- `ALTER TABLE t ADD CONSTRAINT uq_v UNIQUE (v)` succeeds, reports
+  `ROW_COUNT() == 0`, leaves `@@warning_count == 0`, renders the same visible
+  unique key name `uq_v`, and exposes `uq_v` through
+  `INFORMATION_SCHEMA.STATISTICS`, `TABLE_CONSTRAINTS`, and
+  `KEY_COLUMN_USAGE`.
+- `ALTER TABLE t ADD CONSTRAINT uq2 UNIQUE KEY idx_v (v)` succeeds and uses
+  the explicit index name `idx_v` as the visible unique key and
+  information-schema constraint name; the `CONSTRAINT` symbol is not separately
+  represented for that form.
+- `ALTER TABLE t ADD CONSTRAINT uq3 UNIQUE idx_v (v)` without `KEY` or
+  `INDEX` between `UNIQUE` and the explicit visible index name has the same
+  visible-name behavior.
 - Integer-family, exact decimal, canonical temporal, `CHAR(1..255)`, and
   `VARCHAR(1..255)` columns can be used as one-part unique keys for this
   subset. `TEXT` without a prefix fails with `1170 / 42000`, and
@@ -90,32 +106,36 @@ Runtime probes for this phase establish:
 - An unknown key column fails with `1072 / 42000`.
 - Missing default schema, unknown schema, and unknown table use the existing
   MySQL diagnostics for `ALTER TABLE` target resolution.
-- MySQL accepts wider forms such as `ADD CONSTRAINT ... UNIQUE`, multiple alter
-  actions, composite key parts, prefix lengths, descending parts, and index
-  options. They remain deferred here.
+- MySQL accepts wider forms such as multiple alter actions and index options.
+  They remain deferred here.
 
 ## Scope
 
 Supported:
 
 - persistent MyLite base tables only;
-- one `ALTER TABLE table_name ADD UNIQUE [index_name] (column_name)` action;
-- one `ALTER TABLE table_name ADD UNIQUE KEY [index_name] (column_name)`
+- one `ALTER TABLE table_name ADD UNIQUE [index_name] (key_part[, ...])` action;
+- one `ALTER TABLE table_name ADD UNIQUE KEY [index_name] (key_part[, ...])`
   action;
-- one `ALTER TABLE table_name ADD UNIQUE INDEX [index_name] (column_name)`
+- one `ALTER TABLE table_name ADD UNIQUE INDEX [index_name] (key_part[, ...])`
   action;
+- one `ALTER TABLE table_name ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY]
+  [index_name] (key_part[, ...])` action, lowering to the same visible
+  unique-index descriptor as the non-`CONSTRAINT` spelling;
 - unqualified and schema-qualified target table names using the existing
   selected/default schema policy;
 - optional explicit index names using the existing descriptor identifier
   policy;
 - omitted index names generated from the key column with MySQL-compatible
   `_N` suffixes for non-redundant name collisions in the admitted subset;
-- exactly one unqualified descriptor column in the key-part list;
+- one or more unqualified full-column or supported prefix descriptor key parts
+  in the key-part list, with optional `ASC` / `DESC` direction metadata;
 - supported unique target descriptors:
   - integer-family and integer aliases, including `BOOL` / `BOOLEAN`;
   - exact `DECIMAL` / `NUMERIC` / `FIXED`;
-  - canonical `DATE`, `DATETIME`, and `TIMESTAMP`;
-  - ASCII-valued `CHAR(1..255)` and `VARCHAR(1..255)`;
+  - canonical `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
+  - ASCII-valued `CHAR(1..255)` and `VARCHAR(1..255)` full columns;
+  - supported `CHAR`, `VARCHAR`, and bare `TEXT` family prefix parts;
 - nullable and `NOT NULL` key target columns;
 - empty and nonempty tables, with existing-row duplicate validation;
 - duplicate `NULL` values;
@@ -131,20 +151,21 @@ Supported:
 
 Deferred:
 
-- `ADD CONSTRAINT [name] UNIQUE ...` and separate constraint-name storage;
 - `ADD PRIMARY KEY`, `ADD INDEX` / `ADD KEY` nonunique behavior, `ADD FULLTEXT`,
   `ADD SPATIAL`, `ADD FOREIGN KEY`, and check constraints beyond their existing
   feature slices;
+- separate unique-constraint descriptor storage distinct from the visible
+  unique-index descriptor;
 - `DROP INDEX` / `DROP KEY`, `RENAME INDEX` / `RENAME KEY`, and index
   visibility changes beyond already supported drop forms;
 - multi-action `ALTER TABLE`;
-- multiple key parts, duplicate key parts, prefix lengths, descending key
-  parts, functional key parts, expression key parts, table-qualified key parts,
-  ordinal key parts, and string-literal key parts;
+- duplicate key parts, primary-prefix key parts, functional key parts,
+  expression key parts, table-qualified key parts, ordinal key parts, and
+  string-literal key parts;
 - index type clauses, comments, parser options, `KEY_BLOCK_SIZE`, visibility,
   engine attributes, algorithms, locks, partitions, temporary tables, views,
   foreign keys, cascades, triggers, privileges, and implicit-commit emulation;
-- `TEXT` family key parts until prefix-length semantics are implemented;
+- full `TEXT` family key parts without a prefix;
 - non-ASCII string key values and full collation-aware comparison;
 - warnings for redundant duplicate unique indexes that MySQL accepts but marks
   with a warning;
@@ -178,14 +199,17 @@ Deferred:
 MyLite admits only one single-table unique-index action:
 
 ```sql
-ALTER TABLE table_name ADD UNIQUE [index_name] (column_name)
-ALTER TABLE table_name ADD UNIQUE KEY [index_name] (column_name)
-ALTER TABLE table_name ADD UNIQUE INDEX [index_name] (column_name)
+ALTER TABLE table_name ADD UNIQUE [index_name] (key_part[, ...])
+ALTER TABLE table_name ADD UNIQUE KEY [index_name] (key_part[, ...])
+ALTER TABLE table_name ADD UNIQUE INDEX [index_name] (key_part[, ...])
+ALTER TABLE table_name ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY]
+    [index_name] (key_part[, ...])
 ```
 
 The target table may be unqualified or schema-qualified. The index name, when
-present, is one identifier or quoted identifier. The key column is one
-unqualified identifier or quoted identifier.
+present, is one identifier or quoted identifier. Key parts are unqualified
+descriptor identifiers or quoted identifiers, optionally with supported prefix
+lengths and `ASC` / `DESC` direction metadata.
 
 MyLite Lemon-syntax sketch:
 
@@ -200,8 +224,38 @@ alter_table_add_index_statement(A) ::=
         state, A1, T, I);
 }
 
+alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD named_unique_constraint_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state, A1, T, I);
+}
+
 unique_index_definition(A) ::=
     UNIQUE(U) unique_index_keyword_opt index_name_opt(N)
+    LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier(N) UNIQUE(U) unique_index_keyword_opt
+    LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT UNIQUE(U) unique_index_keyword_opt index_name_opt(N)
+    LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier UNIQUE(U) unique_index_keyword_required identifier(N)
+    LPAREN secondary_index_part_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+}
+
+named_unique_constraint_definition(A) ::=
+    CONSTRAINT identifier UNIQUE(U) identifier(N)
     LPAREN secondary_index_part_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
 }
@@ -214,7 +268,9 @@ index_name_opt ::= .
 index_name_opt ::= identifier.
 
 secondary_index_part_list ::= secondary_index_part.
-secondary_index_part ::= identifier.
+secondary_index_part_list ::= secondary_index_part_list COMMA secondary_index_part.
+secondary_index_part ::= identifier index_key_direction_opt.
+secondary_index_part ::= identifier LPAREN INTEGER RPAREN index_key_direction_opt.
 ```
 
 The implementation may share the existing `ALTER TABLE ... ADD INDEX`
@@ -373,10 +429,8 @@ Unsupported but MySQL-accepted forms remain intentionally deferred and should
 be rejected deterministically when parsed, or remain syntax errors when not
 admitted by the parser:
 
-- `ADD CONSTRAINT [name] UNIQUE ...`;
 - multiple alter actions;
-- composite, prefix, descending, functional, expression, ordinal, or
-  table-qualified key parts;
+- functional, expression, ordinal, or table-qualified key parts;
 - `USING`, comments, visibility, `KEY_BLOCK_SIZE`, algorithms, locks,
   partitions, fulltext/spatial indexes, foreign keys, check constraints,
   temporary tables, views, and query modifiers.
@@ -392,7 +446,9 @@ index descriptors:
   current primary-key columns;
 - `INFORMATION_SCHEMA.STATISTICS` exposes one row with `NON_UNIQUE = 0`;
 - `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` exposes a `UNIQUE` constraint named
-  after the index;
+  after the visible unique-index descriptor, including the MySQL-verified
+  `ADD CONSTRAINT symbol UNIQUE KEY index_name (...)` case where `index_name`
+  is the visible name;
 - `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` exposes the one key column with
   ordinal position `1`;
 - `CREATE TABLE ... LIKE` clones the added unique descriptor and resets any
@@ -424,8 +480,8 @@ Add a fast C runtime test, preferably
 
 Coverage must include:
 
-- successful `ADD UNIQUE`, `ADD UNIQUE KEY`, `ADD UNIQUE INDEX`, and omitted
-  name forms;
+- successful `ADD UNIQUE`, `ADD UNIQUE KEY`, `ADD UNIQUE INDEX`, named
+  `ADD CONSTRAINT ... UNIQUE`, and omitted name forms;
 - integer-family, `BIGINT UNSIGNED`, exact `DECIMAL`, `DATE`, `DATETIME`,
   `TIMESTAMP`, `CHAR`, and `VARCHAR` supported target descriptors;
 - metadata through `SHOW CREATE TABLE`, `SHOW COLUMNS`, `SHOW INDEX`,
@@ -455,12 +511,14 @@ accepted.
 Update `COMPATIBILITY.md`,
 `docs/compatibility/sql-indexes-constraints.md`, and
 `docs/compatibility/sql-table-ddl.md` with limited wording for exactly the
-supported `ALTER TABLE ... ADD UNIQUE [INDEX|KEY] [name] (column)` subset.
+supported `ALTER TABLE ... ADD UNIQUE [INDEX|KEY] [name] (key_part[, ...])`
+and `ALTER TABLE ... ADD CONSTRAINT [symbol] UNIQUE [INDEX|KEY] [name]
+(key_part[, ...])` subset.
 
-Do not claim full `ADD UNIQUE`, named constraints, composite keys, prefix keys,
-descending keys, functional keys, non-ASCII string keys, index options,
-visibility, algorithms, locks, temporary tables, views, foreign keys,
-privileges, full collation behavior, or optimizer guarantees.
+Do not claim full `ADD UNIQUE`, separate unique-constraint descriptors,
+functional keys, non-ASCII string keys, index options, visibility, algorithms,
+locks, temporary tables, views, foreign keys, privileges, full collation
+behavior, or optimizer guarantees.
 
 ## Verification
 

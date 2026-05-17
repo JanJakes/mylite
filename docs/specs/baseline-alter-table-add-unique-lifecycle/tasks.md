@@ -34,3 +34,8 @@
 - [x] Review the final diff for MySQL behavior, catalog authority, physical SQL
   quoting, cleanup on failure, performance, scope control, compatibility docs,
   and test relevance.
+- [x] Extend the slice for `ALTER TABLE ... ADD CONSTRAINT [symbol] UNIQUE`
+  forms by verifying MySQL 8.4.9 metadata behavior, reusing the existing
+  unique-index descriptor path, updating parser/runtime coverage, and keeping
+  compatibility docs limited to visible unique-index metadata rather than a
+  separate unique-constraint descriptor.

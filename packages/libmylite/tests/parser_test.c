@@ -17826,6 +17826,19 @@ static int test_set_fixed_system_variable_statement(void) {
     failures += expect_span_text(value, "UTC", "set time_zone UTC span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SET transaction_isolation = SERIALIZABLE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    value = child_at(statement, 1U);
+    failures += expect_node(
+        value,
+        MYLITE_SQL_AST_IDENTIFIER,
+        "set transaction_isolation SERIALIZABLE value"
+    );
+    failures +=
+        expect_span_text(value, "SERIALIZABLE", "set transaction_isolation SERIALIZABLE span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SET time_zone = NULL;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     value = child_at(statement, 1U);

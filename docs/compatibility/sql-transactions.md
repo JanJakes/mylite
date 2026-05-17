@@ -13,7 +13,7 @@ Transaction control and savepoint compatibility.
 | `SAVEPOINT` | 🟡 | Limited user-visible savepoint creation and same-name replacement inside current explicit MyLite user transactions; outside a transaction it is a MySQL-compatible no-op success under the fixed autocommit baseline; no stored-program savepoint levels, mutable autocommit, or protocol flags |
 | `ROLLBACK TO SAVEPOINT` | 🟡 | Limited partial rollback for current user-visible savepoints, including `ROLLBACK TO`, `ROLLBACK TO SAVEPOINT`, and `ROLLBACK WORK TO [SAVEPOINT]`; missing savepoints return MySQL-compatible error `1305`; no stored-program scoping or lock/protocol semantics |
 | `RELEASE SAVEPOINT` | 🟡 | Limited release of current user-visible savepoints and later savepoints in the active explicit transaction, with MySQL-compatible missing-savepoint diagnostics; no stored-program scoping or protocol semantics |
-| `SET TRANSACTION` | 🟡 | Limited `SET [SESSION] TRANSACTION` isolation/access characteristics for the current connection; `READ ONLY` rejects persistent-table DML while allowing temporary-table DML; pending values are consumed by `START TRANSACTION` and other transaction-consuming statements; isolation is tracked without adding new concurrency semantics; no `GLOBAL`, system-variable readback, privileges, lock semantics, or protocol flags |
+| `SET TRANSACTION` | 🟡 | Limited `SET [SESSION] TRANSACTION` isolation/access characteristics for the current connection; `READ ONLY` rejects persistent-table DML while allowing temporary-table DML; pending values are consumed by `START TRANSACTION` and other transaction-consuming statements; related transaction system variables expose and update the same session and next-transaction state; isolation is tracked without adding new concurrency semantics; no mutable `GLOBAL`, privileges, lock semantics, or protocol flags |
 
 Current supported DML participates in explicit user transactions with
 statement-level rollback. User-visible savepoints can roll back or release work
@@ -31,5 +31,12 @@ uncommitted transaction.
 are consumed by successful transaction-consuming statements, and read-only
 write failures keep the pending characteristic available for the next
 transaction attempt.
+
+`@@transaction_isolation` and `@@transaction_read_only` expose MyLite's
+connection-local session transaction defaults. Direct session/local assignments
+update those defaults, while direct `SET @@transaction_isolation = ...` and
+`SET @@transaction_read_only = ...` update pending next-transaction
+characteristics without changing scalar readback. Global transaction defaults
+remain fixed embedded defaults with only exact no-op assignment forms admitted.
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

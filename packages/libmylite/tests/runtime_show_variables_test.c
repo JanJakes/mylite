@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 44,
-    global_variable_row_count = 40,
+    session_variable_row_count = 46,
+    global_variable_row_count = 42,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -150,6 +150,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"system_time_zone", "UTC"},
         {"timestamp", "1700000000.000000"},
         {"time_zone", "SYSTEM"},
+        {"transaction_isolation", "REPEATABLE-READ"},
+        {"transaction_read_only", "OFF"},
         {"unique_checks", "ON"},
         {"updatable_views_with_limit", "YES"},
         {"version", mylite_version()},
@@ -193,6 +195,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"sql_warnings", "OFF"},
         {"system_time_zone", "UTC"},
         {"time_zone", "SYSTEM"},
+        {"transaction_isolation", "REPEATABLE-READ"},
+        {"transaction_read_only", "OFF"},
         {"unique_checks", "ON"},
         {"updatable_views_with_limit", "YES"},
         {"version", mylite_version()},
@@ -352,6 +356,24 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "67108864",
         },
         "show global variables max allowed packet"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES LIKE 'transaction_isolation'",
+        (struct expected_variable_row){
+            .name = "transaction_isolation",
+            .value = "REPEATABLE-READ",
+        },
+        "show variables transaction isolation"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'transaction_read_only'",
+        (struct expected_variable_row){
+            .name = "transaction_read_only",
+            .value = "OFF",
+        },
+        "show global variables transaction read only"
     );
     failures += expect_single_row(
         database,

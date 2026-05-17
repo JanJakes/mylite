@@ -986,9 +986,9 @@ Performance Schema variable tables remain unsupported.
 | `tmpdir` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_alloc_block_size` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_allow_batching` | ❌ | Value, scope, SET, diagnostics |
-| `transaction_isolation` | ❌ | Value, scope, SET, diagnostics |
+| `transaction_isolation` | 🟡 | Limited scalar reads and `SHOW VARIABLES` rows expose fixed global `REPEATABLE-READ` and connection-local session/default/local values. Direct session/local assignments update the session default; direct `SET @@transaction_isolation = ...` updates the next transaction characteristic; exact fixed-global no-op assignments may preserve the default. No mutable global default, privilege checks, persisted variables, or added MVCC/isolation behavior |
 | `transaction_prealloc_size` | ❌ | Value, scope, SET, diagnostics |
-| `transaction_read_only` | ❌ | Value, scope, SET, diagnostics |
+| `transaction_read_only` | 🟡 | Limited scalar reads and `SHOW VARIABLES` rows expose fixed global `0`/`OFF` and connection-local session/default/local values. Direct session/local assignments update the session default; direct `SET @@transaction_read_only = ...` updates the next transaction characteristic and can make the next persistent write fail read-only; exact fixed-global no-op assignments may preserve the default. No mutable global default, privilege checks, persisted variables, or protocol read-only status flags |
 | `unique_checks` | 🟡 | Limited scalar `SELECT @@unique_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; current descriptor-owned primary-key and supported unique-index duplicate checks remain enabled; no mutable global/session state, toggleable enforcement, optimizer effects, import optimizations, or Performance Schema variable tables |
 | `updatable_views_with_limit` | 🟡 | Limited read-only scalar `SELECT @@updatable_views_with_limit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `YES`; no `SET`, mutable global/session state, view DDL, view metadata, view DML, check options, privileges, or Performance Schema variable tables |
 | `use_secondary_engine` | ❌ | Value, scope, SET, diagnostics |

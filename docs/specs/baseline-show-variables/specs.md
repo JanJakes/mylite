@@ -162,6 +162,8 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `sql_select_limit` | yes | yes | `18446744073709551615` |
 | `sql_slave_skip_counter` | yes | yes | `0` |
 | `sql_warnings` | yes | yes | `OFF` |
+| `transaction_isolation` | yes | yes | current session value or fixed global `REPEATABLE-READ` |
+| `transaction_read_only` | yes | yes | current session value as `ON`/`OFF` or fixed global `OFF` |
 | `unique_checks` | yes | yes | `ON` |
 | `updatable_views_with_limit` | yes | yes | `YES` |
 | `version` | yes | yes | `mylite_version()` |

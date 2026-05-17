@@ -125,6 +125,8 @@ struct mylite_session_state {
     bool user_transaction_active;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;
+    bool next_transaction_isolation_from_system_variable;
+    bool next_transaction_access_mode_from_system_variable;
     bool active_transaction_read_only;
     bool has_timestamp_override;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];

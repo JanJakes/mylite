@@ -122,6 +122,8 @@ supported_session_rows=$(run_mysql "
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'transaction_isolation',
+      'transaction_read_only',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -171,6 +173,8 @@ sql_safe_updates|OFF
 sql_select_limit|18446744073709551615
 sql_slave_skip_counter|0
 sql_warnings|OFF
+transaction_isolation|REPEATABLE-READ
+transaction_read_only|OFF
 unique_checks|ON
 updatable_views_with_limit|YES
 version|8.4.9
@@ -200,6 +204,8 @@ supported_global_rows=$(run_mysql "
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'transaction_isolation',
+      'transaction_read_only',
       'unique_checks',
       'updatable_views_with_limit',
       'sql_auto_is_null',
@@ -247,6 +253,8 @@ sql_safe_updates|OFF
 sql_select_limit|18446744073709551615
 sql_slave_skip_counter|0
 sql_warnings|OFF
+transaction_isolation|REPEATABLE-READ
+transaction_read_only|OFF
 unique_checks|ON
 updatable_views_with_limit|YES
 version|8.4.9

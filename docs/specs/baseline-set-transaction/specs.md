@@ -113,9 +113,9 @@ This feature must not implement:
 - `SET GLOBAL TRANSACTION` mutable global state or privilege checks;
 - direct `SET transaction_isolation = ...`,
   `SET @@transaction_isolation = ...`, `SET transaction_read_only = ...`, or
-  persisted variable forms;
-- system-variable readback for `@@transaction_isolation` or
-  `@@transaction_read_only`;
+  persisted variable forms in this phase. The later
+  [baseline transaction system variables](../baseline-transaction-system-variables/specs.md)
+  phase adds a limited direct system-variable surface over this state;
 - protocol transaction status flags;
 - row locks, gap locks, deadlock handling, lock wait timeouts, or isolation
   visibility semantics beyond the current SQLite-backed statement behavior;

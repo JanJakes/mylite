@@ -341,6 +341,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->next_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
     session->has_next_transaction_access_mode = false;
     session->next_transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+    session->next_transaction_isolation_from_system_variable = false;
+    session->next_transaction_access_mode_from_system_variable = false;
     session->active_transaction_read_only = false;
     session->savepoints = NULL;
     session->savepoint_count = 0U;

@@ -625,6 +625,9 @@ set_system_variable_value(A) ::= SYSTEM(T). {
 set_system_variable_value(A) ::= UTC(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+set_system_variable_value(A) ::= SERIALIZABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 set_system_variable_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }

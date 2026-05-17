@@ -6243,6 +6243,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES = 42,
     SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM = 43,
     SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET = 44,
+    SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION = 45,
+    SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 46,
 };
 
 struct system_variable_component {
@@ -6273,6 +6275,7 @@ enum set_system_variable_scope {
 struct resolved_set_system_variable_target {
     enum session_system_variable_kind kind;
     enum set_system_variable_scope scope;
+    bool is_system_variable_target;
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
@@ -6319,6 +6322,8 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"system_time_zone", SESSION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE, true, true},
     {"timestamp", SESSION_SYSTEM_VARIABLE_TIMESTAMP, true, false},
     {"time_zone", SESSION_SYSTEM_VARIABLE_TIME_ZONE, true, true},
+    {"transaction_isolation", SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION, true, true},
+    {"transaction_read_only", SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY, true, true},
     {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS, true, true},
     {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
     {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
@@ -6540,6 +6545,11 @@ static int apply_set_max_allowed_packet_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_transaction_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int validate_set_fixed_uint64_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -6632,7 +6642,53 @@ static int apply_session_transaction_characteristics(
 );
 static int apply_next_transaction_characteristics(
     struct mylite_db *database,
+    const struct transaction_characteristics *characteristics,
+    bool from_system_variable
+);
+static int apply_transaction_system_variable_characteristics(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
     const struct transaction_characteristics *characteristics
+);
+static int parse_set_transaction_isolation_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_transaction_isolation *out_isolation
+);
+static int parse_set_transaction_read_only_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_transaction_access_mode *out_access_mode
+);
+static int decode_set_transaction_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *variable_name,
+    char **out_value
+);
+static int copy_set_transaction_identifier_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char *value,
+    size_t value_size
+);
+static int set_transaction_variable_invalid_node_value_error(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node
+);
+static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation);
+static const char *transaction_read_only_scalar_text(
+    enum mylite_transaction_access_mode access_mode
+);
+static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
+static const char *transaction_isolation_system_variable_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static const char *transaction_read_only_system_variable_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
 );
 static enum mylite_transaction_access_mode current_transaction_access_mode(
     const struct mylite_db *database
@@ -6655,6 +6711,7 @@ static void clear_next_transaction_characteristics_before_statement(
 static bool statement_consumes_next_characteristics_before_execution(
     const struct mylite_sql_ast_node *statement
 );
+static void clear_select_consumed_next_transaction_characteristics(struct mylite_db *database);
 static void clear_next_transaction_characteristics_after_statement(struct mylite_db *database);
 static int reject_read_only_persistent_write(
     struct mylite_db *database,
@@ -18191,7 +18248,7 @@ static int execute_parsed_statement(
         int rc = execute_select_statement(database, context, statement, out_result);
 
         if (rc == MYLITE_OK) {
-            clear_next_transaction_characteristics_after_statement(database);
+            clear_select_consumed_next_transaction_characteristics(database);
         }
         return rc;
     }
@@ -18199,7 +18256,7 @@ static int execute_parsed_statement(
         int rc = execute_compound_select_statement(database, context, statement, out_result);
 
         if (rc == MYLITE_OK) {
-            clear_next_transaction_characteristics_after_statement(database);
+            clear_select_consumed_next_transaction_characteristics(database);
         }
         return rc;
     }
@@ -18719,7 +18776,7 @@ static int apply_set_transaction_statement(
         return rc;
     }
     if (scope == NULL) {
-        return apply_next_transaction_characteristics(database, &characteristics);
+        return apply_next_transaction_characteristics(database, &characteristics, false);
     }
 
     rc = copy_identifier_text(scope, scope_text, sizeof(scope_text), database);
@@ -18815,12 +18872,14 @@ static int apply_session_transaction_characteristics(
         database->session.session_transaction_isolation = characteristics->isolation;
         if (!database->session.user_transaction_active) {
             database->session.has_next_transaction_isolation = false;
+            database->session.next_transaction_isolation_from_system_variable = false;
         }
     }
     if (characteristics->has_access_mode) {
         database->session.session_transaction_access_mode = characteristics->access_mode;
         if (!database->session.user_transaction_active) {
             database->session.has_next_transaction_access_mode = false;
+            database->session.next_transaction_access_mode_from_system_variable = false;
         }
     }
     return MYLITE_OK;
@@ -18828,7 +18887,8 @@ static int apply_session_transaction_characteristics(
 
 static int apply_next_transaction_characteristics(
     struct mylite_db *database,
-    const struct transaction_characteristics *characteristics
+    const struct transaction_characteristics *characteristics,
+    bool from_system_variable
 ) {
     if (database->session.user_transaction_active) {
         mylite_diagnostics_set_error(
@@ -18842,12 +18902,284 @@ static int apply_next_transaction_characteristics(
     if (characteristics->has_isolation) {
         database->session.has_next_transaction_isolation = true;
         database->session.next_transaction_isolation = characteristics->isolation;
+        database->session.next_transaction_isolation_from_system_variable = from_system_variable;
     }
     if (characteristics->has_access_mode) {
         database->session.has_next_transaction_access_mode = true;
         database->session.next_transaction_access_mode = characteristics->access_mode;
+        database->session.next_transaction_access_mode_from_system_variable = from_system_variable;
     }
     return MYLITE_OK;
+}
+
+static int apply_transaction_system_variable_characteristics(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct transaction_characteristics *characteristics
+) {
+    if (target == NULL || characteristics == NULL) {
+        set_runtime_error(database, "invalid transaction system variable assignment");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return MYLITE_OK;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_NONE && target->is_system_variable_target) {
+        return apply_next_transaction_characteristics(database, characteristics, true);
+    }
+    return apply_session_transaction_characteristics(database, characteristics);
+}
+
+static int parse_set_transaction_isolation_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_transaction_isolation *out_isolation
+) {
+    char *decoded = NULL;
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *value = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_isolation == NULL) {
+        set_runtime_error(database, "invalid transaction_isolation output");
+        return MYLITE_ERROR;
+    }
+    *out_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        rc = copy_set_transaction_identifier_value(
+            database,
+            value_node,
+            identifier,
+            sizeof(identifier)
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        value = identifier;
+    } else if (
+        value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING
+    ) {
+        rc = decode_set_transaction_string_value(
+            database,
+            value_node,
+            "transaction_isolation",
+            &decoded
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        value = decoded;
+    } else {
+        return set_transaction_variable_invalid_node_value_error(
+            database,
+            "transaction_isolation",
+            value_node
+        );
+    }
+
+    if (text_equals_ascii_case_insensitive(value, "REPEATABLE-READ")) {
+        *out_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    } else if (text_equals_ascii_case_insensitive(value, "READ-COMMITTED")) {
+        *out_isolation = MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED;
+    } else if (text_equals_ascii_case_insensitive(value, "READ-UNCOMMITTED")) {
+        *out_isolation = MYLITE_TRANSACTION_ISOLATION_READ_UNCOMMITTED;
+    } else if (text_equals_ascii_case_insensitive(value, "SERIALIZABLE")) {
+        *out_isolation = MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE;
+    } else {
+        set_system_variable_cant_be_set_value_error(database, "transaction_isolation", value);
+        rc = MYLITE_ERROR;
+    }
+
+    free(decoded);
+    return rc;
+}
+
+static int parse_set_transaction_read_only_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_transaction_access_mode *out_access_mode
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *decoded = NULL;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_access_mode == NULL) {
+        set_runtime_error(database, "invalid transaction_read_only output");
+        return MYLITE_ERROR;
+    }
+    *out_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_transaction_variable_invalid_node_value_error(
+            database,
+            "transaction_read_only",
+            value_node
+        );
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        if (parse_unsigned_integer_literal(&value_node->span, &magnitude) != MYLITE_OK ||
+            magnitude > 1U) {
+            return set_transaction_variable_invalid_node_value_error(
+                database,
+                "transaction_read_only",
+                value_node
+            );
+        }
+        if (magnitude == 1U) {
+            *out_access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        }
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_set_transaction_string_value(
+            database,
+            value_node,
+            "transaction_read_only",
+            &decoded
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(decoded, "ON")) {
+            *out_access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        } else if (!text_equals_ascii_case_insensitive(decoded, "OFF")) {
+            set_system_variable_cant_be_set_value_error(database, "transaction_read_only", decoded);
+            rc = MYLITE_ERROR;
+        }
+        free(decoded);
+        return rc;
+    }
+
+    return set_transaction_variable_invalid_node_value_error(
+        database,
+        "transaction_read_only",
+        value_node
+    );
+}
+
+static int decode_set_transaction_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *variable_name,
+    char **out_value
+) {
+    size_t text_length = 0U;
+    char unsupported_message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    char nul_message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+
+    int unsupported_written = snprintf(
+        unsupported_message,
+        sizeof(unsupported_message),
+        "SET %s supports only literal values",
+        variable_name == NULL ? "transaction variable" : variable_name
+    );
+    int nul_written = snprintf(
+        nul_message,
+        sizeof(nul_message),
+        "SET %s does not support NUL bytes",
+        variable_name == NULL ? "transaction variable" : variable_name
+    );
+
+    if (unsupported_written < 0) {
+        unsupported_message[0] = '\0';
+    }
+    if (nul_written < 0) {
+        nul_message[0] = '\0';
+    }
+    return decode_sql_string_literal(
+        database,
+        value_node,
+        unsupported_message,
+        nul_message,
+        out_value,
+        &text_length
+    );
+}
+
+static int copy_set_transaction_identifier_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char *value,
+    size_t value_size
+) {
+    if (value == NULL || value_size == 0U) {
+        set_runtime_error(database, "invalid transaction system variable value buffer");
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return copy_identifier_text(value_node, value, value_size, database);
+}
+
+static int set_transaction_variable_invalid_node_value_error(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char value[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t copied = 0U;
+
+    if (value_node == NULL || value_node->span.text == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    copied = value_node->span.length < sizeof(value) ? value_node->span.length : sizeof(value) - 1U;
+    memcpy(value, value_node->span.text, copied);
+    value[copied] = '\0';
+    set_system_variable_cant_be_set_value_error(database, variable_name, value);
+    return MYLITE_ERROR;
+}
+
+static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation) {
+    switch (isolation) {
+    case MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED:
+        return "READ-COMMITTED";
+    case MYLITE_TRANSACTION_ISOLATION_READ_UNCOMMITTED:
+        return "READ-UNCOMMITTED";
+    case MYLITE_TRANSACTION_ISOLATION_SERIALIZABLE:
+        return "SERIALIZABLE";
+    case MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ:
+    default:
+        return "REPEATABLE-READ";
+    }
+}
+
+static const char *transaction_read_only_scalar_text(
+    enum mylite_transaction_access_mode access_mode
+) {
+    return access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "1" : "0";
+}
+
+static const char *transaction_read_only_show_text(
+    enum mylite_transaction_access_mode access_mode
+) {
+    return access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "ON" : "OFF";
 }
 
 static enum mylite_transaction_access_mode current_transaction_access_mode(
@@ -18903,6 +19235,8 @@ static int append_consistent_snapshot_ignored_warning(struct mylite_db *database
 static void clear_next_transaction_characteristics(struct mylite_db *database) {
     database->session.has_next_transaction_isolation = false;
     database->session.has_next_transaction_access_mode = false;
+    database->session.next_transaction_isolation_from_system_variable = false;
+    database->session.next_transaction_access_mode_from_system_variable = false;
 }
 
 static void clear_active_transaction_characteristics(struct mylite_db *database) {
@@ -18922,6 +19256,17 @@ static bool statement_consumes_next_characteristics_before_execution(
     const struct mylite_sql_ast_node *statement
 ) {
     return statement_requires_implicit_user_transaction_commit(statement);
+}
+
+static void clear_select_consumed_next_transaction_characteristics(struct mylite_db *database) {
+    if (!database->session.next_transaction_isolation_from_system_variable) {
+        database->session.has_next_transaction_isolation = false;
+        database->session.next_transaction_isolation_from_system_variable = false;
+    }
+    if (!database->session.next_transaction_access_mode_from_system_variable) {
+        database->session.has_next_transaction_access_mode = false;
+        database->session.next_transaction_access_mode_from_system_variable = false;
+    }
 }
 
 static void clear_next_transaction_characteristics_after_statement(struct mylite_db *database) {
@@ -20116,6 +20461,10 @@ static int apply_set_system_variable_statement(
     if (target.kind == SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET) {
         return apply_set_max_allowed_packet_value(database, &target, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
+        target.kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
+        return apply_set_transaction_system_variable_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -20268,16 +20617,20 @@ static int resolve_set_system_variable_system_target(
     memcpy(out_target->name, name->text, strlen(name->text) + 1U);
 
     if (!has_scope) {
+        out_target->is_system_variable_target = true;
         out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_NONE;
         return MYLITE_OK;
     }
     if (system_variable_component_equals(&first, "global")) {
+        out_target->is_system_variable_target = true;
         out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_GLOBAL;
         return MYLITE_OK;
     }
     if (system_variable_component_equals(&first, "session")) {
+        out_target->is_system_variable_target = true;
         out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_SESSION;
     } else if (system_variable_component_equals(&first, "local")) {
+        out_target->is_system_variable_target = true;
         out_target->scope = SET_SYSTEM_VARIABLE_SCOPE_LOCAL;
     } else {
         set_unknown_system_variable_error(database, name_node);
@@ -20434,6 +20787,65 @@ static int validate_set_fixed_uint64_value(
     }
 
     return MYLITE_OK;
+}
+
+static int apply_set_transaction_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    struct transaction_characteristics characteristics = {
+        .has_isolation = false,
+        .has_access_mode = false,
+        .has_consistent_snapshot = false,
+        .isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ,
+        .access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+    };
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid transaction system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION) {
+        rc =
+            parse_set_transaction_isolation_value(database, value_node, &characteristics.isolation);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        characteristics.has_isolation = true;
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+            characteristics.isolation != MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ) {
+            set_unsupported_error(
+                database,
+                "SET transaction_isolation supports only fixed no-op global assignments"
+            );
+            return MYLITE_ERROR;
+        }
+    } else if (target->kind == SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
+        rc = parse_set_transaction_read_only_value(
+            database,
+            value_node,
+            &characteristics.access_mode
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        characteristics.has_access_mode = true;
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+            characteristics.access_mode != MYLITE_TRANSACTION_ACCESS_READ_WRITE) {
+            set_unsupported_error(
+                database,
+                "SET transaction_read_only supports only fixed no-op global assignments"
+            );
+            return MYLITE_ERROR;
+        }
+    } else {
+        set_runtime_error(database, "invalid transaction system variable kind");
+        return MYLITE_ERROR;
+    }
+
+    return apply_transaction_system_variable_characteristics(database, target, &characteristics);
 }
 
 static int apply_set_sql_mode_value(
@@ -69209,6 +69621,12 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
+        out_cell->value = transaction_isolation_system_variable_value(database, expression);
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+        out_cell->value = transaction_read_only_system_variable_value(database, expression);
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
         rc = format_timestamp_system_variable_value(
             database,
@@ -69245,6 +69663,26 @@ static int system_variable_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static const char *transaction_isolation_system_variable_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (system_variable_expression_has_global_scope(expression)) {
+        return transaction_isolation_value_text(MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ);
+    }
+    return transaction_isolation_value_text(database->session.session_transaction_isolation);
+}
+
+static const char *transaction_read_only_system_variable_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (system_variable_expression_has_global_scope(expression)) {
+        return transaction_read_only_scalar_text(MYLITE_TRANSACTION_ACCESS_READ_WRITE);
+    }
+    return transaction_read_only_scalar_text(database->session.session_transaction_access_mode);
 }
 
 static bool system_variable_expression_has_global_scope(
@@ -69431,6 +69869,8 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
         return true;
     default:
         return false;
@@ -69570,6 +70010,23 @@ static int show_system_variable_value(
         }
         return rc;
     }
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
+        if (global_scope) {
+            *out_value =
+                transaction_isolation_value_text(MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ);
+        } else {
+            *out_value =
+                transaction_isolation_value_text(database->session.session_transaction_isolation);
+        }
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
+        if (global_scope) {
+            *out_value = transaction_read_only_show_text(MYLITE_TRANSACTION_ACCESS_READ_WRITE);
+        } else {
+            *out_value =
+                transaction_read_only_show_text(database->session.session_transaction_access_mode);
+        }
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
         int rc = format_uint64(database, UINT64_MAX, integer_buffer, integer_buffer_size);
         if (rc == MYLITE_OK) {

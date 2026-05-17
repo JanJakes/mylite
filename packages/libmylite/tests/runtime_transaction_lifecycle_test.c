@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -17,10 +18,13 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_unknown_table = 1051,
     mysql_error_duplicate_key = 1062,
+    mysql_error_variable_cant_be_set = 1231,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
     mysql_warning_consistent_snapshot_ignored = 138,
+    transaction_variable_default_scalar_column_count = 10,
+    transaction_variable_changed_scalar_column_count = 5,
 };
 
 struct expected_query {
@@ -38,6 +42,8 @@ struct expected_nonquery {
 
 static int test_transaction_control_and_dml(void);
 static int test_set_transaction_lifecycle(void);
+static int test_transaction_system_variable_readback(void);
+static int test_transaction_system_variable_assignments(void);
 static int test_start_transaction_characteristics_lifecycle(void);
 static int test_savepoint_lifecycle(void);
 static int test_independent_savepoint_handles(void);
@@ -89,6 +95,8 @@ int main(void) {
 
     failures += test_transaction_control_and_dml();
     failures += test_set_transaction_lifecycle();
+    failures += test_transaction_system_variable_readback();
+    failures += test_transaction_system_variable_assignments();
     failures += test_start_transaction_characteristics_lifecycle();
     failures += test_savepoint_lifecycle();
     failures += test_independent_savepoint_handles();
@@ -540,6 +548,365 @@ static int test_set_transaction_lifecycle(void) {
     );
 
     remove_related_files(path);
+    return failures;
+}
+
+static int test_transaction_system_variable_readback(void) {
+    static const char *const default_values[] = {
+        "REPEATABLE-READ",
+        "REPEATABLE-READ",
+        "REPEATABLE-READ",
+        "REPEATABLE-READ",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "-1",
+    };
+    static const char *const label_values[] = {
+        "REPEATABLE-READ",
+        "REPEATABLE-READ",
+        "0",
+        "0",
+    };
+    static const char *const show_session_values[] = {
+        "transaction_isolation",
+        "REPEATABLE-READ",
+        "transaction_read_only",
+        "OFF",
+    };
+    static const char *const show_global_values[] = {
+        "transaction_isolation",
+        "REPEATABLE-READ",
+        "transaction_read_only",
+        "OFF",
+    };
+    static const char *const changed_values[] = {
+        "READ-COMMITTED",
+        "1",
+        "REPEATABLE-READ",
+        "0",
+        "0",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "system_variables") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open transaction vars file");
+    session = mylite_connection_session_state(database);
+    catalog_generation = session->catalog_generation;
+    sqlite_schema_generation = session->sqlite_schema_generation;
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_isolation, @@global.transaction_isolation, "
+                   "@@session.transaction_isolation, @@local.transaction_isolation, "
+                   "@@transaction_read_only, @@global.transaction_read_only, "
+                   "@@session.transaction_read_only, @@local.transaction_read_only, "
+                   "@@warning_count, ROW_COUNT()",
+            .values = default_values,
+            .column_count = transaction_variable_default_scalar_column_count,
+            .row_count = 1U,
+            .context = "transaction variable default scalar values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@TRANSACTION_ISOLATION, @@Global.`transaction_isolation`, "
+                   "@@TRANSACTION_READ_ONLY, @@session.`transaction_read_only`",
+            .values = label_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "transaction variable scalar labels",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW VARIABLES WHERE Variable_name IN "
+                   "('transaction_isolation','transaction_read_only')",
+            .values = show_session_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "transaction variable session SHOW rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW GLOBAL VARIABLES WHERE Variable_name IN "
+                   "('transaction_isolation','transaction_read_only')",
+            .values = show_global_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "transaction variable global SHOW rows",
+        }
+    );
+
+    failures +=
+        expect_nonquery(database, "SET SESSION transaction_isolation = 'READ-COMMITTED'", 0);
+    failures += expect_nonquery(database, "SET transaction_read_only = ON", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_isolation, @@transaction_read_only, "
+                   "@@global.transaction_isolation, @@global.transaction_read_only, ROW_COUNT()",
+            .values = changed_values,
+            .column_count = transaction_variable_changed_scalar_column_count,
+            .row_count = 1U,
+            .context = "transaction variable changed session scalar values",
+        }
+    );
+
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->catalog_generation,
+        (int64_t)catalog_generation,
+        "transaction variables leave catalog generation"
+    );
+    failures += expect_int64(
+        (int64_t)session->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "transaction variables leave SQLite schema generation"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read transaction vars preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "transaction variables preserve MyLite preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen transaction vars file");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_isolation, @@global.transaction_isolation, "
+                   "@@session.transaction_isolation, @@local.transaction_isolation, "
+                   "@@transaction_read_only, @@global.transaction_read_only, "
+                   "@@session.transaction_read_only, @@local.transaction_read_only, "
+                   "@@warning_count, ROW_COUNT()",
+            .values = default_values,
+            .column_count = transaction_variable_default_scalar_column_count,
+            .row_count = 1U,
+            .context = "reopened transaction variable defaults",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_transaction_system_variable_assignments(void) {
+    static const char snapshot_warning_message[] =
+        "InnoDB: WITH CONSISTENT SNAPSHOT was ignored because this phrase can only be used "
+        "with REPEATABLE READ isolation level.";
+    static const char *const session_values[] = {"SERIALIZABLE", "1", "0", "0"};
+    static const char *const next_read_only_values[] = {"0", "0", "0", "0"};
+    static const char *const row_values_after_failed_read_only[] = {"1", "10"};
+    static const char *const next_isolation_values[] = {"REPEATABLE-READ", "REPEATABLE-READ", "0"};
+    static const char *const snapshot_warning[] = {
+        "Warning",
+        "138",
+        snapshot_warning_message,
+    };
+    static const char *const active_session_count_values[] = {"3"};
+    static const char *const active_session_read_only_values[] = {"1"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transaction vars");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
+
+    failures += expect_nonquery(database, "SET transaction_isolation = 'READ-COMMITTED'", 0);
+    failures += expect_nonquery(database, "SET transaction_isolation = SERIALIZABLE", 0);
+    failures += expect_nonquery(database, "SET transaction_read_only = 'ON'", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_isolation, @@transaction_read_only, "
+                   "@@warning_count, ROW_COUNT()",
+            .values = session_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "transaction variable session assignment",
+        }
+    );
+    failures += expect_nonquery(database, "SET transaction_isolation = DEFAULT", 0);
+    failures += expect_nonquery(database, "SET transaction_read_only = DEFAULT", 0);
+    failures += expect_nonquery(database, "SET LOCAL transaction_read_only = ON", 0);
+    failures += expect_nonquery(database, "SET @@LOCAL.transaction_read_only = OFF", 0);
+    failures += expect_nonquery(database, "SET @@SESSION.transaction_read_only = TRUE", 0);
+    failures += expect_nonquery(database, "SET transaction_read_only = OFF", 0);
+
+    failures += expect_nonquery(database, "SET @@transaction_read_only = ON", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_read_only, @@session.transaction_read_only, "
+                   "@@warning_count, ROW_COUNT()",
+            .values = next_read_only_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "next transaction read_only scalar unchanged",
+        }
+    );
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (2, 20)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = row_values_after_failed_read_only,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "next transaction read_only blocks row mutation",
+        }
+    );
+    failures += expect_nonquery(database, "SET SESSION transaction_read_only = OFF", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (2, 20)", 1);
+
+    failures += expect_nonquery(database, "SET @@transaction_isolation = 'READ-COMMITTED'", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_isolation, @@session.transaction_isolation, ROW_COUNT()",
+            .values = next_isolation_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "next transaction isolation scalar unchanged",
+        }
+    );
+    failures += expect_nonquery_with_warnings(
+        database,
+        "START TRANSACTION WITH CONSISTENT SNAPSHOT",
+        (struct expected_nonquery){0, 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = snapshot_warning,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "direct next isolation consistent snapshot warning",
+        }
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_error_details(
+        database,
+        "SET @@transaction_read_only = ON",
+        mysql_error_transaction_characteristics_changed,
+        "25001",
+        "Transaction characteristics can't be changed while a transaction is in progress"
+    );
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "SET transaction_read_only = ON", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (3, 30)", 1);
+    failures += expect_nonquery(database, "COMMIT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t",
+            .values = active_session_count_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "session assignment inside active transaction count",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@transaction_read_only",
+            .values = active_session_read_only_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "session assignment inside active transaction read_only",
+        }
+    );
+    failures += expect_error_details(
+        database,
+        "INSERT INTO t VALUES (4, 40)",
+        mysql_error_read_only_transaction,
+        "25006",
+        "Cannot execute statement in a READ ONLY transaction."
+    );
+    failures += expect_nonquery(database, "SET transaction_read_only = OFF", 0);
+
+    failures +=
+        expect_nonquery(database, "SET GLOBAL transaction_isolation = 'REPEATABLE-READ'", 0);
+    failures += expect_nonquery(database, "SET @@GLOBAL.transaction_read_only = OFF", 0);
+    failures += expect_error_details(
+        database,
+        "SET @@GLOBAL.transaction_isolation = 'SERIALIZABLE'",
+        mysql_error_parse,
+        "42000",
+        "SET transaction_isolation supports only fixed no-op global assignments"
+    );
+    failures += expect_error_details(
+        database,
+        "SET GLOBAL transaction_read_only = ON",
+        mysql_error_parse,
+        "42000",
+        "SET transaction_read_only supports only fixed no-op global assignments"
+    );
+    failures += expect_error_details(
+        database,
+        "SET SESSION transaction_isolation = 'READ COMMITTED'",
+        mysql_error_variable_cant_be_set,
+        "42000",
+        "Variable 'transaction_isolation' can't be set to the value of 'READ COMMITTED'"
+    );
+    failures += expect_error_details(
+        database,
+        "SET SESSION transaction_read_only = 2",
+        mysql_error_variable_cant_be_set,
+        "42000",
+        "Variable 'transaction_read_only' can't be set to the value of '2'"
+    );
+    failures += expect_error_details(
+        database,
+        "SET SESSION transaction_read_only = '1'",
+        mysql_error_variable_cant_be_set,
+        "42000",
+        "Variable 'transaction_read_only' can't be set to the value of '1'"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

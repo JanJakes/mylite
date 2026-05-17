@@ -715,7 +715,7 @@ static int test_filtered_select_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports one grouped descriptor column and one aggregate result",
+                "GROUP BY supports one grouped descriptor column and one or more aggregate results",
         }
     );
     failures += execute_error(

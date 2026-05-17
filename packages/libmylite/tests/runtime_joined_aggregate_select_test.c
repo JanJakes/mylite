@@ -90,6 +90,35 @@ static int test_joined_aggregate_values_and_persistence(void) {
     static const char *const sum_values[] = {"1", "5", "2", "7", "3", NULL, "4", NULL};
     static const char *const avg_columns[] = {"id", "AVG(c.score)"};
     static const char *const avg_values[] = {"1", "5.0000", "2", "7.0000", "3", NULL, "4", NULL};
+    static const char *const multi_columns[] = {"id", "c", "s", "a"};
+    static const char *const multi_values[] = {
+        "1",
+        "2",
+        "5",
+        "5.0000",
+        "2",
+        "1",
+        "7",
+        "7.0000",
+        "3",
+        "0",
+        NULL,
+        NULL,
+        "4",
+        "0",
+        NULL,
+        NULL,
+    };
+    static const char *const multi_order_values[] = {
+        "2",
+        "1",
+        "7",
+        "7.0000",
+        "1",
+        "2",
+        "5",
+        "5.0000",
+    };
     static const char *const inner_count_columns[] = {"post_id", "COUNT(*)"};
     static const char *const inner_count_values[] = {"1", "2", "2", "1"};
     static const char *const category_count_columns[] = {"category", "COUNT(c.id)"};
@@ -190,6 +219,32 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .values = avg_values,
             .row_count = 4U,
             .context = "left join grouped avg",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id, COUNT(c.id) AS c, SUM(c.score) AS s, AVG(c.score) AS a "
+                   "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id "
+                   "GROUP BY p.id ORDER BY p.id",
+            .columns = multi_columns,
+            .column_count = 4U,
+            .values = multi_values,
+            .row_count = 4U,
+            .context = "left join grouped multiple aggregates",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id, COUNT(c.id) AS c, SUM(c.score) AS s, AVG(c.score) AS a "
+                   "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id "
+                   "GROUP BY p.id ORDER BY s DESC LIMIT 2",
+            .columns = multi_columns,
+            .column_count = 4U,
+            .values = multi_order_values,
+            .row_count = 2U,
+            .context = "left join grouped order by aggregate alias",
         }
     );
     failures += expect_query(
@@ -399,28 +454,7 @@ static int test_joined_aggregate_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports one grouped descriptor column and one aggregate result",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT p.id, COUNT(c.id), SUM(c.score) FROM posts p LEFT JOIN comments c "
-        "ON p.id = c.post_id GROUP BY p.id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports one grouped descriptor column and one aggregate result",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT p.id, COUNT(c.id) AS c FROM posts p LEFT JOIN comments c "
-        "ON p.id = c.post_id GROUP BY p.id ORDER BY c",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY supports ORDER BY only on the grouped column",
+                "GROUP BY supports one grouped descriptor column and one or more aggregate results",
         }
     );
 

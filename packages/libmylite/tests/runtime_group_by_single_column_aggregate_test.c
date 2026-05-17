@@ -19,6 +19,7 @@
 enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
+    grouped_multi_aggregate_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -119,6 +120,53 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_bit_or_values[] = {NULL, "5", "1", "7", "2", "9"};
     static const char *const g_bit_xor_columns[] = {"g", "BIT_XOR(nn)"};
     static const char *const g_bit_xor_values[] = {NULL, "5", "1", "1", "2", "1"};
+    static const char *const multi_columns[] = {"g", "c", "cn", "s", "a", "bo"};
+    static const char *const multi_values[] = {
+        NULL,
+        "1",
+        "0",
+        NULL,
+        NULL,
+        "5",
+        "1",
+        "2",
+        "1",
+        "10",
+        "10.0000",
+        "7",
+        "2",
+        "2",
+        "2",
+        "50",
+        "25.0000",
+        "9",
+    };
+    static const char *const multi_having_columns[] = {"g", "c", "s"};
+    static const char *const multi_having_values[] = {"2", "2", "50"};
+    static const char *const multi_order_values[] = {"2", "2", "50", "1", "2", "10"};
+    static const char *const min_max_alias_columns[] = {"g", "mn", "mx"};
+    static const char *const min_alias_order_values[] = {
+        NULL,
+        NULL,
+        NULL,
+        "1",
+        "10",
+        "10",
+        "2",
+        "20",
+        "30",
+    };
+    static const char *const max_alias_order_values[] = {
+        "2",
+        "20",
+        "30",
+        "1",
+        "10",
+        "10",
+        NULL,
+        NULL,
+        NULL,
+    };
     static const char *const where_columns[] = {"g", "COUNT(*)"};
     static const char *const where_values[] = {"1", "1", "2", "2"};
     static const char *const alias_columns[] = {"k", "s"};
@@ -272,6 +320,66 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_bit_xor_values,
             .row_count = 3U,
             .context = "bit xor grouped not-null values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c, COUNT(n) AS cn, SUM(n) AS s, AVG(n) AS a, "
+                   "BIT_OR(nn) AS bo FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = multi_columns,
+            .column_count = grouped_multi_aggregate_column_count,
+            .values = multi_values,
+            .row_count = 3U,
+            .context = "multiple grouped aggregate results",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g HAVING s >= 50 ORDER BY s DESC",
+            .columns = multi_having_columns,
+            .column_count = 3U,
+            .values = multi_having_values,
+            .row_count = 1U,
+            .context = "multi aggregate having selected alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g ORDER BY s DESC LIMIT 2",
+            .columns = multi_having_columns,
+            .column_count = 3U,
+            .values = multi_order_values,
+            .row_count = 2U,
+            .context = "multi aggregate order by aggregate alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM grouped_numbers "
+                   "GROUP BY g ORDER BY mn ASC",
+            .columns = min_max_alias_columns,
+            .column_count = 3U,
+            .values = min_alias_order_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by min alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM grouped_numbers "
+                   "GROUP BY g ORDER BY mx DESC",
+            .columns = min_max_alias_columns,
+            .column_count = 3U,
+            .values = max_alias_order_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by max alias",
         }
     );
     failures += expect_grouped_query(
@@ -785,31 +893,40 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT g, COUNT(*) AS c FROM grouped_numbers GROUP BY g ORDER BY c",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY supports ORDER BY only on the grouped column",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT g, COUNT(*), SUM(n) FROM grouped_numbers GROUP BY g",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports one grouped descriptor column and one aggregate result",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT g, COUNT(DISTINCT n) FROM grouped_numbers GROUP BY g",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports one grouped descriptor column and one aggregate result",
+                "GROUP BY supports one grouped descriptor column and one or more aggregate results",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUP_CONCAT(n), COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP_CONCAT(column) does not yet support multiple grouped aggregate results",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, AVG(n) AS a FROM grouped_numbers GROUP BY g ORDER BY a",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY does not support ORDER BY on AVG aggregate aliases",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, BIT_OR(nn) AS bo FROM grouped_numbers GROUP BY g ORDER BY bo",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY does not support ORDER BY on bitwise aggregate aliases",
         }
     );
     failures += execute_error(

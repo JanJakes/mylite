@@ -2257,6 +2257,7 @@ struct planned_grouped_having {
     enum planned_grouped_having_operand operand;
     enum mylite_sql_ast_operator operator_kind;
     struct planned_value value;
+    size_t aggregate_index;
 };
 
 struct planned_diagnostics_show_limit {
@@ -2535,12 +2536,24 @@ enum planned_grouped_aggregate_function {
     PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT = 10,
 };
 
+enum { grouped_aggregate_max_results = 16 };
+
+struct planned_grouped_aggregate_item {
+    const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
+    enum planned_grouped_aggregate_function function;
+    struct mylite_catalog_column_descriptor aggregate_column;
+    size_t aggregate_column_source_index;
+    struct planned_select_order aggregate_order;
+    bool has_separator;
+    struct planned_value separator;
+};
+
 struct planned_grouped_aggregate {
     const struct mylite_sql_ast_node *group_expression;
     const struct mylite_sql_ast_node *group_alias;
-    const struct mylite_sql_ast_node *aggregate_expression;
-    const struct mylite_sql_ast_node *aggregate_alias;
-    enum planned_grouped_aggregate_function function;
+    struct planned_grouped_aggregate_item *aggregates;
+    size_t aggregate_count;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct planned_select_source *sources;
@@ -2549,14 +2562,11 @@ struct planned_grouped_aggregate {
     struct planned_select_join_condition join_condition;
     struct mylite_catalog_column_descriptor group_column;
     size_t group_column_source_index;
-    struct mylite_catalog_column_descriptor aggregate_column;
-    size_t aggregate_column_source_index;
-    struct planned_select_order aggregate_order;
-    bool has_separator;
-    struct planned_value separator;
     struct planned_select_predicate predicate;
     struct planned_grouped_having having;
     struct planned_select_order order;
+    bool order_uses_aggregate;
+    size_t order_aggregate_index;
     struct planned_select_limit limit;
 };
 
@@ -9840,13 +9850,22 @@ static int plan_grouped_aggregate_group_column(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
-static int plan_grouped_aggregate_function(
+static int plan_grouped_aggregate_functions(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
+);
+static int plan_grouped_aggregate_item(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *aggregate_item,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    struct planned_grouped_aggregate_item *out_item
 );
 static int plan_grouped_count_column(
     struct mylite_db *database,
@@ -9873,7 +9892,7 @@ static int plan_grouped_group_concat_options(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_grouped_aggregate *out_plan
+    struct planned_grouped_aggregate_item *out_item
 );
 static int plan_group_concat_value_column(
     struct mylite_db *database,
@@ -9966,7 +9985,13 @@ static int plan_grouped_having_aggregate_operand(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    const struct planned_grouped_aggregate *plan
+    struct planned_grouped_aggregate *out_plan
+);
+static int find_grouped_having_aggregate_alias_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    struct planned_grouped_aggregate *out_plan,
+    bool *out_matched
 );
 static int convert_grouped_having_integer_literal(
     struct mylite_db *database,
@@ -10015,6 +10040,13 @@ static int order_identifier_matches_unaliased_group_column(
     const struct mylite_sql_ast_node *column_node,
     const struct planned_grouped_aggregate *plan,
     bool *out_matches
+);
+static int find_grouped_order_aggregate_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct planned_grouped_aggregate *plan,
+    bool *out_matched,
+    size_t *out_aggregate_index
 );
 static int execute_grouped_aggregate_from_plan(
     struct mylite_db *database,
@@ -10163,11 +10195,19 @@ static int append_grouped_aggregate_sqlite_row(
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
 );
-static int append_grouped_group_concat_sqlite_row(
+static int append_grouped_aggregate_sqlite_cell(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    mylite_result *result,
-    const char *group_value
+    const struct planned_grouped_aggregate_item *item,
+    int *sqlite_column_index,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
+);
+static int append_grouped_group_concat_sqlite_cell(
+    sqlite3_stmt *statement,
+    int sqlite_column_index,
+    struct mylite_result_cell *out_cell
 );
 static int sqlite_integer_result_text(
     sqlite3_stmt *statement,
@@ -17295,6 +17335,17 @@ static int append_grouped_aggregate_select_list_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter
 );
+static int append_grouped_aggregate_select_item_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+);
+static int append_grouped_aggregate_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item
+);
 static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function);
 static int append_grouped_having_sql(
     struct dynamic_string *string,
@@ -17306,6 +17357,10 @@ static int append_grouped_having_operand_sql(
     const struct planned_grouped_aggregate *plan
 );
 static int append_grouped_having_aggregate_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+);
+static int append_grouped_order_sql(
     struct dynamic_string *string,
     const struct planned_grouped_aggregate *plan
 );
@@ -54347,11 +54402,15 @@ static int plan_grouped_aggregate(
         return MYLITE_ERROR;
     }
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        mylite_sql_ast_node_child_count(select_list) != 2U) {
+        mylite_sql_ast_node_child_count(select_list) < 2U) {
         set_unsupported_error(
             database,
-            "GROUP BY supports one grouped descriptor column and one aggregate result"
+            "GROUP BY supports one grouped descriptor column and one or more aggregate results"
         );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) - 1U > grouped_aggregate_max_results) {
+        set_unsupported_error(database, "GROUP BY supports at most sixteen aggregate results");
         return MYLITE_ERROR;
     }
     if (from_clause == NULL || (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE &&
@@ -54383,7 +54442,7 @@ static int plan_grouped_aggregate(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = plan_grouped_aggregate_function(
+        rc = plan_grouped_aggregate_functions(
             database,
             select_list,
             &source_context,
@@ -54438,10 +54497,13 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
         free(plan->sources[source_index].columns);
     }
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        planned_value_deinit(&plan->aggregates[aggregate_index].separator);
+    }
+    free(plan->aggregates);
     free(plan->sources);
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->having.value);
-    planned_value_deinit(&plan->separator);
     *plan = (struct planned_grouped_aggregate){0};
 }
 
@@ -54666,7 +54728,7 @@ static int plan_grouped_aggregate_group_column(
     return rc;
 }
 
-static int plan_grouped_aggregate_function(
+static int plan_grouped_aggregate_functions(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
     const struct select_source_context *source_context,
@@ -54674,24 +54736,69 @@ static int plan_grouped_aggregate_function(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 ) {
-    const struct mylite_sql_ast_node *aggregate_item = child_at(select_list, 1U);
+    size_t select_item_count = mylite_sql_ast_node_child_count(select_list);
+    size_t aggregate_count = select_item_count - 1U;
+    int rc = MYLITE_OK;
+
+    out_plan->aggregates = calloc(aggregate_count, sizeof(*out_plan->aggregates));
+    if (out_plan->aggregates == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->aggregate_count = aggregate_count;
+
+    for (size_t aggregate_index = 0U; aggregate_index < aggregate_count; ++aggregate_index) {
+        rc = plan_grouped_aggregate_item(
+            database,
+            child_at(select_list, aggregate_index + 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan,
+            &out_plan->aggregates[aggregate_index]
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_grouped_aggregate_item(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *aggregate_item,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    struct planned_grouped_aggregate_item *out_item
+) {
     const struct mylite_sql_ast_node *aggregate_expression =
         unwrap_parenthesized_expression(child_at(aggregate_item, 0U));
 
-    out_plan->aggregate_expression = child_at(aggregate_item, 0U);
-    out_plan->aggregate_alias = child_at(aggregate_item, 1U);
-    out_plan->function = grouped_aggregate_function_from_expression(aggregate_expression);
-    if (out_plan->function == PLANNED_GROUPED_AGGREGATE_NONE) {
+    *out_item = (struct planned_grouped_aggregate_item){0};
+    out_item->expression = child_at(aggregate_item, 0U);
+    out_item->alias = child_at(aggregate_item, 1U);
+    out_item->function = grouped_aggregate_function_from_expression(aggregate_expression);
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_NONE) {
         set_unsupported_error(
             database,
-            "GROUP BY supports one grouped descriptor column and one aggregate result"
+            "GROUP BY supports one grouped descriptor column and one or more aggregate results"
         );
         return MYLITE_ERROR;
     }
-    if (!grouped_aggregate_function_has_column(out_plan->function)) {
+    if (!grouped_aggregate_function_has_column(out_item->function)) {
         return MYLITE_OK;
     }
-    if (out_plan->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        if (out_plan->aggregate_count != 1U) {
+            set_unsupported_error(
+                database,
+                "GROUP_CONCAT(column) does not yet support multiple grouped aggregate results"
+            );
+            return MYLITE_ERROR;
+        }
         if (out_plan->source_count > 0U) {
             set_unsupported_error(
                 database,
@@ -54705,30 +54812,30 @@ static int plan_grouped_aggregate_function(
             source_context,
             table_columns,
             table_column_count,
-            out_plan
+            out_item
         );
     }
-    if (out_plan->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
         return plan_grouped_count_column(
             database,
             aggregate_expression,
             source_context,
             table_columns,
             table_column_count,
-            &out_plan->aggregate_column,
-            &out_plan->aggregate_column_source_index
+            &out_item->aggregate_column,
+            &out_item->aggregate_column_source_index
         );
     }
 
     return plan_grouped_column_aggregate_column(
         database,
         aggregate_expression,
-        grouped_column_aggregate_function(out_plan->function),
+        grouped_column_aggregate_function(out_item->function),
         source_context,
         table_columns,
         table_column_count,
-        &out_plan->aggregate_column,
-        &out_plan->aggregate_column_source_index
+        &out_item->aggregate_column,
+        &out_item->aggregate_column_source_index
     );
 }
 
@@ -54797,7 +54904,7 @@ static int plan_grouped_group_concat_options(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_grouped_aggregate *out_plan
+    struct planned_grouped_aggregate_item *out_item
 ) {
     int rc = plan_group_concat_value_column(
         database,
@@ -54805,8 +54912,8 @@ static int plan_grouped_group_concat_options(
         source_context,
         table_columns,
         table_column_count,
-        &out_plan->aggregate_column,
-        &out_plan->aggregate_column_source_index
+        &out_item->aggregate_column,
+        &out_item->aggregate_column_source_index
     );
 
     if (rc == MYLITE_OK) {
@@ -54817,15 +54924,15 @@ static int plan_grouped_group_concat_options(
             table_columns,
             table_column_count,
             false,
-            &out_plan->aggregate_order
+            &out_item->aggregate_order
         );
     }
     if (rc == MYLITE_OK) {
         rc = plan_group_concat_separator(
             database,
             function,
-            &out_plan->has_separator,
-            &out_plan->separator
+            &out_item->has_separator,
+            &out_item->separator
         );
     }
 
@@ -55342,27 +55449,16 @@ static int plan_grouped_having_identifier_operand(
         return MYLITE_OK;
     }
 
-    rc = order_identifier_matches_alias(
+    rc = find_grouped_having_aggregate_alias_operand(
         database,
         operand_node,
-        out_plan->aggregate_alias,
+        out_plan,
         &matches_alias
     );
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (matches_alias) {
-        if (grouped_aggregate_function_is_bitwise(out_plan->function)) {
-            set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
-            return MYLITE_ERROR;
-        }
-        if (out_plan->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-            set_unsupported_error(
-                database,
-                "HAVING does not support GROUP_CONCAT aggregate predicates"
-            );
-            return MYLITE_ERROR;
-        }
         *out_operand = PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE;
         return MYLITE_OK;
     }
@@ -55397,13 +55493,14 @@ static int plan_grouped_having_aggregate_operand(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    const struct planned_grouped_aggregate *plan
+    struct planned_grouped_aggregate *out_plan
 ) {
     enum planned_grouped_aggregate_function function =
         grouped_aggregate_function_from_expression(operand_node);
     struct mylite_catalog_column_descriptor column = {0};
     struct integer_column_range range = {0};
     size_t source_index = 0U;
+    size_t selected_index = SIZE_MAX;
     int rc = MYLITE_OK;
 
     if (function == PLANNED_GROUPED_AGGREGATE_NONE) {
@@ -55421,12 +55518,17 @@ static int plan_grouped_having_aggregate_operand(
         );
         return MYLITE_ERROR;
     }
-    if (function != plan->function) {
+    if (!grouped_aggregate_function_has_column(function)) {
+        for (size_t aggregate_index = 0U; aggregate_index < out_plan->aggregate_count;
+             ++aggregate_index) {
+            if (out_plan->aggregates[aggregate_index].function == function) {
+                out_plan->having.aggregate_index = aggregate_index;
+                return MYLITE_OK;
+            }
+        }
+
         set_unsupported_error(database, "HAVING supports only the selected aggregate result");
         return MYLITE_ERROR;
-    }
-    if (!grouped_aggregate_function_has_column(function)) {
-        return MYLITE_OK;
     }
 
     rc = resolve_descriptor_column_reference_with_source_index(
@@ -55448,17 +55550,82 @@ static int plan_grouped_having_aggregate_operand(
             &range
         );
     }
-    if (rc == MYLITE_OK && !planned_grouped_aggregate_columns_match(
-                               &column,
-                               source_index,
-                               &plan->aggregate_column,
-                               plan->aggregate_column_source_index
-                           )) {
+    for (size_t aggregate_index = 0U;
+         rc == MYLITE_OK && aggregate_index < out_plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &out_plan->aggregates[aggregate_index];
+
+        if (item->function == function && planned_grouped_aggregate_columns_match(
+                                              &column,
+                                              source_index,
+                                              &item->aggregate_column,
+                                              item->aggregate_column_source_index
+                                          )) {
+            selected_index = aggregate_index;
+            break;
+        }
+    }
+    if (rc == MYLITE_OK && selected_index == SIZE_MAX) {
         set_unsupported_error(database, "HAVING supports only the selected aggregate result");
         rc = MYLITE_ERROR;
     }
+    if (rc == MYLITE_OK) {
+        out_plan->having.aggregate_index = selected_index;
+    }
 
     return rc;
+}
+
+static int find_grouped_having_aggregate_alias_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    struct planned_grouped_aggregate *out_plan,
+    bool *out_matched
+) {
+    bool matches_alias = false;
+    size_t matched_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    for (size_t aggregate_index = 0U; aggregate_index < out_plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &out_plan->aggregates[aggregate_index];
+
+        rc = order_identifier_matches_alias(database, operand_node, item->alias, &matches_alias);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!matches_alias) {
+            continue;
+        }
+        if (matched_index != SIZE_MAX) {
+            set_unsupported_error(
+                database,
+                "HAVING supports only unique selected aggregate aliases"
+            );
+            return MYLITE_ERROR;
+        }
+        matched_index = aggregate_index;
+    }
+    if (matched_index == SIZE_MAX) {
+        return MYLITE_OK;
+    }
+
+    if (grouped_aggregate_function_is_bitwise(out_plan->aggregates[matched_index].function)) {
+        set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
+        return MYLITE_ERROR;
+    }
+    if (out_plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        set_unsupported_error(
+            database,
+            "HAVING does not support GROUP_CONCAT aggregate predicates"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_plan->having.aggregate_index = matched_index;
+    *out_matched = true;
+    return MYLITE_OK;
 }
 
 static int convert_grouped_having_integer_literal(
@@ -56978,10 +57145,13 @@ static int plan_grouped_aggregate_order(
     bool matches_group_alias = false;
     bool matches_aggregate_alias = false;
     bool matches_unaliased_group_column = false;
+    size_t aggregate_order_index = 0U;
     size_t order_source_index = 0U;
     int rc = MYLITE_OK;
 
     out_plan->order.has_order = false;
+    out_plan->order_uses_aggregate = false;
+    out_plan->order_aggregate_index = 0U;
     out_plan->order.direction = PLANNED_SELECT_ORDER_DEFAULT;
     out_plan->order.column_source_index = 0U;
     out_plan->order.qualify_column_reference = select_source_context_is_joined(source_context);
@@ -57007,22 +57177,6 @@ static int plan_grouped_aggregate_order(
         out_plan->order.column = out_plan->group_column;
         out_plan->order.column_source_index = out_plan->group_column_source_index;
     } else {
-        rc = order_identifier_matches_alias(
-            database,
-            order_key,
-            out_plan->aggregate_alias,
-            &matches_aggregate_alias
-        );
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        if (matches_aggregate_alias) {
-            set_unsupported_error(
-                database,
-                "GROUP BY supports ORDER BY only on the grouped column"
-            );
-            return MYLITE_ERROR;
-        }
         rc = order_identifier_matches_unaliased_group_column(
             database,
             order_key,
@@ -57036,29 +57190,45 @@ static int plan_grouped_aggregate_order(
             out_plan->order.column = out_plan->group_column;
             out_plan->order.column_source_index = out_plan->group_column_source_index;
         } else {
-            rc = resolve_descriptor_column_reference_with_source_index(
+            rc = find_grouped_order_aggregate_alias(
                 database,
                 order_key,
-                source_context,
-                COLUMN_REFERENCE_ORDER,
-                "GROUP BY supports ORDER BY only on the grouped column",
-                table_columns,
-                table_column_count,
-                &out_plan->order.column,
-                &order_source_index
+                out_plan,
+                &matches_aggregate_alias,
+                &aggregate_order_index
             );
             if (rc != MYLITE_OK) {
                 return rc;
             }
-            out_plan->order.column_source_index = order_source_index;
+            if (matches_aggregate_alias) {
+                out_plan->order_uses_aggregate = true;
+                out_plan->order_aggregate_index = aggregate_order_index;
+            } else {
+                rc = resolve_descriptor_column_reference_with_source_index(
+                    database,
+                    order_key,
+                    source_context,
+                    COLUMN_REFERENCE_ORDER,
+                    "GROUP BY supports ORDER BY only on the grouped column or a selected aggregate "
+                    "alias",
+                    table_columns,
+                    table_column_count,
+                    &out_plan->order.column,
+                    &order_source_index
+                );
+                if (rc != MYLITE_OK) {
+                    return rc;
+                }
+                out_plan->order.column_source_index = order_source_index;
+            }
         }
     }
-    if (!planned_grouped_aggregate_columns_match(
-            &out_plan->order.column,
-            out_plan->order.column_source_index,
-            &out_plan->group_column,
-            out_plan->group_column_source_index
-        )) {
+    if (!out_plan->order_uses_aggregate && !planned_grouped_aggregate_columns_match(
+                                               &out_plan->order.column,
+                                               out_plan->order.column_source_index,
+                                               &out_plan->group_column,
+                                               out_plan->group_column_source_index
+                                           )) {
         set_unsupported_error(database, "GROUP BY supports ORDER BY only on the grouped column");
         return MYLITE_ERROR;
     }
@@ -57070,6 +57240,68 @@ static int plan_grouped_aggregate_order(
         out_plan->order.direction = PLANNED_SELECT_ORDER_DESC;
     }
 
+    return MYLITE_OK;
+}
+
+static int find_grouped_order_aggregate_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct planned_grouped_aggregate *plan,
+    bool *out_matched,
+    size_t *out_aggregate_index
+) {
+    bool matches_alias = false;
+    size_t matched_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    *out_aggregate_index = 0U;
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
+
+        rc = order_identifier_matches_alias(database, order_key, item->alias, &matches_alias);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!matches_alias) {
+            continue;
+        }
+        if (matched_index != SIZE_MAX) {
+            set_unsupported_error(
+                database,
+                "GROUP BY supports ORDER BY only on unique selected aggregate aliases"
+            );
+            return MYLITE_ERROR;
+        }
+        matched_index = aggregate_index;
+    }
+    if (matched_index == SIZE_MAX) {
+        return MYLITE_OK;
+    }
+    if (plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        set_unsupported_error(
+            database,
+            "GROUP BY does not support ORDER BY on AVG aggregate aliases"
+        );
+        return MYLITE_ERROR;
+    }
+    if (grouped_aggregate_function_is_bitwise(plan->aggregates[matched_index].function)) {
+        set_unsupported_error(
+            database,
+            "GROUP BY does not support ORDER BY on bitwise aggregate aliases"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        set_unsupported_error(
+            database,
+            "GROUP BY does not support ORDER BY on GROUP_CONCAT aggregate aliases"
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_matched = true;
+    *out_aggregate_index = matched_index;
     return MYLITE_OK;
 }
 
@@ -57575,7 +57807,6 @@ static int append_grouped_aggregate_result_columns(
 ) {
     const char *group_column_name = plan->group_column.name;
     char *group_alias_text = NULL;
-    char *aggregate_column_name = NULL;
     int rc = MYLITE_OK;
 
     if (plan->group_alias != NULL) {
@@ -57592,23 +57823,32 @@ static int append_grouped_aggregate_result_columns(
         return rc;
     }
 
-    if (plan->aggregate_alias != NULL) {
-        rc = copy_select_item_alias_text(database, plan->aggregate_alias, &aggregate_column_name);
-    } else {
-        rc = copy_aggregate_result_column_name(
-            database,
-            &plan->aggregate_expression->span,
-            &aggregate_column_name
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, aggregate_column_name);
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        char *aggregate_column_name = NULL;
+        const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
+
+        if (item->alias != NULL) {
+            rc = copy_select_item_alias_text(database, item->alias, &aggregate_column_name);
+        } else {
+            rc = copy_aggregate_result_column_name(
+                database,
+                &item->expression->span,
+                &aggregate_column_name
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_result_append_column(result, aggregate_column_name);
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+            }
+        }
+        free(aggregate_column_name);
         if (rc != MYLITE_OK) {
-            set_nomem_error(database);
+            return rc;
         }
     }
 
-    free(aggregate_column_name);
     return rc;
 }
 
@@ -58740,115 +58980,167 @@ static int append_grouped_aggregate_sqlite_row(
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
 ) {
-    const char *values[2] = {NULL, NULL};
+    struct mylite_result_cell *cells = NULL;
+    char (*aggregate_buffers)[integer_text_capacity + sizeof(".0000")] = NULL;
     char group_text[integer_text_capacity];
-    char aggregate_text[integer_text_capacity + sizeof(".0000")];
-    int64_t count = 0;
-    int rc = sqlite_integer_result_text(statement, 0, group_text, sizeof(group_text), &values[0]);
+    const char *group_value = NULL;
+    int sqlite_column_index = 1;
+    int rc = sqlite_integer_result_text(statement, 0, group_text, sizeof(group_text), &group_value);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        return append_grouped_group_concat_sqlite_row(database, statement, result, values[0]);
-    }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_AVG) {
-        if (sqlite3_column_type(statement, 2) != SQLITE_INTEGER) {
-            return MYLITE_ERROR;
-        }
-        count = (int64_t)sqlite3_column_int64(statement, 2);
-        if (count < 0) {
-            return MYLITE_ERROR;
-        }
-        if (count != 0) {
-            if (sqlite3_column_type(statement, 1) != SQLITE_INTEGER) {
-                return MYLITE_ERROR;
-            }
-            rc = format_avg_value(
-                database,
-                (struct avg_accumulator){
-                    .sum = (int64_t)sqlite3_column_int64(statement, 1),
-                    .count = count,
-                },
-                aggregate_text,
-                sizeof(aggregate_text)
-            );
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            values[1] = aggregate_text;
-        }
-    } else if (grouped_aggregate_function_is_bitwise(plan->function)) {
-        if (sqlite3_column_type(statement, 1) != SQLITE_TEXT) {
-            return MYLITE_ERROR;
-        }
-        values[1] = (const char *)sqlite3_column_text(statement, 1);
-        if (values[1] == NULL) {
-            return MYLITE_ERROR;
-        }
-    } else {
-        rc = sqlite_integer_result_text(
-            statement,
-            1,
-            aggregate_text,
-            sizeof(aggregate_text),
-            &values[1]
-        );
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
+
+    cells = calloc(plan->aggregate_count + 1U, sizeof(*cells));
+    aggregate_buffers = calloc(plan->aggregate_count, sizeof(*aggregate_buffers));
+    if (cells == NULL || aggregate_buffers == NULL) {
+        free(cells);
+        free(aggregate_buffers);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
     }
 
-    rc = mylite_result_append_text_row(result, values);
-    if (rc != MYLITE_OK) {
+    cells[0] = (struct mylite_result_cell){
+        .bytes = group_value,
+        .size = group_value == NULL ? 0U : strlen(group_value),
+        .is_null = group_value == NULL,
+    };
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        rc = append_grouped_aggregate_sqlite_cell(
+            database,
+            statement,
+            &plan->aggregates[aggregate_index],
+            &sqlite_column_index,
+            &cells[aggregate_index + 1U],
+            aggregate_buffers[aggregate_index],
+            sizeof(aggregate_buffers[aggregate_index])
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_bytes_row(result, cells);
+    }
+    if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
     }
+
+    free(cells);
+    free(aggregate_buffers);
 
     return rc;
 }
 
-static int append_grouped_group_concat_sqlite_row(
+static int append_grouped_aggregate_sqlite_cell(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    mylite_result *result,
-    const char *group_value
+    const struct planned_grouped_aggregate_item *item,
+    int *sqlite_column_index,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
 ) {
-    struct mylite_result_cell cells[2] = {
-        {
-            .bytes = group_value,
-            .size = group_value == NULL ? 0U : strlen(group_value),
-            .is_null = group_value == NULL,
-        },
-        {.is_null = true},
-    };
-    int byte_count = sqlite3_column_bytes(statement, 1);
-    const unsigned char *text = NULL;
-    size_t character_count = 0U;
+    const char *value = NULL;
+    int64_t count = 0;
     int rc = MYLITE_OK;
 
-    if (sqlite3_column_type(statement, 1) != SQLITE_NULL) {
-        if (sqlite3_column_type(statement, 1) != SQLITE_TEXT || byte_count < 0) {
+    *out_cell = (struct mylite_result_cell){.is_null = true};
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        ++(*sqlite_column_index);
+        return rc;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        if (sqlite3_column_type(statement, *sqlite_column_index + 1) != SQLITE_INTEGER) {
             return MYLITE_ERROR;
         }
-        text = sqlite3_column_text(statement, 1);
-        if (text == NULL || memchr(text, '\0', (size_t)byte_count) != NULL ||
-            validate_utf8_text((const char *)text, (size_t)byte_count, &character_count) !=
-                MYLITE_OK) {
+        count = (int64_t)sqlite3_column_int64(statement, *sqlite_column_index + 1);
+        if (count < 0) {
             return MYLITE_ERROR;
         }
-        cells[1] = (struct mylite_result_cell){
-            .bytes = text,
-            .size = (size_t)byte_count,
+        if (count == 0) {
+            *sqlite_column_index += 2;
+            return MYLITE_OK;
+        }
+        if (sqlite3_column_type(statement, *sqlite_column_index) != SQLITE_INTEGER) {
+            return MYLITE_ERROR;
+        }
+        rc = format_avg_value(
+            database,
+            (struct avg_accumulator){
+                .sum = (int64_t)sqlite3_column_int64(statement, *sqlite_column_index),
+                .count = count,
+            },
+            buffer,
+            buffer_size
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_cell = (struct mylite_result_cell){
+            .bytes = buffer,
+            .size = strlen(buffer),
+            .is_null = false,
+        };
+        *sqlite_column_index += 2;
+        return MYLITE_OK;
+    }
+    if (grouped_aggregate_function_is_bitwise(item->function)) {
+        if (sqlite3_column_type(statement, *sqlite_column_index) != SQLITE_TEXT) {
+            return MYLITE_ERROR;
+        }
+        value = (const char *)sqlite3_column_text(statement, *sqlite_column_index);
+        if (value == NULL) {
+            return MYLITE_ERROR;
+        }
+        *out_cell = (struct mylite_result_cell){
+            .bytes = value,
+            .size = strlen(value),
+            .is_null = false,
+        };
+        ++(*sqlite_column_index);
+        return MYLITE_OK;
+    }
+
+    rc = sqlite_integer_result_text(statement, *sqlite_column_index, buffer, buffer_size, &value);
+    if (rc == MYLITE_OK && value != NULL) {
+        *out_cell = (struct mylite_result_cell){
+            .bytes = value,
+            .size = strlen(value),
             .is_null = false,
         };
     }
-
-    rc = mylite_result_append_bytes_row(result, cells);
-    if (rc != MYLITE_OK) {
-        set_nomem_error(database);
-    }
-    (void)character_count;
+    ++(*sqlite_column_index);
     return rc;
+}
+
+static int append_grouped_group_concat_sqlite_cell(
+    sqlite3_stmt *statement,
+    int sqlite_column_index,
+    struct mylite_result_cell *out_cell
+) {
+    int byte_count = sqlite3_column_bytes(statement, sqlite_column_index);
+    const unsigned char *text = NULL;
+    size_t character_count = 0U;
+
+    *out_cell = (struct mylite_result_cell){.is_null = true};
+    if (sqlite3_column_type(statement, sqlite_column_index) == SQLITE_NULL) {
+        return MYLITE_OK;
+    }
+    if (sqlite3_column_type(statement, sqlite_column_index) != SQLITE_TEXT || byte_count < 0) {
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_column_text(statement, sqlite_column_index);
+    if (text == NULL || memchr(text, '\0', (size_t)byte_count) != NULL ||
+        validate_utf8_text((const char *)text, (size_t)byte_count, &character_count) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    *out_cell = (struct mylite_result_cell){
+        .bytes = text,
+        .size = (size_t)byte_count,
+        .is_null = false,
+    };
+    (void)character_count;
+    return MYLITE_OK;
 }
 
 static int sqlite_integer_result_text(
@@ -59109,12 +59401,21 @@ static int grouped_aggregate_step_error(
     int sqlite_rc
 ) {
     const char *message = NULL;
+    bool has_sum = false;
+    bool has_avg = false;
 
-    if (sqlite_rc == SQLITE_ERROR && (plan->function == PLANNED_GROUPED_AGGREGATE_SUM ||
-                                      plan->function == PLANNED_GROUPED_AGGREGATE_AVG)) {
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        if (plan->aggregates[aggregate_index].function == PLANNED_GROUPED_AGGREGATE_SUM) {
+            has_sum = true;
+        }
+        if (plan->aggregates[aggregate_index].function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            has_avg = true;
+        }
+    }
+    if (sqlite_rc == SQLITE_ERROR && (has_sum || has_avg)) {
         message = sqlite3_errmsg(sqlite3_db_handle(statement));
         if (message != NULL && strcmp(message, "integer overflow") == 0) {
-            if (plan->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            if (has_avg) {
                 set_unsupported_error(
                     database,
                     "AVG(column) intermediate sum exceeds MyLite signed 64-bit range"
@@ -100600,7 +100901,7 @@ static int build_grouped_aggregate_sql(
         rc = append_grouped_having_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(&string, &plan->order);
+        rc = append_grouped_order_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
@@ -100672,23 +100973,40 @@ static int append_grouped_aggregate_select_list_sql(
     );
 
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, ", ");
-    }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, "COUNT(*)");
+        for (size_t aggregate_index = 0U;
+             rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+             ++aggregate_index) {
+            rc = dynamic_string_append(string, ", ");
+            if (rc == MYLITE_OK) {
+                rc = append_grouped_aggregate_select_item_sql(
+                    string,
+                    plan,
+                    &plan->aggregates[aggregate_index],
+                    next_parameter
+                );
+            }
         }
-        return rc;
     }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_AVG) {
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, "SUM(");
-        }
+
+    return rc;
+}
+
+static int append_grouped_aggregate_select_item_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+) {
+    bool qualify = plan->source_count > 0U;
+    int rc = MYLITE_OK;
+
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        rc = dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
                 string,
-                &plan->aggregate_column,
-                plan->aggregate_column_source_index,
+                &item->aggregate_column,
+                item->aggregate_column_source_index,
                 qualify
             );
         }
@@ -100698,8 +101016,8 @@ static int append_grouped_aggregate_select_list_sql(
         if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
                 string,
-                &plan->aggregate_column,
-                plan->aggregate_column_source_index,
+                &item->aggregate_column,
+                item->aggregate_column_source_index,
                 qualify
             );
         }
@@ -100708,32 +101026,45 @@ static int append_grouped_aggregate_select_list_sql(
         }
         return rc;
     }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        if (rc == MYLITE_OK) {
-            rc = append_group_concat_call_sql(
-                string,
-                &plan->aggregate_column,
-                plan->aggregate_column_source_index,
-                &plan->aggregate_order,
-                qualify,
-                plan->has_separator,
-                next_parameter
-            );
-        }
-        return rc;
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        return append_group_concat_call_sql(
+            string,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
+            &item->aggregate_order,
+            qualify,
+            item->has_separator,
+            next_parameter
+        );
     }
 
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, grouped_aggregate_sql_function(plan->function));
+    return append_grouped_aggregate_expression_sql(string, plan, item);
+}
+
+static int append_grouped_aggregate_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item
+) {
+    bool qualify = plan->source_count > 0U;
+    int rc = MYLITE_OK;
+
+    if (item->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
+        return dynamic_string_append(string, "COUNT(*)");
     }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_char(string, '(');
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        rc = dynamic_string_append(string, "AVG(");
+    } else {
+        rc = dynamic_string_append(string, grouped_aggregate_sql_function(item->function));
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '(');
+        }
     }
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(
             string,
-            &plan->aggregate_column,
-            plan->aggregate_column_source_index,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
             qualify
         );
     }
@@ -100840,29 +101171,46 @@ static int append_grouped_having_aggregate_sql(
     struct dynamic_string *string,
     const struct planned_grouped_aggregate *plan
 ) {
+    if (plan->having.aggregate_index >= plan->aggregate_count) {
+        return MYLITE_ERROR;
+    }
+    return append_grouped_aggregate_expression_sql(
+        string,
+        plan,
+        &plan->aggregates[plan->having.aggregate_index]
+    );
+}
+
+static int append_grouped_order_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+) {
     int rc = MYLITE_OK;
 
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
-        return dynamic_string_append(string, "COUNT(*)");
+    if (!plan->order.has_order) {
+        return MYLITE_OK;
     }
-    if (plan->function == PLANNED_GROUPED_AGGREGATE_AVG) {
-        rc = dynamic_string_append(string, "AVG(");
-    } else if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, grouped_aggregate_sql_function(plan->function));
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_char(string, '(');
-        }
+    if (!plan->order_uses_aggregate) {
+        return append_select_order_sql(string, &plan->order);
     }
+    if (plan->order_aggregate_index >= plan->aggregate_count) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, " ORDER BY ");
     if (rc == MYLITE_OK) {
-        rc = append_descriptor_column_name_sql_for_source(
+        rc = append_grouped_aggregate_expression_sql(
             string,
-            &plan->aggregate_column,
-            plan->aggregate_column_source_index,
-            plan->source_count > 0U
+            plan,
+            &plan->aggregates[plan->order_aggregate_index]
         );
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_char(string, ')');
+        if (plan->order.direction == PLANNED_SELECT_ORDER_DESC) {
+            rc = dynamic_string_append(string, " DESC");
+        } else {
+            rc = dynamic_string_append(string, " ASC");
+        }
     }
 
     return rc;
@@ -104999,10 +105347,15 @@ static int bind_grouped_aggregate_parameters(
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->has_separator) {
-        rc = bind_planned_value_parameter(statement, parameter_index, &plan->separator);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
+
+        if (item->has_separator) {
+            rc = bind_planned_value_parameter(statement, parameter_index, &item->separator);
+            if (rc == MYLITE_OK) {
+                ++parameter_index;
+            }
         }
     }
     if (rc == MYLITE_OK) {

@@ -97,6 +97,22 @@ struct json_parse_stack {
     size_t count;
 };
 
+enum json_validate_state {
+    JSON_VALIDATE_VALUE,
+    JSON_VALIDATE_OBJECT_KEY_OR_END,
+    JSON_VALIDATE_OBJECT_KEY_REQUIRED,
+    JSON_VALIDATE_OBJECT_COLON,
+    JSON_VALIDATE_OBJECT_COMMA_OR_END,
+    JSON_VALIDATE_ARRAY_VALUE_OR_END,
+    JSON_VALIDATE_ARRAY_VALUE_REQUIRED,
+    JSON_VALIDATE_ARRAY_COMMA_OR_END,
+};
+
+struct json_validate_stack {
+    enum json_validate_state states[json_max_nesting_depth + 2U];
+    size_t count;
+};
+
 struct json_emit_frame {
     const struct json_value *container;
     size_t index;
@@ -125,6 +141,45 @@ struct json_number_integer_part {
 };
 
 static int parse_document(struct json_parser *parser, struct json_value *out_value);
+static bool validate_document(struct json_parser *parser);
+static bool validate_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack,
+    enum json_validate_state state
+);
+static bool validate_value_state(struct json_parser *parser, struct json_validate_stack *stack);
+static bool validate_object_key_or_end_state(struct json_parser *parser);
+static bool validate_object_key_required_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+);
+static bool validate_object_colon_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+);
+static bool validate_object_comma_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+);
+static bool validate_array_value_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+);
+static bool validate_array_value_required_state(struct json_validate_stack *stack);
+static bool validate_array_comma_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+);
+static bool validate_container_depth_available(const struct json_validate_stack *stack);
+static bool validate_stack_push(struct json_validate_stack *stack, enum json_validate_state state);
+static enum json_validate_state validate_stack_pop(struct json_validate_stack *stack);
+static bool validate_string(struct json_parser *parser);
+static bool validate_string_escape(struct json_parser *parser);
+static bool validate_number(struct json_parser *parser);
+static bool validate_integer_digits(struct json_parser *parser);
+static bool validate_fraction_digits(struct json_parser *parser);
+static bool validate_exponent_digits(struct json_parser *parser);
+static bool validate_literal_token(struct json_parser *parser, const char *literal, size_t length);
 static int parse_next_value(struct json_parser *parser, struct json_parsed_value *out_value);
 static int parse_next_object_member(struct json_parser *parser, struct json_parse_stack *stack);
 static int parse_next_array_value(struct json_parser *parser, struct json_parse_stack *stack);
@@ -247,6 +302,7 @@ static bool parser_at_end(const struct json_parser *parser);
 static char parser_peek(const struct json_parser *parser);
 static bool parser_match(struct json_parser *parser, char expected);
 static bool is_decimal_digit(char byte);
+static bool is_hex_digit(char byte);
 static int parser_invalid(struct json_parser *parser, size_t position);
 static int parser_unsupported(struct json_parser *parser, size_t position);
 
@@ -298,6 +354,26 @@ int mylite_json_normalize(
     return rc;
 }
 
+int mylite_json_validate(const char *text, size_t text_length, bool *out_is_valid) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+
+    if (out_is_valid == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_valid = false;
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    *out_is_valid = validate_document(&parser);
+    return MYLITE_OK;
+}
+
 static int parse_document(struct json_parser *parser, struct json_value *out_value) {
     struct json_parse_stack stack = {0};
     struct json_parsed_value parsed = {0};
@@ -327,6 +403,316 @@ static int parse_document(struct json_parser *parser, struct json_value *out_val
     }
 
     return rc;
+}
+
+static bool validate_document(struct json_parser *parser) {
+    struct json_validate_stack stack = {0};
+
+    if (!validate_stack_push(&stack, JSON_VALIDATE_VALUE)) {
+        return false;
+    }
+    while (stack.count > 0U) {
+        enum json_validate_state state = validate_stack_pop(&stack);
+
+        if (!validate_state(parser, &stack, state)) {
+            return false;
+        }
+    }
+    skip_whitespace(parser);
+    return parser_at_end(parser);
+}
+
+static bool validate_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack,
+    enum json_validate_state state
+) {
+    switch (state) {
+    case JSON_VALIDATE_VALUE:
+        return validate_value_state(parser, stack);
+    case JSON_VALIDATE_OBJECT_KEY_OR_END:
+        if (validate_object_key_or_end_state(parser)) {
+            return true;
+        }
+        return validate_object_key_required_state(parser, stack);
+    case JSON_VALIDATE_OBJECT_KEY_REQUIRED:
+        return validate_object_key_required_state(parser, stack);
+    case JSON_VALIDATE_OBJECT_COLON:
+        return validate_object_colon_state(parser, stack);
+    case JSON_VALIDATE_OBJECT_COMMA_OR_END:
+        return validate_object_comma_or_end_state(parser, stack);
+    case JSON_VALIDATE_ARRAY_VALUE_OR_END:
+        return validate_array_value_or_end_state(parser, stack);
+    case JSON_VALIDATE_ARRAY_VALUE_REQUIRED:
+        return validate_array_value_required_state(stack);
+    case JSON_VALIDATE_ARRAY_COMMA_OR_END:
+        return validate_array_comma_or_end_state(parser, stack);
+    }
+    return false;
+}
+
+static bool validate_value_state(struct json_parser *parser, struct json_validate_stack *stack) {
+    char byte = '\0';
+
+    skip_whitespace(parser);
+    byte = parser_peek(parser);
+    switch (byte) {
+    case '{':
+        if (!validate_container_depth_available(stack) || !parser_match(parser, '{')) {
+            return false;
+        }
+        return validate_stack_push(stack, JSON_VALIDATE_OBJECT_KEY_OR_END);
+    case '[':
+        if (!validate_container_depth_available(stack) || !parser_match(parser, '[')) {
+            return false;
+        }
+        return validate_stack_push(stack, JSON_VALIDATE_ARRAY_VALUE_OR_END);
+    case '"':
+        return validate_string(parser);
+    case 't':
+        return validate_literal_token(parser, "true", json_true_literal_length);
+    case 'f':
+        return validate_literal_token(parser, "false", json_false_literal_length);
+    case 'n':
+        return validate_literal_token(parser, "null", json_null_literal_length);
+    case '-':
+        return validate_number(parser);
+    default:
+        break;
+    }
+    if (byte >= '0' && byte <= '9') {
+        return validate_number(parser);
+    }
+    return false;
+}
+
+static bool validate_object_key_or_end_state(struct json_parser *parser) {
+    skip_whitespace(parser);
+    return parser_match(parser, '}');
+}
+
+static bool validate_object_key_required_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+) {
+    skip_whitespace(parser);
+    if (!validate_string(parser)) {
+        return false;
+    }
+    return validate_stack_push(stack, JSON_VALIDATE_OBJECT_COLON);
+}
+
+static bool validate_object_colon_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+) {
+    skip_whitespace(parser);
+    if (!parser_match(parser, ':')) {
+        return false;
+    }
+    if (!validate_stack_push(stack, JSON_VALIDATE_OBJECT_COMMA_OR_END)) {
+        return false;
+    }
+    return validate_stack_push(stack, JSON_VALIDATE_VALUE);
+}
+
+static bool validate_object_comma_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+) {
+    skip_whitespace(parser);
+    if (parser_match(parser, '}')) {
+        return true;
+    }
+    if (!parser_match(parser, ',')) {
+        return false;
+    }
+    return validate_stack_push(stack, JSON_VALIDATE_OBJECT_KEY_REQUIRED);
+}
+
+static bool validate_array_value_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+) {
+    skip_whitespace(parser);
+    if (parser_match(parser, ']')) {
+        return true;
+    }
+    return validate_array_value_required_state(stack);
+}
+
+static bool validate_array_value_required_state(struct json_validate_stack *stack) {
+    if (!validate_stack_push(stack, JSON_VALIDATE_ARRAY_COMMA_OR_END)) {
+        return false;
+    }
+    return validate_stack_push(stack, JSON_VALIDATE_VALUE);
+}
+
+static bool validate_array_comma_or_end_state(
+    struct json_parser *parser,
+    struct json_validate_stack *stack
+) {
+    skip_whitespace(parser);
+    if (parser_match(parser, ']')) {
+        return true;
+    }
+    if (!parser_match(parser, ',')) {
+        return false;
+    }
+    return validate_stack_push(stack, JSON_VALIDATE_ARRAY_VALUE_REQUIRED);
+}
+
+static bool validate_container_depth_available(const struct json_validate_stack *stack) {
+    return stack->count < json_max_nesting_depth;
+}
+
+static bool validate_stack_push(struct json_validate_stack *stack, enum json_validate_state state) {
+    if (stack->count >= sizeof(stack->states) / sizeof(stack->states[0])) {
+        return false;
+    }
+    stack->states[stack->count] = state;
+    ++stack->count;
+    return true;
+}
+
+static enum json_validate_state validate_stack_pop(struct json_validate_stack *stack) {
+    --stack->count;
+    return stack->states[stack->count];
+}
+
+static bool validate_string(struct json_parser *parser) {
+    if (!parser_match(parser, '"')) {
+        return false;
+    }
+    while (!parser_at_end(parser)) {
+        unsigned char byte = (unsigned char)parser_peek(parser);
+
+        ++parser->position;
+        if (byte == '"') {
+            return true;
+        }
+        if (byte == '\\') {
+            if (!validate_string_escape(parser)) {
+                return false;
+            }
+            continue;
+        }
+        if (byte < json_control_byte_limit) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool validate_string_escape(struct json_parser *parser) {
+    char byte = '\0';
+
+    if (parser_at_end(parser)) {
+        return false;
+    }
+    byte = parser_peek(parser);
+    ++parser->position;
+    switch (byte) {
+    case '"':
+    case '\\':
+    case '/':
+    case 'b':
+    case 'f':
+    case 'n':
+    case 'r':
+    case 't':
+        return true;
+    case 'u':
+        for (size_t digit_index = 0U; digit_index < json_unicode_escape_digit_count;
+             ++digit_index) {
+            if (parser_at_end(parser) || !is_hex_digit(parser_peek(parser))) {
+                return false;
+            }
+            ++parser->position;
+        }
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool validate_number(struct json_parser *parser) {
+    if (parser_match(parser, '-')) {
+        if (parser_at_end(parser)) {
+            return false;
+        }
+    }
+    if (!validate_integer_digits(parser)) {
+        return false;
+    }
+    if (parser_peek(parser) == '.' && !validate_fraction_digits(parser)) {
+        return false;
+    }
+    if ((parser_peek(parser) == 'e' || parser_peek(parser) == 'E') &&
+        !validate_exponent_digits(parser)) {
+        return false;
+    }
+    return true;
+}
+
+static bool validate_integer_digits(struct json_parser *parser) {
+    char byte = parser_peek(parser);
+
+    if (byte == '0') {
+        ++parser->position;
+        return true;
+    }
+    if (byte < '1' || byte > '9') {
+        return false;
+    }
+    do {
+        ++parser->position;
+        byte = parser_peek(parser);
+    } while (is_decimal_digit(byte));
+    return true;
+}
+
+static bool validate_fraction_digits(struct json_parser *parser) {
+    if (!parser_match(parser, '.')) {
+        return false;
+    }
+    if (!is_decimal_digit(parser_peek(parser))) {
+        return false;
+    }
+    do {
+        ++parser->position;
+    } while (is_decimal_digit(parser_peek(parser)));
+    return true;
+}
+
+static bool validate_exponent_digits(struct json_parser *parser) {
+    if (parser_peek(parser) != 'e' && parser_peek(parser) != 'E') {
+        return false;
+    }
+    ++parser->position;
+    if (parser_peek(parser) == '+' || parser_peek(parser) == '-') {
+        ++parser->position;
+    }
+    if (!is_decimal_digit(parser_peek(parser))) {
+        return false;
+    }
+    do {
+        ++parser->position;
+    } while (is_decimal_digit(parser_peek(parser)));
+    return true;
+}
+
+static bool validate_literal_token(struct json_parser *parser, const char *literal, size_t length) {
+    if (literal == NULL || parser->position > parser->length ||
+        length > parser->length - parser->position) {
+        return false;
+    }
+    if (memcmp(&parser->text[parser->position], literal, length) != 0) {
+        return false;
+    }
+    parser->position += length;
+    return true;
 }
 
 static int parse_next_value(struct json_parser *parser, struct json_parsed_value *out_value) {
@@ -1344,6 +1730,16 @@ static bool is_decimal_digit(char byte) {
         return false;
     }
     return byte <= '9';
+}
+
+static bool is_hex_digit(char byte) {
+    if (byte >= '0' && byte <= '9') {
+        return true;
+    }
+    if (byte >= 'A' && byte <= 'F') {
+        return true;
+    }
+    return (byte >= 'a' && byte <= 'f') != 0;
 }
 
 static int parser_invalid(struct json_parser *parser, size_t position) {

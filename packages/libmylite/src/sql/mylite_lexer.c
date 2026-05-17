@@ -584,6 +584,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"JOIN", MYLITE_SQL_KEYWORD_RESERVED},
         {"JSON", 0U},
         {"JSON_TABLE", MYLITE_SQL_KEYWORD_RESERVED},
+        {"JSON_VALID", 0U},
         {"JSON_VALUE", 0U},
         {"KEY", MYLITE_SQL_KEYWORD_RESERVED},
         {"KEYRING", 0U},

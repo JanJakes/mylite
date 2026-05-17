@@ -44,6 +44,7 @@ add_library(mylite STATIC
   src/runtime/mylite_diagnostics.c
   src/runtime/mylite_execution.c
   src/runtime/mylite_json.c
+  src/runtime/mylite_json_functions.c
   src/runtime/mylite_regexp.c
   src/runtime/mylite_result.c
   src/runtime/mylite_result_metadata.c
@@ -689,6 +690,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_field_function_test)
+
+  add_executable(mylite_runtime_json_valid_function_test
+    tests/runtime_json_valid_function_test.c
+  )
+  target_link_libraries(mylite_runtime_json_valid_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_json_valid_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_json_valid_function_test)
 
   add_executable(mylite_runtime_scalar_comparison_projection_test
     tests/runtime_scalar_comparison_projection_test.c
@@ -2991,6 +3003,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.field_function
     COMMAND mylite_runtime_field_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.json_valid_function
+    COMMAND mylite_runtime_json_valid_function_test
   )
   add_test(
     NAME libmylite.runtime.scalar_comparison_projection

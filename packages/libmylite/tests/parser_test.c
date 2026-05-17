@@ -50,6 +50,7 @@ static int test_coalesce_function(void);
 static int test_concat_function(void);
 static int test_concat_ws_function(void);
 static int test_field_function(void);
+static int test_json_valid_function(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
@@ -324,6 +325,7 @@ int main(void) {
     failures += test_concat_function();
     failures += test_concat_ws_function();
     failures += test_field_function();
+    failures += test_json_valid_function();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
@@ -2078,6 +2080,98 @@ static int test_field_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT FIELD('b', 'a', 'b') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_valid_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT JSON_VALID('{\"a\":1}'), json_valid(payload) AS ok "
+        "FROM t WHERE JSON_VALID(payload) ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_JSON_VALID_FUNCTION, "json_valid function");
+    failures += expect_span_text(first_expression, "JSON_VALID('{\"a\":1}')", "json_valid span");
+    failures += expect_child_count(first_expression, 1U, "json_valid argument count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "json_valid string argument"
+    );
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_JSON_VALID_FUNCTION, "lower json_valid");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "json_valid column"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "json_valid alias"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "json_valid table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_VALID();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR,
+        "json_valid zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_VALID('{}', '{}');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR,
+        "json_valid two argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO JSON_VALID('{}'), JSON_VALID(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json_valid do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_VALID_FUNCTION,
+        "do json_valid"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_JSON_VALID_FUNCTION,
+        "do json_valid null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE json_valid (json_valid INT); SELECT json_valid FROM json_valid;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT JSON_VALID('{\"a\":1}') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -1082,6 +1082,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "concat_ws_function";
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
         return "concat_ws_argument_count_error";
+    case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
+        return "json_valid_function";
+    case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
+        return "json_valid_argument_count_error";
     case MYLITE_SQL_AST_FIELD_FUNCTION:
         return "field_function";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:

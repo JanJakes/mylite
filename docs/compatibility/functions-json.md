@@ -36,7 +36,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_TABLE()` | ❌ | Return data from a JSON expression as a relational table |
 | `JSON_TYPE()` | ❌ | Type of JSON value |
 | `JSON_UNQUOTE()` | ❌ | Unquote JSON value |
-| `JSON_VALID()` | ❌ | Whether JSON value is valid |
+| `JSON_VALID()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar validity check over admitted string, JSON, integer, binary string, `BIT`, boolean, and `NULL` values, including supported row predicates; no arbitrary expression, path, construction, or mutation semantics |
 | `JSON_VALUE()` | ❌ | JSON path value extraction |
 | `MEMBER OF()` | ❌ | JSON array membership |
 

@@ -1,6 +1,7 @@
 #ifndef MYLITE_RUNTIME_MYLITE_JSON_H
 #define MYLITE_RUNTIME_MYLITE_JSON_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 enum mylite_json_normalize_status {
@@ -21,5 +22,6 @@ int mylite_json_normalize(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_validate(const char *text, size_t text_length, bool *out_is_valid);
 
 #endif

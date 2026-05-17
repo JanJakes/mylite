@@ -2286,11 +2286,26 @@ predicate_atom(A) ::= EXISTS(E) LPAREN select_statement(S) RPAREN(R). {
 predicate_atom(A) ::= find_in_set_expression(C). {
     A = C;
 }
+predicate_atom(A) ::= json_valid_expression(C). {
+    A = C;
+}
 predicate_atom(A) ::= find_in_set_expression(C) EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
 }
+predicate_atom(A) ::= json_valid_expression(C) EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+predicate_atom(A) ::= json_valid_expression(C) NULL_SAFE_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
+}
 predicate_atom(A) ::= find_in_set_expression(C) NOT_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
+}
+predicate_atom(A) ::= json_valid_expression(C) NOT_EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
 }
@@ -2298,7 +2313,15 @@ predicate_atom(A) ::= find_in_set_expression(C) LESS(O) predicate_integer_value(
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
 }
+predicate_atom(A) ::= json_valid_expression(C) LESS(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
+}
 predicate_atom(A) ::= find_in_set_expression(C) LESS_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
+}
+predicate_atom(A) ::= json_valid_expression(C) LESS_EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
 }
@@ -2306,7 +2329,15 @@ predicate_atom(A) ::= find_in_set_expression(C) GREATER(O) predicate_integer_val
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
 }
+predicate_atom(A) ::= json_valid_expression(C) GREATER(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
+}
 predicate_atom(A) ::= find_in_set_expression(C) GREATER_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
+}
+predicate_atom(A) ::= json_valid_expression(C) GREATER_EQUAL(O) predicate_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
@@ -2314,7 +2345,15 @@ predicate_atom(A) ::= find_in_set_expression(C) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
 }
+predicate_atom(A) ::= json_valid_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
 predicate_atom(A) ::= find_in_set_expression(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= json_valid_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
@@ -2801,6 +2840,13 @@ expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
 }
+expression(A) ::= json_valid_expression(B). {
+    A = B;
+}
+json_valid_expression(A) ::= JSON_VALID(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_VALID_FUNCTION, B, R);
+}
 expression(A) ::= find_in_set_expression(B). {
     A = B;
 }
@@ -3273,6 +3319,15 @@ expression(A) ::= CONCAT_WS(T) LPAREN RPAREN(R). {
 expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_VALID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_VALID(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= FIND_IN_SET(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4079,6 +4134,9 @@ identifier(A) ::= CONCAT_WS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_VALID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE_FORMAT(T). {

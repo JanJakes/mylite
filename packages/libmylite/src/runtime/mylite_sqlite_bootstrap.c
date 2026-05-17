@@ -2,6 +2,7 @@
 
 #include "mylite_bitwise_aggregate.h"
 #include "mylite_date_format.h"
+#include "mylite_json_functions.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_case.h"
@@ -216,6 +217,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_regexp_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_json_functions(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

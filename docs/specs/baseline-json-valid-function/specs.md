@@ -79,12 +79,11 @@ Supported:
   - SQL integer literal with optional unary sign;
   - SQL `TRUE` / `FALSE`;
   - SQL `NULL`;
-  - selected session scalar values already admitted by row-scalar planning;
+  - limited no-source and `FROM DUAL` binary casts/conversions over those same
+    scalar literal values, returning `0` for non-`NULL` binary input;
   - descriptor columns already admitted by row-scalar planning, including
     JSON, nonbinary string, binary string, integer, boolean-like integer, and
     nullable columns;
-  - limited no-source or `FROM DUAL` scalar subqueries where the current
-    row-scalar envelope admits them.
 - validation of ordinary JSON documents with objects, arrays, strings, numbers,
   `true`, `false`, and `null`;
 - JSON number validity independent of MyLite's current JSON storage
@@ -135,6 +134,11 @@ Supported MyLite grammar:
 ```sql
 expression:
     JSON_VALID '(' expression ')'
+
+predicate:
+    JSON_VALID '(' expression ')'
+    JSON_VALID '(' expression ')' comparison_operator integer_value
+    JSON_VALID '(' expression ')' IS [NOT] NULL
 ```
 
 Argument-count diagnostics are represented explicitly:
@@ -147,9 +151,27 @@ JSON_VALID '(' expression ',' function_argument_list ')'
 MyLite Lemon-syntax snippet:
 
 ```lemon
-expression(A) ::= JSON_VALID(T) LPAREN expression(B) RPAREN(R). {
+expression(A) ::= json_valid_expression(B). {
+    A = B;
+}
+
+json_valid_expression(A) ::= JSON_VALID(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_VALID_FUNCTION, B, R);
+}
+
+predicate_atom(A) ::= json_valid_expression(C). {
+    A = C;
+}
+
+predicate_atom(A) ::= json_valid_expression(C) EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+
+predicate_atom(A) ::= json_valid_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
 }
 
 expression(A) ::= JSON_VALID(T) LPAREN RPAREN(R). {

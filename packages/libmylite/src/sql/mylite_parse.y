@@ -36,6 +36,7 @@
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
 %left BITWISE_XOR.
+%left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
 %fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION.
@@ -2906,6 +2907,14 @@ json_valid_expression(A) ::= JSON_VALID(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_VALID_FUNCTION, B, R);
 }
+expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, B, C, R);
+}
+expression(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION, B, R);
+}
 expression(A) ::= find_in_set_expression(B). {
     A = B;
 }
@@ -3387,6 +3396,30 @@ expression(A) ::= JSON_VALID(T) LPAREN expression(B) COMMA function_argument_lis
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_EXTRACT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA expression(C) COMMA
+    function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, D, R);
+}
+expression(A) ::= JSON_UNQUOTE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= FIND_IN_SET(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4035,6 +4068,16 @@ expression(A) ::= expression(B) BITWISE_XOR(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_XOR, C);
 }
+expression(A) ::= qualified_identifier(B) JSON_EXTRACT_OPERATOR(T) STRING(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_STRING));
+}
+expression(A) ::= qualified_identifier(B) JSON_UNQUOTE_EXTRACT_OPERATOR(T) STRING(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_STRING));
+}
 
 searched_case_when_list(A) ::= searched_case_when(B). {
     A = mylite_sql_parser_make_case_when_list(state, B);
@@ -4196,6 +4239,12 @@ identifier(A) ::= FIELD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_VALID(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_EXTRACT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_UNQUOTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE_FORMAT(T). {

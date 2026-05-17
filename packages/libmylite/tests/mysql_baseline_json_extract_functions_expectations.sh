@@ -124,6 +124,16 @@ expect_output \
 "JSON_EXTRACT('{\"a\":{\"b\":[1,2]}}', '$.a.b[1]');" \
     "$DATABASE"
 
+multipath_expected=$(cat <<EXPECTED
+[1, 2]
+EXPECTED
+)
+expect_output \
+    "MySQL accepts multipath JSON_EXTRACT" \
+    "$multipath_expected" \
+    "SELECT JSON_EXTRACT('{\"a\":1,\"b\":2}', '$.a', '$.b');" \
+    "$DATABASE"
+
 unquote_expected=$(cat <<EXPECTED
 abc	abc	123	null	true	[1, 2]	{"a": 1}	NULL
 EXPECTED

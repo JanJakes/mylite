@@ -264,6 +264,42 @@ static int parse_literal(
     bool boolean,
     struct json_value *out_value
 );
+static int extract_path_value(
+    struct json_parser *parser,
+    const struct json_value *root,
+    const struct json_value **out_value,
+    bool *out_matched
+);
+static int parse_path_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+);
+static int parse_path_quoted_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+);
+static int parse_path_identifier_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+);
+static int parse_path_array_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+);
+static int parse_path_array_index(struct json_parser *parser, size_t *out_index);
+static bool path_identifier_start_byte(char byte);
+static bool path_identifier_byte(char byte);
+static bool path_text_is_ascii(const char *text, size_t text_length);
+static const struct json_value *object_member_value(
+    const struct json_value *value,
+    const char *member,
+    size_t member_length
+);
+static const struct json_value *array_index_value(const struct json_value *value, size_t index);
 static int emit_value(struct json_writer *writer, const struct json_value *value);
 static int emit_value_start(
     struct json_writer *writer,
@@ -290,6 +326,12 @@ static int writer_append_text(struct json_writer *writer, const char *text, size
 static int writer_reserve(struct json_writer *writer, size_t required_capacity);
 static char *writer_take(struct json_writer *writer);
 static void writer_deinit(struct json_writer *writer);
+static int copy_result_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+);
 static void value_deinit(struct json_value *value);
 static bool deinit_stack_push(
     struct json_deinit_stack *stack,
@@ -372,6 +414,158 @@ int mylite_json_validate(const char *text, size_t text_length, bool *out_is_vali
 
     *out_is_valid = validate_document(&parser);
     return MYLITE_OK;
+}
+
+int mylite_json_extract(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    struct json_writer writer = {0};
+    const struct json_value *matched_value = NULL;
+    bool matched = false;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || path == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    if (rc == MYLITE_OK) {
+        rc = extract_path_value(&path_parser, &document, &matched_value, &matched);
+        *out_result = path_parser.result;
+    }
+    if (rc == MYLITE_OK && !matched) {
+        *out_is_null = true;
+    } else if (rc == MYLITE_OK) {
+        rc = emit_value(&writer, matched_value);
+        if (rc == MYLITE_OK) {
+            *out_text_length = writer.length;
+            *out_text = writer_take(&writer);
+            if (*out_text == NULL) {
+                rc = MYLITE_NOMEM;
+            }
+        }
+    }
+
+    value_deinit(&document);
+    writer_deinit(&writer);
+    return rc;
+}
+
+int mylite_json_path_validate(
+    const char *path,
+    size_t path_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    const struct json_value *matched_value = NULL;
+    bool matched = false;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (path == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    int rc = extract_path_value(&path_parser, NULL, &matched_value, &matched);
+
+    (void)matched_value;
+    (void)matched;
+    *out_result = path_parser.result;
+    return rc;
+}
+
+int mylite_json_unquote(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    char *decoded = NULL;
+    size_t decoded_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    if (text_length < 2U || text[0] != '"' || text[text_length - 1U] != '"') {
+        *out_result = (struct mylite_json_normalize_result){
+            .status = MYLITE_JSON_NORMALIZE_OK,
+            .position = 0U,
+        };
+        return copy_result_text(text, text_length, out_text, out_text_length);
+    }
+
+    rc = parse_string(&parser, &decoded, &decoded_length);
+    if (rc == MYLITE_OK && !parser_at_end(&parser)) {
+        rc = parser_invalid(&parser, parser.position);
+    }
+    *out_result = parser.result;
+    if (rc == MYLITE_OK) {
+        *out_text = decoded;
+        *out_text_length = decoded_length;
+        decoded = NULL;
+    }
+
+    free(decoded);
+    return rc;
 }
 
 static int parse_document(struct json_parser *parser, struct json_value *out_value) {
@@ -1377,6 +1571,223 @@ static int parse_literal(
     return MYLITE_OK;
 }
 
+static int extract_path_value(
+    struct json_parser *parser,
+    const struct json_value *root,
+    const struct json_value **out_value,
+    bool *out_matched
+) {
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_matched == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = root;
+    *out_matched = root != NULL;
+    if (!parser_match(parser, '$')) {
+        return parser_invalid(parser, parser->position);
+    }
+
+    while (rc == MYLITE_OK && !parser_at_end(parser)) {
+        char byte = parser_peek(parser);
+
+        if (byte == '.') {
+            rc = parse_path_member_leg(parser, out_value, out_matched);
+        } else if (byte == '[') {
+            rc = parse_path_array_leg(parser, out_value, out_matched);
+        } else if (byte == '*') {
+            rc = parser_unsupported(parser, parser->position);
+        } else {
+            rc = parser_invalid(parser, parser->position);
+        }
+    }
+
+    return rc;
+}
+
+static int parse_path_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+) {
+    if (!parser_match(parser, '.')) {
+        return parser_invalid(parser, parser->position);
+    }
+    if (parser_peek(parser) == '"') {
+        return parse_path_quoted_member_leg(parser, inout_value, inout_matched);
+    }
+    if (!path_identifier_start_byte(parser_peek(parser))) {
+        if (parser_at_end(parser)) {
+            return parser_invalid(parser, parser->position);
+        }
+        if (parser_peek(parser) == '*') {
+            return parser_unsupported(parser, parser->position);
+        }
+        return parser_invalid(parser, parser->position);
+    }
+    return parse_path_identifier_member_leg(parser, inout_value, inout_matched);
+}
+
+static int parse_path_quoted_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+) {
+    char *member = NULL;
+    size_t member_length = 0U;
+    size_t start = parser->position;
+    int rc = parse_string(parser, &member, &member_length);
+
+    if (rc == MYLITE_OK && !path_text_is_ascii(member, member_length)) {
+        rc = parser_unsupported(parser, start);
+    }
+    if (rc == MYLITE_OK && *inout_matched) {
+        const struct json_value *next = object_member_value(*inout_value, member, member_length);
+
+        if (next == NULL) {
+            *inout_matched = false;
+            *inout_value = NULL;
+        } else {
+            *inout_value = next;
+        }
+    }
+
+    free(member);
+    return rc;
+}
+
+static int parse_path_identifier_member_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+) {
+    size_t start = parser->position;
+
+    ++parser->position;
+    while (path_identifier_byte(parser_peek(parser))) {
+        ++parser->position;
+    }
+    if (*inout_matched) {
+        const char *member = &parser->text[start];
+        size_t member_length = parser->position - start;
+        const struct json_value *next = object_member_value(*inout_value, member, member_length);
+
+        if (next == NULL) {
+            *inout_matched = false;
+            *inout_value = NULL;
+        } else {
+            *inout_value = next;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int parse_path_array_leg(
+    struct json_parser *parser,
+    const struct json_value **inout_value,
+    bool *inout_matched
+) {
+    size_t index = 0U;
+    int rc = MYLITE_OK;
+
+    if (!parser_match(parser, '[')) {
+        return parser_invalid(parser, parser->position);
+    }
+    rc = parse_path_array_index(parser, &index);
+    if (rc == MYLITE_OK && !parser_match(parser, ']')) {
+        rc = parser_invalid(parser, parser->position);
+    }
+    if (rc == MYLITE_OK && *inout_matched) {
+        const struct json_value *next = array_index_value(*inout_value, index);
+
+        if (next == NULL) {
+            *inout_matched = false;
+            *inout_value = NULL;
+        } else {
+            *inout_value = next;
+        }
+    }
+    return rc;
+}
+
+static int parse_path_array_index(struct json_parser *parser, size_t *out_index) {
+    size_t start = parser->position;
+    size_t value = 0U;
+
+    if (parser_peek(parser) == '*' || parser_peek(parser) == 'l' || parser_peek(parser) == 'L') {
+        return parser_unsupported(parser, parser->position);
+    }
+    if (!is_decimal_digit(parser_peek(parser))) {
+        return parser_invalid(parser, parser->position);
+    }
+    if (parser_peek(parser) == '0') {
+        ++parser->position;
+        if (is_decimal_digit(parser_peek(parser))) {
+            return parser_invalid(parser, parser->position);
+        }
+        *out_index = 0U;
+        return MYLITE_OK;
+    }
+
+    while (is_decimal_digit(parser_peek(parser))) {
+        unsigned int digit = (unsigned int)(parser_peek(parser) - '0');
+
+        if (value > (SIZE_MAX - digit) / json_decimal_base) {
+            return parser_unsupported(parser, start);
+        }
+        value = (value * json_decimal_base) + digit;
+        ++parser->position;
+    }
+    *out_index = value;
+    return MYLITE_OK;
+}
+
+static bool path_identifier_start_byte(char byte) {
+    return ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') || byte == '_' ||
+            byte == '$') != 0;
+}
+
+static bool path_identifier_byte(char byte) {
+    return (path_identifier_start_byte(byte) || (byte >= '0' && byte <= '9')) != 0;
+}
+
+static bool path_text_is_ascii(const char *text, size_t text_length) {
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == '\0' || byte > json_ascii_byte_limit) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static const struct json_value *object_member_value(
+    const struct json_value *value,
+    const char *member,
+    size_t member_length
+) {
+    if (value == NULL || value->kind != JSON_VALUE_OBJECT || member == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < value->payload.object.count; ++index) {
+        const struct json_member *candidate = &value->payload.object.members[index];
+
+        if (candidate->key_length == member_length &&
+            memcmp(candidate->key, member, member_length) == 0) {
+            return candidate->value;
+        }
+    }
+    return NULL;
+}
+
+static const struct json_value *array_index_value(const struct json_value *value, size_t index) {
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY || index >= value->payload.array.count) {
+        return NULL;
+    }
+    return &value->payload.array.values[index];
+}
+
 static int emit_value(struct json_writer *writer, const struct json_value *value) {
     struct json_emit_stack stack = {0};
     int rc = emit_value_start(writer, value, &stack);
@@ -1615,6 +2026,33 @@ static char *writer_take(struct json_writer *writer) {
 static void writer_deinit(struct json_writer *writer) {
     free(writer->text);
     *writer = (struct json_writer){0};
+}
+
+static int copy_result_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length
+) {
+    char *copy = NULL;
+
+    if (out_text == NULL || out_text_length == NULL || text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (text_length == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    copy = malloc(text_length + 1U);
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (text_length != 0U) {
+        memcpy(copy, text, text_length);
+    }
+    copy[text_length] = '\0';
+    *out_text = copy;
+    *out_text_length = text_length;
+    return MYLITE_OK;
 }
 
 static void value_deinit(struct json_value *value) {

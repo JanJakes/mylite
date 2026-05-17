@@ -6373,6 +6373,8 @@ static bool map_keyword_token(
         {"MEDIUMTEXT", MYLITE_SQL_PARSE_MEDIUMTEXT},
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"JSON", MYLITE_SQL_PARSE_JSON},
+        {"JSON_EXTRACT", MYLITE_SQL_PARSE_JSON_EXTRACT},
+        {"JSON_UNQUOTE", MYLITE_SQL_PARSE_JSON_UNQUOTE},
         {"JSON_VALID", MYLITE_SQL_PARSE_JSON_VALID},
         {"BOOL", MYLITE_SQL_PARSE_BOOL},
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
@@ -6529,9 +6531,13 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_BITWISE_OR:
         *out_parser_token = MYLITE_SQL_PARSE_BITWISE_OR;
         return true;
-    case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
+        *out_parser_token = MYLITE_SQL_PARSE_JSON_UNQUOTE_EXTRACT_OPERATOR;
+        return true;
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
+        *out_parser_token = MYLITE_SQL_PARSE_JSON_EXTRACT_OPERATOR;
+        return true;
+    case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_ASSIGN:
     case MYLITE_SQL_OPERATOR_NOT:
         return false;

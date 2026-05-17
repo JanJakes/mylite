@@ -224,8 +224,8 @@ expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA expression(C)
                   COMMA function_argument_list(D) RPAREN(R). {
     (void)B;
     (void)C;
-    A = mylite_sql_parser_make_function_argument_count_error(
-        state, T, MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR, D, R);
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, D, R);
 }
 
 expression(A) ::= JSON_UNQUOTE(T) LPAREN RPAREN(R). {
@@ -341,6 +341,9 @@ SQLite JSON1 dependency and no SQLite fork patch are required for this phase.
 - SQL numeric or boolean argument to `JSON_UNQUOTE()`: `3064 / HY000` when the
   current expression layer can classify it.
 - Invalid simple path syntax: `3143 / 42000`.
+- Multiple `JSON_EXTRACT()` path arguments: deterministic MyLite unsupported
+  diagnostic, because MySQL accepts the syntax but the multi-match/autowrap
+  result shape is deferred.
 - Valid but deferred path syntax: deterministic MyLite unsupported diagnostic.
 - Unknown row-scalar columns, ambiguous columns, unsupported row sources,
   unsupported nested expressions, unsupported statement contexts, allocation

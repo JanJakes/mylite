@@ -23,5 +23,27 @@ int mylite_json_normalize(
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_validate(const char *text, size_t text_length, bool *out_is_valid);
+int mylite_json_extract(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_path_validate(
+    const char *path,
+    size_t path_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_unquote(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
 
 #endif

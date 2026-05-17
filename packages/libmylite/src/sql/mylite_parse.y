@@ -925,14 +925,24 @@ show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D) show_like_clause
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
 }
 
-show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, NULL, L);
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) show_table_status_filter_opt(F). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, NULL, F);
 }
-show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, L);
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) FROM identifier(D) show_table_status_filter_opt(F). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, F);
 }
-show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, L);
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) IN identifier(D) show_table_status_filter_opt(F). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, F);
+}
+
+show_table_status_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_table_status_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_table_status_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_character_set_statement(A) ::= SHOW(S) CHARACTER SET(T) show_like_clause_opt(L). {

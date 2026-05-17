@@ -99,6 +99,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_show_table_status_where_statement(void);
 static int test_table_binary_charset_options(void);
 static int test_alter_table_column_position_statements(void);
 static int test_column_position_nonreserved_identifier_statements(void);
@@ -371,6 +372,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_show_table_status_where_statement();
     failures += test_table_binary_charset_options();
     failures += test_alter_table_column_position_statements();
     failures += test_column_position_nonreserved_identifier_statements();
@@ -9386,6 +9388,39 @@ static int test_table_lifecycle_statements(void) {
         "amount",
         "second projection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_table_status_where_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS WHERE Name = 'numbers';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "show table status where"
+    );
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE, "status bare where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS FROM app WHERE `Rows` = '3';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "show table status schema where"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app", "show table status where schema");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE, "status schema where");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -19353,8 +19388,18 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SHOW TABLE STATUS FULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SHOW TABLE STATUS WHERE Name = 't';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SHOW TABLE STATUS LIKE 'a%' WHERE Name = 't';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW TABLE STATUS WHERE Name = 't' ORDER BY Name;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW TABLE STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

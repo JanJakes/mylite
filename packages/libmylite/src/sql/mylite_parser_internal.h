@@ -518,7 +518,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token status_token,
     struct mylite_sql_ast_node *schema_name,
-    struct mylite_sql_ast_node *like_pattern
+    struct mylite_sql_ast_node *filter
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
     struct mylite_sql_parser_state *state,

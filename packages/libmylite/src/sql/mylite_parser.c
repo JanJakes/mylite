@@ -1649,14 +1649,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token status_token,
     struct mylite_sql_ast_node *schema_name,
-    struct mylite_sql_ast_node *like_pattern
+    struct mylite_sql_ast_node *filter
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&status_token));
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (like_pattern != NULL) {
-        span = span_join(span, like_pattern->span);
+    if (filter != NULL) {
+        span = span_join(span, filter->span);
     } else if (schema_name != NULL) {
         span = span_join(span, schema_name->span);
     }
@@ -1667,7 +1667,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, schema_name);
-    mylite_sql_ast_node_append_child(statement, like_pattern);
+    mylite_sql_ast_node_append_child(statement, filter);
     return statement;
 }
 

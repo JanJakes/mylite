@@ -48,6 +48,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
     mysql_error_incorrect_database_name = 1102,
 };
 
@@ -62,6 +63,7 @@ struct expected_status_row {
     const char *rows;
     const char *average_row_length;
     const char *index_length;
+    const char *auto_increment;
 };
 
 struct status_cell_query {
@@ -116,6 +118,7 @@ static const char *const status_columns[show_table_status_column_count] = {
 };
 
 static int test_show_table_status_values_persistence_rename_and_drop(void);
+static int test_show_table_status_where_filters(void);
 static int test_show_table_status_diagnostics_and_unsupported_forms(void);
 static int test_independent_show_table_status_handles(void);
 static int create_status_schema(mylite_db *database);
@@ -167,6 +170,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_show_table_status_values_persistence_rename_and_drop();
+    failures += test_show_table_status_where_filters();
     failures += test_show_table_status_diagnostics_and_unsupported_forms();
     failures += test_independent_show_table_status_handles();
 
@@ -473,6 +477,182 @@ static int test_show_table_status_values_persistence_rename_and_drop(void) {
     return failures;
 }
 
+static int test_show_table_status_where_filters(void) {
+    static const struct expected_status_row numbers_row[] = {
+        {.name = "numbers", .rows = "3", .average_row_length = "5461"},
+    };
+    static const struct expected_status_row auto_row[] = {
+        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
+    };
+    static const struct expected_status_row auto_and_numbers_rows[] = {
+        {.name = "auto_numbers", .rows = "2", .average_row_length = "8192", .auto_increment = "3"},
+        {.name = "numbers", .rows = "3", .average_row_length = "5461"},
+    };
+    static const struct expected_status_row other_rows[] = {
+        {.name = "only_other", .rows = "0", .average_row_length = "0"},
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "where") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open where file");
+    failures += create_status_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE auto_numbers (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, i INT NULL)"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO auto_numbers(i) VALUES (10), (20)");
+
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where name equality"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'NUMBERS'",
+        NULL,
+        0U,
+        "where name equality case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE `Name` LIKE 'num%'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where name like"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Engine = 'INNODB' AND Name IN ('numbers','auto_numbers')",
+        auto_and_numbers_rows,
+        sizeof(auto_and_numbers_rows) / sizeof(auto_and_numbers_rows[0]),
+        "where engine and in"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` = '3'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where rows numeric string comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` = '03'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where rows leading zero numeric string comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` > '10' AND Name = 'numbers'",
+        NULL,
+        0U,
+        "where rows numeric ordering comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Data_length = '016384' AND Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where data length leading zero numeric string comparison"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment IS NULL AND Name IN ('numbers','auto_numbers')",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where auto increment is null"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment IS NOT NULL AND Name IN "
+        "('numbers','auto_numbers')",
+        auto_row,
+        sizeof(auto_row) / sizeof(auto_row[0]),
+        "where auto increment is not null"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment <=> NULL AND Name IN ('numbers','auto_numbers')",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where auto increment null safe"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment IN (NULL, '03') AND Name IN "
+        "('numbers','auto_numbers')",
+        auto_row,
+        sizeof(auto_row) / sizeof(auto_row[0]),
+        "where auto increment numeric in leading zero"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name NOT IN (NULL, 'numbers') AND Name IN "
+        "('numbers','auto_numbers')",
+        NULL,
+        0U,
+        "where not in null"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE (Name = 'numbers' OR Name = 'missing') AND NOT Engine = "
+        "'memory'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where or and not"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS IN other WHERE Name = 'only_other'",
+        other_rows,
+        sizeof(other_rows) / sizeof(other_rows[0]),
+        "where explicit schema"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'missing'",
+        NULL,
+        0U,
+        "where no match"
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after show table status where"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen where file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "reopened where name equality"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -494,6 +674,7 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
         }
     );
     failures += create_status_schema(database);
+    failures += execute_statement_ok(database, "CREATE DATABASE empty_schema");
     failures += execute_error(
         database,
         "SHOW TABLE STATUS FROM missing_schema",
@@ -510,6 +691,24 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
             .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS FROM empty_schema WHERE missing = 'x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS FROM empty_schema WHERE `Rows` = 3",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLE STATUS WHERE supports only string literal predicates",
         }
     );
 
@@ -541,7 +740,81 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW TABLE STATUS WHERE Name = 'numbers'",
+        "SHOW TABLE STATUS WHERE missing = 'x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE tables.Name = 'numbers'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'tables.Name' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` = 3",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLE STATUS WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` = 'abc'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "SHOW TABLE STATUS WHERE numeric columns support only unsigned decimal string "
+                "predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE LOWER(Name) = 'numbers'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE Name REGEXP 'num.*'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLE STATUS WHERE does not support REGEXP predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'numbers' XOR Engine = 'InnoDB'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLE STATUS WHERE does not support XOR predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS LIKE 'numbers' WHERE Name = 'numbers'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'numbers' ORDER BY Name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -638,11 +911,25 @@ static int test_independent_show_table_status_handles(void) {
         "first handle status"
     );
     failures += expect_show_table_status_result(
+        first,
+        "SHOW TABLE STATUS WHERE Name = 'alpha'",
+        first_rows,
+        sizeof(first_rows) / sizeof(first_rows[0]),
+        "first handle where status"
+    );
+    failures += expect_show_table_status_result(
         second,
         "SHOW TABLE STATUS",
         second_rows,
         sizeof(second_rows) / sizeof(second_rows[0]),
         "second handle status"
+    );
+    failures += expect_show_table_status_result(
+        second,
+        "SHOW TABLE STATUS WHERE Name = 'beta'",
+        second_rows,
+        sizeof(second_rows) / sizeof(second_rows[0]),
+        "second handle where status"
     );
 
     mylite_close(first);
@@ -782,7 +1069,7 @@ static int expect_status_row(
     );
     failures += expect_text_or_null(
         mylite_result_value_text(result, row_index, status_auto_increment_column),
-        NULL,
+        expected->auto_increment,
         context
     );
     failures += expect_datetime_text(

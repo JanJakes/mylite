@@ -269,11 +269,8 @@ static int test_string_order_dml_and_persistence(void) {
         "INSERT INTO wp_update VALUES ('b', 'old'), ('a', 'old'), ('c', 'old')",
         NULL
     );
-    failures += expect_dml_ok(
-        database,
-        "UPDATE wp_update SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1",
-        1
-    );
+    failures +=
+        expect_dml_ok(database, "UPDATE wp_update SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){

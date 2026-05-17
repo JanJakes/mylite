@@ -17,6 +17,8 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     core_column_count = 8,
+    alias_core_column_count = 12,
+    alias_label_column_count = 3,
     label_column_count = 2,
     rollover_column_count = 2,
     mysql_error_parse = 1064,
@@ -41,6 +43,9 @@ struct expected_query {
 static int test_date_add_second_values_and_file_safety(void);
 static int test_date_add_second_sql_modes_and_errors(void);
 static int test_date_add_second_independent_handles(void);
+static int test_date_sub_second_aliases_values_and_file_safety(void);
+static int test_date_sub_second_aliases_sql_modes_and_errors(void);
+static int test_date_sub_second_aliases_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -74,6 +79,9 @@ int main(void) {
     failures += test_date_add_second_values_and_file_safety();
     failures += test_date_add_second_sql_modes_and_errors();
     failures += test_date_add_second_independent_handles();
+    failures += test_date_sub_second_aliases_values_and_file_safety();
+    failures += test_date_sub_second_aliases_sql_modes_and_errors();
+    failures += test_date_sub_second_aliases_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
@@ -453,6 +461,449 @@ static int test_date_add_second_independent_handles(void) {
             .values = second_values,
             .row_count = 1U,
             .context = "second DATE_ADD handle",
+        }
+    );
+
+    mylite_close(second);
+    mylite_close(first);
+    return failures;
+}
+
+static int test_date_sub_second_aliases_values_and_file_safety(void) {
+    static const char *const core_columns[] = {
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "DATE_SUB(\"2008-01-02 13:29:17\", INTERVAL +1 SECOND)",
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL -1 SECOND)",
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 0 SECOND)",
+        "DATE_SUB('2008-01-02', INTERVAL 1 SECOND)",
+        "DATE_SUB(NULL, INTERVAL 1 SECOND)",
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL NULL SECOND)",
+        "ADDDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "ADDDATE('2008-01-02 13:29:17', INTERVAL -1 SECOND)",
+        "SUBDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "SUBDATE('2008-01-02 13:29:17', INTERVAL -1 SECOND)",
+        "@@warning_count",
+    };
+    static const char *const core_values[] = {
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:18",
+        "2008-01-02 13:29:17",
+        "2008-01-01 23:59:59",
+        NULL,
+        NULL,
+        "2008-01-02 13:29:18",
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:18",
+        "0",
+    };
+    static const char *const label_columns[] = {
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "adddate_alias",
+        "subdate_alias",
+    };
+    static const char *const label_values[] = {
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:18",
+        "2008-01-02 13:29:16",
+    };
+    static const char *const rollover_columns[] = {
+        "DATE_SUB('2024-02-29 00:00:00', INTERVAL 1 SECOND)",
+        "SUBDATE('2024-02-28 23:59:59', INTERVAL -1 SECOND)",
+    };
+    static const char *const rollover_values[] = {
+        "2024-02-28 23:59:59",
+        "2024-02-29 00:00:00",
+    };
+    static const char *const row_count_columns[] = {"ROW_COUNT()"};
+    static const char *const row_count_values[] = {"0"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "date-sub-alias-values") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open DATE_SUB alias values file");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "CREATE TABLE catalog_guard(id INT)", NULL);
+    session = mylite_connection_session_state(database);
+    catalog_generation = session->catalog_generation;
+    sqlite_schema_generation = session->sqlite_schema_generation;
+
+    failures += execute_ok(database, "DO 0", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND),"
+                   "DATE_SUB(\"2008-01-02 13:29:17\", INTERVAL +1 SECOND),"
+                   "DATE_SUB('2008-01-02 13:29:17', INTERVAL -1 SECOND),"
+                   "DATE_SUB('2008-01-02 13:29:17', INTERVAL 0 SECOND),"
+                   "DATE_SUB('2008-01-02', INTERVAL 1 SECOND),"
+                   "DATE_SUB(NULL, INTERVAL 1 SECOND),"
+                   "DATE_SUB('2008-01-02 13:29:17', INTERVAL NULL SECOND),"
+                   "ADDDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND),"
+                   "ADDDATE('2008-01-02 13:29:17', INTERVAL -1 SECOND),"
+                   "SUBDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND),"
+                   "SUBDATE('2008-01-02 13:29:17', INTERVAL -1 SECOND),"
+                   "@@warning_count",
+            .columns = core_columns,
+            .column_count = alias_core_column_count,
+            .values = core_values,
+            .row_count = 1U,
+            .context = "core DATE_SUB alias SECOND values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+                   "ADDDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND) AS adddate_alias, "
+                   "SUBDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND) AS subdate_alias "
+                   "FROM DUAL",
+            .columns = label_columns,
+            .column_count = alias_label_column_count,
+            .values = label_values,
+            .row_count = 1U,
+            .context = "DATE_SUB alias labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB('2024-02-29 00:00:00', INTERVAL 1 SECOND),"
+                   "SUBDATE('2024-02-28 23:59:59', INTERVAL -1 SECOND)",
+            .columns = rollover_columns,
+            .column_count = rollover_column_count,
+            .values = rollover_values,
+            .row_count = 1U,
+            .context = "DATE_SUB alias leap rollover",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "DO DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+        "ADDDATE(NULL, INTERVAL 1 SECOND), "
+        "SUBDATE('2008-01-02 13:29:17', INTERVAL NULL SECOND)",
+        &result
+    );
+    if (result != NULL) {
+        failures +=
+            expect_size(mylite_result_column_count(result), 0U, "DATE_SUB alias DO columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "DATE_SUB alias DO rows");
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 0, "DATE_SUB alias DO affected");
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "DATE_SUB alias DO warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT()",
+            .columns = row_count_columns,
+            .column_count = 1U,
+            .values = row_count_values,
+            .row_count = 1U,
+            .context = "row count after DATE_SUB alias DO",
+        }
+    );
+
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->catalog_generation,
+        (int64_t)catalog_generation,
+        "DATE_SUB aliases leave catalog generation unchanged"
+    );
+    failures += expect_int64(
+        (int64_t)session->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "DATE_SUB aliases leave sqlite schema generation unchanged"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read DATE_SUB alias preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "DATE_SUB aliases leave preamble unchanged"
+    );
+
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
+    static const char *const ignore_space_columns[] = {
+        "DATE_SUB ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "ADDDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "SUBDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+    };
+    static const char *const ignore_space_values[] = {
+        "2008-01-02 13:29:16",
+        "2008-01-02 13:29:18",
+        "2008-01-02 13:29:16",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "date-sub-alias-errors") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open DATE_SUB alias errors file");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ADDDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE date_sub(id INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE date_sub (id INT)", NULL);
+    failures += execute_ok(database, "DROP TABLE date_sub", NULL);
+    failures += execute_ok(database, "CREATE TABLE adddate(id INT)", NULL);
+    failures += execute_ok(database, "CREATE TABLE subdate(id INT)", NULL);
+    failures += execute_ok(database, "DROP TABLE adddate", NULL);
+    failures += execute_ok(database, "DROP TABLE subdate", NULL);
+
+    failures += execute_ok(database, "SET SESSION sql_mode = 'IGNORE_SPACE'", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB ('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+                   "ADDDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+                   "SUBDATE ('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+            .columns = ignore_space_columns,
+            .column_count = alias_label_column_count,
+            .values = ignore_space_values,
+            .row_count = 1U,
+            .context = "DATE_SUB aliases after IGNORE_SPACE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE date_sub (id INT)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE `date_sub` (id INT)", NULL);
+    failures += execute_ok(database, "CREATE TABLE adddate(id INT)", NULL);
+    failures += execute_ok(database, "CREATE TABLE subdate(id INT)", NULL);
+    failures += execute_ok(database, "SET SESSION sql_mode = 'ANSI_QUOTES'", NULL);
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB(\"2008-01-02 13:29:17\", INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = ''", NULL);
+
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB(1, INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "DATE_SUB() supports only date or datetime string literals and NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBDATE('2016-07-00', INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "SUBDATE() supports only canonical YYYY-MM-DD or YYYY-MM-DD HH:MM:SS values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL '1' SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "DATE_SUB() INTERVAL SECOND supports only signed integer literals and NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ADDDATE('2008-01-02 13:29:17', INTERVAL 9223372036854775808 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ADDDATE() INTERVAL SECOND literals must fit the signed 64-bit range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('1000-01-01 00:00:00', INTERVAL 1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "DATE_SUB() result is outside the supported datetime range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBDATE('9999-12-31 23:59:59', INTERVAL -1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBDATE() result is outside the supported datetime range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL -9223372036854775808 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "DATE_SUB() result is outside the supported datetime range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 MINUTE)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1+1 SECOND)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "DATE_SUB() INTERVAL SECOND supports only signed integer literals and NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ADDDATE('2008-01-02', 31)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_date_sub_second_aliases_independent_handles(void) {
+    static const char *const first_columns[] = {"first_result"};
+    static const char *const first_values[] = {"2008-01-02 13:29:16"};
+    static const char *const second_columns[] = {"second_result", "third_result"};
+    static const char *const second_values[] = {"2008-01-02 13:29:18", "2008-01-02 13:29:18"};
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_int(mylite_open_memory(&first), MYLITE_OK, "open first DATE_SUB alias handle");
+    failures +=
+        expect_int(mylite_open_memory(&second), MYLITE_OK, "open second DATE_SUB alias handle");
+    failures += expect_query(
+        first,
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND) AS first_result",
+            .columns = first_columns,
+            .column_count = 1U,
+            .values = first_values,
+            .row_count = 1U,
+            .context = "first DATE_SUB alias handle",
+        }
+    );
+    failures += expect_query(
+        second,
+        (struct expected_query){
+            .sql = "SELECT ADDDATE('2008-01-02 13:29:17', INTERVAL 1 SECOND) AS second_result, "
+                   "SUBDATE('2008-01-02 13:29:17', INTERVAL -1 SECOND) AS third_result",
+            .columns = second_columns,
+            .column_count = 2U,
+            .values = second_values,
+            .row_count = 1U,
+            .context = "second DATE_SUB alias handle",
         }
     );
 

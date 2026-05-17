@@ -2606,6 +2606,18 @@ expression(A) ::= DATE_ADD(T) LPAREN(L) expression(V) COMMA INTERVAL expression(
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_DATE_ADD_FUNCTION, V, I, R);
 }
+expression(A) ::= DATE_SUB(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_DATE_SUB_FUNCTION, V, I, R);
+}
+expression(A) ::= ADDDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_ADDDATE_FUNCTION, V, I, R);
+}
+expression(A) ::= SUBDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I) SECOND RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_SUBDATE_FUNCTION, V, I, R);
+}
 expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
@@ -4056,6 +4068,15 @@ identifier(A) ::= CAST(T). {
 }
 identifier(A) ::= DATE_ADD(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= DATE_SUB(T). {
+    A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= ADDDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SUBDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {
     A = mylite_sql_parser_make_identifier(state, T);

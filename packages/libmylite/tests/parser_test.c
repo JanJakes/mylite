@@ -2181,6 +2181,7 @@ static int test_date_add_second_function(void) {
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
     const struct mylite_sql_ast_node *expression_list = NULL;
     int failures = 0;
 
@@ -2226,7 +2227,45 @@ static int test_date_add_second_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "DO DATE_ADD(NULL, INTERVAL +0 SECOND), DATE_ADD('2024-02-29', INTERVAL NULL SECOND);",
+        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND), "
+        "ADDDATE('2008-01-02', INTERVAL +1 SECOND) AS adddate_alias, "
+        "SUBDATE('2008-01-02', INTERVAL -1 SECOND) AS subdate_alias FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_DATE_SUB_FUNCTION, "date_sub function");
+    failures += expect_span_text(
+        first_expression,
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)",
+        "date_sub span"
+    );
+    failures += expect_child_count(first_expression, 2U, "date_sub child count");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_ADDDATE_FUNCTION, "adddate function");
+    failures += expect_node(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed adddate interval argument"
+    );
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SUBDATE_FUNCTION, "subdate function");
+    failures += expect_node(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed subdate interval argument"
+    );
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "date_sub aliases dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO DATE_ADD(NULL, INTERVAL +0 SECOND), DATE_SUB(NULL, INTERVAL +0 SECOND), "
+        "ADDDATE('2024-02-29', INTERVAL NULL SECOND), "
+        "SUBDATE('2024-02-29', INTERVAL NULL SECOND);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -2240,8 +2279,18 @@ static int test_date_add_second_function(void) {
     );
     failures += expect_node(
         child_at(expression_list, 1U),
-        MYLITE_SQL_AST_DATE_ADD_FUNCTION,
-        "do date_add null interval"
+        MYLITE_SQL_AST_DATE_SUB_FUNCTION,
+        "do date_sub function"
+    );
+    failures += expect_node(
+        child_at(expression_list, 2U),
+        MYLITE_SQL_AST_ADDDATE_FUNCTION,
+        "do adddate null interval"
+    );
+    failures += expect_node(
+        child_at(expression_list, 3U),
+        MYLITE_SQL_AST_SUBDATE_FUNCTION,
+        "do subdate null interval"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2256,6 +2305,14 @@ static int test_date_add_second_function(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("CREATE TABLE date_add (id INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE date_sub(id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE date_sub (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE adddate(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE subdate(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "SELECT DATE_ADD ('2008-01-02', INTERVAL 1 SECOND);",
@@ -2263,8 +2320,34 @@ static int test_date_add_second_function(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT DATE_SUB ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT ADDDATE ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT SUBDATE ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
     failures += parse_sql_with_ignore_space(
         "SELECT DATE_ADD ('2008-01-02', INTERVAL 1 SECOND);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "SELECT DATE_SUB ('2008-01-02', INTERVAL 1 SECOND), "
+        "ADDDATE ('2008-01-02', INTERVAL 1 SECOND), "
+        "SUBDATE ('2008-01-02', INTERVAL 1 SECOND);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -2280,6 +2363,24 @@ static int test_date_add_second_function(void) {
         MYLITE_SQL_PARSE_OK,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE date_sub (id INT);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "CREATE TABLE `date_sub` (id INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("CREATE TABLE adddate(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("CREATE TABLE subdate(id INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql_with_ignore_space("CREATE TABLE t (second INT);", MYLITE_SQL_PARSE_OK, &result);

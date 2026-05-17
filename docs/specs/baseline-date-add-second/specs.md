@@ -107,8 +107,8 @@ remains reserved.
 
 This slice intentionally does not support:
 
-- `ADDDATE()`, `DATE_SUB()`, `SUBDATE()`, `TIMESTAMPADD()`, or infix
-  `date + INTERVAL ...` / `date - INTERVAL ...` temporal arithmetic;
+- `TIMESTAMPADD()` or infix `date + INTERVAL ...` / `date - INTERVAL ...`
+  temporal arithmetic;
 - interval units other than `SECOND`;
 - plural or alternate unit spellings;
 - interval expressions, string intervals, decimal/fractional intervals,
@@ -258,6 +258,8 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`
 - `docs/compatibility/type-system-literals-conversion.md`
 
-Use limited wording. Do not claim full `DATE_ADD()`, full intervals,
-`DATE_SUB()`, temporal expression arithmetic, table-backed temporal
-expressions, fractional seconds, or warning-compatible invalid-date behavior.
+Use limited wording. Do not claim full `DATE_ADD()`, full intervals, temporal
+expression arithmetic, table-backed temporal expressions, fractional seconds,
+or warning-compatible invalid-date behavior. The later
+`baseline-date-sub-second-aliases` slice covers the matching limited
+`DATE_SUB()`, `ADDDATE()`, and `SUBDATE()` interval-second forms.

@@ -254,6 +254,10 @@ enum {
     date_add_days_per_era = 146097,
     date_add_days_per_era_offset = date_add_days_per_era - 1,
     date_add_unix_epoch_day_offset = 719468,
+    date_interval_diagnostic_capacity = 160,
+    date_interval_temporal_diagnostic_capacity = 128,
+    date_interval_nul_diagnostic_capacity = 96,
+    date_interval_format_diagnostic_capacity = 96,
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
     show_full_columns_result_column_count = 9,
@@ -11027,7 +11031,7 @@ static int scalar_text_conversion_input_value(
     const struct scalar_text_conversion_messages *messages,
     struct session_scalar_cell *out_cell
 );
-static int date_add_second_value(
+static int date_interval_second_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -11067,26 +11071,48 @@ static int date_format_numeric_literal_value(
     double *out_value
 );
 static bool date_format_numeric_equal_format_is_supported(const char *format, size_t format_length);
-static int date_add_second_temporal_argument(
+static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind);
+static const char *date_interval_second_function_name(enum mylite_sql_ast_node_kind kind);
+static bool date_interval_second_function_subtracts(enum mylite_sql_ast_node_kind kind);
+static int set_date_interval_second_unsupported_error(
     struct mylite_db *database,
+    const char *function_name,
+    const char *suffix
+);
+static int set_date_interval_second_unsupported_shape_error(
+    struct mylite_db *database,
+    const char *function_name
+);
+static bool date_interval_second_message(
+    char *buffer,
+    size_t buffer_size,
+    const char *function_name,
+    const char *suffix
+);
+static int date_interval_second_temporal_argument(
+    struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *expression,
     struct date_add_datetime_parts *out_datetime,
     bool *out_is_null
 );
-static int date_add_second_interval_argument(
+static int date_interval_second_interval_argument(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *expression,
     int64_t *out_interval,
     bool *out_is_null
 );
-static int date_add_second_apply(
+static int date_interval_second_apply(
     struct mylite_db *database,
+    const char *function_name,
     const struct date_add_datetime_parts *input,
     int64_t interval_seconds,
     struct date_add_datetime_parts *out_datetime
 );
-static int date_add_second_format(
+static int date_interval_second_format(
     struct mylite_db *database,
+    const char *function_name,
     const struct date_add_datetime_parts *datetime,
     struct session_scalar_cell *out_cell
 );
@@ -12087,7 +12113,9 @@ static bool is_convert_using_binary_projection_expression(
 static bool is_convert_using_charset_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
-static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_date_interval_second_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_field_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -18903,6 +18931,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
@@ -33036,6 +33067,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
@@ -60148,7 +60182,10 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return convert_using_charset_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
-        return date_add_second_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+        return date_interval_second_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DATE_FORMAT");
         return MYLITE_ERROR;
@@ -67887,7 +67924,7 @@ static bool date_format_numeric_equal_format_is_supported(
             memcmp(format, supported_format, sizeof(supported_format) - 1U) == 0) != 0;
 }
 
-static int date_add_second_value(
+static int date_interval_second_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
@@ -67895,6 +67932,7 @@ static int date_add_second_value(
     struct date_add_datetime_parts input = {0};
     struct date_add_datetime_parts output = {0};
     int64_t interval_seconds = 0;
+    const char *function_name = "DATE_ADD";
     bool temporal_is_null = false;
     bool interval_is_null = false;
     int rc = MYLITE_OK;
@@ -67905,17 +67943,17 @@ static int date_add_second_value(
     *out_cell = (struct session_scalar_cell){0};
 
     expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_DATE_ADD_FUNCTION ||
-        mylite_sql_ast_node_child_count(expression) != 2U) {
-        set_unsupported_error(
-            database,
-            "DATE_ADD() supports only DATE_ADD(date, INTERVAL value SECOND)"
-        );
-        return MYLITE_ERROR;
+    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
+        return set_date_interval_second_unsupported_shape_error(database, function_name);
+    }
+    function_name = date_interval_second_function_name(expression->kind);
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return set_date_interval_second_unsupported_shape_error(database, function_name);
     }
 
-    rc = date_add_second_temporal_argument(
+    rc = date_interval_second_temporal_argument(
         database,
+        function_name,
         child_at(expression, 0U),
         &input,
         &temporal_is_null
@@ -67923,8 +67961,9 @@ static int date_add_second_value(
     if (rc != MYLITE_OK || temporal_is_null) {
         return rc;
     }
-    rc = date_add_second_interval_argument(
+    rc = date_interval_second_interval_argument(
         database,
+        function_name,
         child_at(expression, 1U),
         &interval_seconds,
         &interval_is_null
@@ -67932,19 +67971,114 @@ static int date_add_second_value(
     if (rc != MYLITE_OK || interval_is_null) {
         return rc;
     }
-    rc = date_add_second_apply(database, &input, interval_seconds, &output);
+    if (date_interval_second_function_subtracts(expression->kind)) {
+        if (interval_seconds == INT64_MIN) {
+            return set_date_interval_second_unsupported_error(
+                database,
+                function_name,
+                "result is outside the supported datetime range"
+            );
+        }
+        interval_seconds = -interval_seconds;
+    }
+    rc = date_interval_second_apply(database, function_name, &input, interval_seconds, &output);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    return date_add_second_format(database, &output, out_cell);
+    return date_interval_second_format(database, function_name, &output, out_cell);
 }
 
-static int date_add_second_temporal_argument(
+static bool is_date_interval_second_function_kind(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static const char *date_interval_second_function_name(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+        return "DATE_SUB";
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+        return "ADDDATE";
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+        return "SUBDATE";
+    case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    default:
+        return "DATE_ADD";
+    }
+}
+
+static bool date_interval_second_function_subtracts(enum mylite_sql_ast_node_kind kind) {
+    return (kind == MYLITE_SQL_AST_DATE_SUB_FUNCTION || kind == MYLITE_SQL_AST_SUBDATE_FUNCTION) !=
+           0;
+}
+
+static int set_date_interval_second_unsupported_error(
     struct mylite_db *database,
+    const char *function_name,
+    const char *suffix
+) {
+    char message[date_interval_diagnostic_capacity];
+
+    if (!date_interval_second_message(message, sizeof(message), function_name, suffix)) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static int set_date_interval_second_unsupported_shape_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    char message[date_interval_diagnostic_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "%s() supports only %s(date, INTERVAL value SECOND)",
+        function_name,
+        function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static bool date_interval_second_message(
+    char *buffer,
+    size_t buffer_size,
+    const char *function_name,
+    const char *suffix
+) {
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U || function_name == NULL || suffix == NULL) {
+        return false;
+    }
+    written = snprintf(buffer, buffer_size, "%s() %s", function_name, suffix);
+    return (written >= 0 && (size_t)written < buffer_size) != 0;
+}
+
+static int date_interval_second_temporal_argument(
+    struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *expression,
     struct date_add_datetime_parts *out_datetime,
     bool *out_is_null
 ) {
+    char unsupported_message[date_interval_temporal_diagnostic_capacity];
+    char nul_message[date_interval_nul_diagnostic_capacity];
     char *text = NULL;
     size_t text_length = 0U;
     int rc = MYLITE_OK;
@@ -67956,21 +68090,30 @@ static int date_add_second_temporal_argument(
     *out_is_null = false;
 
     expression = unwrap_parenthesized_expression(expression);
+    if (!date_interval_second_message(
+            unsupported_message,
+            sizeof(unsupported_message),
+            function_name,
+            "supports only date or datetime string literals and NULL"
+        ) ||
+        !date_interval_second_message(
+            nul_message,
+            sizeof(nul_message),
+            function_name,
+            "date literals do not support NUL bytes"
+        )) {
+        set_runtime_error(database, "failed to format temporal function diagnostic");
+        return MYLITE_ERROR;
+    }
     if (expression == NULL) {
-        set_unsupported_error(
-            database,
-            "DATE_ADD() supports only date or datetime string literals and NULL"
-        );
+        set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
         return date_add_set_unknown_identifier_error(database, expression);
     }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
-        set_unsupported_error(
-            database,
-            "DATE_ADD() supports only date or datetime string literals and NULL"
-        );
+        set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
     }
     if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -67981,28 +68124,29 @@ static int date_add_second_temporal_argument(
     rc = decode_sql_string_literal(
         database,
         expression,
-        "DATE_ADD() supports only date or datetime string literals and NULL",
-        "DATE_ADD() date literals do not support NUL bytes",
+        unsupported_message,
+        nul_message,
         &text,
         &text_length
     );
     if (rc == MYLITE_OK && memchr(text, '\0', text_length) != NULL) {
-        set_unsupported_error(database, "DATE_ADD() date literals do not support NUL bytes");
+        set_unsupported_error(database, nul_message);
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK && !date_add_parse_datetime_text(text, text_length, out_datetime)) {
-        set_unsupported_error(
+        rc = set_date_interval_second_unsupported_error(
             database,
-            "DATE_ADD() supports only canonical YYYY-MM-DD or YYYY-MM-DD HH:MM:SS values"
+            function_name,
+            "supports only canonical YYYY-MM-DD or YYYY-MM-DD HH:MM:SS values"
         );
-        rc = MYLITE_ERROR;
     }
     free(text);
     return rc;
 }
 
-static int date_add_second_interval_argument(
+static int date_interval_second_interval_argument(
     struct mylite_db *database,
+    const char *function_name,
     const struct mylite_sql_ast_node *expression,
     int64_t *out_interval,
     bool *out_is_null
@@ -68017,11 +68161,11 @@ static int date_add_second_interval_argument(
     *out_is_null = false;
 
     if (expression == NULL) {
-        set_unsupported_error(
+        return set_date_interval_second_unsupported_error(
             database,
-            "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL"
+            function_name,
+            "INTERVAL SECOND supports only signed integer literals and NULL"
         );
-        return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -68030,24 +68174,25 @@ static int date_add_second_interval_argument(
     }
     if (!date_add_signed_integer_literal(expression, out_interval, &out_of_range)) {
         if (out_of_range) {
-            set_unsupported_error(
+            return set_date_interval_second_unsupported_error(
                 database,
-                "DATE_ADD() INTERVAL SECOND literals must fit the signed 64-bit range"
+                function_name,
+                "INTERVAL SECOND literals must fit the signed 64-bit range"
             );
-            return MYLITE_ERROR;
         }
-        set_unsupported_error(
+        return set_date_interval_second_unsupported_error(
             database,
-            "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL"
+            function_name,
+            "INTERVAL SECOND supports only signed integer literals and NULL"
         );
-        return MYLITE_ERROR;
     }
 
     return MYLITE_OK;
 }
 
-static int date_add_second_apply(
+static int date_interval_second_apply(
     struct mylite_db *database,
+    const char *function_name,
     const struct date_add_datetime_parts *input,
     int64_t interval_seconds,
     struct date_add_datetime_parts *out_datetime
@@ -68071,21 +68216,21 @@ static int date_add_second_apply(
                   (int64_t)input->second;
     base_seconds = (days * seconds_per_day) + day_seconds;
     if (!date_add_checked_add_int64(base_seconds, interval_seconds, &result_seconds)) {
-        set_unsupported_error(
+        return set_date_interval_second_unsupported_error(
             database,
-            "DATE_ADD() result is outside the supported datetime range"
+            function_name,
+            "result is outside the supported datetime range"
         );
-        return MYLITE_ERROR;
     }
 
     result_day_second = date_add_floor_divmod_seconds(result_seconds);
     date_add_civil_from_days(result_day_second.days, out_datetime);
     if (out_datetime->year < date_minimum_year || out_datetime->year > date_maximum_year) {
-        set_unsupported_error(
+        return set_date_interval_second_unsupported_error(
             database,
-            "DATE_ADD() result is outside the supported datetime range"
+            function_name,
+            "result is outside the supported datetime range"
         );
-        return MYLITE_ERROR;
     }
 
     result_day_seconds = result_day_second.day_seconds;
@@ -68096,11 +68241,13 @@ static int date_add_second_apply(
     return MYLITE_OK;
 }
 
-static int date_add_second_format(
+static int date_interval_second_format(
     struct mylite_db *database,
+    const char *function_name,
     const struct date_add_datetime_parts *datetime,
     struct session_scalar_cell *out_cell
 ) {
+    char message[date_interval_format_diagnostic_capacity];
     int written = 0;
 
     if (datetime == NULL || out_cell == NULL) {
@@ -68119,7 +68266,12 @@ static int date_add_second_format(
         datetime->second
     );
     if (written != datetime_text_length) {
-        set_runtime_error(database, "failed to format DATE_ADD() result");
+        written = snprintf(message, sizeof(message), "failed to format %s() result", function_name);
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            set_runtime_error(database, "failed to format temporal function result");
+            return MYLITE_ERROR;
+        }
+        set_runtime_error(database, message);
         return MYLITE_ERROR;
     }
 
@@ -73565,7 +73717,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_convert_using_charset_projection_expression(expression)) {
         return true;
     }
-    if (is_date_add_second_projection_expression(expression)) {
+    if (is_date_interval_second_projection_expression(expression)) {
         return true;
     }
     if (is_date_format_projection_expression(expression)) {
@@ -74117,10 +74269,12 @@ static bool is_convert_using_charset_projection_expression(
     return mylite_sql_ast_node_child_count(expression) == 2U;
 }
 
-static bool is_date_add_second_projection_expression(const struct mylite_sql_ast_node *expression) {
+static bool is_date_interval_second_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_DATE_ADD_FUNCTION) {
+    if (expression == NULL || !is_date_interval_second_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 2U) {
@@ -74603,6 +74757,9 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:

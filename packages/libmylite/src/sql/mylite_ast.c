@@ -738,6 +738,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_position_after";
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
         return "date_add_function";
+    case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
+        return "date_sub_function";
+    case MYLITE_SQL_AST_ADDDATE_FUNCTION:
+        return "adddate_function";
+    case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+        return "subdate_function";
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:

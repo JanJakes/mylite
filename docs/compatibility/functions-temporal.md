@@ -4,7 +4,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |
-| `ADDDATE()` | ❌ | Add time values (intervals) to a date value |
+| `ADDDATE()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `ADDDATE(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` alias of the current `DATE_ADD()` interval-second slice; no `ADDDATE(date, days)`, other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `ADDTIME()` | ❌ | Add time |
 | `CONVERT_TZ()` | ❌ | Convert from one time zone to another |
 | `CURDATE()` | 🟡 | Limited zero-fractional statement date in no-source, `FROM DUAL`, `DO`, row-scalar projection, compatible `DATE` DML assignment, and parenthesized generated `DATE` defaults; respects the limited session `timestamp` override and session `time_zone` offset; no named time-zone tables or general temporal expression evaluation |
@@ -15,7 +15,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `DATE()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `DATE(value)` over `NULL`, canonical date/datetime strings including admitted zero-date strings, and descriptor `DATE` / `DATETIME` / `TIMESTAMP` / string-family columns, returning date text or `NULL`; invalid temporal inputs return `NULL` with warning 1292; no `TIME` inputs, relaxed temporal parsing, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `DATE_ADD()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_ADD(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over canonical date/datetime strings in the current storage baseline range, returning datetime text/`NULL`, with MySQL-compatible whitespace handling for the function name under `IGNORE_SPACE`; no other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `DATE_FORMAT()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `DATE_FORMAT(value, format)` over `NULL`, canonical date/datetime strings, and descriptor `DATE` / `DATETIME` / `TIMESTAMP` / string-family columns, with a verified token subset and exact top-level numeric equality for `DATE_FORMAT(..., '%H.%i') = numeric_literal`; invalid temporal inputs return `NULL` with warning 1292; no `TIME` inputs, week/year-week tokens, locale/time-zone effects, relaxed temporal parsing, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
-| `DATE_SUB()` | ❌ | Subtract a time value (interval) from a date |
+| `DATE_SUB()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `DATE_SUB(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` over the same current `DATE_ADD()` input subset, returning datetime text/`NULL`, with subtraction semantics and MySQL-compatible `DATE_SUB` whitespace/identifier handling under `IGNORE_SPACE`; no other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `DATEDIFF()` | ❌ | Subtract two dates |
 | `DAY()` | 🟡 | Limited synonym for the current `DAYOFMONTH()` subset |
 | `DAYNAME()` | ❌ | Return name of the weekday |
@@ -43,7 +43,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `SEC_TO_TIME()` | ❌ | Converts seconds to 'hh:mm:ss' format |
 | `SECOND()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `SECOND(value)` over the same current `HOUR()` input subset, returning an integer part or `NULL` |
 | `STR_TO_DATE()` | ❌ | Convert a string to a date |
-| `SUBDATE()` | ❌ | Synonym for DATE_SUB() when invoked with three arguments |
+| `SUBDATE()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `SUBDATE(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` alias of the current `DATE_SUB()` interval-second slice; no non-interval forms, other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `SUBTIME()` | ❌ | Subtract times |
 | `SYSDATE()` | ❌ | Return time at which the function executes |
 | `TIME()` | ❌ | Extract the time portion of the expression passed |

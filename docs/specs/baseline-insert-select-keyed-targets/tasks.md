@@ -12,19 +12,19 @@
   runtime semantics, diagnostics, performance notes, and test plan.
 - [x] Add a MySQL-runtime expectation script for the newly admitted behavior.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Reuse the normal insert target metadata in table-backed
+- [x] Reuse the normal insert target metadata in table-backed
   `INSERT ... SELECT` planning.
-- [ ] Route streamed table-backed selected rows through the existing
+- [x] Route streamed table-backed selected rows through the existing
   constraint-aware insert row path.
-- [ ] Preserve statement-local auto-increment allocation, durable counter
+- [x] Preserve statement-local auto-increment allocation, durable counter
   update, and `LAST_INSERT_ID()` semantics for generated rows.
-- [ ] Add focused runtime C tests for keyed targets, `IGNORE`, auto-increment,
+- [x] Add focused runtime C tests for keyed targets, `IGNORE`, auto-increment,
   persistence, preamble safety, and independent handles.
-- [ ] Run focused insert-select, primary-key, unique-index, foreign-key,
+- [x] Run focused insert-select, primary-key, unique-index, foreign-key,
   auto-increment, parser, and runtime tests.
-- [ ] Run the MySQL expectation script against MySQL 8.4.9.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for MySQL behavior, descriptor authority,
+- [x] Run the MySQL expectation script against MySQL 8.4.9.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for MySQL behavior, descriptor authority,
   performance, cleanup on failure, file-format safety, scope control, and
   compatibility accuracy.
-- [ ] Commit and push the completed feature.
+- [x] Commit and push the completed feature.

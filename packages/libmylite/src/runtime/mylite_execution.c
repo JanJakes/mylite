@@ -2581,6 +2581,17 @@ struct insert_select_execution_statements {
     sqlite3_stmt *insert_statement;
 };
 
+struct insert_select_table_execution {
+    char temporary_table_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char *materialize_sql;
+    char *validation_sql;
+    char *insert_sql;
+    char *drop_sql;
+    struct mylite_statement_transaction transaction;
+    struct insert_execution_counters counters;
+    bool temporary_table_created;
+};
+
 struct alter_table_modify_copy_statements {
     sqlite3_stmt *select_statement;
     sqlite3_stmt *insert_statement;
@@ -9848,6 +9859,42 @@ static int execute_insert_select_row_scalar_from_plan(
     const struct planned_insert_select *plan,
     mylite_result *result
 );
+static int execute_insert_select_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    mylite_result *result
+);
+static int prepare_insert_select_table_execution(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+);
+static int execute_insert_select_table(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+);
+static int validate_insert_select_table_rows(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    const struct insert_select_table_execution *execution
+);
+static int finish_insert_select_table_side_effects(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+);
+static void cleanup_insert_select_table_execution(
+    struct mylite_db *database,
+    struct insert_select_table_execution *execution,
+    int rc
+);
+static int normalize_insert_select_table_result(struct mylite_db *database, int rc);
+static int finish_insert_select_table_result(
+    struct mylite_db *database,
+    const struct insert_select_table_execution *execution,
+    mylite_result *result
+);
 static int prepare_insert_select_row_scalar_source(
     struct mylite_db *database,
     const struct planned_insert_select *plan,
@@ -9893,19 +9940,25 @@ static int execute_insert_select_insert(
     const char *validation_sql,
     const char *insert_sql,
     const struct planned_insert_select *plan,
-    int64_t *out_affected_rows
+    struct insert_execution_counters *counters
 );
 static int execute_insert_select_insert_rows(
     struct mylite_db *database,
     struct insert_select_execution_statements *statements,
     const struct planned_insert_select *plan,
-    int64_t *out_affected_rows
+    struct insert_execution_counters *counters
 );
 static int execute_insert_select_insert_row(
     struct mylite_db *database,
     struct insert_select_execution_statements *statements,
     const struct planned_insert_select *plan,
-    size_t row_number
+    size_t row_number,
+    struct insert_execution_counters *counters
+);
+static int plan_insert_select_auto_increment_row_value(
+    struct mylite_db *database,
+    struct planned_insert *row_plan,
+    struct insert_execution_counters *counters
 );
 static int materialize_insert_select_row_values(
     struct mylite_db *database,
@@ -15220,6 +15273,10 @@ static int validate_insert_row_shapes(
     size_t target_count
 );
 static int initialize_insert_auto_increment_plan(
+    struct mylite_db *database,
+    struct planned_insert *plan
+);
+static int initialize_insert_auto_increment_range(
     struct mylite_db *database,
     struct planned_insert *plan
 );
@@ -51914,6 +51971,30 @@ static int initialize_insert_auto_increment_plan(
     return MYLITE_OK;
 }
 
+static int initialize_insert_auto_increment_range(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid auto-increment insert plan");
+        return MYLITE_ERROR;
+    }
+    if (!plan->has_auto_increment) {
+        return MYLITE_OK;
+    }
+    if (plan->auto_increment_column_index >= plan->column_count) {
+        set_runtime_error(database, "invalid auto-increment column index");
+        return MYLITE_ERROR;
+    }
+
+    return integer_range_for_column(
+        database,
+        &plan->columns[plan->auto_increment_column_index],
+        "AUTO_INCREMENT supports only baseline integer columns",
+        &plan->auto_increment_range
+    );
+}
+
 static bool insert_auto_increment_column_is_indexed(const struct planned_insert *plan) {
     if (plan->has_primary_key &&
         plan->auto_increment_column_index == plan->primary_key_column_index) {
@@ -51937,31 +52018,18 @@ static int plan_insert_auto_increment_values(
     struct mylite_db *database,
     struct planned_insert *plan
 ) {
-    struct integer_column_range range = {0};
     struct insert_auto_increment_mode_counts mode_counts = {0};
-    struct mylite_catalog_column_descriptor *column = NULL;
     int64_t next_value = 0;
     int rc = MYLITE_OK;
 
     if (plan == NULL || !plan->has_auto_increment) {
         return MYLITE_OK;
     }
-    if (plan->auto_increment_column_index >= plan->column_count) {
-        set_runtime_error(database, "invalid auto-increment column index");
-        return MYLITE_ERROR;
-    }
 
-    column = &plan->columns[plan->auto_increment_column_index];
-    rc = integer_range_for_column(
-        database,
-        column,
-        "AUTO_INCREMENT supports only baseline integer columns",
-        &range
-    );
+    rc = initialize_insert_auto_increment_range(database, plan);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    plan->auto_increment_range = range;
 
     rc = count_insert_auto_increment_modes(plan, &mode_counts);
     if (rc != MYLITE_OK) {
@@ -51978,7 +52046,13 @@ static int plan_insert_auto_increment_values(
 
     next_value = plan->auto_increment_next;
     for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
-        rc = plan_insert_auto_increment_row_value(database, plan, &range, row_index, &next_value);
+        rc = plan_insert_auto_increment_row_value(
+            database,
+            plan,
+            &plan->auto_increment_range,
+            row_index,
+            &next_value
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -53497,6 +53571,9 @@ static int plan_insert_select(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
+    out_plan->target.ignore_errors = ignore;
+    out_plan->target.replace_existing_rows =
+        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT;
     out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_TABLE;
     if (row_scalar_source) {
         out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR;
@@ -53507,10 +53584,14 @@ static int plan_insert_select(
         return MYLITE_ERROR;
     }
     rc = plan_insert_select_target(database, statement, out_plan, &primary_key);
-    if (rc == MYLITE_OK && row_scalar_source) {
+    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
         rc = initialize_insert_auto_increment_plan(database, &out_plan->target);
     }
-    if (rc == MYLITE_OK && !row_scalar_source) {
+    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+        rc = initialize_insert_auto_increment_range(database, &out_plan->target);
+    }
+    if (rc == MYLITE_OK && !row_scalar_source &&
+        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
         rc = reject_insert_select_key_bearing_target(database, statement, out_plan, &primary_key);
     }
     if (rc == MYLITE_OK) {
@@ -53535,6 +53616,13 @@ static int plan_insert_select(
         set_unsupported_error(
             database,
             "INSERT IGNORE ... SELECT does not support row-scalar sources"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && ignore && !row_scalar_source && out_plan->target.has_auto_increment) {
+        set_unsupported_error(
+            database,
+            "INSERT IGNORE ... SELECT does not support AUTO_INCREMENT targets"
         );
         rc = MYLITE_ERROR;
     }
@@ -53763,110 +53851,200 @@ static int execute_insert_select_from_plan(
     const struct planned_insert_select *plan,
     mylite_result *result
 ) {
-    sqlite3_stmt *validation_statement = NULL;
-    char temporary_table_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
-    char *materialize_sql = NULL;
-    char *validation_sql = NULL;
-    char *insert_sql = NULL;
-    char *drop_sql = NULL;
-    struct mylite_statement_transaction transaction = {0};
-    bool temporary_table_created = false;
-    int64_t affected_rows = 0;
-    int rc = MYLITE_OK;
-
     if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR) {
         return execute_insert_select_row_scalar_from_plan(database, plan, result);
     }
 
-    rc = build_insert_select_temp_table_name(
+    return execute_insert_select_table_from_plan(database, plan, result);
+}
+
+static int execute_insert_select_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    mylite_result *result
+) {
+    struct insert_select_table_execution execution = {0};
+    int rc = prepare_insert_select_table_execution(database, plan, &execution);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_select_table(database, plan, &execution);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_insert_select_table_result(database, &execution, result);
+    }
+    cleanup_insert_select_table_execution(database, &execution, rc);
+
+    return normalize_insert_select_table_result(database, rc);
+}
+
+static int prepare_insert_select_table_execution(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+) {
+    int rc = build_insert_select_temp_table_name(
         database,
-        temporary_table_name,
-        sizeof(temporary_table_name)
+        execution->temporary_table_name,
+        sizeof(execution->temporary_table_name)
     );
+
     if (rc == MYLITE_OK) {
-        rc = build_insert_select_materialize_sql(plan, temporary_table_name, &materialize_sql);
+        rc = build_insert_select_materialize_sql(
+            plan,
+            execution->temporary_table_name,
+            &execution->materialize_sql
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = build_insert_select_validation_sql(plan, temporary_table_name, &validation_sql);
+        rc = build_insert_select_validation_sql(
+            plan,
+            execution->temporary_table_name,
+            &execution->validation_sql
+        );
     }
     if (rc == MYLITE_OK) {
-        rc = build_insert_sql(&plan->target, &insert_sql);
+        rc = build_insert_sql(&plan->target, &execution->insert_sql);
     }
     if (rc == MYLITE_OK) {
-        rc = build_drop_temp_table_sql(temporary_table_name, &drop_sql);
+        rc = build_drop_temp_table_sql(execution->temporary_table_name, &execution->drop_sql);
     }
+
+    return rc;
+}
+
+static int execute_insert_select_table(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+) {
+    int rc = begin_statement_transaction(database, &execution->transaction);
+
     if (rc == MYLITE_OK) {
-        rc = begin_statement_transaction(database, &transaction);
-    }
-    if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, drop_sql);
+        rc = execute_sqlite_control_sql(database, execution->drop_sql);
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_select_materialize(
             database,
-            materialize_sql,
+            execution->materialize_sql,
             plan,
-            &temporary_table_created
+            &execution->temporary_table_created
         );
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, validation_sql, &validation_statement);
+        rc = validate_insert_select_table_rows(database, plan, execution);
     }
-    if (rc == MYLITE_OK) {
-        rc = validate_insert_select_rows(database, validation_statement, plan);
-    }
-    rc = finalize_sqlite_statement(validation_statement, rc);
-    validation_statement = NULL;
     if (rc == MYLITE_OK) {
         rc = execute_insert_select_insert(
             database,
-            validation_sql,
-            insert_sql,
+            execution->validation_sql,
+            execution->insert_sql,
             plan,
-            &affected_rows
+            &execution->counters
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_insert_select_table_side_effects(database, plan, execution);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, execution->drop_sql);
+    }
+    if (rc == MYLITE_OK) {
+        execution->temporary_table_created = false;
+        rc = commit_statement_transaction(database, &execution->transaction);
+    }
+    if (rc != MYLITE_OK) {
+        rollback_statement_transaction(database, &execution->transaction);
+    }
+
+    return rc;
+}
+
+static int validate_insert_select_table_rows(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    const struct insert_select_table_execution *execution
+) {
+    sqlite3_stmt *validation_statement = NULL;
+    int rc = prepare_sqlite_statement(database, execution->validation_sql, &validation_statement);
+
+    if (rc == MYLITE_OK) {
+        rc = validate_insert_select_rows(database, validation_statement, plan);
+    }
+
+    return finalize_sqlite_statement(validation_statement, rc);
+}
+
+static int finish_insert_select_table_side_effects(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    struct insert_select_table_execution *execution
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->target.has_auto_increment &&
+        execution->counters.auto_increment_next_after_rows != plan->target.auto_increment_next) {
+        rc = update_table_auto_increment_next(
+            database,
+            &plan->target.table,
+            execution->counters.auto_increment_next_after_rows
         );
     }
     if (rc == MYLITE_OK) {
         rc = touch_persistent_table_updated_time(
             database,
             &plan->target.table,
-            affected_rows,
+            execution->counters.affected_rows,
             false
         );
     }
     if (rc == MYLITE_OK) {
-        rc = execute_sqlite_control_sql(database, drop_sql);
-        if (rc == MYLITE_OK) {
-            temporary_table_created = false;
-        }
+        rc = validate_child_foreign_keys_after_write(database, plan->target.table.table_id);
     }
+
+    return rc;
+}
+
+static void cleanup_insert_select_table_execution(
+    struct mylite_db *database,
+    struct insert_select_table_execution *execution,
+    int rc
+) {
+    if (rc != MYLITE_OK && execution->temporary_table_created) {
+        (void)execute_sqlite_control_sql(database, execution->drop_sql);
+    }
+    free(execution->materialize_sql);
+    free(execution->validation_sql);
+    free(execution->insert_sql);
+    free(execution->drop_sql);
+    *execution = (struct insert_select_table_execution){0};
+}
+
+static int normalize_insert_select_table_result(struct mylite_db *database, int rc) {
     if (rc == MYLITE_OK) {
-        rc = commit_statement_transaction(database, &transaction);
+        return MYLITE_OK;
     }
-    if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &transaction);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
     }
-    if (rc != MYLITE_OK && temporary_table_created) {
-        (void)execute_sqlite_control_sql(database, drop_sql);
-    }
-    free(materialize_sql);
-    free(validation_sql);
-    free(insert_sql);
-    free(drop_sql);
-
-    if (rc != MYLITE_OK) {
-        if (rc == MYLITE_NOMEM) {
-            set_nomem_error(database);
-            return rc;
-        }
-        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
-            return rc;
-        }
-        set_physical_sqlite_row_error(database);
-        return MYLITE_ERROR;
+    if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+        return rc;
     }
 
-    mylite_result_set_affected_rows(result, affected_rows);
+    set_physical_sqlite_row_error(database);
+    return MYLITE_ERROR;
+}
+
+static int finish_insert_select_table_result(
+    struct mylite_db *database,
+    const struct insert_select_table_execution *execution,
+    mylite_result *result
+) {
+    mylite_result_set_affected_rows(result, execution->counters.affected_rows);
+    if (execution->counters.inserted_generated_auto_increment) {
+        database->session.last_insert_id =
+            (uint64_t)execution->counters.first_inserted_generated_auto_increment;
+    }
 
     return MYLITE_OK;
 }
@@ -54115,18 +54293,21 @@ static int execute_insert_select_insert(
     const char *validation_sql,
     const char *insert_sql,
     const struct planned_insert_select *plan,
-    int64_t *out_affected_rows
+    struct insert_execution_counters *counters
 ) {
     struct insert_select_execution_statements statements = {0};
     int rc = MYLITE_OK;
 
-    *out_affected_rows = 0;
+    *counters = (struct insert_execution_counters){0};
+    if (plan->target.has_auto_increment) {
+        counters->auto_increment_next_after_rows = plan->target.auto_increment_next;
+    }
     rc = prepare_sqlite_statement(database, validation_sql, &statements.select_statement);
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, insert_sql, &statements.insert_statement);
     }
     if (rc == MYLITE_OK) {
-        rc = execute_insert_select_insert_rows(database, &statements, plan, out_affected_rows);
+        rc = execute_insert_select_insert_rows(database, &statements, plan, counters);
     }
     rc = finalize_sqlite_statement(statements.insert_statement, rc);
     statements.insert_statement = NULL;
@@ -54138,7 +54319,7 @@ static int execute_insert_select_insert_rows(
     struct mylite_db *database,
     struct insert_select_execution_statements *statements,
     const struct planned_insert_select *plan,
-    int64_t *out_affected_rows
+    struct insert_execution_counters *counters
 ) {
     size_t row_number = 0U;
     int sqlite_rc = SQLITE_OK;
@@ -54150,11 +54331,10 @@ static int execute_insert_select_insert_rows(
             return MYLITE_ERROR;
         }
         ++row_number;
-        rc = execute_insert_select_insert_row(database, statements, plan, row_number);
+        rc = execute_insert_select_insert_row(database, statements, plan, row_number, counters);
         if (rc != MYLITE_OK) {
             return rc;
         }
-        ++(*out_affected_rows);
     }
     if (sqlite_rc != SQLITE_DONE) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -54167,11 +54347,11 @@ static int execute_insert_select_insert_row(
     struct mylite_db *database,
     struct insert_select_execution_statements *statements,
     const struct planned_insert_select *plan,
-    size_t row_number
+    size_t row_number,
+    struct insert_execution_counters *counters
 ) {
     struct planned_insert row_plan = plan->target;
     struct planned_insert_row row = {0};
-    int sqlite_step_rc = SQLITE_OK;
     int rc = MYLITE_OK;
 
     row.values = calloc(plan->target.column_count, sizeof(*row.values));
@@ -54190,7 +54370,13 @@ static int execute_insert_select_insert_row(
     if (rc == MYLITE_OK) {
         row_plan.rows = &row;
         row_plan.row_count = 1U;
-        rc = execute_insert_plan_row(statements->insert_statement, &row_plan, 0U, &sqlite_step_rc);
+        rc = plan_insert_select_auto_increment_row_value(database, &row_plan, counters);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_string_key_values(database, &row_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_plan_rows(database, statements->insert_statement, &row_plan, counters);
     }
     for (size_t column_index = 0U; column_index < plan->target.column_count; ++column_index) {
         planned_value_deinit(&row.values[column_index]);
@@ -54198,6 +54384,27 @@ static int execute_insert_select_insert_row(
     free(row.values);
 
     return rc;
+}
+
+static int plan_insert_select_auto_increment_row_value(
+    struct mylite_db *database,
+    struct planned_insert *row_plan,
+    struct insert_execution_counters *counters
+) {
+    int64_t next_value = 0;
+
+    if (row_plan == NULL || counters == NULL || !row_plan->has_auto_increment) {
+        return MYLITE_OK;
+    }
+
+    next_value = counters->auto_increment_next_after_rows;
+    return plan_insert_auto_increment_row_value(
+        database,
+        row_plan,
+        &row_plan->auto_increment_range,
+        0U,
+        &next_value
+    );
 }
 
 static int materialize_insert_select_row_values(
@@ -54470,7 +54677,13 @@ static int validate_insert_select_row(
     }
     for (size_t target_position = 0U; target_position < plan->target_count; ++target_position) {
         size_t column_index = plan->target_indexes[target_position];
-        int rc = validate_insert_select_value(
+        int rc = MYLITE_OK;
+
+        if (column_descriptor_is_auto_increment(&plan->target.columns[column_index]) &&
+            sqlite3_column_type(statement, (int)target_position) == SQLITE_NULL) {
+            continue;
+        }
+        rc = validate_insert_select_value(
             database,
             statement,
             (int)target_position,

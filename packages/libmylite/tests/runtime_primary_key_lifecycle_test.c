@@ -1380,9 +1380,9 @@ static int test_primary_key_diagnostics(void) {
         database,
         "INSERT INTO keyed_negative SELECT id, v FROM keyed_negative",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT ... SELECT into primary-key tables is not supported",
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1' for key 'keyed_negative.PRIMARY'",
         }
     );
     failures += execute_error(

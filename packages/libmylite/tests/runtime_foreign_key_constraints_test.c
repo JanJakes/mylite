@@ -278,14 +278,10 @@ static int test_create_table_foreign_key_lifecycle(void) {
         "CREATE TABLE select_child (id INT, parent_id INT, "
         "CONSTRAINT fk_select_parent FOREIGN KEY (parent_id) REFERENCES parent (id))"
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "INSERT INTO select_child SELECT id, parent_id FROM select_source",
-        (struct expected_sql_error){
-            mysql_error_parse,
-            "42000",
-            "foreign-key child tables",
-        }
+        0
     );
     failures += execute_error(
         database,

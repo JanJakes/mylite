@@ -31,6 +31,7 @@ enum {
     mysql_error_data_out_of_range = 1264,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_foreign_key_failure = 1452,
 };
 
 struct expected_sql_error {
@@ -47,9 +48,15 @@ struct expected_query {
     const char *context;
 };
 
+struct expected_dml_warning_status {
+    int64_t affected_rows;
+    size_t warning_count;
+};
+
 static int test_insert_select_success_persistence_and_visibility(void);
 static int test_insert_select_dual_source_values_and_diagnostics(void);
 static int test_insert_select_schema_resolution_and_diagnostics(void);
+static int test_insert_select_keyed_targets(void);
 static int test_insert_select_independent_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_source_table(mylite_db *database, const char *table_name);
@@ -57,6 +64,11 @@ static int create_target_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_dml_ok_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_warning_status expected
+);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -90,6 +102,7 @@ int main(void) {
     failures += test_insert_select_success_persistence_and_visibility();
     failures += test_insert_select_dual_source_values_and_diagnostics();
     failures += test_insert_select_schema_resolution_and_diagnostics();
+    failures += test_insert_select_keyed_targets();
     failures += test_insert_select_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -796,15 +809,8 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "INSERT IGNORE INTO keyed_dst(id, nn) SELECT id, nn FROM src",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT ... SELECT into primary-key tables is not supported",
-        }
-    );
+    failures +=
+        expect_dml_ok(database, "INSERT IGNORE INTO keyed_dst(id, nn) SELECT id, nn FROM src", 2);
     failures += execute_ok(
         database,
         "CREATE TABLE unique_dst(id INT NOT NULL, nn INT NOT NULL, UNIQUE KEY uniq_id (id))",
@@ -812,15 +818,8 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "INSERT IGNORE INTO unique_dst(id, nn) SELECT id, nn FROM src",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT ... SELECT into unique-index tables is not supported",
-        }
-    );
+    failures +=
+        expect_dml_ok(database, "INSERT IGNORE INTO unique_dst(id, nn) SELECT id, nn FROM src", 2);
 
     failures += execute_ok(
         database,
@@ -1005,6 +1004,542 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "INSERT ... SELECT does not support joined SELECT",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_insert_select_keyed_targets(void) {
+    static const char *const pk_rows[] = {"1", "10", "2", "20"};
+    static const char *const dup_pk_rows[] = {"2", "2000"};
+    static const char *const unique_rows[] = {"1", "100", "2", "200", "4", NULL};
+    static const char *const composite_unique_rows[] =
+        {"1", "100", "10", "2", "200", "20", "3", "200", "30"};
+    static const char *const prefix_unique_rows[] = {"1", "a", "2", "b", "3", "c"};
+    static const char *const child_rows[] = {"1", "1", "2", "2"};
+    static const char *const child_ignore_rows[] = {"1", "1", "2", "2", "4", NULL};
+    static const char *const auto_rows[] = {"1", "a", "2", "b", "3", "c"};
+    static const char *const auto_mixed_rows[] = {
+        "5",
+        "five",
+        "6",
+        "null",
+        "7",
+        "seven",
+        "8",
+        "zero",
+    };
+    static const char *const auto_zero_rows[] = {"0", "zero", "5", "five", "6", "null"};
+    static const char *const last_insert_id_one[] = {"1"};
+    static const char *const last_insert_id_six[] = {"6"};
+    static const char *const zero_rows[] = {"0"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "keyed") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE src(id INT, v INT, u INT, parent_id INT, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO src VALUES "
+        "(1, 10, 100, 1, 'a'), "
+        "(2, 20, 200, 2, 'b'), "
+        "(3, 30, 200, 99, 'c'), "
+        "(4, 40, NULL, NULL, 'd')",
+        4
+    );
+
+    failures += execute_ok(database, "CREATE TABLE pk_dst(id INT PRIMARY KEY, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO pk_dst SELECT id, v FROM src WHERE id <= 2 ORDER BY id",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM pk_dst ORDER BY id",
+            .values = pk_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "primary-key insert select rows",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE dup_pk_dst(id INT PRIMARY KEY, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO dup_pk_dst VALUES (2, 2000)", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO dup_pk_dst SELECT id, v FROM src WHERE id <= 3 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '2' for key 'dup_pk_dst.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM dup_pk_dst ORDER BY id",
+            .values = dup_pk_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "primary-key duplicate rollback",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE unique_dst(id INT, u INT, UNIQUE KEY uk_u(u))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO unique_dst SELECT id, u FROM src WHERE id IN (1, 2, 4) ORDER BY id",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u FROM unique_dst ORDER BY id",
+            .values = unique_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "unique insert select rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE dup_unique_dst(id INT, u INT, UNIQUE KEY uk_u(u))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO dup_unique_dst VALUES (9, 200)", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO dup_unique_dst SELECT id, u FROM src WHERE id <= 3 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '200' for key 'dup_unique_dst.uk_u'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u FROM dup_unique_dst ORDER BY id",
+            .values = (const char *const[]){"9", "200"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "unique duplicate rollback",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE composite_unique_dst("
+        "id INT, u INT, v INT, UNIQUE KEY uk_u_v(u, v))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_unique_dst SELECT id, u, v FROM src WHERE id <= 3 ORDER BY id",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u, v FROM composite_unique_dst ORDER BY id",
+            .values = composite_unique_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite unique insert select rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE dup_composite_unique_dst("
+        "id INT, u INT, v INT, UNIQUE KEY uk_u_v(u, v))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_dml_ok(database, "INSERT INTO dup_composite_unique_dst VALUES (9, 200, 20)", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO dup_composite_unique_dst "
+        "SELECT id, u, v FROM src WHERE id <= 3 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '200-20' for key 'dup_composite_unique_dst.uk_u_v'",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE prefix_unique_dst("
+        "id INT, label VARCHAR(20), UNIQUE KEY uk_label(label(1)))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO prefix_unique_dst SELECT id, label FROM src WHERE id <= 3 ORDER BY id",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM prefix_unique_dst ORDER BY id",
+            .values = prefix_unique_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "prefix unique insert select rows",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE prefix_src(id INT, label VARCHAR(20))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_dml_ok(database, "INSERT INTO prefix_src VALUES (1, 'apricot'), (2, 'banana')", 2);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE dup_prefix_unique_dst("
+        "id INT, label VARCHAR(20), UNIQUE KEY uk_label(label(1)))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO dup_prefix_unique_dst VALUES (9, 'apple')", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO dup_prefix_unique_dst SELECT id, label FROM prefix_src ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'a' for key 'dup_prefix_unique_dst.uk_label'",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE ignore_pk_dst(id INT PRIMARY KEY, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO ignore_pk_dst VALUES (2, 2000)", 1);
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO ignore_pk_dst SELECT id, v FROM src WHERE id <= 3 ORDER BY id",
+        (struct expected_dml_warning_status){
+            .affected_rows = 2,
+            .warning_count = 1U,
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE parent(id INT PRIMARY KEY)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO parent VALUES (1), (2)", 2);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE child_ok("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_child_parent_ok FOREIGN KEY(parent_id) REFERENCES parent(id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO child_ok SELECT id, parent_id FROM src WHERE id <= 2 ORDER BY id",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, parent_id FROM child_ok ORDER BY id",
+            .values = child_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "foreign-key child insert select rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE child_bad("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_child_parent_bad FOREIGN KEY(parent_id) REFERENCES parent(id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT INTO child_bad SELECT id, parent_id FROM src WHERE id <= 3 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_foreign_key_failure,
+            .sqlstate = "23000",
+            .message_part = "Cannot add or update a child row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM child_bad",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "foreign-key failure rollback",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE child_ignore("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "CONSTRAINT fk_child_parent_ignore FOREIGN KEY(parent_id) REFERENCES parent(id))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok_with_warnings(
+        database,
+        "INSERT IGNORE INTO child_ignore SELECT id, parent_id FROM src WHERE id <= 4 ORDER BY id",
+        (struct expected_dml_warning_status){
+            .affected_rows = 3,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, parent_id FROM child_ignore ORDER BY id",
+            .values = child_ignore_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "foreign-key ignore rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_dst(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_dst(label) SELECT label FROM src WHERE id <= 3 ORDER BY id",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto insert select first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_dst ORDER BY id",
+            .values = auto_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "auto insert select rows",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_ignore(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "INSERT IGNORE INTO auto_ignore(label) SELECT label FROM src WHERE id <= 2 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "INSERT IGNORE ... SELECT does not support AUTO_INCREMENT targets",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE auto_src(id INT, label VARCHAR(20))", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_src VALUES (5, 'five'), (0, 'zero'), (NULL, 'null'), (7, 'seven')",
+        4
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_mixed(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_mixed(id, label) SELECT id, label FROM auto_src ORDER BY label",
+        4
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_six,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto mixed insert select first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_mixed ORDER BY id",
+            .values = auto_mixed_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "auto mixed insert select rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_AUTO_VALUE_ON_ZERO'",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE auto_zero(id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_zero(id, label) "
+        "SELECT id, label FROM auto_src WHERE id IS NULL OR id = 0 OR id = 5 ORDER BY label",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_six,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "auto no-auto-value-on-zero first generated id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_zero ORDER BY id",
+            .values = auto_zero_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "auto no-auto-value-on-zero rows",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE same_pk(id INT PRIMARY KEY, v INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(database, "INSERT INTO same_pk VALUES (1, 10), (2, 20)", 2);
+    failures += execute_error(
+        database,
+        "INSERT INTO same_pk SELECT id, v FROM same_pk ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_entry,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1' for key 'same_pk.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM same_pk ORDER BY id",
+            .values = pk_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "same-table duplicate rollback",
+        }
+    );
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read keyed preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "keyed insert select preserves preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, label FROM auto_mixed ORDER BY id",
+            .values = auto_mixed_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "persisted auto mixed insert select rows",
         }
     );
 
@@ -1226,6 +1761,31 @@ static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_
     failures +=
         expect_int64(mylite_result_affected_rows(result), affected_rows, "DML affected rows");
     failures += expect_size(mylite_result_warning_count(result), 0U, "DML warning count");
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_dml_ok_with_warnings(
+    mylite_db *database,
+    const char *sql,
+    struct expected_dml_warning_status expected
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, "DML column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "DML row count");
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        expected.affected_rows,
+        "DML affected rows"
+    );
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        expected.warning_count,
+        "DML warning count"
+    );
     mylite_result_free(result);
 
     return failures;

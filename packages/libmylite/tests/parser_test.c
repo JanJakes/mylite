@@ -105,6 +105,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_show_full_tables_statements(void);
 static int test_show_table_status_where_statement(void);
 static int test_table_binary_charset_options(void);
 static int test_alter_table_column_position_statements(void);
@@ -387,6 +388,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_show_full_tables_statements();
     failures += test_show_table_status_where_statement();
     failures += test_table_binary_charset_options();
     failures += test_alter_table_column_position_statements();
@@ -9020,6 +9022,10 @@ static int test_table_lifecycle_statements(void) {
     statement = child_at(result.root, 0U);
     failures +=
         expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables schema like");
+    failures += expect_true(
+        !mylite_sql_ast_node_show_tables_is_full(statement),
+        "show tables schema like is not full"
+    );
     failures += expect_span_text(child_at(statement, 0U), "app", "show tables like schema");
     failures +=
         expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "schema like");
@@ -10164,6 +10170,67 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_full_tables_statements(void) {
+    int failures = 0;
+    struct mylite_sql_parse_result result = {0};
+    const struct mylite_sql_ast_node *statement = NULL;
+
+    failures += parse_sql("SHOW FULL TABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show full tables statement");
+    failures += expect_true(
+        mylite_sql_ast_node_show_tables_is_full(statement),
+        "show full tables has full flag"
+    );
+    failures += expect_child_count(statement, 0U, "show full tables child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TABLES FROM app LIKE 'a\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLES_STATEMENT,
+        "show full tables schema like"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_show_tables_is_full(statement),
+        "show full tables schema like full flag"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app", "show full tables schema");
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "show full tables like"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "show full tables like");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TABLES IN app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_show_tables_is_full(statement),
+        "show full tables in full flag"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app", "show full tables in schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED FULL TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL EXTENDED TABLES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW FULL TABLES WHERE Tables_in_app = 'simple_lifecycle';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -61,6 +61,7 @@
 %type select_sql_calc_found_rows_opt { int }
 %type select_locking_clause_opt { struct mylite_sql_select_locking_clause }
 %type union_modifier_opt { enum mylite_sql_ast_union_modifier }
+%type show_full_opt { int }
 %type join_operator { enum mylite_sql_ast_join_kind }
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
@@ -929,14 +930,21 @@ truncate_table_statement(A) ::= TRUNCATE(T) TABLE table_name(N). {
     A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
-show_tables_statement(A) ::= SHOW(S) TABLES(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, NULL, L);
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, NULL, L);
 }
-show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
 }
-show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
+}
+
+show_full_opt(A) ::= . {
+    A = 0;
+}
+show_full_opt(A) ::= FULL. {
+    A = 1;
 }
 
 show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) show_table_status_filter_opt(F). {

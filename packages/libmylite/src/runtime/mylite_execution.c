@@ -2968,6 +2968,7 @@ struct nonprimary_index_presence_context {
 struct show_tables_context {
     mylite_result *result;
     const struct show_like_filter *filter;
+    bool is_full;
 };
 
 struct table_status_values {
@@ -18249,6 +18250,12 @@ static int copy_select_item_identifier_alias_text(
 );
 static int validate_select_item_alias_text(struct mylite_db *database, char **text);
 static int duplicate_text(struct mylite_db *database, const char *source, char **out_text);
+static int append_show_tables_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *column_name,
+    bool is_full
+);
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
 static int append_show_table_status(
     const struct mylite_catalog_table_descriptor *table,
@@ -31522,6 +31529,7 @@ static int execute_show_tables_statement(
         .pattern = NULL,
         .pattern_length = 0U,
     };
+    bool is_full = mylite_sql_ast_node_show_tables_is_full(statement) != 0;
     char *column_name = NULL;
     struct show_tables_context context = {0};
     mylite_result *result = NULL;
@@ -31562,14 +31570,12 @@ static int execute_show_tables_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, column_name);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+        rc = append_show_tables_result_columns(database, result, column_name, is_full);
     }
     if (rc == MYLITE_OK) {
         context.result = result;
         context.filter = &filter;
+        context.is_full = is_full;
         rc = mylite_catalog_for_each_table_in_schema(
             database,
             schema.schema_id,
@@ -31590,6 +31596,28 @@ static int execute_show_tables_statement(
     free(column_name);
     show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_tables_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *column_name,
+    bool is_full
+) {
+    int rc = mylite_result_append_column(result, column_name);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (!is_full) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_result_append_column(result, "Table_type");
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int execute_show_table_status_statement(
@@ -106489,10 +106517,13 @@ static int integer_range_for_column(
 
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data) {
     struct show_tables_context *context = user_data;
-    const char *values[1] = {NULL};
+    const char *values[2] = {NULL, NULL};
 
     if (table == NULL || context == NULL || context->result == NULL) {
         return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
     }
 
     if (!show_like_filter_matches(context->filter, table->name, true)) {
@@ -106500,6 +106531,9 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     }
 
     values[0] = table->name;
+    if (context->is_full) {
+        values[1] = "BASE TABLE";
+    }
 
     return mylite_result_append_text_row(context->result, values);
 }

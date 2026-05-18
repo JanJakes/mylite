@@ -282,6 +282,74 @@ static int test_create_show_drop_and_reopen(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SHOW FULL TABLES", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES column count");
+    failures += expect_text(
+        mylite_result_column_name(result, 0U),
+        "Tables_in_app",
+        "SHOW FULL TABLES table column name"
+    );
+    failures += expect_text(
+        mylite_result_column_name(result, 1U),
+        "Table_type",
+        "SHOW FULL TABLES type column name"
+    );
+    failures += expect_size(mylite_result_row_count(result), 1U, "SHOW FULL TABLES row count");
+    failures += expect_text(
+        mylite_result_value_text(result, 0U, 0U),
+        "simple_lifecycle",
+        "SHOW FULL TABLES table name"
+    );
+    failures += expect_text(
+        mylite_result_value_text(result, 0U, 1U),
+        "BASE TABLE",
+        "SHOW FULL TABLES table type"
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, "SHOW FULL TABLES warnings");
+    failures += expect_int64(mylite_result_affected_rows(result), 0, "SHOW FULL TABLES affected");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW FULL TABLES FROM app LIKE 'simple%'", &result);
+    failures += expect_size(
+        mylite_result_column_count(result),
+        2U,
+        "SHOW FULL TABLES FROM LIKE column count"
+    );
+    failures += expect_text(
+        mylite_result_column_name(result, 0U),
+        "Tables_in_app (simple%)",
+        "SHOW FULL TABLES FROM LIKE table column name"
+    );
+    failures += expect_text(
+        mylite_result_column_name(result, 1U),
+        "Table_type",
+        "SHOW FULL TABLES FROM LIKE type column name"
+    );
+    failures +=
+        expect_size(mylite_result_row_count(result), 1U, "SHOW FULL TABLES FROM LIKE row count");
+    failures += expect_text(
+        mylite_result_value_text(result, 0U, 0U),
+        "simple_lifecycle",
+        "SHOW FULL TABLES FROM LIKE table name"
+    );
+    failures += expect_text(
+        mylite_result_value_text(result, 0U, 1U),
+        "BASE TABLE",
+        "SHOW FULL TABLES FROM LIKE table type"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW FULL TABLES LIKE 'SIMPLE%'", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES no match columns");
+    failures +=
+        expect_size(mylite_result_row_count(result), 0U, "SHOW FULL TABLES no match row count");
+    mylite_result_free(result);
+    result = NULL;
+
     mylite_close(database);
     database = NULL;
 
@@ -339,6 +407,14 @@ static int test_create_show_drop_and_reopen(void) {
 
     failures += execute_ok(database, "SHOW TABLES", &result);
     failures += expect_size(mylite_result_row_count(result), 0U, "SHOW TABLES after drop");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW FULL TABLES", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "SHOW FULL TABLES after drop columns");
+    failures +=
+        expect_size(mylite_result_row_count(result), 0U, "SHOW FULL TABLES after drop rows");
     mylite_result_free(result);
 
     mylite_close(database);
@@ -438,6 +514,15 @@ static int test_failure_diagnostics_and_unwinding(void) {
     failures += execute_error(
         database,
         "SHOW TABLES FROM _mylite_reserved",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW FULL TABLES FROM _mylite_reserved",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -712,6 +797,14 @@ static int test_independent_file_backed_handles(void) {
     result = NULL;
     failures += execute_ok(second, "SHOW TABLES", &result);
     failures += expect_size(mylite_result_row_count(result), 0U, "second handle has no tables");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(second, "SHOW FULL TABLES", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "second handle full tables columns");
+    failures +=
+        expect_size(mylite_result_row_count(result), 0U, "second handle has no full table rows");
     mylite_result_free(result);
     result = NULL;
 

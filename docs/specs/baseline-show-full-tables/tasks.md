@@ -5,9 +5,9 @@
   base-table type values.
 - [x] Specify ownership boundaries, syntax, semantics, diagnostics, test
   expectations, and compatibility documentation scope.
-- [ ] Implement parser/AST support for the `FULL` modifier on `SHOW TABLES`.
-- [ ] Implement runtime result shape and `BASE TABLE` row values.
-- [ ] Add MySQL expectation and fast C coverage.
-- [ ] Update compatibility docs for the exact supported subset.
-- [ ] Run the MySQL expectation script, focused CTest entries, and full
+- [x] Implement parser/AST support for the `FULL` modifier on `SHOW TABLES`.
+- [x] Implement runtime result shape and `BASE TABLE` row values.
+- [x] Add MySQL expectation and fast C coverage.
+- [x] Update compatibility docs for the exact supported subset.
+- [x] Run the MySQL expectation script, focused CTest entries, and full
   `cmake --workflow --preset check`.

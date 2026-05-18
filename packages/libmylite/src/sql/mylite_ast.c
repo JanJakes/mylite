@@ -121,6 +121,14 @@ void mylite_sql_ast_node_set_select_locking_clause(
     node->payload.select.locking_clause = locking_clause;
 }
 
+void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node, int is_full) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.show_tables.is_full = is_full != 0;
+}
+
 void mylite_sql_ast_node_set_union_modifier(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_union_modifier modifier
@@ -365,6 +373,14 @@ enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_cla
     }
 
     return node->payload.select.locking_clause;
+}
+
+int mylite_sql_ast_node_show_tables_is_full(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SHOW_TABLES_STATEMENT) {
+        return 0;
+    }
+
+    return node->payload.show_tables.is_full;
 }
 
 enum mylite_sql_ast_union_modifier mylite_sql_ast_node_union_modifier(

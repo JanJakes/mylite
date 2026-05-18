@@ -711,6 +711,10 @@ struct mylite_sql_ast_alter_table_options_payload {
     enum mylite_sql_ast_column_visibility visibility;
 };
 
+struct mylite_sql_ast_show_tables_payload {
+    int is_full;
+};
+
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_select_payload select;
     struct mylite_sql_ast_union_payload union_term;
@@ -730,6 +734,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
     struct mylite_sql_ast_alter_table_options_payload alter_table_options;
+    struct mylite_sql_ast_show_tables_payload show_tables;
 };
 
 struct mylite_sql_ast_node {
@@ -776,6 +781,7 @@ void mylite_sql_ast_node_set_select_locking_clause(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_select_locking_clause locking_clause
 );
+void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node, int is_full);
 void mylite_sql_ast_node_set_union_modifier(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_union_modifier modifier
@@ -855,6 +861,7 @@ int mylite_sql_ast_node_select_calc_found_rows(const struct mylite_sql_ast_node 
 enum mylite_sql_ast_select_locking_clause mylite_sql_ast_node_select_locking_clause(
     const struct mylite_sql_ast_node *node
 );
+int mylite_sql_ast_node_show_tables_is_full(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_union_modifier mylite_sql_ast_node_union_modifier(
     const struct mylite_sql_ast_node *node
 );

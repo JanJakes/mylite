@@ -17,6 +17,7 @@
 #include "mylite_string_search.h"
 #include "mylite_string_trim.h"
 #include "mylite_temporal_extract.h"
+#include "mylite_unix_timestamp.h"
 #include "sqlite3.h"
 
 #include <float.h>
@@ -2467,6 +2468,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_COALESCE = 27,
     PLANNED_ROW_SCALAR_EXPRESSION_NULLIF = 28,
     PLANNED_ROW_SCALAR_EXPRESSION_ISNULL = 29,
+    PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP = 30,
 };
 
 enum planned_row_scalar_field_domain {
@@ -11257,6 +11259,18 @@ static bool is_string_trim_function_kind(enum mylite_sql_ast_node_kind ast_kind)
 static enum mylite_string_trim_kind string_trim_function_to_value_kind(
     enum planned_string_trim_function_kind function_kind
 );
+static int unix_timestamp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_unix_timestamp_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
 static int temporal_extract_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -18248,6 +18262,39 @@ static bool row_scalar_date_format_numeric_equal_sides(
     const struct mylite_sql_ast_node **out_date_format,
     const struct mylite_sql_ast_node **out_numeric
 );
+static int plan_row_scalar_unix_timestamp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_unix_timestamp_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_unix_timestamp_input_kind *out_input_kind
+);
+static int plan_row_scalar_unix_timestamp_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_unix_timestamp_input_kind *out_input_kind
+);
+static int plan_row_scalar_unix_timestamp_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_temporal_extract_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -19245,6 +19292,11 @@ static int append_row_scalar_string_trim_expression_sql(
 static const char *row_scalar_string_trim_sql_function(
     enum planned_string_trim_function_kind function_kind
 );
+static int append_row_scalar_unix_timestamp_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_temporal_extract_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -20192,6 +20244,11 @@ static int bind_row_scalar_string_case_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_trim_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_unix_timestamp_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -21279,6 +21336,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
@@ -36476,6 +36535,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
@@ -64892,6 +64953,8 @@ static const char *argument_count_error_node_function_name(
         return "FIND_IN_SET";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "DATE_FORMAT";
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        return "UNIX_TIMESTAMP";
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
         return "DAYOFMONTH";
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
@@ -64997,6 +65060,11 @@ static int session_scalar_value(
         return current_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+        return unix_timestamp_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
         return current_date_scalar_value(database, out_cell);
@@ -67750,6 +67818,141 @@ static enum mylite_string_trim_kind string_trim_function_to_value_kind(
         break;
     }
     return MYLITE_STRING_TRIM_BOTH;
+}
+
+static int unix_timestamp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    bool is_null = false;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+    int written = 0;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(expression) == 0U) {
+        written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRId64,
+            current_timestamp_epoch(database)
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format UNIX_TIMESTAMP() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_unix_timestamp_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &text,
+        &text_length,
+        &is_null
+    );
+    if (rc == MYLITE_OK && !is_null) {
+        rc = mylite_unix_timestamp_value(
+            database,
+            text,
+            text_length,
+            MYLITE_UNIX_TIMESTAMP_INPUT_STRING,
+            &out_cell->owned_text,
+            &result_is_null
+        );
+    } else {
+        result_is_null = true;
+    }
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->value = out_cell->owned_text;
+    }
+    free(text);
+    return rc;
+}
+
+static int evaluate_unix_timestamp_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, and NULL",
+        "UNIX_TIMESTAMP() literals do not support NUL bytes",
+        out_text,
+        out_text_length
+    );
+    if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, "UNIX_TIMESTAMP() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    return rc;
 }
 
 static int temporal_extract_function_value(
@@ -80500,6 +80703,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_DATE_VALUE) {
@@ -94948,6 +95157,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        return plan_row_scalar_unix_timestamp_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (is_temporal_extract_function_kind(expression->kind)) {
         return plan_row_scalar_temporal_extract_expression(
             database,
@@ -99516,6 +99736,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -100712,6 +100933,230 @@ static bool planned_date_format_numeric_equal_format_is_supported(
     );
 }
 
+static int plan_row_scalar_unix_timestamp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_unix_timestamp_input_kind input_kind = MYLITE_UNIX_TIMESTAMP_INPUT_STRING;
+    struct session_scalar_cell cell = {0};
+    const char *input_kind_name = NULL;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count == 0U) {
+        rc = session_scalar_value(database, expression, &cell);
+        if (rc == MYLITE_OK) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        }
+        session_scalar_cell_deinit(&cell);
+        return rc;
+    }
+    if (child_count != 1U) {
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP;
+    out_expression->argument_count = 2U;
+
+    rc = plan_row_scalar_unix_timestamp_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0],
+        &input_kind
+    );
+    input_kind_name = mylite_unix_timestamp_input_kind_name(input_kind);
+    if (rc == MYLITE_OK && input_kind_name != NULL) {
+        rc = copy_text_value(database, input_kind_name, &out_expression->arguments[1].value);
+        out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_unix_timestamp_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_unix_timestamp_input_kind *out_input_kind
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_input_kind == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input_kind = MYLITE_UNIX_TIMESTAMP_INPUT_STRING;
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, "
+            "TIMESTAMP descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            return plan_row_scalar_unix_timestamp_string_literal(
+                database,
+                expression,
+                out_expression
+            );
+        }
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_unix_timestamp_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression,
+            out_input_kind
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, and NULL"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_unix_timestamp_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_unix_timestamp_input_kind *out_input_kind
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT UNIX_TIMESTAMP() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_date(&column)) {
+        *out_input_kind = MYLITE_UNIX_TIMESTAMP_INPUT_DATE;
+    } else if (column_descriptor_is_datetime(&column)) {
+        *out_input_kind = MYLITE_UNIX_TIMESTAMP_INPUT_DATETIME;
+    } else if (column_descriptor_is_timestamp(&column)) {
+        *out_input_kind = MYLITE_UNIX_TIMESTAMP_INPUT_TIMESTAMP;
+    } else if (column_descriptor_is_string_family(&column)) {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() does not yet support string descriptor columns"
+        );
+        return MYLITE_ERROR;
+    } else {
+        set_unsupported_error(
+            database,
+            "UNIX_TIMESTAMP() supports only DATE, DATETIME, TIMESTAMP descriptor columns, "
+            "string temporal literals, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_unix_timestamp_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = decode_sql_string_literal(
+        database,
+        expression,
+        "UNIX_TIMESTAMP() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, and NULL",
+        "UNIX_TIMESTAMP() literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+
+    if (rc == MYLITE_OK && memchr(text, '\0', text_length) != NULL) {
+        set_unsupported_error(database, "UNIX_TIMESTAMP() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = assign_text_value(database, text, text_length, &out_expression->value);
+        text = NULL;
+    }
+    free(text);
+    return rc;
+}
+
 static int plan_row_scalar_field_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -101024,6 +101469,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_FIELD_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
             is_string_length_function_kind(current->kind) ||
             is_string_case_function_kind(current->kind) ||
@@ -113121,6 +113567,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
@@ -113918,6 +114365,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_case_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
         return append_row_scalar_string_trim_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+        return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
         return append_row_scalar_temporal_extract_expression_sql(
             string,
@@ -114001,6 +114450,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -114428,6 +114878,36 @@ static const char *row_scalar_string_trim_sql_function(
     return NULL;
 }
 
+static int append_row_scalar_unix_timestamp_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_unix_timestamp(");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_temporal_extract_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -114697,6 +115177,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -114871,6 +115352,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -114920,6 +115402,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -115302,6 +115785,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -115355,6 +115839,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -120030,6 +120515,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+        return bind_row_scalar_unix_timestamp_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
         return bind_row_scalar_temporal_extract_expression_parameters(
             statement,
@@ -120141,6 +120632,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -120284,6 +120776,26 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
         return MYLITE_ERROR;
     }
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 3U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_row_scalar_unix_timestamp_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
         rc = bind_row_scalar_non_concat_expression_parameters(
             statement,
             &expression->arguments[argument_index],
@@ -120453,6 +120965,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -120612,6 +121125,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -120656,6 +121170,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:

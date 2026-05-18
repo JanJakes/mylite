@@ -58,6 +58,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_temporal_extract.c
   src/runtime/mylite_temporary_catalog.c
+  src/runtime/mylite_unix_timestamp.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
@@ -680,6 +681,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_date_format_function_test)
+
+  add_executable(mylite_runtime_unix_timestamp_function_test
+    tests/runtime_unix_timestamp_function_test.c
+  )
+  target_link_libraries(mylite_runtime_unix_timestamp_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_unix_timestamp_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_unix_timestamp_function_test)
 
   add_executable(mylite_runtime_temporal_extract_functions_test
     tests/runtime_temporal_extract_functions_test.c
@@ -3099,6 +3111,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.date_format_function
     COMMAND mylite_runtime_date_format_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.unix_timestamp_function
+    COMMAND mylite_runtime_unix_timestamp_function_test
   )
 
   add_test(

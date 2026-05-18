@@ -2990,6 +2990,14 @@ expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
 }
+expression(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
+}
+expression(A) ::= UNIX_TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, B, R);
+}
 expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FUNCTION, B, R);
@@ -3763,6 +3771,12 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::=
+    UNIX_TIMESTAMP(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= DAYOFMONTH(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4581,6 +4595,9 @@ identifier(A) ::= JSON_UNQUOTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATE_FORMAT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UNIX_TIMESTAMP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CAST(T). {

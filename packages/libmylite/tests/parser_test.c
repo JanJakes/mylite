@@ -58,6 +58,7 @@ static int test_json_introspection_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
+static int test_unix_timestamp_function(void);
 static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
 static int test_nullif_function(void);
@@ -341,6 +342,7 @@ int main(void) {
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
+    failures += test_unix_timestamp_function();
     failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
     failures += test_nullif_function();
@@ -3264,6 +3266,108 @@ static int test_date_format_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_unix_timestamp_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT UNIX_TIMESTAMP(), Unix_Timestamp('1970-01-01 00:00:01') AS ts, "
+        "UNIX_TIMESTAMP(d) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "unix_timestamp no-argument function"
+    );
+    failures += expect_child_count(first_expression, 0U, "unix_timestamp no-argument count");
+    failures +=
+        expect_span_text(first_expression, "UNIX_TIMESTAMP()", "unix_timestamp no-argument span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "unix_timestamp literal function"
+    );
+    failures += expect_child_count(second_expression, 1U, "unix_timestamp literal count");
+    failures += expect_literal(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "unix_timestamp literal argument"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "unix_timestamp alias"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "unix_timestamp column function"
+    );
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "unix_timestamp column argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DO UNIX_TIMESTAMP(), UNIX_TIMESTAMP(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "unix_timestamp do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "do unix_timestamp no-argument"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION,
+        "do unix_timestamp null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT UNIX_TIMESTAMP('1970-01-01', 'extra');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR,
+        "unix_timestamp extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT UNIX_TIMESTAMP ('1970-01-01 00:00:01') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unix_timestamp (unix_timestamp INT); "
+        "SELECT unix_timestamp FROM unix_timestamp;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

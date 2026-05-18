@@ -1021,6 +1021,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"UNINSTALL", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"UNION", MYLITE_SQL_KEYWORD_RESERVED},
         {"UNIQUE", MYLITE_SQL_KEYWORD_RESERVED},
+        {"UNIX_TIMESTAMP", 0U},
         {"UNKNOWN", 0U},
         {"UNLOCK", MYLITE_SQL_KEYWORD_RESERVED},
         {"UNREGISTER", 0U},

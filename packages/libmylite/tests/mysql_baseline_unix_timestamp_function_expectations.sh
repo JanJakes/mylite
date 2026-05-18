@@ -197,6 +197,23 @@ expect_output \
 "SELECT @@warning_count;" \
     "$DATABASE"
 
+row_warning_expected=$(cat <<EXPECTED
+1	0.000000	0
+2	0.000000	0
+Warning	1292	Incorrect datetime value: 'bad'
+Warning	1292	Incorrect datetime value: '0000-00-00'
+Warning	1292	Incorrect datetime value: 'bad'
+Warning	1292	Incorrect datetime value: '0000-00-00'
+4
+EXPECTED
+)
+expect_output \
+    "row-backed invalid string warnings" \
+    "$row_warning_expected" \
+    "SELECT id, UNIX_TIMESTAMP('bad'), UNIX_TIMESTAMP('0000-00-00') FROM t ORDER BY id; "\
+"SHOW WARNINGS; SELECT @@warning_count;" \
+    "$DATABASE"
+
 do_expected=$(cat <<EXPECTED
 0	0
 EXPECTED

@@ -55,7 +55,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `TIMESTAMPDIFF()` | ❌ | Datetime unit difference |
 | `TO_DAYS()` | ❌ | Return date argument converted to days |
 | `TO_SECONDS()` | ❌ | Seconds since year 0 |
-| `UNIX_TIMESTAMP()` | ❌ | Return a Unix timestamp |
+| `UNIX_TIMESTAMP()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `UNIX_TIMESTAMP()` / `UNIX_TIMESTAMP(value)` over `NULL`, canonical date/datetime string literals, and descriptor `DATE` / `DATETIME` / `TIMESTAMP` columns; no-argument form respects the current statement timestamp override, string/`DATE`/`DATETIME` values use the limited session fixed-offset `time_zone`, and `TIMESTAMP` descriptor values are treated as fixed UTC storage values; invalid string and full-zero-date inputs produce MySQL-compatible warning 1292; no fractional seconds, compact numeric temporal coercion, string descriptor columns, predicates, DML assignments, defaults, generated columns, named time zones, or general temporal expression evaluation |
 | `UTC_DATE()` | ❌ | Return current UTC date |
 | `UTC_TIME()` | ❌ | Return current UTC time |
 | `UTC_TIMESTAMP()` | ❌ | Return current UTC date and time |

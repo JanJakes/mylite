@@ -17895,6 +17895,42 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT u.id FROM users AS u WHERE u.id IN "
+        "(SELECT o.user_id FROM orders AS o WHERE o.user_id = u.id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "IN subquery predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "IN subquery inner select"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT u.id FROM users AS u WHERE u.id NOT IN "
+        "(SELECT o.user_id FROM orders AS o);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "NOT IN subquery predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "NOT IN subquery child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT EXISTS (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

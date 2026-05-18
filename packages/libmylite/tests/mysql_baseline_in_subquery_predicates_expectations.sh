@@ -253,6 +253,14 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "inner order with limit rejected by mysql limit diagnostic" \
+    1235 \
+    42000 \
+    "This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'" \
+    "SELECT id FROM users WHERE id IN (SELECT user_id FROM orders ORDER BY user_id LIMIT 1);" \
+    "$DATABASE"
+
+expect_error \
     "multi-column subquery rejected" \
     1241 \
     21000 \

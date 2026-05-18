@@ -2673,6 +2673,14 @@ predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN predicate_in_v
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
 }
+predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN select_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, S, R);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN select_statement(S)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, S, R));
+}
 
 predicate_in_value_list(A) ::= predicate_in_value(V). {
     A = mylite_sql_parser_make_predicate_value_list(state, V);

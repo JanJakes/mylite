@@ -717,11 +717,11 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i IN (SELECT i FROM numbers)",
+        "SELECT i FROM numbers WHERE i IN (SELECT 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "IN subqueries support one descriptor table source",
         }
     );
 

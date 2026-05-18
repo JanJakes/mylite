@@ -93,6 +93,7 @@ enum {
     mysql_error_session_variable_read_only = 1621,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
+    mysql_error_not_supported_yet = 1235,
     mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_subquery_returns_more_than_one_row = 1242,
     mysql_error_select_reduced = 1222,
@@ -1522,6 +1523,7 @@ struct user_savepoint_values {
 
 struct planned_select_source;
 struct planned_exists_subquery;
+struct planned_in_subquery;
 
 struct select_source_context {
     const struct table_name_resolution *source;
@@ -2288,6 +2290,7 @@ struct planned_select_predicate_node {
     size_t right_index;
     bool like_uses_escape;
     struct planned_exists_subquery *exists_subquery;
+    struct planned_in_subquery *in_subquery;
     struct planned_row_scalar_expression *row_scalar_expression;
 };
 
@@ -2301,6 +2304,7 @@ struct planned_select_predicate {
 
 struct select_predicate_plan_options {
     bool allow_exists;
+    bool allow_in_subquery;
     bool allow_column_reference_rhs;
     const struct select_source_context *outer_source_context;
     const struct mylite_catalog_column_descriptor *outer_columns;
@@ -2389,6 +2393,12 @@ struct planned_exists_subquery {
     struct planned_select_source source;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
+};
+
+struct planned_in_subquery {
+    struct planned_select_source source;
+    struct mylite_catalog_column_descriptor column;
+    struct planned_select_predicate predicate;
 };
 
 struct planned_select_join_condition {
@@ -16456,6 +16466,7 @@ static void planned_select_predicate_deinit_without_exists(
     struct planned_select_predicate *predicate
 );
 static void planned_exists_subquery_deinit(struct planned_exists_subquery *subquery);
+static void planned_in_subquery_deinit(struct planned_in_subquery *subquery);
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -16859,8 +16870,57 @@ static int plan_in_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
+);
+static int plan_in_literal_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_in_subquery_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_in_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_in_subquery *out_subquery
+);
+static int plan_in_subquery_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_in_subquery *out_subquery
+);
+static int plan_in_subquery_select_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct planned_in_subquery *subquery,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static bool in_subquery_columns_are_compatible(
+    const struct mylite_catalog_column_descriptor *outer_column,
+    const struct mylite_catalog_column_descriptor *inner_column
+);
+static int plan_in_subquery_inner_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_in_subquery *subquery
 );
 static int convert_predicate_in_value_list(
     struct mylite_db *database,
@@ -16961,9 +17021,29 @@ static int bind_select_predicate_node_parameters(
     const struct planned_select_predicate_node *node,
     int *parameter_index
 );
+static int bind_select_non_in_predicate_node_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_predicate_node_parameters_without_subqueries(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
 static int bind_select_in_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_in_literal_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_in_subquery_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_in_subquery *subquery,
     int *parameter_index
 );
 static int resolve_predicate_column_with_source_index(
@@ -19453,7 +19533,19 @@ static int append_select_predicate_non_exists_node_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_predicate_non_subquery_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_predicate_column_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_predicate_column_term_sql_without_subqueries(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
     const struct planned_select_predicate_node *node,
@@ -19531,6 +19623,20 @@ static int append_select_in_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
+);
+static int append_select_in_literal_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
+static int append_select_in_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_in_subquery *subquery,
+    size_t *next_parameter
+);
+static int append_in_subquery_from_sql(
+    struct dynamic_string *string,
+    const struct planned_in_subquery *subquery
 );
 static int append_predicate_sql_work_node(
     struct predicate_sql_work_item **items,
@@ -20331,6 +20437,7 @@ static void set_alter_table_add_fulltext_instant_error(struct mylite_db *databas
 static void set_alter_table_copy_lock_none_error(struct mylite_db *database);
 static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database);
 static void set_no_tables_used_error(struct mylite_db *database);
+static void set_in_subquery_limit_error(struct mylite_db *database);
 static void set_scalar_subquery_column_count_error(struct mylite_db *database);
 static void set_scalar_subquery_row_count_error(struct mylite_db *database);
 static void set_union_column_count_mismatch_error(struct mylite_db *database);
@@ -57332,7 +57439,10 @@ static int plan_select(
     struct select_optional_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
-    struct select_predicate_plan_options predicate_options = {.allow_exists = true};
+    struct select_predicate_plan_options predicate_options = {
+        .allow_exists = true,
+        .allow_in_subquery = true,
+    };
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -101929,6 +102039,8 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         free(predicate->nodes[node_index].row_scalar_expression);
         planned_exists_subquery_deinit(predicate->nodes[node_index].exists_subquery);
         free(predicate->nodes[node_index].exists_subquery);
+        planned_in_subquery_deinit(predicate->nodes[node_index].in_subquery);
+        free(predicate->nodes[node_index].in_subquery);
     }
     free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
@@ -101968,6 +102080,16 @@ static void planned_exists_subquery_deinit(struct planned_exists_subquery *subqu
     free(subquery->source.columns);
     planned_select_predicate_deinit_without_exists(&subquery->predicate);
     *subquery = (struct planned_exists_subquery){.has_table_source = false};
+}
+
+static void planned_in_subquery_deinit(struct planned_in_subquery *subquery) {
+    if (subquery == NULL) {
+        return;
+    }
+
+    free(subquery->source.columns);
+    planned_select_predicate_deinit_without_exists(&subquery->predicate);
+    *subquery = (struct planned_in_subquery){0};
 }
 
 static int plan_select_predicate_node(
@@ -102509,6 +102631,7 @@ static int plan_select_predicate_leaf_node(
             source_context,
             table_columns,
             table_column_count,
+            options,
             out_predicate,
             &node_index
         );
@@ -102615,7 +102738,7 @@ static int plan_select_predicate_leaf_node_without_exists(
             &node_index
         );
     } else {
-        rc = plan_in_predicate(
+        rc = plan_in_literal_predicate(
             database,
             predicate_node,
             source_context,
@@ -104260,15 +104383,36 @@ static int plan_in_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 ) {
+    const struct mylite_sql_ast_node *right = NULL;
     struct planned_select_predicate_node node = {
         .kind = PLANNED_SELECT_PREDICATE_IN,
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
     };
-    int rc = resolve_predicate_column_with_source_index(
+    int rc = MYLITE_OK;
+
+    if (predicate_node == NULL || predicate_node->kind != MYLITE_SQL_AST_IN_PREDICATE) {
+        set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
+        return MYLITE_ERROR;
+    }
+    right = child_at(predicate_node, 1U);
+    if (right == NULL || right->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return plan_in_literal_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+
+    rc = resolve_predicate_column_with_source_index(
         database,
         child_at(predicate_node, 0U),
         source_context,
@@ -104277,7 +104421,80 @@ static int plan_in_predicate(
         &node.column,
         &node.column_source_index
     );
+    if (rc == MYLITE_OK) {
+        if (column_descriptor_is_enum(&node.column)) {
+            set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
+            return MYLITE_ERROR;
+        }
+        if (column_descriptor_is_set(&node.column)) {
+            set_unsupported_error(database, "WHERE set predicates do not yet support IN");
+            return MYLITE_ERROR;
+        }
+        if (options == NULL || !options->allow_in_subquery) {
+            set_unsupported_error(database, "IN subqueries are supported only in SELECT WHERE");
+            return MYLITE_ERROR;
+        }
+        if (source_context == NULL || select_source_context_is_joined(source_context)) {
+            set_unsupported_error(database, "IN subqueries support only one outer table source");
+            return MYLITE_ERROR;
+        }
+        rc = plan_in_subquery_predicate(
+            database,
+            right,
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_in_subquery_deinit(node.in_subquery);
+        free(node.in_subquery);
+        return rc;
+    }
+    predicate->qualify_column_references = true;
 
+    return rc;
+}
+
+static int plan_in_literal_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_IN,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    if (predicate_node == NULL || predicate_node->kind != MYLITE_SQL_AST_IN_PREDICATE) {
+        set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
+        return MYLITE_ERROR;
+    }
+    if (child_at(predicate_node, 1U) != NULL &&
+        child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "IN subqueries are supported only in SELECT WHERE");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_predicate_column_with_source_index(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column,
+        &node.column_source_index
+    );
     if (rc == MYLITE_OK) {
         if (column_descriptor_is_enum(&node.column)) {
             set_unsupported_error(database, "WHERE enum predicates do not yet support IN");
@@ -104299,9 +104516,244 @@ static int plan_in_predicate(
         rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
     }
     if (rc != MYLITE_OK) {
+        for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
+            planned_value_deinit(&node.values[value_index]);
+        }
         free(node.values);
+        return rc;
     }
 
+    return rc;
+}
+
+static int plan_in_subquery_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_select_predicate_node *node
+) {
+    struct planned_in_subquery *subquery = NULL;
+    int rc = MYLITE_OK;
+
+    subquery = calloc(1U, sizeof(*subquery));
+    if (subquery == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_in_subquery(
+        database,
+        select_statement,
+        outer_source_context,
+        outer_columns,
+        outer_column_count,
+        subquery
+    );
+    if (rc == MYLITE_OK && !in_subquery_columns_are_compatible(&node->column, &subquery->column)) {
+        set_unsupported_error(
+            database,
+            "IN subqueries support same-family integer or string descriptor columns"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        planned_in_subquery_deinit(subquery);
+        free(subquery);
+        return rc;
+    }
+
+    node->in_subquery = subquery;
+    return MYLITE_OK;
+}
+
+static int plan_in_subquery(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_in_subquery *out_subquery
+) {
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    int rc = MYLITE_OK;
+
+    *out_subquery = (struct planned_in_subquery){0};
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "IN subqueries support only SELECT subqueries");
+        return MYLITE_ERROR;
+    }
+    select_list = child_at(statement, 0U);
+    from_clause = child_at(statement, 1U);
+    optional_clause = child_at(statement, 2U);
+    if (mylite_sql_ast_node_select_modifier(statement) != MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT ||
+        mylite_sql_ast_node_select_calc_found_rows(statement) != 0) {
+        set_unsupported_error(database, "IN subqueries do not support SELECT modifiers");
+        return MYLITE_ERROR;
+    }
+    for (const struct mylite_sql_ast_node *clause = optional_clause; clause != NULL;
+         clause = clause->next_sibling) {
+        if (clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            set_in_subquery_limit_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "IN subqueries support only WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    rc = plan_in_subquery_table_source(database, from_clause, out_subquery);
+    if (rc == MYLITE_OK) {
+        rc = plan_in_subquery_select_column(
+            database,
+            select_list,
+            out_subquery,
+            &out_subquery->column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_in_subquery_inner_predicate(
+            database,
+            where_clause,
+            outer_source_context,
+            outer_columns,
+            outer_column_count,
+            out_subquery
+        );
+    }
+
+    return rc;
+}
+
+static int plan_in_subquery_table_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct planned_in_subquery *out_subquery
+) {
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "IN subqueries support one descriptor table source");
+        return MYLITE_ERROR;
+    }
+
+    return plan_joined_select_source(database, from_clause, &out_subquery->source);
+}
+
+static int plan_in_subquery_select_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct planned_in_subquery *subquery,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    struct select_source_context source_context = {0};
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_scalar_subquery_column_count_error(database);
+        return MYLITE_ERROR;
+    }
+    item = child_at(select_list, 0U);
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    expression = child_at(item, 0U);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+        expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "IN subqueries support one explicit descriptor select column"
+        );
+        return MYLITE_ERROR;
+    }
+
+    source_context = (struct select_source_context){
+        .source = &subquery->source.source,
+        .has_alias = subquery->source.has_alias,
+    };
+    memcpy(source_context.alias, subquery->source.alias, sizeof(source_context.alias));
+    return resolve_descriptor_column_reference(
+        database,
+        expression,
+        &source_context,
+        COLUMN_REFERENCE_FIELD,
+        "IN subqueries support one explicit descriptor select column",
+        subquery->source.columns,
+        subquery->source.column_count,
+        out_column
+    );
+}
+
+static bool in_subquery_columns_are_compatible(
+    const struct mylite_catalog_column_descriptor *outer_column,
+    const struct mylite_catalog_column_descriptor *inner_column
+) {
+    return join_condition_columns_are_compatible(outer_column, inner_column);
+}
+
+static int plan_in_subquery_inner_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *outer_source_context,
+    const struct mylite_catalog_column_descriptor *outer_columns,
+    size_t outer_column_count,
+    struct planned_in_subquery *subquery
+) {
+    struct select_source_context inner_source_context = {
+        .source = &subquery->source.source,
+        .has_alias = subquery->source.has_alias,
+    };
+    const struct select_predicate_plan_options options = {
+        .allow_column_reference_rhs = true,
+        .outer_source_context = outer_source_context,
+        .outer_columns = outer_columns,
+        .outer_column_count = outer_column_count,
+    };
+    int rc = MYLITE_OK;
+
+    memcpy(inner_source_context.alias, subquery->source.alias, sizeof(inner_source_context.alias));
+    subquery->predicate = (struct planned_select_predicate){0};
+    if (where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_select_predicate_node_without_exists(
+        database,
+        child_at(where_clause, 0U),
+        &inner_source_context,
+        subquery->source.columns,
+        subquery->source.column_count,
+        &options,
+        &subquery->predicate
+    );
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit_without_exists(&subquery->predicate);
+    }
+    if (rc == MYLITE_OK && subquery->predicate.qualify_column_references) {
+        offset_exists_inner_predicate_source_indexes(&subquery->predicate, 1U);
+    }
     return rc;
 }
 
@@ -115748,7 +116200,7 @@ static int append_select_predicate_node_sql_without_exists(
         return MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_predicate_non_exists_node_sql(string, predicate, node, next_parameter);
+        rc = append_select_predicate_non_subquery_node_sql(string, predicate, node, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -115779,6 +116231,35 @@ static int append_select_predicate_non_exists_node_sql(
     }
 
     return append_select_predicate_column_term_sql(string, predicate, node, next_parameter);
+}
+
+static int append_select_predicate_non_subquery_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+        comparison_operator_is_regexp(node->operator_kind)) {
+        return append_select_regexp_predicate_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL) {
+        return append_select_row_scalar_predicate_sql(string, node, next_parameter);
+    }
+
+    return append_select_predicate_column_term_sql_without_subqueries(
+        string,
+        predicate,
+        node,
+        next_parameter
+    );
 }
 
 static int append_select_predicate_column_term_sql(
@@ -115814,6 +116295,47 @@ static int append_select_predicate_column_term_sql(
             rc = append_select_between_predicate_term_sql(string, next_parameter);
         } else if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
             rc = append_select_in_predicate_term_sql(string, node, next_parameter);
+        } else {
+            rc = MYLITE_ERROR;
+        }
+    }
+
+    return rc;
+}
+
+static int append_select_predicate_column_term_sql_without_subqueries(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = append_descriptor_value_sql_for_source(
+        string,
+        &node->column,
+        node->column_source_index,
+        predicate->qualify_column_references
+    );
+
+    if (rc == MYLITE_OK) {
+        if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+            rc = append_select_comparison_predicate_term_sql(
+                string,
+                predicate->qualify_column_references,
+                node,
+                next_parameter
+            );
+        } else if (node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
+            rc = append_select_is_null_predicate_term_sql(string, node);
+        } else if (node->kind == PLANNED_SELECT_PREDICATE_IS_BOOLEAN) {
+            rc = append_select_is_boolean_predicate_term_sql(
+                string,
+                predicate->qualify_column_references,
+                node
+            );
+        } else if (node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
+            rc = append_select_between_predicate_term_sql(string, next_parameter);
+        } else if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
+            rc = append_select_in_literal_predicate_term_sql(string, node, next_parameter);
         } else {
             rc = MYLITE_ERROR;
         }
@@ -116248,6 +116770,30 @@ static int append_select_in_predicate_term_sql(
 ) {
     int rc = MYLITE_OK;
 
+    if (node->in_subquery != NULL) {
+        rc = dynamic_string_append(string, " IN (");
+        if (rc == MYLITE_OK) {
+            rc = append_select_in_subquery_sql(string, node->in_subquery, next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
+
+    return append_select_in_literal_predicate_term_sql(string, node, next_parameter);
+}
+
+static int append_select_in_literal_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node->in_subquery != NULL) {
+        return MYLITE_ERROR;
+    }
     if (node->value_count == 0U) {
         return MYLITE_ERROR;
     }
@@ -116267,6 +116813,54 @@ static int append_select_in_predicate_term_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_select_in_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_in_subquery *subquery,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_value_sql_for_source(string, &subquery->column, 1U, true);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_in_subquery_from_sql(string, subquery);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql_without_exists(
+            string,
+            &subquery->predicate,
+            next_parameter
+        );
+    }
+
+    return rc;
+}
+
+static int append_in_subquery_from_sql(
+    struct dynamic_string *string,
+    const struct planned_in_subquery *subquery
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, subquery->source.table.physical_name);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 1U);
     }
 
     return rc;
@@ -119947,7 +120541,11 @@ static int bind_select_predicate_parameters_without_exists(
             rc = MYLITE_ERROR;
             continue;
         }
-        rc = bind_select_predicate_node_parameters(statement, node, parameter_index);
+        rc = bind_select_predicate_node_parameters_without_subqueries(
+            statement,
+            node,
+            parameter_index
+        );
     }
 
     free(items);
@@ -119959,11 +120557,20 @@ static int bind_select_predicate_node_parameters(
     const struct planned_select_predicate_node *node,
     int *parameter_index
 ) {
-    int rc = MYLITE_OK;
-
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_predicate_parameters(statement, node, parameter_index);
     }
+
+    return bind_select_non_in_predicate_node_parameters(statement, node, parameter_index);
+}
+
+static int bind_select_non_in_predicate_node_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL) {
@@ -120002,12 +120609,44 @@ static int bind_select_predicate_node_parameters(
     return rc;
 }
 
+static int bind_select_predicate_node_parameters_without_subqueries(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
+        return bind_select_in_literal_predicate_parameters(statement, node, parameter_index);
+    }
+
+    return bind_select_non_in_predicate_node_parameters(statement, node, parameter_index);
+}
+
 static int bind_select_in_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
     int *parameter_index
 ) {
+    if (node->in_subquery != NULL) {
+        return bind_select_in_subquery_predicate_parameters(
+            statement,
+            node->in_subquery,
+            parameter_index
+        );
+    }
+
+    return bind_select_in_literal_predicate_parameters(statement, node, parameter_index);
+}
+
+static int bind_select_in_literal_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
     int rc = MYLITE_OK;
+
+    if (node->in_subquery != NULL) {
+        return MYLITE_ERROR;
+    }
 
     for (size_t value_index = 0U; rc == MYLITE_OK && value_index < node->value_count;
          ++value_index) {
@@ -120018,6 +120657,21 @@ static int bind_select_in_predicate_parameters(
     }
 
     return rc;
+}
+
+static int bind_select_in_subquery_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_in_subquery *subquery,
+    int *parameter_index
+) {
+    if (subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+    return bind_select_predicate_parameters_without_exists(
+        statement,
+        &subquery->predicate,
+        parameter_index
+    );
 }
 
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {
@@ -120890,6 +121544,15 @@ static void set_no_tables_used_error(struct mylite_db *database) {
         mysql_error_no_tables_used,
         "HY000",
         "No tables used"
+    );
+}
+
+static void set_in_subquery_limit_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_supported_yet,
+        "42000",
+        "This version of MySQL doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'"
     );
 }
 

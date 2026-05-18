@@ -1541,11 +1541,12 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM ordered_numbers WHERE id IN (SELECT id FROM ordered_numbers) ORDER BY id",
+        "SELECT id FROM ordered_numbers WHERE id IN "
+        "(SELECT id FROM ordered_numbers ORDER BY id) ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "IN subqueries support only WHERE",
         }
     );
     failures += expect_query_values(

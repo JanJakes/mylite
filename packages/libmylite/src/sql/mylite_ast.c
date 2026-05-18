@@ -1462,6 +1462,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "found_rows_argument_count_error";
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
         return "last_insert_id_function";
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+        return "last_insert_id_set_function";
+    case MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR:
+        return "last_insert_id_argument_count_error";
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
         return "min_aggregate_function";
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:

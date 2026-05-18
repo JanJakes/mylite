@@ -19,7 +19,9 @@ enum {
     path_suffix_capacity = 16,
     connection_id_text_capacity = 32,
     mixed_scalar_column_count = 9,
+    ordered_expression_column_count = 9,
     mysql_error_parse = 1064,
+    mysql_error_native_function_parameter_count = 1582,
 };
 
 struct expected_sql_error {
@@ -35,7 +37,13 @@ struct expected_scalar_result {
     const char *context;
 };
 
+struct expected_last_insert_id {
+    const char *value;
+    const char *context;
+};
+
 static int test_last_insert_id_values_and_statement_interactions(void);
+static int test_last_insert_id_expression_values(void);
 static int test_last_insert_id_memory_handle(void);
 static int test_last_insert_id_reopen_and_independent_handles(void);
 static int test_last_insert_id_unsupported_forms(void);
@@ -50,6 +58,10 @@ static int expect_non_query_result(
     const mylite_result *result,
     int64_t affected_rows,
     const char *context
+);
+static int expect_last_insert_id_value(
+    mylite_db *database,
+    struct expected_last_insert_id expected
 );
 static int expect_last_insert_id(mylite_db *database, const char *context);
 static int expect_single_column_rows(
@@ -81,6 +93,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_last_insert_id_values_and_statement_interactions();
+    failures += test_last_insert_id_expression_values();
     failures += test_last_insert_id_memory_handle();
     failures += test_last_insert_id_reopen_and_independent_handles();
     failures += test_last_insert_id_unsupported_forms();
@@ -315,6 +328,253 @@ static int test_last_insert_id_values_and_statement_interactions(void) {
     return failures;
 }
 
+static int test_last_insert_id_expression_values(void) {
+    static const char *const ordered_columns[] = {
+        "LAST_INSERT_ID(7)",
+        "LAST_INSERT_ID()",
+        "LAST_INSERT_ID(NULL)",
+        "LAST_INSERT_ID()",
+        "LAST_INSERT_ID(-1)",
+        "LAST_INSERT_ID()",
+        "LAST_INSERT_ID(TRUE)",
+        "LAST_INSERT_ID(FALSE)",
+        "LAST_INSERT_ID()",
+    };
+    static const char *const ordered_values[] = {
+        "7",
+        "7",
+        NULL,
+        "0",
+        "18446744073709551615",
+        "18446744073709551615",
+        "1",
+        "0",
+        "0",
+    };
+    static const char *const state_columns[] = {
+        "LAST_INSERT_ID()",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const state_after_select_values[] = {"0", "0", "-1"};
+    static const char *const unsigned_boundary_columns[] = {
+        "LAST_INSERT_ID(18446744073709551615)",
+        "LAST_INSERT_ID()",
+    };
+    static const char *const unsigned_boundary_values[] = {
+        "18446744073709551615",
+        "18446744073709551615",
+    };
+    static const char *const signed_boundary_columns[] = {
+        "LAST_INSERT_ID(-9223372036854775808)",
+        "LAST_INSERT_ID()",
+    };
+    static const char *const signed_boundary_values[] = {
+        "9223372036854775808",
+        "9223372036854775808",
+    };
+    static const char *const from_dual_columns[] = {"manual"};
+    static const char *const from_dual_values[] = {"1"};
+    static const char *const after_do_columns[] = {
+        "ROW_COUNT()",
+        "LAST_INSERT_ID()",
+        "@@warning_count",
+    };
+    static const char *const after_do_values[] = {"0", "5", "0"};
+    static const char *const last_id_alias_columns[] = {"last_id"};
+    static const char *const explicit_insert_values[] = {"99"};
+    static const char *const generated_insert_values[] = {"11"};
+    static const char *const explicit_after_generated_values[] = {"11"};
+    static const char *const explicit_insert_rows[] = {"10"};
+    static const char *const generated_insert_rows[] = {"10", "11", "12"};
+    static const char *const explicit_after_generated_rows[] = {"10", "11", "12", "20"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "expression") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open expression database");
+
+    failures += execute_ok(
+        database,
+        "SELECT LAST_INSERT_ID(7), LAST_INSERT_ID(), LAST_INSERT_ID(NULL), LAST_INSERT_ID(), "
+        "LAST_INSERT_ID(-1), LAST_INSERT_ID(), LAST_INSERT_ID(TRUE), LAST_INSERT_ID(FALSE), "
+        "LAST_INSERT_ID()",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = ordered_columns,
+            .values = ordered_values,
+            .count = ordered_expression_column_count,
+            .context = "ordered last insert id expression evaluation",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT LAST_INSERT_ID(), @@warning_count, ROW_COUNT()", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = state_columns,
+            .values = state_after_select_values,
+            .count = 3U,
+            .context = "last insert id expression state after select",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT LAST_INSERT_ID(18446744073709551615), LAST_INSERT_ID()",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = unsigned_boundary_columns,
+            .values = unsigned_boundary_values,
+            .count = 2U,
+            .context = "last insert id unsigned boundary",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT LAST_INSERT_ID(-9223372036854775808), LAST_INSERT_ID()",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = signed_boundary_columns,
+            .values = signed_boundary_values,
+            .count = 2U,
+            .context = "last insert id signed boundary",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID(+1) AS manual FROM DUAL", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = from_dual_columns,
+            .values = from_dual_values,
+            .count = 1U,
+            .context = "last insert id expression from dual alias",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "DO LAST_INSERT_ID(42), LAST_INSERT_ID(NULL), LAST_INSERT_ID(5)",
+        &result
+    );
+    failures += expect_non_query_result(result, 0, "last insert id do result");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = after_do_columns,
+            .values = after_do_values,
+            .count = 3U,
+            .context = "last insert id do state",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ai (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += execute_statement_ok(database, "SELECT LAST_INSERT_ID(99)");
+    failures += execute_statement_ok(database, "INSERT INTO ai (id, v) VALUES (10, 10)");
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = last_id_alias_columns,
+            .values = explicit_insert_values,
+            .count = 1U,
+            .context = "explicit insert preserves manual last insert id",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id FROM ai ORDER BY id", &result);
+    failures +=
+        expect_single_column_rows(result, explicit_insert_rows, 1U, "explicit insert row id");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "INSERT INTO ai (v) VALUES (20), (30)");
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = last_id_alias_columns,
+            .values = generated_insert_values,
+            .count = 1U,
+            .context = "generated insert overwrites manual last insert id",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id FROM ai ORDER BY id", &result);
+    failures +=
+        expect_single_column_rows(result, generated_insert_rows, 3U, "generated insert row ids");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "INSERT INTO ai (id, v) VALUES (20, 40)");
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS last_id", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = last_id_alias_columns,
+            .values = explicit_after_generated_values,
+            .count = 1U,
+            .context = "explicit insert preserves generated last insert id",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id FROM ai ORDER BY id", &result);
+    failures += expect_single_column_rows(
+        result,
+        explicit_after_generated_rows,
+        4U,
+        "explicit after generated row ids"
+    );
+    mylite_result_free(result);
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_last_insert_id_memory_handle(void) {
     mylite_db *database = NULL;
     const struct mylite_session_state *session = NULL;
@@ -352,6 +612,14 @@ static int test_last_insert_id_reopen_and_independent_handles(void) {
     failures += execute_statement_ok(first, "CREATE TABLE t (id INT)");
     failures += execute_statement_ok(first, "INSERT INTO t VALUES (1), (2)");
     failures += expect_last_insert_id(first, "file insert leaves last insert id");
+    failures += execute_statement_ok(first, "SELECT LAST_INSERT_ID(123)");
+    failures += expect_last_insert_id_value(
+        first,
+        (struct expected_last_insert_id){
+            .value = "123",
+            .context = "manual value before reopen",
+        }
+    );
     mylite_close(first);
     first = NULL;
 
@@ -380,7 +648,7 @@ static int test_last_insert_id_reopen_and_independent_handles(void) {
 
 static int test_last_insert_id_unsupported_forms(void) {
     static const char *const last_insert_id_alias_columns[] = {"id"};
-    static const char *const last_insert_id_alias_values[] = {"0"};
+    static const char *const last_insert_id_alias_values[] = {"33"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -392,39 +660,150 @@ static int test_last_insert_id_unsupported_forms(void) {
     remove_related_files(path);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open unsupported database");
+    failures += execute_statement_ok(database, "SELECT LAST_INSERT_ID(33)");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "manual value before errors",
+        }
+    );
 
     failures += execute_error(
         database,
-        "SELECT LAST_INSERT_ID(1)",
+        "SELECT LAST_INSERT_ID('abc')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "supports only integer",
         }
     );
-    failures += expect_last_insert_id(database, "one-argument error leaves last insert id");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "string error leaves last insert id",
+        }
+    );
 
     failures += execute_error(
         database,
-        "SELECT LAST_INSERT_ID(NULL)",
+        "SELECT LAST_INSERT_ID(1 + 2)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "supports only integer",
         }
     );
-    failures += expect_last_insert_id(database, "null-argument error leaves last insert id");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "arithmetic error leaves last insert id",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT LAST_INSERT_ID(44), LAST_INSERT_ID('abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only integer",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "mixed select error leaves last insert id",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "DO LAST_INSERT_ID(44), LAST_INSERT_ID(1 + 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "supports only integer",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "mixed do error leaves last insert id",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT LAST_INSERT_ID(18446744073709551616)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "out of range",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "positive out-of-range error leaves last insert id",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT LAST_INSERT_ID(-9223372036854775809)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "negative integer literal is out of range",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "negative out-of-range error leaves last insert id",
+        }
+    );
 
     failures += execute_error(
         database,
         "SELECT LAST_INSERT_ID(1, 2)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_native_function_parameter_count,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "Incorrect parameter count",
         }
     );
-    failures += expect_last_insert_id(database, "multiple-argument error leaves last insert id");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "multiple-argument error leaves last insert id",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "DO LAST_INSERT_ID(1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "do arity error leaves last insert id",
+        }
+    );
 
     failures += execute_error(
         database,
@@ -435,7 +814,13 @@ static int test_last_insert_id_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
-    failures += expect_last_insert_id(database, "bare name error leaves last insert id");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "bare name error leaves last insert id",
+        }
+    );
 
     failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS id", &result);
     failures += expect_scalar_result(
@@ -471,7 +856,29 @@ static int test_last_insert_id_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
-    failures += expect_last_insert_id(database, "table-backed error leaves last insert id");
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "zero-arg table-backed error leaves last insert id",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT LAST_INSERT_ID(id) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor table columns",
+        }
+    );
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "33",
+            .context = "one-arg table-backed error leaves last insert id",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -569,9 +976,12 @@ static int expect_non_query_result(
     return failures;
 }
 
-static int expect_last_insert_id(mylite_db *database, const char *context) {
+static int expect_last_insert_id_value(
+    mylite_db *database,
+    struct expected_last_insert_id expected
+) {
     static const char *const columns[] = {"LAST_INSERT_ID()"};
-    static const char *const values[] = {"0"};
+    const char *values[] = {expected.value};
     mylite_result *result = NULL;
     int failures = execute_ok(database, "SELECT LAST_INSERT_ID()", &result);
 
@@ -581,12 +991,22 @@ static int expect_last_insert_id(mylite_db *database, const char *context) {
             .columns = columns,
             .values = values,
             .count = 1U,
-            .context = context,
+            .context = expected.context,
         }
     );
     mylite_result_free(result);
 
     return failures;
+}
+
+static int expect_last_insert_id(mylite_db *database, const char *context) {
+    return expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "0",
+            .context = context,
+        }
+    );
 }
 
 static int expect_single_column_rows(

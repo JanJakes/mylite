@@ -6809,11 +6809,38 @@ static int test_last_insert_id_function(void) {
     failures += expect_span_text(first_expression, "LAST_INSERT_ID", "bare last insert id span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT LAST_INSERT_ID(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("SELECT LAST_INSERT_ID(1), LAST_INSERT_ID(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION,
+        "last insert id set function"
+    );
+    failures += expect_span_text(first_expression, "LAST_INSERT_ID(1)", "last insert id set span");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL, "last insert id arg");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION,
+        "last insert id null set function"
+    );
+    failures +=
+        expect_span_text(second_expression, "LAST_INSERT_ID(NULL)", "last insert id null set span");
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT LAST_INSERT_ID(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT LAST_INSERT_ID(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+
+    failures += parse_sql("SELECT LAST_INSERT_ID(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR,
+        "last insert id argument count error"
+    );
+    failures +=
+        expect_span_text(first_expression, "LAST_INSERT_ID(1, 2)", "last insert id arity span");
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT LAST_INSERT_ID() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

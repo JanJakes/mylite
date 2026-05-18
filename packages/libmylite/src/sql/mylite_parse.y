@@ -4134,6 +4134,15 @@ expression(A) ::= LAST_INSERT_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION, R);
 }
+expression(A) ::= LAST_INSERT_ID(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION, B, R);
+}
+expression(A) ::= LAST_INSERT_ID(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR, C, R);
+}
 expression(A) ::= PLUS(T) expression(B). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);

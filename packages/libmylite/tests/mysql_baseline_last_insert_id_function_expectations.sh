@@ -3,6 +3,8 @@
 set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_BIN="${MYLITE_MYSQL_BIN:-mysql}"
+MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
 DATABASE="mylite_last_insert_id_function_expectations_$$"
 
 fail() {
@@ -13,15 +15,29 @@ fail() {
 run_mysql() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot --batch --raw --skip-column-names "$@"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        printf '%s\n' "$sql" \
+            | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" -uroot \
+                --batch --raw --skip-column-names --default-character-set=utf8mb4 "$@"
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
+                --batch --raw --skip-column-names --default-character-set=utf8mb4 "$@"
+    fi
 }
 
 run_mysql_with_headers() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot --batch --raw "$@"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        printf '%s\n' "$sql" \
+            | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" -uroot \
+                --batch --raw --default-character-set=utf8mb4 "$@"
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
+                --batch --raw --default-character-set=utf8mb4 "$@"
+    fi
 }
 
 expect_output() {
@@ -122,12 +138,60 @@ expect_output \
 
 expect_output \
     "mysql one-argument form sets following last insert id" \
-    "7	7
+    "0	7	7	-1
+7	7
 NULL	0
-18446744073709551615	18446744073709551615" \
-    "SELECT LAST_INSERT_ID(7), LAST_INSERT_ID(); "\
+18446744073709551615	18446744073709551615
+0	0
+1	0	0" \
+    "SELECT LAST_INSERT_ID(), LAST_INSERT_ID(7), LAST_INSERT_ID(), ROW_COUNT(); "\
+"SELECT LAST_INSERT_ID(7), LAST_INSERT_ID(); "\
 "SELECT LAST_INSERT_ID(NULL), LAST_INSERT_ID(); "\
-"SELECT LAST_INSERT_ID(-1), LAST_INSERT_ID();"
+"SELECT LAST_INSERT_ID(-1), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(0), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(TRUE), LAST_INSERT_ID(FALSE), LAST_INSERT_ID();"
+
+expect_output \
+    "mysql one-argument boundaries" \
+    "9223372036854775807	9223372036854775807
+9223372036854775808	9223372036854775808
+18446744073709551615	18446744073709551615
+9223372036854775808	9223372036854775808
+1	1" \
+    "SELECT LAST_INSERT_ID(9223372036854775807), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(9223372036854775808), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(18446744073709551615), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(-9223372036854775808), LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(+1), LAST_INSERT_ID();"
+
+expect_output \
+    "do last insert id expression sets session value" \
+    "0	42	0" \
+    "DO LAST_INSERT_ID(42); SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;"
+
+expect_output \
+    "mysql table backed expression is deferred in mylite" \
+    "1	1
+2	2
+2" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"CREATE TABLE table_backed (id INT); "\
+"INSERT INTO table_backed VALUES (1),(2); "\
+"SELECT LAST_INSERT_ID(id), LAST_INSERT_ID() FROM table_backed ORDER BY id; "\
+"SELECT LAST_INSERT_ID(); "\
+"DROP DATABASE ${DATABASE};"
+
+expect_output \
+    "mysql warning conversions are deferred in mylite" \
+    "0	0
+1
+9223372036854775807	9223372036854775807
+1" \
+    "SELECT LAST_INSERT_ID('abc'), LAST_INSERT_ID(); "\
+"SELECT @@warning_count; "\
+"SELECT LAST_INSERT_ID(18446744073709551616), LAST_INSERT_ID(); "\
+"SELECT @@warning_count;"
 
 expect_error \
     "mysql rejects multiple arguments" \

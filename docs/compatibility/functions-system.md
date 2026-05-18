@@ -18,7 +18,7 @@ miscellaneous system helpers.
 | `INET_NTOA()` | ❌ | Return IP address from a numeric value |
 | `IS_FREE_LOCK()` | ❌ | Whether the named lock is free |
 | `IS_USED_LOCK()` | ❌ | Named-lock owner lookup |
-| `LAST_INSERT_ID()` | 🟡 | Limited zero-argument one-row scalar `SELECT LAST_INSERT_ID() [AS alias]` with optional `FROM DUAL` plus limited `DO` expression execution; returns the connection-local first generated id from the most recent successful generated auto-increment insert in the current subset, or `0` before such an insert; no `LAST_INSERT_ID(expr)`, protocol insert-id metadata, C API state, table-backed evaluation, mixed-mode allocation parity, or stored-program behavior |
+| `LAST_INSERT_ID()` | 🟡 | Limited one-row scalar `SELECT LAST_INSERT_ID() [AS alias]` and `SELECT LAST_INSERT_ID(expr) [AS alias]` with optional `FROM DUAL`, plus limited `DO` expression execution; zero-argument reads return the connection-local first generated id from the current auto-increment subset, while `expr` may be an integer, boolean, or `NULL` literal that stores unsigned 64-bit session state; no table-backed evaluation, use inside DML expressions, warning-producing string/decimal/float conversion, protocol insert-id metadata, C API state, mixed-mode allocation parity, or stored-program behavior |
 | `LOAD_FILE()` | ❌ | Load the named file |
 | `NAME_CONST()` | ❌ | Cause the column to have the given name |
 | `RELEASE_ALL_LOCKS()` | ❌ | Release all current named locks |

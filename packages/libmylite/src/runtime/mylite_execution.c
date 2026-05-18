@@ -12426,6 +12426,24 @@ static int normalize_decimal_integer_literal(
     char *buffer,
     size_t buffer_size
 );
+static int last_insert_id_set_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int last_insert_id_set_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool *out_is_null,
+    uint64_t *out_value
+);
+static int signed_last_insert_id_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint64_t *out_value
+);
+static void set_last_insert_id_argument_unsupported_error(struct mylite_db *database);
 static int system_variable_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -12720,6 +12738,9 @@ static int if_validation_stack_push(
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_last_insert_id_set_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_subquery_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_abs_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -20474,6 +20495,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
@@ -26001,6 +26024,7 @@ static int execute_do_statement(
     mylite_result *result = NULL;
     size_t expression_count = mylite_sql_ast_node_child_count(expression_list);
     size_t expression_index = 0U;
+    uint64_t previous_last_insert_id = database->session.last_insert_id;
     int rc = MYLITE_OK;
 
     argument_count_error_function = do_statement_argument_count_error_function(statement);
@@ -26063,6 +26087,7 @@ static int execute_do_statement(
     }
     session_scalar_cell_array_deinit(cells, expression_index);
     if (rc != MYLITE_OK) {
+        database->session.last_insert_id = previous_last_insert_id;
         mylite_result_free(result);
         return rc;
     }
@@ -35024,6 +35049,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
     case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
@@ -62052,6 +62079,7 @@ static int execute_scalar_projection_select_statement(
     mylite_result *result = NULL;
     size_t column_count = mylite_sql_ast_node_child_count(select_list);
     size_t evaluated_column_count = 0U;
+    uint64_t previous_last_insert_id = database->session.last_insert_id;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -62108,6 +62136,7 @@ static int execute_scalar_projection_select_statement(
     free((void *)values);
     session_scalar_cell_array_deinit(cells, evaluated_column_count);
     if (rc != MYLITE_OK) {
+        database->session.last_insert_id = previous_last_insert_id;
         mylite_result_free(result);
         return rc;
     }
@@ -62715,6 +62744,8 @@ static const char *argument_count_error_node_function_name(
         return "CURRENT_ROLE";
     case MYLITE_SQL_AST_FOUND_ROWS_ARGUMENT_COUNT_ERROR:
         return "FOUND_ROWS";
+    case MYLITE_SQL_AST_LAST_INSERT_ID_ARGUMENT_COUNT_ERROR:
+        return "LAST_INSERT_ID";
     case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
         return "IFNULL";
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
@@ -62977,6 +63008,8 @@ static int session_scalar_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+        return last_insert_id_set_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LITERAL:
         return literal_projection_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
@@ -63135,6 +63168,149 @@ static int session_scalar_value(
     default:
         return MYLITE_OK;
     }
+}
+
+static int last_insert_id_set_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t value = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_last_insert_id_argument_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = last_insert_id_set_argument_value(database, child_at(expression, 0U), &is_null, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        database->session.last_insert_id = 0U;
+        return MYLITE_OK;
+    }
+
+    rc = format_session_scalar_uint64_value(database, value, out_cell);
+    if (rc == MYLITE_OK) {
+        database->session.last_insert_id = value;
+    }
+    return rc;
+}
+
+static int last_insert_id_set_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool *out_is_null,
+    uint64_t *out_value
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_is_null == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_null = false;
+    *out_value = 0U;
+
+    argument = unwrap_parenthesized_expression(argument);
+    if (argument == NULL) {
+        set_last_insert_id_argument_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if ((operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) ||
+            literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_last_insert_id_argument_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        return signed_last_insert_id_argument_value(
+            database,
+            literal,
+            operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+            out_value
+        );
+    }
+    if (argument->kind != MYLITE_SQL_AST_LITERAL) {
+        set_last_insert_id_argument_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(argument);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_value = 0U;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_last_insert_id_argument_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    if (parse_unsigned_integer_literal(&argument->span, out_value) != MYLITE_OK) {
+        set_unsupported_error(database, "LAST_INSERT_ID() integer literal is out of range");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int signed_last_insert_id_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    uint64_t *out_value
+) {
+    static const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+    uint64_t magnitude = 0U;
+
+    if (literal == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        set_unsupported_error(database, "LAST_INSERT_ID() integer literal is out of range");
+        return MYLITE_ERROR;
+    }
+    if (!is_negative) {
+        *out_value = magnitude;
+        return MYLITE_OK;
+    }
+    if (magnitude > int64_negative_abs_max) {
+        set_unsupported_error(
+            database,
+            "LAST_INSERT_ID() negative integer literal is out of range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_value = 0U - magnitude;
+    return MYLITE_OK;
+}
+
+static void set_last_insert_id_argument_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(
+        database,
+        "LAST_INSERT_ID(expr) supports only integer, boolean, and NULL literal arguments"
+    );
 }
 
 static int rand_function_value(
@@ -78762,6 +78938,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_session_scalar_expression(expression)) {
         return true;
     }
+    if (is_last_insert_id_set_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_function_projection_expression(expression)) {
         return true;
     }
@@ -78784,6 +78963,20 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
         return true;
     }
     return is_scalar_value_projection_expression(expression);
+}
+
+static bool is_last_insert_id_set_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return child_at(expression, 0U) != NULL;
 }
 
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression) {

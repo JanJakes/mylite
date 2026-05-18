@@ -2,15 +2,20 @@
 
 ## Status
 
-This feature specifies the narrow scalar system-function slice for
-`LAST_INSERT_ID()`. It builds on `mylite_execute()`, statement context, parser
-scaffolding, the scalar session-select execution path, baseline row-count
-tracking, and current descriptor-driven table DML.
+This feature specified the original narrow scalar system-function slice for
+zero-argument `LAST_INSERT_ID()`. The follow-up
+`docs/specs/baseline-last-insert-id-expression/specs.md` extends that baseline
+with a limited literal `LAST_INSERT_ID(expr)` form. Both build on
+`mylite_execute()`, statement context, parser scaffolding, the scalar
+session-select execution path, baseline row-count tracking, and current
+descriptor-driven table DML.
 
-MyLite does not yet implement `AUTO_INCREMENT` columns, generated insert ids,
-the C client API, or general expression evaluation. For this baseline slice,
-`LAST_INSERT_ID()` therefore exposes the MySQL-compatible no-generated-id
-connection value `0`.
+When this original slice was specified, MyLite did not yet implement
+`AUTO_INCREMENT` columns or generated insert ids, so `LAST_INSERT_ID()`
+exposed only the MySQL-compatible no-generated-id connection value `0`.
+Follow-up auto-increment work now writes generated ids to the same
+connection-local state; the C client API and general expression evaluation
+remain outside this original slice.
 
 ## Sources
 

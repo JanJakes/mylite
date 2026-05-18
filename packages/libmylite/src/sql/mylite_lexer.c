@@ -796,6 +796,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"REFERENCE", 0U},
         {"REFERENCES", MYLITE_SQL_KEYWORD_RESERVED},
         {"REGEXP", MYLITE_SQL_KEYWORD_RESERVED},
+        {"REGEXP_LIKE", 0U},
         {"REGISTRATION", 0U},
         {"RELAY", 0U},
         {"RELAYLOG", 0U},

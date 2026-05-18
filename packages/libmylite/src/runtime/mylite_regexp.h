@@ -20,6 +20,7 @@ enum mylite_regexp_match_status {
     MYLITE_REGEXP_MATCH_OK = 0,
     MYLITE_REGEXP_MATCH_NOMEM = 1,
     MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE = 2,
+    MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE = 3,
 };
 
 struct mylite_regexp_program;

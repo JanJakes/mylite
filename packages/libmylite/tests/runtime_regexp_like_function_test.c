@@ -15,12 +15,14 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
-    mysql_error_parse = 1064,
+    mysql_error_native_function_argument_count = 1582,
     mysql_error_unknown_column = 1054,
+    mysql_error_parse = 1064,
     mysql_error_regular_expression = 3696,
     mysql_error_regular_expression_character_range = 3697,
-    string_row_count = 9,
-    regexp_remaining_row_count = 7,
+    string_row_count = 6,
+    non_null_string_row_count = 5,
+    remaining_row_count = 5,
 };
 
 struct expected_sql_error {
@@ -37,11 +39,9 @@ struct expected_query {
     const char *context;
 };
 
-static int test_regexp_predicate_queries(void);
-static int test_regexp_predicate_dml_persistence(void);
-static int test_regexp_pattern_operators(void);
-static int test_regexp_predicate_diagnostics(void);
-static int test_independent_regexp_handles(void);
+static int test_scalar_regexp_like_values(void);
+static int test_table_backed_regexp_like_predicates_and_dml(void);
+static int test_regexp_like_diagnostics(void);
 static int populate_strings(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -81,117 +81,82 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_regexp_predicate_queries();
-    failures += test_regexp_predicate_dml_persistence();
-    failures += test_regexp_pattern_operators();
-    failures += test_regexp_predicate_diagnostics();
-    failures += test_independent_regexp_handles();
+    failures += test_scalar_regexp_like_values();
+    failures += test_table_backed_regexp_like_predicates_and_dml();
+    failures += test_regexp_like_diagnostics();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_regexp_predicate_queries(void) {
-    static const char *const prefix_ids[] = {"1", "2", "3", "9"};
-    static const char *const rss_ids[] = {"4", "6"};
-    static const char *const char_exact_ids[] = {"1", "2", "9"};
-    static const char *const class_ids[] = {"1", "2", "3"};
-    static const char *const negated_class_ids[] = {"4"};
-    static const char *const not_prefix_ids[] = {"4", "5", "6", "8"};
-    static const char *const aggregate_count[] = {"4"};
+static int test_scalar_regexp_like_values(void) {
+    static const char *const values[] = {
+        "1",
+        "0",
+        "1",
+        "1",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        "1",
+        "1",
+        NULL,
+        "0",
+        "0",
+    };
+    static const char *const row_status_columns[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_after_select[] = {"-1", "0"};
+    static const char *const values_after_do[] = {"0", "0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
-    failures += open_app_database(&database, "queries", path, sizeof(path));
-    failures += populate_strings(database);
+    failures += open_app_database(&database, "scalar", path, sizeof(path));
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^ab' ORDER BY id",
-            .values = prefix_ids,
-            .column_count = 1U,
-            .row_count = 4U,
-            .context = "REGEXP prefix folds ASCII case",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v RLIKE '^AB' ORDER BY id",
-            .values = prefix_ids,
-            .column_count = 1U,
-            .row_count = 4U,
-            .context = "RLIKE synonym folds ASCII case",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^rss_.+$' ORDER BY id",
-            .values = rss_ids,
-            .column_count = 1U,
-            .row_count = 2U,
-            .context = "WordPress rss REGEXP shape",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE c REGEXP '^abc$' ORDER BY id",
-            .values = char_exact_ids,
-            .column_count = 1U,
-            .row_count = 3U,
-            .context = "CHAR REGEXP observes canonical char storage",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^[a-d]+$' ORDER BY id",
-            .values = class_ids,
-            .column_count = 1U,
-            .row_count = 3U,
-            .context = "REGEXP bracket class range",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^rss_[^0-9]+$' ORDER BY id",
-            .values = negated_class_ids,
-            .column_count = 1U,
+            .sql = "SELECT REGEXP_LIKE('abc', 'ABC'), REGEXP_LIKE('abc', 'ABC', 'c'), "
+                   "REGEXP_LIKE('abc', 'ABC', 'i'), REGEXP_LIKE('abc', 'ABC', 'ci'), "
+                   "REGEXP_LIKE('abc', 'ABC', 'ic'), REGEXP_LIKE(NULL, 'a'), "
+                   "REGEXP_LIKE('a', NULL), REGEXP_LIKE('a', 'a', NULL), "
+                   "REGEXP_LIKE(123, '23'), REGEXP_LIKE(TRUE, '^1$'), "
+                   "REGEXP_LIKE('a', '[', NULL), REGEXP_LIKE('a\\nb', 'a.b'), "
+                   "REGEXP_LIKE('a\\nb', '^b')",
+            .values = values,
+            .column_count = sizeof(values) / sizeof(values[0]),
             .row_count = 1U,
-            .context = "REGEXP negated bracket class",
+            .context = "scalar REGEXP_LIKE values",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v NOT REGEXP '^ab' ORDER BY id",
-            .values = not_prefix_ids,
-            .column_count = 1U,
-            .row_count = 4U,
-            .context = "NOT REGEXP excludes NULL rows",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE NOT (v RLIKE '^ab') ORDER BY id",
-            .values = not_prefix_ids,
-            .column_count = 1U,
-            .row_count = 4U,
-            .context = "wrapped NOT RLIKE excludes NULL rows",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT COUNT(*) FROM strings WHERE v REGEXP '^ab'",
-            .values = aggregate_count,
-            .column_count = 1U,
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = values_after_select,
+            .column_count = sizeof(row_status_columns) / sizeof(row_status_columns[0]),
             .row_count = 1U,
-            .context = "aggregate source filter REGEXP predicate",
+            .context = "row count after REGEXP_LIKE select",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "DO REGEXP_LIKE('abc', 'abc'), REGEXP_LIKE('abc','ABC','c')", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "regexp_like do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "regexp_like do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "regexp_like do affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "regexp_like do warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = values_after_do,
+            .column_count = sizeof(row_status_columns) / sizeof(row_status_columns[0]),
+            .row_count = 1U,
+            .context = "row count after REGEXP_LIKE do",
         }
     );
 
@@ -200,42 +165,63 @@ static int test_regexp_predicate_queries(void) {
     return failures;
 }
 
-static int test_regexp_predicate_dml_persistence(void) {
+static int test_table_backed_regexp_like_predicates_and_dml(void) {
+    static const char *const projection_values[] = {
+        "1",
+        "0",
+        "2",
+        "0",
+        "3",
+        "1",
+        "4",
+        "0",
+        "5",
+        "0",
+        "6",
+        NULL,
+    };
+    static const char *const prefix_ids[] = {"1", "2"};
+    static const char *const not_prefix_ids[] = {"3", "4", "5"};
+    static const char *const case_sensitive_ids[] = {"2"};
+    static const char *const rss_ids[] = {"3"};
+    static const char *const no_match_zero_ids[] = {"1", "2", "3", "4", "5"};
+    static const char *const null_id[] = {"6"};
     static const char *const after_update_rows[] = {
         "1",
         "abc",
+        "seed",
         "2",
         "ABC",
+        "seed",
         "3",
-        "abcd",
+        "rss_a",
+        "hit",
         "4",
-        "hit",
-        "5",
         "rss_",
+        "seed",
+        "5",
+        "1+2",
+        "seed",
         "6",
-        "hit",
-        "7",
         NULL,
-        "8",
-        "xy",
-        "9",
-        "abc  ",
+        "seed",
     };
     static const char *const after_delete_rows[] = {
         "1",
         "abc",
+        "seed",
         "2",
         "ABC",
+        "seed",
         "3",
-        "abcd",
-        "5",
+        "rss_a",
+        "hit",
+        "4",
         "rss_",
-        "7",
+        "seed",
+        "6",
         NULL,
-        "8",
-        "xy",
-        "9",
-        "abc  ",
+        "seed",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -243,29 +229,102 @@ static int test_regexp_predicate_dml_persistence(void) {
     mylite_db *database = NULL;
     int failures = 0;
 
-    failures += open_app_database(&database, "dml", path, sizeof(path));
+    failures += open_app_database(&database, "table", path, sizeof(path));
     failures += populate_strings(database);
-    failures +=
-        expect_dml_ok(database, "UPDATE strings SET v = 'hit' WHERE v REGEXP '^rss_.+$'", 2);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v FROM strings ORDER BY id",
-            .values = after_update_rows,
+            .sql = "SELECT id, REGEXP_LIKE(v, '^rss_.+$') FROM strings ORDER BY id",
+            .values = projection_values,
             .column_count = 2U,
             .row_count = string_row_count,
-            .context = "updated rows after REGEXP predicate",
+            .context = "REGEXP_LIKE projection over rows",
         }
     );
-    failures += expect_dml_ok(database, "DELETE FROM strings WHERE v RLIKE '^hit$'", 2);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v FROM strings ORDER BY id",
+            .sql = "SELECT id FROM strings WHERE REGEXP_LIKE(v, '^ab') ORDER BY id",
+            .values = prefix_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "REGEXP_LIKE truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE NOT REGEXP_LIKE(v, '^ab') ORDER BY id",
+            .values = not_prefix_ids,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "NOT REGEXP_LIKE excludes NULL rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE REGEXP_LIKE(v, '^AB', 'c') ORDER BY id",
+            .values = case_sensitive_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "REGEXP_LIKE c flag is case-sensitive",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE REGEXP_LIKE(v, '^rss_.+$') <=> TRUE ORDER BY id",
+            .values = rss_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "REGEXP_LIKE null-safe comparison predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE REGEXP_LIKE(v, '^no') = 0 ORDER BY id",
+            .values = no_match_zero_ids,
+            .column_count = 1U,
+            .row_count = non_null_string_row_count,
+            .context = "REGEXP_LIKE false comparison predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE REGEXP_LIKE(v, '^no') IS NULL",
+            .values = null_id,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "REGEXP_LIKE IS NULL predicate",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE strings SET note = 'hit' WHERE REGEXP_LIKE(v, '^rss_.+$')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, note FROM strings ORDER BY id",
+            .values = after_update_rows,
+            .column_count = 3U,
+            .row_count = string_row_count,
+            .context = "updated rows after REGEXP_LIKE predicate",
+        }
+    );
+    failures += expect_dml_ok(database, "DELETE FROM strings WHERE REGEXP_LIKE(v, '1\\\\+2')", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, note FROM strings ORDER BY id",
             .values = after_delete_rows,
-            .column_count = 2U,
-            .row_count = regexp_remaining_row_count,
-            .context = "remaining rows after RLIKE delete",
+            .column_count = 3U,
+            .row_count = remaining_row_count,
+            .context = "remaining rows after REGEXP_LIKE delete",
         }
     );
 
@@ -278,18 +337,18 @@ static int test_regexp_predicate_dml_persistence(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "REGEXP DML preserves preamble"
+        "REGEXP_LIKE DML preserves preamble"
     );
 
     failures += reopen_app_database(&database, path);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, v FROM strings ORDER BY id",
+            .sql = "SELECT id, v, note FROM strings ORDER BY id",
             .values = after_delete_rows,
-            .column_count = 2U,
-            .row_count = regexp_remaining_row_count,
-            .context = "REGEXP DML persists after reopen",
+            .column_count = 3U,
+            .row_count = remaining_row_count,
+            .context = "REGEXP_LIKE DML persists after reopen",
         }
     );
 
@@ -298,93 +357,7 @@ static int test_regexp_predicate_dml_persistence(void) {
     return failures;
 }
 
-static int test_regexp_pattern_operators(void) {
-    static const char *const plus_quantifier_ids[] = {"2"};
-    static const char *const escaped_plus_ids[] = {"1"};
-    static const char *const zero_or_more_ids[] = {"4", "5", "6"};
-    static const char *const zero_or_one_ids[] = {"4", "5"};
-    static const char *const backtracking_ids[] = {"5", "6"};
-    static const char *const dot_ids[] = {"8"};
-    char path[test_path_capacity];
-    mylite_db *database = NULL;
-    int failures = 0;
-
-    failures += open_app_database(&database, "operators", path, sizeof(path));
-    failures += execute_ok(database, "CREATE TABLE strings (id INT, v VARCHAR(16))", NULL);
-    failures += execute_ok(
-        database,
-        "INSERT INTO strings VALUES "
-        "(1, '1+2'), (2, '12'), (3, '1++2'), (4, 'ac'), (5, 'abc'), (6, 'abbc'), "
-        "(7, 'a\\nb'), (8, 'axb')",
-        NULL
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '1+2' ORDER BY id",
-            .values = plus_quantifier_ids,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "REGEXP plus is a quantifier",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '1\\\\+2' ORDER BY id",
-            .values = escaped_plus_ids,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "REGEXP escaped plus matches literal plus",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^ab*c$' ORDER BY id",
-            .values = zero_or_more_ids,
-            .column_count = 1U,
-            .row_count = 3U,
-            .context = "REGEXP star allows zero or more matches",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^ab?c$' ORDER BY id",
-            .values = zero_or_one_ids,
-            .column_count = 1U,
-            .row_count = 2U,
-            .context = "REGEXP question mark allows zero or one match",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^ab*bc$' ORDER BY id",
-            .values = backtracking_ids,
-            .column_count = 1U,
-            .row_count = 2U,
-            .context = "REGEXP quantifiers backtrack within the supported subset",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM strings WHERE v REGEXP '^a.b$' ORDER BY id",
-            .values = dot_ids,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "REGEXP dot does not match line terminators by default",
-        }
-    );
-
-    mylite_close(database);
-    remove_related_files(path);
-    return failures;
-}
-
-static int test_regexp_predicate_diagnostics(void) {
+static int test_regexp_like_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -393,43 +366,73 @@ static int test_regexp_predicate_diagnostics(void) {
     failures += populate_strings(database);
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE id REGEXP '^1$'",
+        "SELECT REGEXP_LIKE()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'REGEXP_LIKE'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE('a')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'REGEXP_LIKE'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE('a', 'a', 'i', 'extra')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'REGEXP_LIKE'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE('a', 'a', 'z')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE REGEXP predicates support only string columns",
+            .message_part = "REGEXP_LIKE() match_type supports only c and i flags",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE missing RLIKE '^a$'",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_column,
-            .sqlstate = "42S22",
-            .message_part = "Unknown column 'missing' in 'where clause'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM strings WHERE v REGEXP 1",
+        "SELECT REGEXP_LIKE('a', 'a', 'm')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '1'",
+            .message_part = "REGEXP_LIKE() match_type supports only c and i flags",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP DATABASE()",
+        "SELECT REGEXP_LIKE('a', 'a', 'I')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'DATABASE'",
+            .message_part = "REGEXP_LIKE() match_type supports only c and i flags",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP '['",
+        "SELECT REGEXP_LIKE(NULL, 'a', 'z')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REGEXP_LIKE() match_type supports only c and i flags",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE('a', '[')",
         (struct expected_sql_error){
             .code = mysql_error_regular_expression,
             .sqlstate = "HY000",
@@ -438,7 +441,16 @@ static int test_regexp_predicate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP '[z-a]'",
+        "SELECT REGEXP_LIKE(NULL, '[')",
+        (struct expected_sql_error){
+            .code = mysql_error_regular_expression,
+            .sqlstate = "HY000",
+            .message_part = "unclosed bracket expression",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE('a', '[z-a]')",
         (struct expected_sql_error){
             .code = mysql_error_regular_expression_character_range,
             .sqlstate = "HY000",
@@ -447,32 +459,56 @@ static int test_regexp_predicate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP 'a|b'",
+        "SELECT REGEXP_LIKE(CAST('a' AS BINARY), 'A', 'i')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "baseline ASCII regular expression subset",
+            .message_part = "REGEXP_LIKE() supports only string, integer, boolean, NULL",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP '"
+        "SELECT REGEXP_LIKE(id, '^1$') FROM strings",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REGEXP_LIKE() supports only nonbinary string columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE(missing, '^a') FROM strings",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM strings WHERE REGEXP_LIKE(v, note)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "REGEXP_LIKE() supports only string, integer, boolean, and NULL pattern",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO strings VALUES (7, '"
         "\xC3"
         "\xA9"
-        "'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE REGEXP pattern literals support only ASCII text",
-        }
+        "', 'seed')",
+        NULL
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v REGEXP 'a\\0'",
+        "SELECT REGEXP_LIKE(v, '^.$') FROM strings WHERE id = 7",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE REGEXP pattern literals do not support NUL bytes",
+            .message_part = "regular expression input supports only ASCII text",
         }
     );
 
@@ -481,68 +517,23 @@ static int test_regexp_predicate_diagnostics(void) {
     return failures;
 }
 
-static int test_independent_regexp_handles(void) {
-    static const char *const left_row[] = {"left"};
-    static const char *const right_row[] = {"rss_a"};
-    char left_path[test_path_capacity];
-    char right_path[test_path_capacity];
-    mylite_db *left = NULL;
-    mylite_db *right = NULL;
-    int failures = 0;
-
-    failures += open_app_database(&left, "independent-left", left_path, sizeof(left_path));
-    failures += open_app_database(&right, "independent-right", right_path, sizeof(right_path));
-    failures += populate_strings(left);
-    failures += populate_strings(right);
-    failures += expect_dml_ok(left, "UPDATE strings SET v = 'left' WHERE v REGEXP '^rss_a$'", 1);
-    failures += expect_query_values(
-        left,
-        (struct expected_query){
-            .sql = "SELECT v FROM strings WHERE id = 4",
-            .values = left_row,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "left handle REGEXP update",
-        }
-    );
-    failures += expect_query_values(
-        right,
-        (struct expected_query){
-            .sql = "SELECT v FROM strings WHERE id = 4",
-            .values = right_row,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "right handle remains independent",
-        }
-    );
-
-    mylite_close(left);
-    mylite_close(right);
-    remove_related_files(left_path);
-    remove_related_files(right_path);
-    return failures;
-}
-
 static int populate_strings(mylite_db *database) {
     int failures = 0;
 
     failures += execute_ok(
         database,
-        "CREATE TABLE strings (id INT, c CHAR(8), v VARCHAR(16), t TEXT)",
+        "CREATE TABLE strings (id INT, v VARCHAR(16), note VARCHAR(16))",
         NULL
     );
     failures += execute_ok(
         database,
         "INSERT INTO strings VALUES "
-        "(1, 'abc', 'abc', 'abc'), "
-        "(2, 'ABC', 'ABC', 'ABC'), "
-        "(3, 'abcd', 'abcd', 'abcd'), "
-        "(4, 'rss_a', 'rss_a', 'rss_a'), "
-        "(5, 'rss_', 'rss_', 'rss_'), "
-        "(6, 'rss_12', 'rss_12', 'rss_12'), "
-        "(7, NULL, NULL, NULL), "
-        "(8, 'xy', 'xy', 'xy'), "
-        "(9, 'abc  ', 'abc  ', 'abc  ')",
+        "(1, 'abc', 'seed'), "
+        "(2, 'ABC', 'seed'), "
+        "(3, 'rss_a', 'seed'), "
+        "(4, 'rss_', 'seed'), "
+        "(5, '1+2', 'seed'), "
+        "(6, NULL, 'seed')",
         NULL
     );
     return failures;
@@ -662,7 +653,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite-regexp-rlike-predicates-%s-%d.mylite",
+        "/tmp/mylite-regexp-like-function-%s-%d.mylite",
         name,
         current_process_id()
     );

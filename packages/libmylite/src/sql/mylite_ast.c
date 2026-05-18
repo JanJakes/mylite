@@ -1168,6 +1168,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_valid_function";
     case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
         return "json_valid_argument_count_error";
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+        return "regexp_like_function";
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
+        return "regexp_like_argument_count_error";
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
         return "json_extract_function";
     case MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR:

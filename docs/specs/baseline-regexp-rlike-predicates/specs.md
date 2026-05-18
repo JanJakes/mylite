@@ -66,6 +66,7 @@ MySQL 8.4.9 behavior used for this slice:
 - The verified baseline pattern atoms include ordinary ASCII literals, `.`,
   `^`, `$`, bracket classes/ranges, negated bracket classes, and the `*`, `+`,
   and `?` quantifiers.
+- Without match-control flags, `.` does not match line terminators.
 - SQL string-literal decoding happens before regular-expression matching. To
   pass a literal regex backslash in default SQL mode, the SQL text must contain
   the usual doubled SQL backslash sequence.
@@ -176,7 +177,7 @@ Supported regex pattern syntax after SQL string decoding:
 - ordinary printable ASCII literal bytes except regex metacharacters;
 - escaped ASCII regex metacharacters `\.`, `\^`, `\$`, `\*`, `\+`, `\?`,
   `\[`, `\]`, and `\\`;
-- `.` matching one byte;
+- `.` matching one non-line-terminator byte;
 - `^` as the first pattern item;
 - `$` as the last pattern item;
 - bracket classes such as `[abc]` and `[a-z]`;
@@ -221,7 +222,8 @@ The column identifier is always generated from the descriptor and quoted as a
 SQLite identifier. The pattern is always bound as a prepared-statement
 parameter. The registered function compiles and caches the bound pattern using
 SQLite auxdata for the duration of the prepared statement and evaluates each
-candidate row inside SQLite's scan.
+candidate row inside SQLite's scan. It rejects non-ASCII or embedded-`NUL`
+runtime column values before matching.
 
 Supported comparison semantics:
 
@@ -229,7 +231,7 @@ Supported comparison semantics:
 - ASCII matching is case-insensitive for the current default collation slice.
 - `^` and `$` anchor to the start and end of the stored value.
 - Unanchored patterns may match at any byte position.
-- `.` matches one byte in the admitted ASCII baseline.
+- `.` matches one byte other than `\n` or `\r` in the admitted ASCII baseline.
 - Bracket classes/ranges and negated classes are evaluated over ASCII bytes
   with the same case-insensitive folding as literals.
 - MySQL returns `NULL` when either regex operand is `NULL`, but this MyLite
@@ -249,6 +251,8 @@ Supported diagnostics:
   as syntax errors through existing parse diagnostics;
 - non-ASCII or embedded-`NUL` pattern literals with a deterministic
   unsupported diagnostic;
+- non-ASCII or embedded-`NUL` runtime column values with a deterministic
+  unsupported diagnostic;
 - unsupported regex constructs with a deterministic unsupported diagnostic;
 - invalid supported-subset regex syntax with MySQL-compatible diagnostics where
   verified: `3696 / HY000` for unclosed bracket expressions and
@@ -260,7 +264,7 @@ Supported diagnostics:
 
 Deferred until later slices:
 
-- `REGEXP_LIKE()`, `REGEXP_INSTR()`, `REGEXP_REPLACE()`, and `REGEXP_SUBSTR()`;
+- `REGEXP_INSTR()`, `REGEXP_REPLACE()`, and `REGEXP_SUBSTR()`;
 - table-backed scalar projection using regex operators;
 - literal-left, expression-left, function, parameter, variable,
   column-to-column, subquery, row-constructor, or generated-column operands;

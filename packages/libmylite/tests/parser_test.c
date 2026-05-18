@@ -77,6 +77,7 @@ static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
 static int test_string_search_functions(void);
 static int test_find_in_set_function(void);
+static int test_regexp_like_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_sqrt_function(void);
@@ -361,6 +362,7 @@ int main(void) {
     failures += test_string_slice_functions();
     failures += test_string_search_functions();
     failures += test_find_in_set_function();
+    failures += test_regexp_like_function();
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_sqrt_function();
@@ -5313,6 +5315,146 @@ static int test_find_in_set_function(void) {
         child_at(result.root, 0U),
         MYLITE_SQL_AST_DELETE_STATEMENT,
         "find delete predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_regexp_like_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT REGEXP_LIKE('abc', '^a'), regexp_like(v, '^ab', 'c') AS hit FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION, "regexp_like function");
+    failures += expect_child_count(expression, 2U, "regexp_like two arguments");
+    failures += expect_span_text(expression, "REGEXP_LIKE('abc', '^a')", "regexp_like span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION, "lower regexp_like");
+    failures += expect_child_count(expression, 3U, "regexp_like three arguments");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "regexp column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "regexp_like alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT REGEXP_LIKE();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR,
+        "regexp_like zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT REGEXP_LIKE('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR,
+        "regexp_like one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT REGEXP_LIKE('a','a','i','extra');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR,
+        "regexp_like many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO REGEXP_LIKE('abc', '^a');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "regexp_like do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION,
+        "do regexp_like"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE REGEXP_LIKE(v, '^ab');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "regexp_like where");
+    failures +=
+        expect_node(predicate, MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION, "regexp_like truth predicate");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE REGEXP_LIKE(v, '^ab') <=> TRUE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(
+        predicate,
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "regexp_like comparison predicate"
+    );
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, "regexp_like op");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION,
+        "regexp_like comparison lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE REGEXP_LIKE(v, '^ab') IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = child_at(child_at(result.root, 0U), 2U);
+    predicate = child_at(where_clause, 0U);
+    failures += expect_node(predicate, MYLITE_SQL_AST_IS_NULL_PREDICATE, "regexp_like is null");
+    failures +=
+        expect_operator(predicate, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, "regexp_like is null op");
+    failures += expect_node(
+        child_at(predicate, 0U),
+        MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION,
+        "regexp_like is null lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t SET note = 'hit' WHERE REGEXP_LIKE(v, '^rss_.+$');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(result.root, 0U),
+        MYLITE_SQL_AST_UPDATE_STATEMENT,
+        "regexp_like update predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "DELETE FROM t WHERE REGEXP_LIKE(v, '^rss_.+$') = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(result.root, 0U),
+        MYLITE_SQL_AST_DELETE_STATEMENT,
+        "regexp_like delete predicate"
     );
     mylite_sql_parse_result_deinit(&result);
 

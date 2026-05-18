@@ -169,7 +169,7 @@ expect_output \
     "$DATABASE"
 
 run_mysql \
-    "INSERT INTO strings VALUES (4, 'ac'), (5, 'abc'), (6, 'abbc');" \
+    "INSERT INTO strings VALUES (4, 'ac'), (5, 'abc'), (6, 'abbc'), (7, 'a\\nb'), (8, 'axb');" \
     "$DATABASE" >/dev/null
 
 expect_output \
@@ -188,6 +188,12 @@ expect_output \
     "regex quantifiers backtrack" \
     "5,6" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^ab*bc$';" \
+    "$DATABASE"
+
+expect_output \
+    "regex dot does not match line terminators by default" \
+    "8" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM strings WHERE v REGEXP '^a.b$';" \
     "$DATABASE"
 
 expect_error \

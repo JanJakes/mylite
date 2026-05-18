@@ -2326,6 +2326,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_regexp_rlike_predicates_test)
 
+  add_executable(mylite_runtime_regexp_like_function_test
+    tests/runtime_regexp_like_function_test.c
+  )
+  target_link_libraries(mylite_runtime_regexp_like_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_regexp_like_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_regexp_like_function_test)
+
   add_executable(mylite_runtime_delete_lifecycle_test
     tests/runtime_delete_lifecycle_test.c
   )
@@ -3696,6 +3707,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.regexp_rlike_predicates
     COMMAND mylite_runtime_regexp_rlike_predicates_test
+  )
+  add_test(
+    NAME libmylite.runtime.regexp_like_function
+    COMMAND mylite_runtime_regexp_like_function_test
   )
   add_test(
     NAME libmylite.runtime.delete_lifecycle

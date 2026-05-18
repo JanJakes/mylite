@@ -2469,6 +2469,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_NULLIF = 28,
     PLANNED_ROW_SCALAR_EXPRESSION_ISNULL = 29,
     PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP = 30,
+    PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE = 31,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2542,6 +2543,7 @@ struct planned_row_scalar_expression {
     enum mylite_temporal_extract_kind temporal_extract_kind;
     struct planned_value value;
     enum mylite_json_sql_value_kind json_value_kind;
+    bool regexp_case_sensitive;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
@@ -6297,6 +6299,13 @@ struct scalar_text_conversion_messages {
     const char *signed_value;
     const char *string_unsupported;
     const char *embedded_nul;
+};
+
+struct regexp_like_text_argument_messages {
+    const char *unsupported;
+    const char *string_unsupported;
+    const char *embedded_nul;
+    const char *non_ascii;
 };
 
 struct field_scalar_argument {
@@ -11436,6 +11445,11 @@ static int find_in_set_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int regexp_like_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_find_in_set_text_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11444,6 +11458,69 @@ static int evaluate_find_in_set_text_argument(
     const char **out_text,
     size_t *out_text_length,
     bool *out_is_null
+);
+static int evaluate_regexp_like_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool allow_session_scalar,
+    const struct regexp_like_text_argument_messages *messages,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static bool regexp_like_literal_or_unary_expression_is_admitted(
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_regexp_like_literal_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct regexp_like_text_argument_messages *messages,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int regexp_like_cell_text_result(
+    struct session_scalar_cell *inout_cell,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_regexp_like_match_type_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_null,
+    bool *out_case_sensitive
+);
+static int regexp_like_case_sensitive_from_match_type(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool *out_case_sensitive
+);
+static int validate_regexp_like_pattern(
+    struct mylite_db *database,
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    const char *unsupported_message
+);
+static int set_regexp_like_compile_error(
+    struct mylite_db *database,
+    enum mylite_regexp_compile_status status,
+    const char *unsupported_message
+);
+static int match_regexp_like_value(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    bool *out_matches
 );
 static int charset_collation_function_value(
     struct mylite_db *database,
@@ -13154,6 +13231,7 @@ static bool is_date_interval_second_projection_expression(
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_field_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_regexp_like_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_valid_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_introspection_projection_expression(
@@ -16738,6 +16816,9 @@ static bool predicate_node_is_find_in_set_expression(
 static bool predicate_node_is_json_valid_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
+static bool predicate_node_is_regexp_like_expression(
+    const struct mylite_sql_ast_node *predicate_node
+);
 static int plan_find_in_set_truth_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -16814,6 +16895,46 @@ static int plan_json_valid_predicate_expression(
     struct planned_select_predicate_node *node
 );
 static int plan_json_valid_predicate_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+);
+static int plan_regexp_like_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_regexp_like_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_regexp_like_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_regexp_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_regexp_like_predicate_integer_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct planned_value *out_value
@@ -17670,6 +17791,44 @@ static int plan_row_scalar_find_in_set_column(
     struct planned_row_scalar_expression *out_expression
 );
 static bool find_in_set_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int plan_row_scalar_regexp_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_regexp_like_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_regexp_like_pattern_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_regexp_like_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool regexp_like_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
@@ -19322,6 +19481,11 @@ static int append_row_scalar_find_in_set_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_regexp_like_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_json_valid_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -20274,6 +20438,11 @@ static int bind_row_scalar_string_replace_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_find_in_set_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_regexp_like_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -21600,6 +21769,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -36799,6 +36970,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
@@ -64951,6 +65124,8 @@ static const char *argument_count_error_node_function_name(
         return "JSON_UNQUOTE";
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
         return "FIND_IN_SET";
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
+        return "REGEXP_LIKE";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "DATE_FORMAT";
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
@@ -65099,6 +65274,11 @@ static int session_scalar_value(
         return string_search_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
         return find_in_set_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+        return regexp_like_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "REGEXP_LIKE");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
         return json_valid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
@@ -69315,6 +69495,129 @@ static int find_in_set_function_value(
     return rc;
 }
 
+static int regexp_like_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    static const struct regexp_like_text_argument_messages value_messages = {
+        .unsupported = "REGEXP_LIKE() supports only string, integer, boolean, NULL, session "
+                       "scalar, and system "
+                       "variable value arguments",
+        .string_unsupported = "REGEXP_LIKE() supports only string value literals",
+        .embedded_nul = "REGEXP_LIKE() value arguments do not support NUL bytes",
+        .non_ascii = "REGEXP_LIKE() arguments support only ASCII text",
+    };
+    static const struct regexp_like_text_argument_messages pattern_messages = {
+        .unsupported =
+            "REGEXP_LIKE() supports only string, integer, boolean, and NULL pattern arguments",
+        .string_unsupported = "REGEXP_LIKE() supports only string pattern literals",
+        .embedded_nul = "REGEXP_LIKE() pattern arguments do not support NUL bytes",
+        .non_ascii = "REGEXP_LIKE() arguments support only ASCII text",
+    };
+    struct session_scalar_cell value_cell = {0};
+    struct session_scalar_cell pattern_cell = {0};
+    char *owned_value = NULL;
+    char *owned_pattern = NULL;
+    const char *value = NULL;
+    const char *pattern = NULL;
+    size_t value_length = 0U;
+    size_t pattern_length = 0U;
+    bool value_is_null = false;
+    bool pattern_is_null = false;
+    bool match_type_is_null = false;
+    bool case_sensitive = false;
+    bool matches = false;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) {
+        set_native_function_parameter_count_error(database, "REGEXP_LIKE");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count != 2U && child_count != 3U) {
+        set_native_function_parameter_count_error(database, "REGEXP_LIKE");
+        return MYLITE_ERROR;
+    }
+
+    if (child_count == 3U) {
+        rc = evaluate_regexp_like_match_type_argument(
+            database,
+            child_at(expression, 2U),
+            &match_type_is_null,
+            &case_sensitive
+        );
+        if (rc != MYLITE_OK || match_type_is_null) {
+            return rc;
+        }
+    }
+
+    rc = evaluate_regexp_like_text_argument(
+        database,
+        child_at(expression, 0U),
+        true,
+        &value_messages,
+        &value_cell,
+        &owned_value,
+        &value,
+        &value_length,
+        &value_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_regexp_like_text_argument(
+            database,
+            child_at(expression, 1U),
+            false,
+            &pattern_messages,
+            &pattern_cell,
+            &owned_pattern,
+            &pattern,
+            &pattern_length,
+            &pattern_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !pattern_is_null) {
+        rc = validate_regexp_like_pattern(
+            database,
+            pattern,
+            pattern_length,
+            case_sensitive,
+            "REGEXP_LIKE() patterns support only MyLite's baseline ASCII regular expression subset"
+        );
+    }
+    if (rc == MYLITE_OK && !value_is_null && !pattern_is_null) {
+        rc = match_regexp_like_value(
+            database,
+            value,
+            value_length,
+            pattern,
+            pattern_length,
+            case_sensitive,
+            &matches
+        );
+    }
+    if (rc == MYLITE_OK && !value_is_null && !pattern_is_null) {
+        uint64_t match_value = 0U;
+
+        if (matches) {
+            match_value = 1U;
+        }
+        rc = format_session_scalar_uint64_value(database, match_value, out_cell);
+    }
+
+    free(owned_value);
+    free(owned_pattern);
+    session_scalar_cell_deinit(&value_cell);
+    session_scalar_cell_deinit(&pattern_cell);
+    return rc;
+}
+
 static int evaluate_find_in_set_text_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -69379,6 +69682,320 @@ static int evaluate_find_in_set_text_argument(
     }
     *out_text = inout_cell->value;
     *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_regexp_like_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool allow_session_scalar,
+    const struct regexp_like_text_argument_messages *messages,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    int rc = MYLITE_OK;
+
+    if (messages == NULL || inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+    if (!allow_session_scalar && !regexp_like_literal_or_unary_expression_is_admitted(expression)) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        rc = evaluate_regexp_like_literal_text_argument(
+            database,
+            expression,
+            messages,
+            inout_cell,
+            out_owned_text,
+            out_text,
+            out_text_length,
+            out_is_null
+        );
+    } else if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+        if (rc == MYLITE_OK) {
+            rc = regexp_like_cell_text_result(inout_cell, out_text, out_text_length, out_is_null);
+        }
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+        if (rc == MYLITE_OK) {
+            rc = regexp_like_cell_text_result(inout_cell, out_text, out_text_length, out_is_null);
+        }
+    }
+    if (rc != MYLITE_OK || *out_is_null) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(*out_text, *out_text_length)) {
+        set_unsupported_error(database, messages->non_ascii);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool regexp_like_literal_or_unary_expression_is_admitted(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return true;
+    }
+    return false;
+}
+
+static int evaluate_regexp_like_literal_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct regexp_like_text_argument_messages *messages,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    int rc = MYLITE_OK;
+
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal(
+            database,
+            expression,
+            messages->string_unsupported,
+            messages->embedded_nul,
+            out_owned_text,
+            out_text_length
+        );
+        if (rc == MYLITE_OK) {
+            *out_text = *out_owned_text;
+        }
+        return rc;
+    }
+
+    rc = literal_projection_value(database, expression, inout_cell);
+    if (rc == MYLITE_OK) {
+        rc = regexp_like_cell_text_result(inout_cell, out_text, out_text_length, out_is_null);
+    }
+    return rc;
+}
+
+static int regexp_like_cell_text_result(
+    struct session_scalar_cell *inout_cell,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_regexp_like_match_type_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_null,
+    bool *out_case_sensitive
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_is_null == NULL || out_case_sensitive == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_null = false;
+    *out_case_sensitive = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() match_type supports only string and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() match_type supports only string and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        "REGEXP_LIKE() match_type supports only string literals",
+        "REGEXP_LIKE() match_type literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        rc = regexp_like_case_sensitive_from_match_type(
+            database,
+            text,
+            text_length,
+            out_case_sensitive
+        );
+    }
+
+    free(text);
+    return rc;
+}
+
+static int regexp_like_case_sensitive_from_match_type(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    bool *out_case_sensitive
+) {
+    if (text == NULL || out_case_sensitive == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_case_sensitive = false;
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (text[index] == 'c') {
+            *out_case_sensitive = true;
+        } else if (text[index] == 'i') {
+            *out_case_sensitive = false;
+        } else {
+            set_unsupported_error(database, "REGEXP_LIKE() match_type supports only c and i flags");
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_regexp_like_pattern(
+    struct mylite_db *database,
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    const char *unsupported_message
+) {
+    struct mylite_regexp_program *program = NULL;
+    enum mylite_regexp_compile_status status = MYLITE_REGEXP_COMPILE_OK;
+
+    if (!text_value_is_supported_string_key(pattern, pattern_length)) {
+        set_unsupported_error(database, "REGEXP_LIKE() pattern arguments support only ASCII text");
+        return MYLITE_ERROR;
+    }
+    if (case_sensitive) {
+        status = mylite_regexp_compile_ascii_cs(pattern, pattern_length, &program);
+    } else {
+        status = mylite_regexp_compile_ascii_ci(pattern, pattern_length, &program);
+    }
+    mylite_regexp_program_free(program);
+    if (status != MYLITE_REGEXP_COMPILE_OK) {
+        return set_regexp_like_compile_error(database, status, unsupported_message);
+    }
+    return MYLITE_OK;
+}
+
+static int set_regexp_like_compile_error(
+    struct mylite_db *database,
+    enum mylite_regexp_compile_status status,
+    const char *unsupported_message
+) {
+    if (status == MYLITE_REGEXP_COMPILE_NOMEM) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+        set_regexp_error(
+            database,
+            "The regular expression contains an unclosed bracket expression."
+        );
+        return MYLITE_ERROR;
+    }
+    if (status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+        set_regexp_character_range_error(
+            database,
+            "The regular expression contains an invalid character range."
+        );
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
+}
+
+static int match_regexp_like_value(
+    struct mylite_db *database,
+    const char *value,
+    size_t value_length,
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    bool *out_matches
+) {
+    struct mylite_regexp_program *program = NULL;
+    enum mylite_regexp_compile_status compile_status = MYLITE_REGEXP_COMPILE_OK;
+    enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (case_sensitive) {
+        compile_status = mylite_regexp_compile_ascii_cs(pattern, pattern_length, &program);
+    } else {
+        compile_status = mylite_regexp_compile_ascii_ci(pattern, pattern_length, &program);
+    }
+    if (compile_status != MYLITE_REGEXP_COMPILE_OK) {
+        mylite_regexp_program_free(program);
+        return set_regexp_like_compile_error(
+            database,
+            compile_status,
+            "REGEXP_LIKE() patterns support only MyLite's baseline ASCII regular expression subset"
+        );
+    }
+    if (case_sensitive) {
+        match_status =
+            mylite_regexp_program_match_ascii_cs(program, value, value_length, out_matches);
+    } else {
+        match_status =
+            mylite_regexp_program_match_ascii_ci(program, value, value_length, out_matches);
+    }
+    mylite_regexp_program_free(program);
+    if (match_status == MYLITE_REGEXP_MATCH_NOMEM) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (match_status == MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE) {
+        set_unsupported_error(database, "REGEXP_LIKE() value arguments support only ASCII text");
+        return MYLITE_ERROR;
+    }
+    if (match_status != MYLITE_REGEXP_MATCH_OK) {
+        set_unsupported_error(database, "REGEXP_LIKE() value arguments are too large");
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 
@@ -81491,6 +82108,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_field_projection_expression(expression)) {
         return true;
     }
+    if (is_regexp_like_projection_expression(expression)) {
+        return true;
+    }
     return (is_json_valid_projection_expression(expression) ||
             is_json_extract_projection_expression(expression) ||
             is_json_introspection_projection_expression(expression) ||
@@ -82176,6 +82796,19 @@ static bool is_json_valid_projection_expression(const struct mylite_sql_ast_node
     }
     return (mylite_sql_ast_node_child_count(expression) == 1U &&
             child_at(expression, 0U) != NULL) != 0;
+}
+
+static bool is_regexp_like_projection_expression(const struct mylite_sql_ast_node *expression) {
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) {
+        return false;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    return ((child_count == 2U || child_count == 3U) && child_at(expression, 0U) != NULL &&
+            child_at(expression, 1U) != NULL &&
+            (child_count == 2U || child_at(expression, 2U) != NULL)) != 0;
 }
 
 static bool is_json_extract_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -95272,6 +95905,18 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) {
+        return plan_row_scalar_regexp_like_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            out_expression
+        );
+    }
     if (is_row_scalar_json_expression(expression)) {
         return plan_row_scalar_json_expression(
             database,
@@ -96999,6 +97644,278 @@ static bool find_in_set_column_descriptor_is_supported(
         "FIND_IN_SET() supports only integer, DECIMAL, nonbinary string, ENUM, YEAR, "
         "and temporal columns"
     );
+    return false;
+}
+
+static int plan_row_scalar_regexp_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct planned_row_scalar_expression value_argument = {0};
+    struct planned_row_scalar_expression pattern_argument = {0};
+    bool match_type_is_null = false;
+    bool case_sensitive = false;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) {
+        set_native_function_parameter_count_error(database, "REGEXP_LIKE");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count != 2U && child_count != 3U) {
+        set_native_function_parameter_count_error(database, "REGEXP_LIKE");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_row_scalar_regexp_like_value_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        column_diagnostic_context,
+        &value_argument
+    );
+    if (rc == MYLITE_OK && child_count == 3U) {
+        rc = evaluate_regexp_like_match_type_argument(
+            database,
+            child_at(expression, 2U),
+            &match_type_is_null,
+            &case_sensitive
+        );
+    }
+    if (rc == MYLITE_OK && match_type_is_null) {
+        planned_row_scalar_expression_deinit(&value_argument);
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_regexp_like_pattern_argument(
+            database,
+            child_at(expression, 1U),
+            &pattern_argument
+        );
+    }
+    if (rc == MYLITE_OK && !pattern_argument.value.is_null) {
+        rc = validate_regexp_like_pattern(
+            database,
+            pattern_argument.value.text,
+            pattern_argument.value.text_length,
+            case_sensitive,
+            "REGEXP_LIKE() patterns support only MyLite's baseline ASCII regular expression subset"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->arguments =
+            (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+        if (out_expression->arguments == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE;
+        out_expression->regexp_case_sensitive = case_sensitive;
+        out_expression->argument_count = 2U;
+        out_expression->arguments[0] = value_argument;
+        out_expression->arguments[1] = pattern_argument;
+        value_argument = (struct planned_row_scalar_expression){0};
+        pattern_argument = (struct planned_row_scalar_expression){0};
+    }
+
+    planned_row_scalar_expression_deinit(&value_argument);
+    planned_row_scalar_expression_deinit(&pattern_argument);
+    return rc;
+}
+
+static int plan_row_scalar_regexp_like_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() supports only string, integer, boolean, NULL, session scalar, "
+            "system variable, and descriptor column value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_regexp_like_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() does not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() supports only string, integer, boolean, NULL, session scalar, "
+            "system variable, and descriptor column value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        int rc = plan_row_scalar_literal_value(database, expression, out_expression);
+
+        if (rc == MYLITE_OK && out_expression->value.is_text &&
+            !text_value_is_supported_string_key(
+                out_expression->value.text,
+                out_expression->value.text_length
+            )) {
+            set_unsupported_error(
+                database,
+                "REGEXP_LIKE() value arguments support only ASCII text"
+            );
+            return MYLITE_ERROR;
+        }
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_regexp_like_pattern_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    static const struct regexp_like_text_argument_messages pattern_messages = {
+        .unsupported =
+            "REGEXP_LIKE() supports only string, integer, boolean, and NULL pattern arguments",
+        .string_unsupported = "REGEXP_LIKE() supports only string pattern literals",
+        .embedded_nul = "REGEXP_LIKE() pattern arguments do not support NUL bytes",
+        .non_ascii = "REGEXP_LIKE() arguments support only ASCII text",
+    };
+    struct session_scalar_cell cell = {0};
+    char *owned_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
+    bool is_null = false;
+    int rc = evaluate_regexp_like_text_argument(
+        database,
+        expression,
+        false,
+        &pattern_messages,
+        &cell,
+        &owned_text,
+        &text,
+        &text_length,
+        &is_null
+    );
+
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (is_null) {
+            out_expression->value = (struct planned_value){.is_null = true};
+        } else {
+            rc = copy_text_value(database, text, &out_expression->value);
+        }
+    }
+
+    free(owned_text);
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int plan_row_scalar_regexp_like_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        column_diagnostic_context,
+        "row-scalar SELECT REGEXP_LIKE() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!regexp_like_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool regexp_like_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_string_family(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "REGEXP_LIKE() does not support binary columns");
+        return false;
+    }
+    set_unsupported_error(database, "REGEXP_LIKE() supports only nonbinary string columns");
     return false;
 }
 
@@ -99742,6 +100659,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -101478,6 +102396,8 @@ static bool row_scalar_expression_contains_row_function(
             is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_VALID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION ||
@@ -103212,6 +104132,7 @@ static int plan_select_predicate_ast_node(
         return append_select_predicate_logical_work(database, current, items, item_count);
     }
     if (current != NULL && (predicate_node_is_find_in_set_expression(current) ||
+                            predicate_node_is_regexp_like_expression(current) ||
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -103259,6 +104180,7 @@ static int plan_select_predicate_ast_node_without_exists(
         return append_select_predicate_logical_work(database, current, items, item_count);
     }
     if (current != NULL && (predicate_node_is_find_in_set_expression(current) ||
+                            predicate_node_is_regexp_like_expression(current) ||
                             predicate_node_is_json_valid_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
@@ -103394,6 +104316,16 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_regexp_like_expression(predicate_node)) {
+        rc = plan_regexp_like_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node_is_json_valid_expression(predicate_node)) {
         rc = plan_json_valid_truth_predicate(
             database,
@@ -103499,6 +104431,16 @@ static int plan_select_predicate_leaf_node_without_exists(
 
     if (predicate_node_is_find_in_set_expression(predicate_node)) {
         rc = plan_find_in_set_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else if (predicate_node_is_regexp_like_expression(predicate_node)) {
+        rc = plan_regexp_like_truth_predicate(
             database,
             predicate_node,
             source_context,
@@ -103661,6 +104603,17 @@ static int plan_comparison_predicate(
 
     if (predicate_node_is_find_in_set_expression(child_at(predicate_node, 0U))) {
         return plan_find_in_set_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_regexp_like_expression(child_at(predicate_node, 0U))) {
+        return plan_regexp_like_comparison_predicate(
             database,
             predicate_node,
             source_context,
@@ -104092,6 +105045,14 @@ static bool predicate_node_is_json_valid_expression(
            0;
 }
 
+static bool predicate_node_is_regexp_like_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    predicate_node = unwrap_parenthesized_predicate(predicate_node);
+    return (predicate_node != NULL &&
+            predicate_node->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) != 0;
+}
+
 static int plan_find_in_set_truth_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -104273,6 +105234,187 @@ static int plan_find_in_set_predicate_integer_value(
         .is_null = is_null,
         .is_text = false,
         .integer = planned_integer,
+    };
+    return MYLITE_OK;
+}
+
+static int plan_regexp_like_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_regexp_like_predicate_expression(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_regexp_like_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_regexp_like_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = plan_regexp_like_predicate_integer_value(
+            database,
+            child_at(predicate_node, 1U),
+            &node.value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_regexp_like_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = plan_regexp_like_predicate_expression(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
+}
+
+static int plan_regexp_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    int rc = MYLITE_OK;
+
+    if (select_source_context_is_joined(source_context)) {
+        set_unsupported_error(
+            database,
+            "REGEXP_LIKE() predicates support only one descriptor table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    node->row_scalar_expression = calloc(1U, sizeof(*node->row_scalar_expression));
+    if (node->row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_regexp_like_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_WHERE,
+        node->row_scalar_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node->row_scalar_expression);
+        free(node->row_scalar_expression);
+        node->row_scalar_expression = NULL;
+    }
+    return rc;
+}
+
+static int plan_regexp_like_predicate_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "REGEXP_LIKE() predicates support only integer and boolean comparison literals",
+        "REGEXP_LIKE() predicate comparison literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){
+        .is_null = is_null,
+        .is_text = false,
+        .integer = value,
     };
     return MYLITE_OK;
 }
@@ -105050,6 +106192,17 @@ static int plan_is_null_predicate(
 
     if (predicate_node_is_find_in_set_expression(child_at(predicate_node, 0U))) {
         return plan_find_in_set_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_regexp_like_expression(child_at(predicate_node, 0U))) {
+        return plan_regexp_like_is_null_predicate(
             database,
             predicate_node,
             source_context,
@@ -110221,6 +111374,13 @@ static int evaluate_show_metadata_where_regexp_predicate(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
+    if (match_status == MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE) {
+        set_unsupported_error(
+            database,
+            "SHOW metadata WHERE REGEXP input supports only ASCII text"
+        );
+        return MYLITE_ERROR;
+    }
     if (match_status != MYLITE_REGEXP_MATCH_OK) {
         set_unsupported_error(
             database,
@@ -113570,6 +114730,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -114381,6 +115542,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_string_replace_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
         return append_row_scalar_find_in_set_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+        return append_row_scalar_regexp_like_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
         return append_row_scalar_json_valid_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -114456,6 +115619,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -115043,6 +116207,45 @@ static int append_row_scalar_find_in_set_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_regexp_like_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    if (expression->regexp_case_sensitive) {
+        rc = dynamic_string_append(string, "_mylite_regexp_cs_ascii(");
+    } else {
+        rc = dynamic_string_append(string, "_mylite_regexp_ci_ascii(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[1],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_json_valid_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -115183,6 +116386,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
@@ -115358,6 +116562,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -115408,6 +116613,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -115791,6 +116997,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -115845,6 +117052,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -120551,6 +121759,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+        return bind_row_scalar_regexp_like_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
         return bind_row_scalar_json_valid_expression_parameters(
             statement,
@@ -120638,6 +121852,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -120883,6 +122098,31 @@ static int bind_row_scalar_find_in_set_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_regexp_like_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    rc = bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[1],
+        parameter_index
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[0],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_json_valid_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -120971,6 +122211,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
@@ -121131,6 +122372,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -121176,6 +122418,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:

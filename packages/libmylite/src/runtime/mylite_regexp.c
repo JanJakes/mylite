@@ -1,5 +1,8 @@
 #include "mylite_regexp.h"
 
+#include "mylite_connection.h"
+#include "mylite_diagnostics.h"
+#include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
 #include <stdint.h>
@@ -7,6 +10,9 @@
 #include <string.h>
 
 enum {
+    mysql_error_parse = 1064,
+    mysql_error_regular_expression = 3696,
+    mysql_error_regular_expression_character_range = 3697,
     regexp_pattern_length_max = 256,
     regexp_value_length_max = 4096,
     ascii_max = 0x7f,
@@ -56,6 +62,7 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
 static bool regexp_sqlite_get_program(
     sqlite3_context *context,
     sqlite3_value *pattern_value,
+    bool case_sensitive,
     struct mylite_regexp_program **out_program,
     struct mylite_regexp_program **out_compiled_program
 );
@@ -66,6 +73,20 @@ static void regexp_sqlite_result_compile_error(
 static void regexp_sqlite_result_match_error(
     sqlite3_context *context,
     enum mylite_regexp_match_status status
+);
+static void regexp_sqlite_set_compile_diagnostic(
+    sqlite3_context *context,
+    enum mylite_regexp_compile_status status
+);
+static void regexp_sqlite_set_match_diagnostic(
+    sqlite3_context *context,
+    enum mylite_regexp_match_status status
+);
+static void regexp_sqlite_set_diagnostic(
+    sqlite3_context *context,
+    int error_code,
+    const char *sqlstate,
+    const char *message
 );
 static void regexp_sqlite_cache_program(
     sqlite3_context *context,
@@ -137,6 +158,7 @@ static unsigned char normalize_ascii_byte(
 );
 static unsigned char fold_ascii(unsigned char byte);
 static bool value_length_is_supported(size_t value_length);
+static bool regexp_value_is_supported_ascii(const char *value, size_t value_length);
 static void fill_match_table(
     const struct mylite_regexp_program *program,
     const unsigned char *value,
@@ -171,6 +193,7 @@ static bool token_matches_byte(
     const struct regexp_token *token,
     unsigned char byte
 );
+static bool regexp_byte_is_line_terminator(unsigned char byte);
 static bool class_contains_byte(
     const struct mylite_regexp_program *program,
     const struct regexp_token *token,
@@ -178,6 +201,7 @@ static bool class_contains_byte(
 );
 
 int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite) {
+    static int case_sensitive_marker = 1;
     static struct mylite_sqlite_function_registration registrations[] = {
         {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
@@ -186,6 +210,20 @@ int mylite_sqlite_register_regexp_functions(sqlite3 *sqlite) {
             .text_representation =
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
+            .scalar_callback = regexp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_regexp_cs_ascii",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = &case_sensitive_marker,
             .scalar_callback = regexp_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
@@ -301,6 +339,9 @@ static enum mylite_regexp_match_status regexp_program_match_ascii(
     if (!value_length_is_supported(value_length)) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
     }
+    if (!regexp_value_is_supported_ascii(value, value_length)) {
+        return MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE;
+    }
     if ((program->token_count + 1U) > SIZE_MAX / (value_length + 1U)) {
         return MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE;
     }
@@ -329,6 +370,7 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
     struct mylite_regexp_program *compiled_program = NULL;
     const unsigned char *value = NULL;
     int value_length = 0;
+    bool case_sensitive = false;
     bool matches = false;
     enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
 
@@ -341,7 +383,8 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
         return;
     }
 
-    if (!regexp_sqlite_get_program(context, argv[0], &program, &compiled_program)) {
+    case_sensitive = sqlite3_user_data(context) != NULL;
+    if (!regexp_sqlite_get_program(context, argv[0], case_sensitive, &program, &compiled_program)) {
         return;
     }
 
@@ -359,12 +402,21 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
         return;
     }
 
-    match_status = mylite_regexp_program_match_ascii_ci(
-        program,
-        (const char *)value,
-        (size_t)value_length,
-        &matches
-    );
+    if (case_sensitive) {
+        match_status = mylite_regexp_program_match_ascii_cs(
+            program,
+            (const char *)value,
+            (size_t)value_length,
+            &matches
+        );
+    } else {
+        match_status = mylite_regexp_program_match_ascii_ci(
+            program,
+            (const char *)value,
+            (size_t)value_length,
+            &matches
+        );
+    }
     if (match_status != MYLITE_REGEXP_MATCH_OK) {
         regexp_sqlite_free_compiled_program(compiled_program);
         regexp_sqlite_result_match_error(context, match_status);
@@ -382,6 +434,7 @@ static void regexp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_v
 static bool regexp_sqlite_get_program(
     sqlite3_context *context,
     sqlite3_value *pattern_value,
+    bool case_sensitive,
     struct mylite_regexp_program **out_program,
     struct mylite_regexp_program **out_compiled_program
 ) {
@@ -402,11 +455,19 @@ static bool regexp_sqlite_get_program(
         return false;
     }
 
-    compile_status = mylite_regexp_compile_ascii_ci(
-        (const char *)pattern,
-        (size_t)pattern_length,
-        out_compiled_program
-    );
+    if (case_sensitive) {
+        compile_status = mylite_regexp_compile_ascii_cs(
+            (const char *)pattern,
+            (size_t)pattern_length,
+            out_compiled_program
+        );
+    } else {
+        compile_status = mylite_regexp_compile_ascii_ci(
+            (const char *)pattern,
+            (size_t)pattern_length,
+            out_compiled_program
+        );
+    }
     if (compile_status != MYLITE_REGEXP_COMPILE_OK) {
         regexp_sqlite_result_compile_error(context, compile_status);
         return false;
@@ -424,6 +485,7 @@ static void regexp_sqlite_result_compile_error(
         sqlite3_result_error_nomem(context);
         return;
     }
+    regexp_sqlite_set_compile_diagnostic(context, status);
     sqlite3_result_error(context, regexp_compile_status_message(status), -1);
 }
 
@@ -435,7 +497,61 @@ static void regexp_sqlite_result_match_error(
         sqlite3_result_error_nomem(context);
         return;
     }
+    regexp_sqlite_set_match_diagnostic(context, status);
     sqlite3_result_error(context, regexp_match_status_message(status), -1);
+}
+
+static void regexp_sqlite_set_compile_diagnostic(
+    sqlite3_context *context,
+    enum mylite_regexp_compile_status status
+) {
+    const char *message = regexp_compile_status_message(status);
+
+    if (status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+        regexp_sqlite_set_diagnostic(context, mysql_error_regular_expression, "HY000", message);
+        return;
+    }
+    if (status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+        regexp_sqlite_set_diagnostic(
+            context,
+            mysql_error_regular_expression_character_range,
+            "HY000",
+            message
+        );
+        return;
+    }
+    regexp_sqlite_set_diagnostic(context, mysql_error_parse, "42000", message);
+}
+
+static void regexp_sqlite_set_match_diagnostic(
+    sqlite3_context *context,
+    enum mylite_regexp_match_status status
+) {
+    regexp_sqlite_set_diagnostic(
+        context,
+        mysql_error_parse,
+        "42000",
+        regexp_match_status_message(status)
+    );
+}
+
+static void regexp_sqlite_set_diagnostic(
+    sqlite3_context *context,
+    int error_code,
+    const char *sqlstate,
+    const char *message
+) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+
+    if (database == NULL) {
+        return;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        error_code,
+        sqlstate,
+        message
+    );
 }
 
 static void regexp_sqlite_cache_program(
@@ -476,6 +592,8 @@ static const char *regexp_compile_status_message(enum mylite_regexp_compile_stat
 
 static const char *regexp_match_status_message(enum mylite_regexp_match_status status) {
     switch (status) {
+    case MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE:
+        return "The regular expression input supports only ASCII text without NUL bytes.";
     case MYLITE_REGEXP_MATCH_VALUE_TOO_LARGE:
         return "The regular expression input is too large for MyLite's baseline subset.";
     case MYLITE_REGEXP_MATCH_NOMEM:
@@ -819,6 +937,20 @@ static bool value_length_is_supported(size_t value_length) {
     return false;
 }
 
+static bool regexp_value_is_supported_ascii(const char *value, size_t value_length) {
+    if (value == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < value_length; ++index) {
+        unsigned char byte = (unsigned char)value[index];
+
+        if (byte == '\0' || byte > ascii_max) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void fill_match_table(
     const struct mylite_regexp_program *program,
     const unsigned char *value,
@@ -945,11 +1077,21 @@ static bool token_matches_byte(
         }
         return false;
     case REGEXP_TOKEN_ANY:
+        if (regexp_byte_is_line_terminator(byte)) {
+            return false;
+        }
         return true;
     case REGEXP_TOKEN_CLASS:
         return class_contains_byte(program, token, normalize_ascii_byte(program, byte));
     case REGEXP_TOKEN_END_ANCHOR:
         break;
+    }
+    return false;
+}
+
+static bool regexp_byte_is_line_terminator(unsigned char byte) {
+    if (byte == '\n' || byte == '\r') {
+        return true;
     }
     return false;
 }

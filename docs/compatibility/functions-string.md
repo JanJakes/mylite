@@ -36,7 +36,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `POSITION()` | 🟡 | Limited `POSITION(substr IN str)` synonym for the supported two-argument `LOCATE()` subset, with the same scalar, row-scalar, ASCII matching, and unsupported-expression limits |
 | `QUOTE()` | ❌ | Escape the argument for use in an SQL statement |
 | `REGEXP_INSTR()` | ❌ | Starting index of substring matching regular expression |
-| `REGEXP_LIKE()` | ❌ | Whether string matches regular expression |
+| `REGEXP_LIKE()` | 🟡 | Limited no-source, `DUAL`, `DO`, single-table row-scalar `SELECT` projection, and descriptor-backed `SELECT`/`UPDATE`/`DELETE` predicate support over admitted ASCII string/integer/boolean/`NULL` scalar values, supported session scalar/system-variable value operands, and nonbinary string descriptor columns; patterns are scalar literals in MyLite's baseline ASCII regular-expression subset, optional `match_type` admits only lowercase `c` and `i`, and `NULL` operands return `NULL`. No binary arguments, ICU/full-Unicode regex semantics, `m`/`n`/`u` match flags, row-backed pattern or match-type operands, nested functions, parameters, arbitrary expressions, ordering/grouping expressions, DML assignments, or expression metadata |
 | `REGEXP_REPLACE()` | ❌ | Replace substrings matching regular expression |
 | `REGEXP_SUBSTR()` | ❌ | Return substring matching regular expression |
 | `REPEAT()` | ❌ | Repeat a string the specified number of times |

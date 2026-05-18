@@ -49,6 +49,7 @@ static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
 static int test_concat_ws_function(void);
+static int test_replace_function(void);
 static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
@@ -330,6 +331,7 @@ int main(void) {
     failures += test_coalesce_function();
     failures += test_concat_function();
     failures += test_concat_ws_function();
+    failures += test_replace_function();
     failures += test_field_function();
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
@@ -2007,6 +2009,77 @@ static int test_concat_ws_function(void) {
     failures +=
         expect_node(first_expression, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, "concat_ws whitespace");
     mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_replace_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT REPLACE('abcabc', 'a', 'x'), replace(v, 'a', 'x') AS label "
+        "FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_REPLACE_FUNCTION, "replace function");
+    failures += expect_span_text(first_expression, "REPLACE('abcabc', 'a', 'x')", "replace span");
+    failures += expect_child_count(first_expression, 3U, "replace three children");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "replace str"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "replace search"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "replace replacement"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_REPLACE_FUNCTION, "lower replace");
+    failures +=
+        expect_node(child_at(second_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "replace column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "replace alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO REPLACE('abc', 'b', 'B');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    first_expression = child_at(expression_list, 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_REPLACE_FUNCTION, "do replace");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT REPLACE ('abc', 'a', 'A') FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_REPLACE_FUNCTION, "replace whitespace");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT REPLACE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT REPLACE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT REPLACE(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT REPLACE(1, 2, 3, 4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT REPLACE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
 
     return failures;
 }

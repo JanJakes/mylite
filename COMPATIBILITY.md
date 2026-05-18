@@ -491,7 +491,7 @@ tests.
 | `REGEXP_REPLACE()` | ❌ | Regex replacement. | [string functions](docs/compatibility/functions-string.md) |
 | `REGEXP_SUBSTR()` | ❌ | Regex substring. | [string functions](docs/compatibility/functions-string.md) |
 | `REPEAT()` | ❌ | Repeat string. | [string functions](docs/compatibility/functions-string.md) |
-| `REPLACE()` | ❌ | Replace substrings. | [string functions](docs/compatibility/functions-string.md) |
+| `REPLACE()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values; performs exact case-sensitive non-overlapping replacement and returns `NULL` when any argument is `NULL`. No binary-string result typing, predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata. | [string functions](docs/compatibility/functions-string.md) |
 | `REVERSE()` | ❌ | Reverse string. | [string functions](docs/compatibility/functions-string.md) |
 | `RIGHT()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed text-convertible values with literal integer/boolean/`NULL` lengths; UTF-8 text is sliced by character position. | [string functions](docs/compatibility/functions-string.md) |
 | `RPAD()` | ❌ | Right padding. | [string functions](docs/compatibility/functions-string.md) |

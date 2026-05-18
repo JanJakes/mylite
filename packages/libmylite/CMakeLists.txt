@@ -53,6 +53,7 @@ add_library(mylite STATIC
   src/runtime/mylite_statement_context.c
   src/runtime/mylite_string_case.c
   src/runtime/mylite_string_concat.c
+  src/runtime/mylite_string_replace.c
   src/runtime/mylite_string_search.c
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_temporal_extract.c
@@ -613,6 +614,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_concat_ws_function_test)
+
+  add_executable(mylite_runtime_replace_string_function_test
+    tests/runtime_replace_string_function_test.c
+  )
+  target_link_libraries(mylite_runtime_replace_string_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_replace_string_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_replace_string_function_test)
 
   add_executable(mylite_runtime_trim_string_functions_test
     tests/runtime_trim_string_functions_test.c
@@ -3041,6 +3053,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.concat_ws_function
     COMMAND mylite_runtime_concat_ws_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.replace_string_function
+    COMMAND mylite_runtime_replace_string_function_test
   )
   add_test(
     NAME libmylite.runtime.trim_string_functions

@@ -143,6 +143,7 @@ static int test_create_table_like_statements(void);
 static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
 static int test_alter_table_order_by_statements(void);
+static int test_alter_table_algorithm_lock_option_statements(void);
 static int test_alter_table_force_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
@@ -419,6 +420,7 @@ int main(void) {
     failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
     failures += test_alter_table_order_by_statements();
+    failures += test_alter_table_algorithm_lock_option_statements();
     failures += test_alter_table_force_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
@@ -13344,6 +13346,22 @@ static int test_alter_table_add_primary_key_statements(void) {
     failures += expect_span_text(child_at(key_parts, 0U), "id", "alter add primary key part");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (id), ALGORITHM=COPY, LOCK=EXCLUSIVE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter add primary key algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE,
+        "alter add primary key lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("ALTER TABLE app.add_pk ADD PRIMARY KEY (`id`);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
@@ -13620,6 +13638,22 @@ static int test_alter_table_add_index_statements(void) {
     failures += expect_child_count(key_parts, 1U, "alter add index part count");
     failures +=
         expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "alter add index part");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_idx ADD INDEX k_v (v), ALGORITHM=INPLACE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter add index algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter add index lock option"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("ALTER TABLE app.add_idx ADD KEY (`v`);", MYLITE_SQL_PARSE_OK, &result);
@@ -13905,6 +13939,23 @@ static int test_alter_table_add_foreign_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES parent (id), "
+        "ALGORITHM=INPLACE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter add foreign key algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter add foreign key lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE app.child ADD CONSTRAINT `fk` FOREIGN KEY (`parent_id`) "
         "REFERENCES app.parent (`id`);",
         MYLITE_SQL_PARSE_OK,
@@ -14032,8 +14083,13 @@ static int test_alter_table_drop_foreign_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE child DROP FOREIGN KEY fk_child_parent, ALGORITHM=INPLACE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter drop foreign key algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -14098,8 +14154,13 @@ static int test_alter_table_drop_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE drop_idx DROP INDEX k_v, ALGORITHM=INPLACE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter drop index algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -14211,15 +14272,25 @@ static int test_alter_table_rename_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, ALGORITHM=INPLACE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter rename index algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, LOCK=NONE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter rename index lock option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -14350,6 +14421,22 @@ static int test_alter_table_drop_primary_key_statements(void) {
     failures += expect_span_text(child_at(statement, 0U), "drop_pk", "alter drop primary table");
     failures +=
         expect_span_text(statement, "ALTER TABLE drop_pk DROP PRIMARY KEY", "alter drop pk span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP PRIMARY KEY, ALGORITHM=COPY, LOCK=EXCLUSIVE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter drop primary key algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE,
+        "alter drop primary key lock option"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -14938,6 +15025,51 @@ static int test_alter_table_order_by_statements(void) {
     return failures;
 }
 
+static int test_alter_table_algorithm_lock_option_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle ADD COLUMN added INT, ALGORITHM=INSTANT, LOCK=DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_child_count(statement, 2U, "alter add column options child count");
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter add column algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_DEFAULT,
+        "alter add column lock option"
+    );
+    failures += expect_span_text(
+        statement,
+        "ALTER TABLE app.simple_lifecycle ADD COLUMN added INT, ALGORITHM=INSTANT, LOCK=DEFAULT",
+        "alter add column options span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE algorithm_identifier (algorithm INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "algorithm_identifier", "algorithm table");
+    failures += expect_span_text(child_at(column, 0U), "algorithm", "algorithm column");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_alter_table_force_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -14970,10 +15102,12 @@ static int test_alter_table_force_statements(void) {
         parse_sql("ALTER TABLE old_name FORCE, FORCE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "ALTER TABLE old_name FORCE, ALGORITHM=COPY;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("ALTER TABLE old_name FORCE, ALGORITHM=COPY;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter force algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -19765,6 +19899,7 @@ static int test_comments_are_skipped(void) {
 
 static int test_syntax_errors(void) {
     struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
 
     failures += parse_sql("SELECT FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -20615,15 +20750,25 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name DROP COLUMN added, ALGORITHM=INSTANT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter drop column algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "ALTER TABLE old_name DROP COLUMN added, LOCK=DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_DEFAULT,
+        "alter drop column lock option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -20671,15 +20816,25 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name RENAME COLUMN old_col TO new_col, ALGORITHM=INSTANT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT,
+        "alter rename column algorithm option"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "ALTER TABLE old_name RENAME COLUMN old_col TO new_col, LOCK=DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_DEFAULT,
+        "alter rename column lock option"
     );
     mylite_sql_parse_result_deinit(&result);
 

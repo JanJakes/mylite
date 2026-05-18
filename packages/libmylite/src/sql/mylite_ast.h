@@ -546,6 +546,24 @@ enum mylite_sql_ast_column_visibility {
     MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE = 1,
 };
 
+enum mylite_sql_ast_alter_algorithm {
+    MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED = 0,
+    MYLITE_SQL_AST_ALTER_ALGORITHM_DEFAULT = 1,
+    MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT = 2,
+    MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE = 3,
+    MYLITE_SQL_AST_ALTER_ALGORITHM_COPY = 4,
+    MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN = 5,
+};
+
+enum mylite_sql_ast_alter_lock {
+    MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED = 0,
+    MYLITE_SQL_AST_ALTER_LOCK_DEFAULT = 1,
+    MYLITE_SQL_AST_ALTER_LOCK_NONE = 2,
+    MYLITE_SQL_AST_ALTER_LOCK_SHARED = 3,
+    MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE = 4,
+    MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN = 5,
+};
+
 enum mylite_sql_ast_select_modifier {
     MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT = 0,
     MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT = 1,
@@ -669,6 +687,11 @@ struct mylite_sql_ast_column_visibility_payload {
     enum mylite_sql_ast_column_visibility kind;
 };
 
+struct mylite_sql_ast_alter_table_options_payload {
+    enum mylite_sql_ast_alter_algorithm algorithm;
+    enum mylite_sql_ast_alter_lock lock;
+};
+
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_select_payload select;
     struct mylite_sql_ast_union_payload union_term;
@@ -687,6 +710,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
+    struct mylite_sql_ast_alter_table_options_payload alter_table_options;
 };
 
 struct mylite_sql_ast_node {
@@ -797,6 +821,11 @@ void mylite_sql_ast_node_set_column_visibility(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_column_visibility visibility
 );
+void mylite_sql_ast_node_set_alter_table_options(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
@@ -877,6 +906,12 @@ enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_alter_algorithm mylite_sql_ast_node_alter_algorithm(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(
     const struct mylite_sql_ast_node *node
 );
 

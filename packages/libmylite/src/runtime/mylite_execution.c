@@ -115,6 +115,8 @@ enum {
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
     mysql_error_temporary_fulltext_index = 1796,
+    mysql_error_algorithm_not_supported = 1845,
+    mysql_error_algorithm_not_supported_reason = 1846,
     mysql_error_key_part_length_cannot_be_zero = 1391,
     mysql_error_decimal_scale_too_big = 1425,
     mysql_error_decimal_precision_too_big = 1426,
@@ -7218,6 +7220,44 @@ static int execute_alter_table_force_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int validate_alter_table_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static int validate_alter_table_algorithm_lock_option_values(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+);
+static int validate_alter_table_column_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+);
+static int validate_alter_table_add_index_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+);
+static int validate_alter_table_online_metadata_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+);
+static int validate_alter_table_add_foreign_key_algorithm_lock_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+);
+static int validate_alter_table_rebuild_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+);
+static bool alter_table_statement_accepts_algorithm_lock_options(
+    enum mylite_sql_ast_node_kind kind
+);
+static bool alter_table_add_index_statement_is_fulltext(
+    const struct mylite_sql_ast_node *statement
 );
 static int execute_insert_statement(
     struct mylite_db *database,
@@ -18947,6 +18987,17 @@ static void set_parse_error(
     const struct mylite_sql_parse_result *parse_result
 );
 static void set_unsupported_error(struct mylite_db *database, const char *message);
+static void set_alter_table_instant_lock_error(struct mylite_db *database);
+static void set_alter_table_instant_algorithm_error(struct mylite_db *database);
+static void set_alter_table_add_foreign_key_instant_error(struct mylite_db *database);
+static void set_alter_table_add_foreign_key_inplace_error(struct mylite_db *database);
+static void set_alter_table_add_foreign_key_lock_none_error(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+);
+static void set_alter_table_add_fulltext_instant_error(struct mylite_db *database);
+static void set_alter_table_copy_lock_none_error(struct mylite_db *database);
+static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database);
 static void set_no_tables_used_error(struct mylite_db *database);
 static void set_scalar_subquery_column_count_error(struct mylite_db *database);
 static void set_scalar_subquery_row_count_error(struct mylite_db *database);
@@ -19481,6 +19532,13 @@ static int execute_parsed_statement(
     clear_next_transaction_characteristics_before_statement(database, statement);
     if (statement_requires_implicit_user_transaction_commit(statement)) {
         int rc = commit_active_user_transaction_for_ddl(database);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    {
+        int rc = validate_alter_table_algorithm_lock_options(database, statement);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -24936,6 +24994,211 @@ static int execute_alter_table_force_statement(
     mylite_result_set_affected_rows(result, 0);
     planned_alter_table_force_deinit(&plan);
     return finish_successful_result(database, result, out_result);
+}
+
+static int validate_alter_table_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    enum mylite_sql_ast_alter_algorithm algorithm = MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED;
+    enum mylite_sql_ast_alter_lock lock = MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED;
+    int rc = MYLITE_OK;
+
+    if (statement == NULL) {
+        return MYLITE_OK;
+    }
+    if (!alter_table_statement_accepts_algorithm_lock_options(statement->kind)) {
+        return MYLITE_OK;
+    }
+
+    algorithm = mylite_sql_ast_node_alter_algorithm(statement);
+    lock = mylite_sql_ast_node_alter_lock(statement);
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED &&
+        lock == MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED) {
+        return MYLITE_OK;
+    }
+
+    rc = validate_alter_table_algorithm_lock_option_values(database, algorithm, lock);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+        return validate_alter_table_column_algorithm_options(database, algorithm);
+
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+        return validate_alter_table_add_index_algorithm_lock_options(
+            database,
+            statement,
+            algorithm,
+            lock
+        );
+
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+        return validate_alter_table_online_metadata_algorithm_options(database, algorithm);
+
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+        return validate_alter_table_add_foreign_key_algorithm_lock_options(
+            database,
+            algorithm,
+            lock
+        );
+
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+        return validate_alter_table_rebuild_algorithm_options(database, algorithm);
+
+    default:
+        return MYLITE_OK;
+    }
+}
+
+static int validate_alter_table_algorithm_lock_option_values(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN ||
+        lock == MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT &&
+        (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE || lock == MYLITE_SQL_AST_ALTER_LOCK_SHARED ||
+         lock == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE)) {
+        set_alter_table_instant_lock_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_column_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE) {
+        set_unsupported_error(database, "ALTER TABLE action does not support ALGORITHM=INPLACE");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_add_index_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+) {
+    if (alter_table_add_index_statement_is_fulltext(statement)) {
+        if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT) {
+            set_alter_table_add_fulltext_instant_error(database);
+            return MYLITE_ERROR;
+        }
+        if (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE) {
+            if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+                set_alter_table_copy_lock_none_error(database);
+            } else {
+                set_alter_table_add_fulltext_lock_none_error(database);
+            }
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+    return validate_alter_table_online_metadata_algorithm_options(database, algorithm);
+}
+
+static int validate_alter_table_online_metadata_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT) {
+        set_alter_table_instant_algorithm_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_add_foreign_key_algorithm_lock_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT) {
+        set_alter_table_add_foreign_key_instant_error(database);
+        return MYLITE_ERROR;
+    }
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE) {
+        set_alter_table_add_foreign_key_inplace_error(database);
+        return MYLITE_ERROR;
+    }
+    if (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE) {
+        set_alter_table_add_foreign_key_lock_none_error(database, algorithm);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_rebuild_algorithm_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT) {
+        set_unsupported_error(database, "ALTER TABLE action does not support ALGORITHM=INSTANT");
+        return MYLITE_ERROR;
+    }
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE) {
+        set_unsupported_error(database, "ALTER TABLE action does not support ALGORITHM=INPLACE");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool alter_table_statement_accepts_algorithm_lock_options(
+    enum mylite_sql_ast_node_kind kind
+) {
+    switch (kind) {
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool alter_table_add_index_statement_is_fulltext(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *index_definition = child_at(statement, 1U);
+
+    if (index_definition == NULL) {
+        return false;
+    }
+    switch (index_definition->kind) {
+    case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int execute_insert_statement(
@@ -111281,6 +111544,91 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
         mysql_error_parse,
         "42000",
         message
+    );
+}
+
+static void set_alter_table_instant_lock_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_wrong_usage,
+        "HY000",
+        "Incorrect usage of ALGORITHM=INSTANT and LOCK=NONE/SHARED/EXCLUSIVE"
+    );
+}
+
+static void set_alter_table_instant_algorithm_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported,
+        "0A000",
+        "ALGORITHM=INSTANT is not supported for this operation. Try ALGORITHM=COPY/INPLACE."
+    );
+}
+
+static void set_alter_table_add_foreign_key_instant_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "ALGORITHM=INSTANT is not supported. Reason: Adding foreign keys needs "
+        "foreign_key_checks=OFF. Try ALGORITHM=COPY/INPLACE."
+    );
+}
+
+static void set_alter_table_add_foreign_key_inplace_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "ALGORITHM=INPLACE is not supported. Reason: Adding foreign keys needs "
+        "foreign_key_checks=OFF. Try ALGORITHM=COPY."
+    );
+}
+
+static void set_alter_table_add_foreign_key_lock_none_error(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm
+) {
+    if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+        set_alter_table_copy_lock_none_error(database);
+        return;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "LOCK=NONE is not supported. Reason: Adding foreign keys needs "
+        "foreign_key_checks=OFF. Try LOCK=SHARED."
+    );
+}
+
+static void set_alter_table_add_fulltext_instant_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "ALGORITHM=INSTANT is not supported. Reason: Fulltext index creation requires a lock. "
+        "Try ALGORITHM=COPY/INPLACE."
+    );
+}
+
+static void set_alter_table_copy_lock_none_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "LOCK=NONE is not supported. Reason: COPY algorithm requires a lock. Try LOCK=SHARED."
+    );
+}
+
+static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "LOCK=NONE is not supported. Reason: Fulltext index creation requires a lock. "
+        "Try LOCK=SHARED."
     );
 }
 

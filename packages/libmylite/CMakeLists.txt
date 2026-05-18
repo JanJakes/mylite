@@ -1629,6 +1629,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_alter_table_force_test)
 
+  add_executable(mylite_runtime_alter_table_algorithm_lock_clauses_test
+    tests/runtime_alter_table_algorithm_lock_clauses_test.c
+  )
+  target_link_libraries(mylite_runtime_alter_table_algorithm_lock_clauses_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_alter_table_algorithm_lock_clauses_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_alter_table_algorithm_lock_clauses_test)
+
   add_executable(mylite_runtime_table_maintenance_test
     tests/runtime_table_maintenance_test.c
   )
@@ -3346,6 +3357,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.alter_table_force
     COMMAND mylite_runtime_alter_table_force_test
+  )
+  add_test(
+    NAME libmylite.runtime.alter_table_algorithm_lock_clauses
+    COMMAND mylite_runtime_alter_table_algorithm_lock_clauses_test
   )
   add_test(
     NAME libmylite.runtime.table_maintenance

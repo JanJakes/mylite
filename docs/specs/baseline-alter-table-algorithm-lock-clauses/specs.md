@@ -33,8 +33,12 @@ Observed MySQL 8.4.9 behavior for this slice:
 - `LOCK` without a preceding comma after another alter action is a syntax error.
 - `ALGORITHM=INSTANT` with `LOCK=NONE`, `LOCK=SHARED`, or `LOCK=EXCLUSIVE`
   fails with `1221 / HY000`.
-- Common online secondary-index and foreign-key metadata operations accept
+- Common online secondary-index operations and `DROP FOREIGN KEY` accept
   `ALGORITHM=INPLACE, LOCK=NONE`.
+- Adding a foreign key with `foreign_key_checks` enabled rejects `INPLACE` and
+  `LOCK=NONE`; `ALGORITHM=COPY, LOCK=SHARED` is accepted.
+- Adding a full-text index rejects `LOCK=NONE`; `ALGORITHM=INPLACE,
+  LOCK=SHARED` is accepted.
 - `ALTER TABLE ... FORCE, ALGORITHM=COPY` accepts and reports copied rows in
   MySQL. MyLite's existing `FORCE` path remains the source of row-count
   semantics for this slice.
@@ -151,9 +155,10 @@ Successful execution:
 - mutates catalog rows only when the underlying ALTER action already mutates
   catalog rows.
 
-Duplicate option names are accepted by the parser with the later value winning.
-The slice does not claim full MySQL duplicate-option behavior; tests use one
-algorithm and one lock option.
+Duplicate valid option names are accepted by the parser with the later value
+winning. Unknown values remain invalid even if a later duplicate option has a
+recognized value. The slice does not claim full MySQL duplicate-option
+behavior; successful tests use one algorithm and one lock option.
 
 ## Validation Policy
 
@@ -174,12 +179,20 @@ Action policy for this phase:
 - `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN`: allow `DEFAULT`, `INSTANT`,
   and `COPY`; reject `INPLACE` unless a later feature verifies a safe narrower
   subset.
-- `ADD INDEX`, `DROP INDEX`, `RENAME INDEX`, `ADD FOREIGN KEY`, and
-  `DROP FOREIGN KEY`: allow `DEFAULT`, `INPLACE`, and `COPY`; reject `INSTANT`.
+- `ADD INDEX`, `DROP INDEX`, and `RENAME INDEX`: allow `DEFAULT`, `INPLACE`,
+  and `COPY`; reject `INSTANT`.
+- `ADD FULLTEXT`: allow `DEFAULT`, `INPLACE`, and `COPY`; reject `INSTANT` and
+  reject `LOCK=NONE`.
+- `ADD FOREIGN KEY`: allow `DEFAULT` and `COPY`; reject `INSTANT` and `INPLACE`
+  while MyLite's `foreign_key_checks` surface is fixed enabled; reject
+  `LOCK=NONE`.
+- `DROP FOREIGN KEY`: allow `DEFAULT`, `INPLACE`, and `COPY`; reject `INSTANT`.
 - `ADD PRIMARY KEY`, `DROP PRIMARY KEY`, and `FORCE`: allow `DEFAULT` and
   `COPY`; reject `INSTANT` and `INPLACE`.
 - Omitted `ALGORITHM` means no algorithm assertion.
-- All lock values are accepted except the `ALGORITHM=INSTANT` conflict above.
+- Lock values follow the action-specific policy above; actions without an
+  action-specific lock restriction accept every admitted lock value except the
+  `ALGORITHM=INSTANT` conflict above.
 
 This action matrix is intentionally narrower than MySQL. For example, some
 `CHANGE`/`MODIFY` and metadata-only forms can use online algorithms in MySQL,
@@ -196,6 +209,10 @@ that it has not verified.
   MySQL message shape.
 - `ALGORITHM=INSTANT` on secondary-index or foreign-key option paths:
   `1845 / 0A000` with the verified MySQL message shape.
+- `ADD FOREIGN KEY` with unsupported online options while foreign-key checks are
+  enabled: `1846 / 0A000` with the verified MySQL message shape.
+- `ADD FULLTEXT` with unsupported online options: `1846 / 0A000` with the
+  verified MySQL message shape.
 - Unsupported algorithm/action combinations not covered by a MySQL-shaped error:
   MyLite-specific unsupported diagnostic.
 - Allocation failures: existing `MYLITE_NOMEM`.

@@ -471,7 +471,7 @@ static int test_drop_index_auto_increment_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE diag DROP INDEX k_v, ALGORITHM=INPLACE",
+        "ALTER TABLE diag DROP INDEX k_v, ALGORITHM=BOGUS",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

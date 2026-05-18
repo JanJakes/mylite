@@ -297,6 +297,19 @@ void mylite_sql_ast_node_set_column_visibility(
     node->payload.column_visibility.kind = visibility;
 }
 
+void mylite_sql_ast_node_set_alter_table_options(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.alter_table_options.algorithm = algorithm;
+    node->payload.alter_table_options.lock = lock;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *child = NULL;
     size_t count = 0U;
@@ -686,6 +699,26 @@ enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
     }
 
     return node->payload.column_visibility.kind;
+}
+
+enum mylite_sql_ast_alter_algorithm mylite_sql_ast_node_alter_algorithm(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL) {
+        return MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED;
+    }
+
+    return node->payload.alter_table_options.algorithm;
+}
+
+enum mylite_sql_ast_alter_lock mylite_sql_ast_node_alter_lock(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL) {
+        return MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED;
+    }
+
+    return node->payload.alter_table_options.lock;
 }
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {

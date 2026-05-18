@@ -146,6 +146,69 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "inplace algorithm rejected for add foreign key with checks enabled" \
+    1846 \
+    0A000 \
+    "Adding foreign keys needs foreign_key_checks=OFF" \
+    "CREATE TABLE fk_parent (id INT PRIMARY KEY); "\
+"CREATE TABLE fk_child (id INT PRIMARY KEY, pid INT, KEY k_pid (pid)); "\
+"ALTER TABLE fk_child ADD FOREIGN KEY (pid) REFERENCES fk_parent(id), ALGORITHM=INPLACE;" \
+    "$DATABASE"
+
+expect_error \
+    "lock none rejected for add foreign key with checks enabled" \
+    1846 \
+    0A000 \
+    "Adding foreign keys needs foreign_key_checks=OFF" \
+    "CREATE TABLE fk_parent_lock (id INT PRIMARY KEY); "\
+"CREATE TABLE fk_child_lock (id INT PRIMARY KEY, pid INT, KEY k_pid (pid)); "\
+"ALTER TABLE fk_child_lock ADD FOREIGN KEY (pid) REFERENCES fk_parent_lock(id), LOCK=NONE;" \
+    "$DATABASE"
+
+expect_error \
+    "copy lock none rejected for add foreign key" \
+    1846 \
+    0A000 \
+    "COPY algorithm requires a lock" \
+    "CREATE TABLE fk_parent_copy_lock (id INT PRIMARY KEY); "\
+"CREATE TABLE fk_child_copy_lock (id INT PRIMARY KEY, pid INT, KEY k_pid (pid)); "\
+"ALTER TABLE fk_child_copy_lock ADD FOREIGN KEY (pid) REFERENCES fk_parent_copy_lock(id), "\
+"ALGORITHM=COPY, LOCK=NONE;" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "copy shared lock accepted for add foreign key" \
+    "CREATE TABLE fk_parent_copy (id INT PRIMARY KEY); "\
+"CREATE TABLE fk_child_copy (id INT PRIMARY KEY, pid INT, KEY k_pid (pid)); "\
+"ALTER TABLE fk_child_copy ADD FOREIGN KEY (pid) REFERENCES fk_parent_copy(id), "\
+"ALGORITHM=COPY, LOCK=SHARED;" \
+    "$DATABASE"
+
+expect_error \
+    "lock none rejected for add fulltext" \
+    1846 \
+    0A000 \
+    "Fulltext index creation requires a lock" \
+    "CREATE TABLE ft_lock_none (id INT PRIMARY KEY, body TEXT); "\
+"ALTER TABLE ft_lock_none ADD FULLTEXT KEY ft_body (body), LOCK=NONE;" \
+    "$DATABASE"
+
+expect_error \
+    "copy lock none rejected for add fulltext" \
+    1846 \
+    0A000 \
+    "COPY algorithm requires a lock" \
+    "CREATE TABLE ft_copy_lock_none (id INT PRIMARY KEY, body TEXT); "\
+"ALTER TABLE ft_copy_lock_none ADD FULLTEXT KEY ft_body (body), ALGORITHM=COPY, LOCK=NONE;" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "shared lock accepted for add fulltext" \
+    "CREATE TABLE ft_shared (id INT PRIMARY KEY, body TEXT); "\
+"ALTER TABLE ft_shared ADD FULLTEXT KEY ft_body (body), ALGORITHM=INPLACE, LOCK=SHARED;" \
+    "$DATABASE"
+
+expect_error \
     "missing comma before lock is syntax error" \
     1064 \
     42000 \

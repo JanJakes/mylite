@@ -118,6 +118,23 @@ struct mylite_sql_select_locking_clause {
     struct mylite_sql_source_span span;
 };
 
+struct mylite_sql_alter_algorithm_value {
+    enum mylite_sql_ast_alter_algorithm kind;
+    struct mylite_sql_source_span span;
+};
+
+struct mylite_sql_alter_lock_value {
+    enum mylite_sql_ast_alter_lock kind;
+    struct mylite_sql_source_span span;
+};
+
+struct mylite_sql_alter_table_options {
+    enum mylite_sql_ast_alter_algorithm algorithm;
+    enum mylite_sql_ast_alter_lock lock;
+    struct mylite_sql_source_span span;
+    int has_span;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root
@@ -657,44 +674,51 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *position
+    struct mylite_sql_ast_node *position,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *primary_key
+    struct mylite_sql_ast_node *primary_key,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *secondary_index
+    struct mylite_sql_ast_node *secondary_index,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *foreign_key
+    struct mylite_sql_ast_node *foreign_key,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_foreign_key_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *foreign_key_name
+    struct mylite_sql_ast_node *foreign_key_name,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *index_name
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_index_name,
-    struct mylite_sql_ast_node *new_index_name
+    struct mylite_sql_ast_node *new_index_name,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_statement(
     struct mylite_sql_parser_state *state,
@@ -719,7 +743,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_token key_token
+    struct mylite_sql_token key_token,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_auto_increment_statement(
     struct mylite_sql_parser_state *state,
@@ -731,14 +756,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_state
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *column_name
+    struct mylite_sql_ast_node *column_name,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_column_name,
-    struct mylite_sql_ast_node *new_column_name
+    struct mylite_sql_ast_node *new_column_name,
+    struct mylite_sql_alter_table_options options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_statement(
     struct mylite_sql_parser_state *state,
@@ -801,7 +828,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statemen
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_force_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
-    struct mylite_sql_ast_node *table_name
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_alter_table_options options
+);
+struct mylite_sql_alter_table_options mylite_sql_parser_empty_alter_table_options(void);
+struct mylite_sql_alter_algorithm_value mylite_sql_parser_make_alter_algorithm_value(
+    struct mylite_sql_token token
+);
+struct mylite_sql_alter_lock_value mylite_sql_parser_make_alter_lock_value(
+    struct mylite_sql_token token
+);
+struct mylite_sql_alter_table_options mylite_sql_parser_make_alter_table_algorithm_option(
+    struct mylite_sql_token option_token,
+    struct mylite_sql_alter_algorithm_value value
+);
+struct mylite_sql_alter_table_options mylite_sql_parser_make_alter_table_lock_option(
+    struct mylite_sql_token option_token,
+    struct mylite_sql_alter_lock_value value
+);
+struct mylite_sql_alter_table_options mylite_sql_parser_append_alter_table_option(
+    struct mylite_sql_alter_table_options list,
+    struct mylite_sql_alter_table_options option
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,

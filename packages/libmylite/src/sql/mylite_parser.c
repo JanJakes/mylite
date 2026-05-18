@@ -84,6 +84,10 @@ static struct mylite_sql_source_span span_join(
     struct mylite_sql_source_span left,
     struct mylite_sql_source_span right
 );
+static void apply_alter_table_options(
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_alter_table_options options
+);
 static const struct mylite_sql_ast_node *last_identifier_component(
     const struct mylite_sql_ast_node *identifier
 );
@@ -2189,7 +2193,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *position
+    struct mylite_sql_ast_node *position,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2212,6 +2217,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     if (position != NULL) {
         mylite_sql_ast_node_append_child(statement, position);
     }
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2219,7 +2225,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_s
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *primary_key
+    struct mylite_sql_ast_node *primary_key,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2237,6 +2244,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_s
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, primary_key);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2244,7 +2252,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_index_stateme
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *secondary_index
+    struct mylite_sql_ast_node *secondary_index,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2262,6 +2271,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_index_stateme
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, secondary_index);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2269,7 +2279,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_s
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *foreign_key
+    struct mylite_sql_ast_node *foreign_key,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2287,6 +2298,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_s
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, foreign_key);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2294,7 +2306,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_foreign_key_
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *foreign_key_name
+    struct mylite_sql_ast_node *foreign_key_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2312,6 +2325,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_foreign_key_
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, foreign_key_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2319,7 +2333,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_statem
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *index_name
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2337,6 +2352,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_statem
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, index_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2345,7 +2361,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_index_name,
-    struct mylite_sql_ast_node *new_index_name
+    struct mylite_sql_ast_node *new_index_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2366,6 +2383,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, old_index_name);
     mylite_sql_ast_node_append_child(statement, new_index_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2452,7 +2470,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_token key_token
+    struct mylite_sql_token key_token,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2469,6 +2488,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_
     }
 
     mylite_sql_ast_node_append_child(statement, table_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2501,7 +2521,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_state
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *column_name
+    struct mylite_sql_ast_node *column_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2519,6 +2540,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_state
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, column_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2527,7 +2549,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_sta
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_column_name,
-    struct mylite_sql_ast_node *new_column_name
+    struct mylite_sql_ast_node *new_column_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2548,6 +2571,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_sta
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, old_column_name);
     mylite_sql_ast_node_append_child(statement, new_column_name);
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -2774,7 +2798,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statemen
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_force_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,
-    struct mylite_sql_ast_node *table_name
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -2789,7 +2814,126 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_force_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, table_name);
+    apply_alter_table_options(statement, options);
     return statement;
+}
+
+struct mylite_sql_alter_table_options mylite_sql_parser_empty_alter_table_options(void) {
+    return (struct mylite_sql_alter_table_options){
+        .algorithm = MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED,
+        .lock = MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED,
+        .span = {0},
+        .has_span = 0,
+    };
+}
+
+struct mylite_sql_alter_algorithm_value mylite_sql_parser_make_alter_algorithm_value(
+    struct mylite_sql_token token
+) {
+    enum mylite_sql_ast_alter_algorithm kind = MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN;
+
+    if (token_text_equals(&token, "DEFAULT")) {
+        kind = MYLITE_SQL_AST_ALTER_ALGORITHM_DEFAULT;
+    } else if (token_text_equals(&token, "INSTANT")) {
+        kind = MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT;
+    } else if (token_text_equals(&token, "INPLACE")) {
+        kind = MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE;
+    } else if (token_text_equals(&token, "COPY")) {
+        kind = MYLITE_SQL_AST_ALTER_ALGORITHM_COPY;
+    }
+
+    return (struct mylite_sql_alter_algorithm_value){
+        .kind = kind,
+        .span = span_from_token(&token),
+    };
+}
+
+struct mylite_sql_alter_lock_value mylite_sql_parser_make_alter_lock_value(
+    struct mylite_sql_token token
+) {
+    enum mylite_sql_ast_alter_lock kind = MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN;
+
+    if (token_text_equals(&token, "DEFAULT")) {
+        kind = MYLITE_SQL_AST_ALTER_LOCK_DEFAULT;
+    } else if (token_text_equals(&token, "NONE")) {
+        kind = MYLITE_SQL_AST_ALTER_LOCK_NONE;
+    } else if (token_text_equals(&token, "SHARED")) {
+        kind = MYLITE_SQL_AST_ALTER_LOCK_SHARED;
+    } else if (token_text_equals(&token, "EXCLUSIVE")) {
+        kind = MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE;
+    }
+
+    return (struct mylite_sql_alter_lock_value){
+        .kind = kind,
+        .span = span_from_token(&token),
+    };
+}
+
+struct mylite_sql_alter_table_options mylite_sql_parser_make_alter_table_algorithm_option(
+    struct mylite_sql_token option_token,
+    struct mylite_sql_alter_algorithm_value value
+) {
+    struct mylite_sql_alter_table_options options = mylite_sql_parser_empty_alter_table_options();
+
+    options.algorithm = value.kind;
+    options.span = span_join(span_from_token(&option_token), value.span);
+    options.has_span = 1;
+    return options;
+}
+
+struct mylite_sql_alter_table_options mylite_sql_parser_make_alter_table_lock_option(
+    struct mylite_sql_token option_token,
+    struct mylite_sql_alter_lock_value value
+) {
+    struct mylite_sql_alter_table_options options = mylite_sql_parser_empty_alter_table_options();
+
+    options.lock = value.kind;
+    options.span = span_join(span_from_token(&option_token), value.span);
+    options.has_span = 1;
+    return options;
+}
+
+struct mylite_sql_alter_table_options mylite_sql_parser_append_alter_table_option(
+    struct mylite_sql_alter_table_options list,
+    struct mylite_sql_alter_table_options option
+) {
+    if (option.algorithm != MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED) {
+        if (list.algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN ||
+            option.algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN) {
+            list.algorithm = MYLITE_SQL_AST_ALTER_ALGORITHM_UNKNOWN;
+        } else {
+            list.algorithm = option.algorithm;
+        }
+    }
+    if (option.lock != MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED) {
+        if (list.lock == MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN ||
+            option.lock == MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN) {
+            list.lock = MYLITE_SQL_AST_ALTER_LOCK_UNKNOWN;
+        } else {
+            list.lock = option.lock;
+        }
+    }
+    if (!list.has_span) {
+        list.span = option.span;
+        list.has_span = option.has_span;
+    } else if (option.has_span) {
+        list.span = span_join(list.span, option.span);
+    }
+    return list;
+}
+
+static void apply_alter_table_options(
+    struct mylite_sql_ast_node *statement,
+    struct mylite_sql_alter_table_options options
+) {
+    if (statement == NULL) {
+        return;
+    }
+
+    mylite_sql_ast_node_set_alter_table_options(statement, options.algorithm, options.lock);
+    if (options.has_span) {
+        mylite_sql_ast_node_set_span(statement, span_join(statement->span, options.span));
+    }
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
@@ -6077,6 +6221,7 @@ static bool map_keyword_token(
     } keyword_mappings[] = {
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
         {"ALL", MYLITE_SQL_PARSE_ALL},
+        {"ALGORITHM", MYLITE_SQL_PARSE_ALGORITHM},
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AS", MYLITE_SQL_PARSE_AS},
         {"CAST", MYLITE_SQL_PARSE_CAST},

@@ -39,7 +39,7 @@
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
-%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION.
+%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -65,6 +65,11 @@
 %type table_or_tables { struct mylite_sql_token }
 %type trim_direction { enum mylite_sql_ast_node_kind }
 %type cast_basic_target { enum mylite_sql_ast_node_kind }
+%type alter_table_option_tail_opt { struct mylite_sql_alter_table_options }
+%type alter_table_algorithm_lock_option_list { struct mylite_sql_alter_table_options }
+%type alter_table_algorithm_lock_option { struct mylite_sql_alter_table_options }
+%type alter_algorithm_value { struct mylite_sql_alter_algorithm_value }
+%type alter_lock_value { struct mylite_sql_alter_lock_value }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1242,61 +1247,66 @@ alter_table_rename_statement(A) ::=
 
 alter_table_add_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD column_keyword_opt column_definition(C)
-    column_position_opt(P). {
-    A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C, P);
+    column_position_opt(P) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C, P, O);
 }
 
 alter_table_add_primary_key_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P). {
-    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P);
+    ALTER(A1) TABLE table_name(T) ADD primary_key_definition(P) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(state, A1, T, P, O);
 }
 
 alter_table_add_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD secondary_index_definition(I). {
-    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+    ALTER(A1) TABLE table_name(T) ADD secondary_index_definition(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
 }
 
 alter_table_add_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD unique_index_definition(I). {
-    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+    ALTER(A1) TABLE table_name(T) ADD unique_index_definition(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
 }
 
 alter_table_add_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD named_unique_constraint_definition(I). {
-    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+    ALTER(A1) TABLE table_name(T) ADD named_unique_constraint_definition(I)
+    alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
 }
 
 alter_table_add_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD fulltext_index_definition(I). {
-    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I);
+    ALTER(A1) TABLE table_name(T) ADD fulltext_index_definition(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
 }
 
 alter_table_add_foreign_key_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) ADD foreign_key_definition(FK). {
-    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(state, A1, T, FK);
+    ALTER(A1) TABLE table_name(T) ADD foreign_key_definition(FK) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(state, A1, T, FK, O);
 }
 
 alter_table_drop_foreign_key_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) DROP FOREIGN KEY identifier(I). {
-    A = mylite_sql_parser_make_alter_table_drop_foreign_key_statement(state, A1, T, I);
+    ALTER(A1) TABLE table_name(T) DROP FOREIGN KEY identifier(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_foreign_key_statement(state, A1, T, I, O);
 }
 
-alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP INDEX identifier(I). {
-    A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I);
+alter_table_drop_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DROP INDEX identifier(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I, O);
 }
 
-alter_table_drop_index_statement(A) ::= ALTER(A1) TABLE table_name(T) DROP KEY identifier(I). {
-    A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I);
-}
-
-alter_table_rename_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) RENAME INDEX old_identifier(O) TO new_identifier(N). {
-    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N);
+alter_table_drop_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DROP KEY identifier(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_index_statement(state, A1, T, I, O);
 }
 
 alter_table_rename_index_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) RENAME KEY old_identifier(O) TO new_identifier(N). {
-    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N);
+    ALTER(A1) TABLE table_name(T) RENAME INDEX old_identifier(O) TO new_identifier(N)
+    alter_table_option_tail_opt(P). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N, P);
+}
+
+alter_table_rename_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) RENAME KEY old_identifier(O) TO new_identifier(N)
+    alter_table_option_tail_opt(P). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N, P);
 }
 
 alter_table_add_check_statement(A) ::=
@@ -1323,8 +1333,8 @@ new_identifier(A) ::= identifier(B). {
 }
 
 alter_table_drop_primary_key_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) DROP PRIMARY KEY(K). {
-    A = mylite_sql_parser_make_alter_table_drop_primary_key_statement(state, A1, T, K);
+    ALTER(A1) TABLE table_name(T) DROP PRIMARY KEY(K) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_primary_key_statement(state, A1, T, K, O);
 }
 
 alter_table_auto_increment_statement(A) ::=
@@ -1340,13 +1350,15 @@ alter_table_auto_increment_statement(A) ::=
 }
 
 alter_table_drop_column_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) DROP column_keyword_opt identifier(C). {
-    A = mylite_sql_parser_make_alter_table_drop_column_statement(state, A1, T, C);
+    ALTER(A1) TABLE table_name(T) DROP column_keyword_opt identifier(C)
+    alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_column_statement(state, A1, T, C, O);
 }
 
 alter_table_rename_column_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) RENAME COLUMN identifier(O) TO identifier(N). {
-    A = mylite_sql_parser_make_alter_table_rename_column_statement(state, A1, T, O, N);
+    ALTER(A1) TABLE table_name(T) RENAME COLUMN identifier(O) TO identifier(N)
+    alter_table_option_tail_opt(P). {
+    A = mylite_sql_parser_make_alter_table_rename_column_statement(state, A1, T, O, N, P);
 }
 
 alter_table_modify_column_statement(A) ::=
@@ -1444,8 +1456,44 @@ alter_table_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
     A = mylite_sql_parser_make_order_by_item(state, K, D);
 }
 
-alter_table_force_statement(A) ::= ALTER(A1) TABLE table_name(T) FORCE. {
-    A = mylite_sql_parser_make_alter_table_force_statement(state, A1, T);
+alter_table_force_statement(A) ::= ALTER(A1) TABLE table_name(T) FORCE alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_force_statement(state, A1, T, O);
+}
+
+alter_table_option_tail_opt(A) ::= . {
+    A = mylite_sql_parser_empty_alter_table_options();
+}
+alter_table_option_tail_opt(A) ::= COMMA alter_table_algorithm_lock_option_list(O). {
+    A = O;
+}
+
+alter_table_algorithm_lock_option_list(A) ::= alter_table_algorithm_lock_option(O). {
+    A = O;
+}
+alter_table_algorithm_lock_option_list(A) ::=
+    alter_table_algorithm_lock_option_list(L) COMMA alter_table_algorithm_lock_option(O). {
+    A = mylite_sql_parser_append_alter_table_option(L, O);
+}
+
+alter_table_algorithm_lock_option(A) ::= ALGORITHM(T) equal_opt alter_algorithm_value(V). {
+    A = mylite_sql_parser_make_alter_table_algorithm_option(T, V);
+}
+alter_table_algorithm_lock_option(A) ::= LOCK(T) equal_opt alter_lock_value(V). {
+    A = mylite_sql_parser_make_alter_table_lock_option(T, V);
+}
+
+alter_algorithm_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_alter_algorithm_value(T);
+}
+alter_algorithm_value(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_alter_algorithm_value(T);
+}
+
+alter_lock_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_alter_lock_value(T);
+}
+alter_lock_value(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_make_alter_lock_value(T);
 }
 
 column_keyword_opt(A) ::= . {

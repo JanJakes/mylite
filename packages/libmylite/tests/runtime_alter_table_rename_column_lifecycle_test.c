@@ -1174,16 +1174,16 @@ static int test_rename_column_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers RENAME COLUMN n TO renamed, ALGORITHM=INSTANT",
+        "ALTER TABLE numbers RENAME COLUMN n TO renamed, ALGORITHM=INPLACE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "does not support ALGORITHM=INPLACE",
         }
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers RENAME COLUMN n TO renamed, LOCK=DEFAULT",
+        "ALTER TABLE numbers RENAME COLUMN n TO renamed, LOCK=BOGUS",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

@@ -6412,6 +6412,7 @@ static bool map_keyword_token(
         {"COUNT", MYLITE_SQL_PARSE_COUNT},
         {"CRC32", MYLITE_SQL_PARSE_CRC32},
         {"HEX", MYLITE_SQL_PARSE_HEX},
+        {"UNHEX", MYLITE_SQL_PARSE_UNHEX},
         {"AVG", MYLITE_SQL_PARSE_AVG},
         {"BIT_AND", MYLITE_SQL_PARSE_BIT_AND},
         {"BIT_COUNT", MYLITE_SQL_PARSE_BIT_COUNT},

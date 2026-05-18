@@ -1038,6 +1038,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "hex_function";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         return "hex_argument_count_error";
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+        return "unhex_function";
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+        return "unhex_argument_count_error";
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
         return "format_function";
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:

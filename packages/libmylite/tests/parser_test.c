@@ -70,6 +70,7 @@ static int test_base_conversion_functions(void);
 static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
+static int test_unhex_function(void);
 static int test_charset_collation_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
@@ -355,6 +356,7 @@ int main(void) {
     failures += test_bit_count_function();
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
+    failures += test_unhex_function();
     failures += test_charset_collation_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
@@ -4426,6 +4428,92 @@ static int test_hex_function(void) {
     failures += parse_sql("CREATE TABLE hex_names (hex INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "hex identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_unhex_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT UNHEX('4D'), UNHEX(X'3431'), UNHEX(+1), UNHEX(v) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UNHEX_FUNCTION, "unhex string function");
+    failures += expect_span_text(expression, "UNHEX('4D')", "unhex string span");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "unhex string");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UNHEX_FUNCTION, "unhex binary function");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_HEX, "unhex hex literal");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UNHEX_FUNCTION, "unhex signed function");
+    failures += expect_operator(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "unhex positive argument"
+    );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UNHEX_FUNCTION, "unhex column function");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "unhex column");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "unhex from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT UNHEX ('F'), (UNHEX(NULL)) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_UNHEX_FUNCTION, "spaced unhex");
+    failures += expect_span_text(expression, "UNHEX ('F')", "spaced unhex span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized unhex");
+    failures +=
+        expect_node(child_at(expression, 0U), MYLITE_SQL_AST_UNHEX_FUNCTION, "wrapped unhex");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT UNHEX();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR,
+        "empty unhex argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT UNHEX('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR,
+        "two unhex argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO UNHEX('41'), UNHEX(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "unhex do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_UNHEX_FUNCTION, "do unhex");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_UNHEX_FUNCTION, "do null unhex");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE unhex_names (unhex INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "unhex identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

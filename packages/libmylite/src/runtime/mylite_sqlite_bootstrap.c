@@ -10,6 +10,7 @@
 #include "mylite_string_replace.h"
 #include "mylite_string_search.h"
 #include "mylite_string_trim.h"
+#include "mylite_string_unhex.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_unix_timestamp.h"
 #include "sqlite3.h"
@@ -222,6 +223,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_trim_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_unhex_function(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_regexp_functions(sqlite);

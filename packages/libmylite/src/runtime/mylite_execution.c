@@ -16,6 +16,7 @@
 #include "mylite_string_replace.h"
 #include "mylite_string_search.h"
 #include "mylite_string_trim.h"
+#include "mylite_string_unhex.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_unix_timestamp.h"
 #include "sqlite3.h"
@@ -2470,6 +2471,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_ISNULL = 29,
     PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP = 30,
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE = 31,
+    PLANNED_ROW_SCALAR_EXPRESSION_UNHEX = 32,
 };
 
 enum planned_row_scalar_field_domain {
@@ -6231,19 +6233,23 @@ struct collect_drop_schema_tables_context {
 struct session_scalar_cell {
     const char *value;
     char *owned_text;
+    size_t value_size;
     size_t staged_division_by_zero_warning_count;
     size_t staged_invalid_logarithm_warning_count;
     const char *staged_truncated_integer_text;
     size_t staged_signed_complement_warning_count;
     size_t staged_unsigned_complement_warning_count;
+    bool has_value_size;
     bool has_staged_truncated_integer_warning;
     bool has_staged_truncated_decimal_warning;
+    bool has_staged_unhex_incorrect_string_warning;
     char datetime_text[datetime_text_length + 1U];
     char integer_text[integer_text_capacity];
     char double_text[double_text_capacity];
     char base_conversion_text[base_conversion_text_capacity];
     char literal_text[literal_projection_text_capacity];
     char staged_truncated_decimal_text[literal_projection_text_capacity];
+    char staged_unhex_incorrect_string_text[literal_projection_text_capacity];
 };
 
 struct json_object_function_buffers {
@@ -10936,8 +10942,11 @@ static int append_scalar_projection_columns_and_values(
     const struct mylite_sql_ast_node *select_item,
     mylite_result *result,
     struct session_scalar_cell *cells,
-    const char **values,
+    struct mylite_result_cell *values,
     size_t *out_column_count
+);
+static struct mylite_result_cell session_scalar_cell_result_cell(
+    const struct session_scalar_cell *cell
 );
 static bool do_statement_has_only_scalar_projection_expressions(
     const struct mylite_sql_ast_node *statement
@@ -10992,6 +11001,10 @@ static int append_truncated_incorrect_decimal_warning(
 );
 static int append_signed_complement_warnings(struct mylite_db *database, size_t warning_count);
 static int append_unsigned_complement_warnings(struct mylite_db *database, size_t warning_count);
+static int append_unhex_incorrect_string_warning(
+    struct mylite_db *database,
+    const char *value_text
+);
 static int copy_scalar_projection_column_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11814,6 +11827,11 @@ static int hex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int unhex_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int hex_numeric_scalar_argument_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -11846,6 +11864,43 @@ static int hex_scalar_argument_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell,
     bool *out_handled
+);
+static int unhex_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int unhex_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int unhex_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
+static int unhex_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
+static int stage_unhex_incorrect_string_warning(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    const void *input,
+    size_t input_size
 );
 static int format_hex_bytes(
     struct mylite_db *database,
@@ -13197,6 +13252,7 @@ static bool is_base_conversion_projection_expression(const struct mylite_sql_ast
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_format_truncate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_length_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -18088,6 +18144,27 @@ static bool hex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_unhex_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_unhex_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool unhex_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_charset_collation_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -19652,6 +19729,11 @@ static int append_row_scalar_hex_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_unhex_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_string_slice_operand_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -20513,6 +20595,11 @@ static int bind_row_scalar_substring_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_hex_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_unhex_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -21727,6 +21814,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_HEX_FUNCTION:
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
     case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -27334,7 +27423,7 @@ static int execute_do_statement(
             "ABS()/SIGN()/BIT_COUNT()/BIN()/OCT()/CONV()/PI()/RAND()/SQRT()/DEGREES()/"
             "RADIANS()/ACOS()/ASIN()/SIN()/COS()/TAN()/COT()/ATAN()/ATAN2()/EXP()/LN()/"
             "LOG()/LOG10()/LOG2()/POW()/POWER(), CEIL()/CEILING()/FLOOR()/ROUND(), "
-            "CRC32()/HEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
+            "CRC32()/HEX()/UNHEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
             "SIGNED/UNSIGNED), limited CONVERT(value, BINARY/CHAR/SIGNED/UNSIGNED), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
             "extract, limited FIELD(), limited CONCAT_WS(), limited JSON_VALID(), JSON_ARRAY(), "
@@ -28046,6 +28135,7 @@ static bool compound_expression_uses_binary_collation(
     switch (expression->kind) {
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return true;
     default:
         break;
@@ -36928,6 +37018,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_HEX_FUNCTION:
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
     case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -64288,6 +64380,7 @@ static bool select_statement_is_row_function_scalar_projection(
 
         if (is_string_metadata_projection_expression(expression) ||
             is_hex_projection_expression(expression) ||
+            is_unhex_projection_expression(expression) ||
             is_json_introspection_projection_expression(expression) ||
             is_json_extract_projection_expression(expression) ||
             is_json_unquote_projection_expression(expression) ||
@@ -64411,7 +64504,7 @@ static int execute_scalar_projection_select_statement(
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
     struct session_scalar_cell *cells = NULL;
-    const char **values = NULL;
+    struct mylite_result_cell *values = NULL;
     mylite_result *result = NULL;
     size_t column_count = mylite_sql_ast_node_child_count(select_list);
     size_t evaluated_column_count = 0U;
@@ -64433,7 +64526,7 @@ static int execute_scalar_projection_select_statement(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    values = (const char **)calloc(column_count, sizeof(*values));
+    values = (struct mylite_result_cell *)calloc(column_count, sizeof(*values));
     if (values == NULL) {
         session_scalar_cell_array_deinit(cells, 0U);
         mylite_result_free(result);
@@ -64456,7 +64549,7 @@ static int execute_scalar_projection_select_statement(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_text_row(result, values);
+        rc = mylite_result_append_bytes_row(result, values);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
@@ -64469,7 +64562,7 @@ static int execute_scalar_projection_select_statement(
             rc = warning_rc;
         }
     }
-    free((void *)values);
+    free(values);
     session_scalar_cell_array_deinit(cells, evaluated_column_count);
     if (rc != MYLITE_OK) {
         database->session.last_insert_id = previous_last_insert_id;
@@ -64485,7 +64578,7 @@ static int append_scalar_projection_columns_and_values(
     const struct mylite_sql_ast_node *select_item,
     mylite_result *result,
     struct session_scalar_cell *cells,
-    const char **values,
+    struct mylite_result_cell *values,
     size_t *out_column_count
 ) {
     size_t column_index = 0U;
@@ -64512,7 +64605,7 @@ static int append_scalar_projection_columns_and_values(
             rc = session_scalar_value(database, expression, &cells[column_index]);
         }
         if (rc == MYLITE_OK) {
-            values[column_index] = cells[column_index].value;
+            values[column_index] = session_scalar_cell_result_cell(&cells[column_index]);
             ++column_index;
             select_item = select_item->next_sibling;
         }
@@ -64520,6 +64613,26 @@ static int append_scalar_projection_columns_and_values(
 
     *out_column_count = column_index;
     return rc;
+}
+
+static struct mylite_result_cell session_scalar_cell_result_cell(
+    const struct session_scalar_cell *cell
+) {
+    size_t value_size = 0U;
+
+    if (cell == NULL || cell->value == NULL) {
+        return (struct mylite_result_cell){.is_null = true};
+    }
+    value_size = strlen(cell->value);
+    if (cell->has_value_size) {
+        value_size = cell->value_size;
+    }
+
+    return (struct mylite_result_cell){
+        .bytes = cell->value,
+        .size = value_size,
+        .is_null = false,
+    };
 }
 
 static int copy_scalar_projection_column_name(
@@ -64780,6 +64893,12 @@ static int append_session_scalar_cell_warnings(
             cell->staged_invalid_logarithm_warning_count
         );
     }
+    if (rc == MYLITE_OK && cell->has_staged_unhex_incorrect_string_warning) {
+        rc = append_unhex_incorrect_string_warning(
+            database,
+            cell->staged_unhex_incorrect_string_text
+        );
+    }
     return rc;
 }
 
@@ -64943,6 +65062,17 @@ static int append_unsigned_complement_warnings(struct mylite_db *database, size_
     }
 
     return rc;
+}
+
+static int append_unhex_incorrect_string_warning(
+    struct mylite_db *database,
+    const char *value_text
+) {
+    return mylite_string_unhex_append_incorrect_warning(
+        database,
+        value_text,
+        value_text == NULL ? 0U : strlen(value_text)
+    );
 }
 
 static const char *do_statement_argument_count_error_function(
@@ -65140,6 +65270,8 @@ static const char *argument_count_error_node_function_name(
         return "CRC32";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         return "HEX";
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+        return "UNHEX";
     case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
         return "FORMAT";
     case MYLITE_SQL_AST_TRUNCATE_ARGUMENT_COUNT_ERROR:
@@ -65418,6 +65550,11 @@ static int session_scalar_value(
         return hex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "HEX");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+        return unhex_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UNHEX");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
         return format_function_value(database, expression, out_cell);
@@ -73844,6 +73981,72 @@ static int hex_function_value(
     return rc;
 }
 
+static int unhex_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const unsigned char *bytes = NULL;
+    unsigned char *decoded = NULL;
+    char *owned_bytes = NULL;
+    size_t byte_count = 0U;
+    size_t decoded_size = 0U;
+    bool is_null = false;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNHEX_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(
+            database,
+            "UNHEX() supports only one string, hex, integer, boolean, NULL, supported session "
+            "scalar, or supported system variable argument"
+        );
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    rc = unhex_argument_bytes(
+        database,
+        argument,
+        out_cell,
+        &bytes,
+        &byte_count,
+        &owned_bytes,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_bytes);
+        return rc;
+    }
+
+    rc = mylite_string_unhex_decode(bytes, byte_count, &decoded, &decoded_size, &valid);
+    if (rc != MYLITE_OK) {
+        free(owned_bytes);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (!valid) {
+        rc = stage_unhex_incorrect_string_warning(database, out_cell, bytes, byte_count);
+        free(owned_bytes);
+        return rc;
+    }
+
+    out_cell->owned_text = (char *)decoded;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = decoded_size;
+    out_cell->has_value_size = true;
+    free(owned_bytes);
+    return MYLITE_OK;
+}
+
 static int hex_numeric_scalar_argument_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -74163,6 +74366,224 @@ static int hex_scalar_argument_value(
     }
 
     *out_handled = false;
+    return MYLITE_OK;
+}
+
+static int unhex_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    bool handled_scalar = false;
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_owned_bytes = NULL;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "UNHEX() supports only string, hex, integer, boolean, NULL, supported session "
+            "scalar, and supported system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return unhex_literal_argument_bytes(
+            database,
+            expression,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return unhex_unary_argument_bytes(
+            database,
+            expression,
+            out_bytes,
+            out_byte_count,
+            out_owned_bytes,
+            out_is_null
+        );
+    }
+
+    rc = unhex_scalar_argument_value(database, expression, cell, &handled_scalar);
+    if (rc != MYLITE_OK || handled_scalar) {
+        if (rc == MYLITE_OK && cell->value == NULL) {
+            *out_is_null = true;
+        } else if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)cell->value;
+            *out_byte_count = strlen(cell->value);
+            if (cell->has_value_size) {
+                *out_byte_count = cell->value_size;
+            }
+        }
+        return rc;
+    }
+
+    set_unsupported_error(
+        database,
+        "UNHEX() supports only string, hex, integer, boolean, NULL, supported session scalar, "
+        "and supported system variable arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int unhex_literal_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
+        out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_bytes =
+            (const unsigned char *)(literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? "1" : "0");
+        *out_byte_count = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        rc = copy_source_span_text(database, &literal->span, out_owned_bytes);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+            *out_byte_count = strlen(*out_owned_bytes);
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal_with_policy(
+            database,
+            literal,
+            "UNHEX() supports only string, hex, integer, boolean, NULL, supported session "
+            "scalar, and supported system variable arguments",
+            "UNHEX() string literal is invalid",
+            true,
+            out_owned_bytes,
+            out_byte_count
+        );
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        rc = decode_binary_hex_literal(database, literal, out_owned_bytes, out_byte_count);
+        if (rc == MYLITE_OK) {
+            *out_bytes = (const unsigned char *)*out_owned_bytes;
+        }
+        return rc;
+    }
+
+    set_unsupported_error(
+        database,
+        "UNHEX() supports only string, hex, integer, boolean, NULL, supported session scalar, "
+        "and supported system variable arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int unhex_unary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+) {
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        out_owned_bytes == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_unsupported_error(database, "UNHEX() supports only signed integer literal arguments");
+        return MYLITE_ERROR;
+    }
+
+    literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "UNHEX() supports only signed integer literal arguments");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_source_span_text(
+        database,
+        operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ? &literal->span : &expression->span,
+        out_owned_bytes
+    );
+    if (rc == MYLITE_OK) {
+        *out_bytes = (const unsigned char *)*out_owned_bytes;
+        *out_byte_count = strlen(*out_owned_bytes);
+        *out_is_null = false;
+    }
+    return rc;
+}
+
+static int unhex_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+) {
+    return hex_scalar_argument_value(database, expression, out_cell, out_handled);
+}
+
+static int stage_unhex_incorrect_string_warning(
+    struct mylite_db *database,
+    struct session_scalar_cell *cell,
+    const void *input,
+    size_t input_size
+) {
+    int rc = MYLITE_OK;
+
+    if (cell == NULL || (input == NULL && input_size != 0U)) {
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_string_unhex_format_warning_input(
+        input,
+        input_size,
+        cell->staged_unhex_incorrect_string_text,
+        sizeof(cell->staged_unhex_incorrect_string_text)
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to format UNHEX() warning input");
+        return MYLITE_ERROR;
+    }
+    cell->has_staged_unhex_incorrect_string_warning = true;
     return MYLITE_OK;
 }
 
@@ -80167,10 +80588,19 @@ static void copy_session_scalar_cell(
             destination->staged_truncated_integer_text = source->staged_truncated_integer_text;
             destination->has_staged_truncated_decimal_warning =
                 source->has_staged_truncated_decimal_warning;
+            destination->has_value_size = source->has_value_size;
+            destination->value_size = source->value_size;
             memcpy(
                 destination->staged_truncated_decimal_text,
                 source->staged_truncated_decimal_text,
                 sizeof(destination->staged_truncated_decimal_text)
+            );
+            destination->has_staged_unhex_incorrect_string_warning =
+                source->has_staged_unhex_incorrect_string_warning;
+            memcpy(
+                destination->staged_unhex_incorrect_string_text,
+                source->staged_unhex_incorrect_string_text,
+                sizeof(destination->staged_unhex_incorrect_string_text)
             );
             destination->staged_signed_complement_warning_count =
                 source->staged_signed_complement_warning_count;
@@ -80188,10 +80618,19 @@ static void copy_session_scalar_cell(
     destination->staged_truncated_integer_text = source->staged_truncated_integer_text;
     destination->has_staged_truncated_decimal_warning =
         source->has_staged_truncated_decimal_warning;
+    destination->has_value_size = source->has_value_size;
+    destination->value_size = source->value_size;
     memcpy(
         destination->staged_truncated_decimal_text,
         source->staged_truncated_decimal_text,
         sizeof(destination->staged_truncated_decimal_text)
+    );
+    destination->has_staged_unhex_incorrect_string_warning =
+        source->has_staged_unhex_incorrect_string_warning;
+    memcpy(
+        destination->staged_unhex_incorrect_string_text,
+        source->staged_unhex_incorrect_string_text,
+        sizeof(destination->staged_unhex_incorrect_string_text)
     );
     destination->staged_signed_complement_warning_count =
         source->staged_signed_complement_warning_count;
@@ -82084,6 +82523,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_hex_projection_expression(expression)) {
         return true;
     }
+    if (is_unhex_projection_expression(expression)) {
+        return true;
+    }
     if (is_format_truncate_projection_expression(expression)) {
         return true;
     }
@@ -82437,6 +82879,68 @@ static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNHEX_FUNCTION) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+
+    switch (argument->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return true;
     default:
         return false;
@@ -95940,6 +96444,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_UNHEX_FUNCTION) {
+        return plan_row_scalar_unhex_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (is_charset_collation_function_kind(expression->kind)) {
         return plan_row_scalar_charset_collation_expression(
             database,
@@ -99330,6 +99845,153 @@ static bool hex_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_unhex_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNHEX_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "UNHEX");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+
+            rc = collect_column_reference_parts(database, argument, parts, &part_count);
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_unhex_column(
+            database,
+            argument,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    if (!is_unhex_projection_expression(expression)) {
+        set_unsupported_error(
+            database,
+            "UNHEX() supports only string, hex, integer, boolean, NULL, supported session "
+            "scalar, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = unhex_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK && cell.has_staged_unhex_incorrect_string_warning) {
+        rc = append_session_scalar_cell_warnings(database, &cell);
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (cell.value == NULL) {
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        } else {
+            rc = copy_blob_value(database, cell.value, cell.value_size, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int plan_row_scalar_unhex_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT UNHEX() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!unhex_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UNHEX;
+    out_expression->argument_count = 1U;
+    out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->arguments[0].column = column;
+    return MYLITE_OK;
+}
+
+static bool unhex_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column)) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
+        column_descriptor_is_bit(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        set_unsupported_error(
+            database,
+            "UNHEX() supports only integer, nonbinary string, and binary string columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "UNHEX() supports only integer, nonbinary string, and binary string columns"
+    );
+    return false;
+}
+
 static int plan_row_scalar_charset_collation_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -100669,6 +101331,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
     return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
@@ -102415,6 +103078,7 @@ static bool row_scalar_expression_contains_row_function(
               mylite_sql_ast_node_operator(current) ==
                   MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
             found = true;
             break;
@@ -114738,6 +115402,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
 
@@ -115576,6 +116241,8 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return append_row_scalar_hex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+        return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -115629,6 +116296,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -115797,6 +116465,31 @@ static int append_row_scalar_date_format_expression_sql(
                 next_parameter
             );
         }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_unhex_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_unhex(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -116395,6 +117088,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -116572,6 +117266,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
     return MYLITE_ERROR;
@@ -116623,6 +117318,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
     return MYLITE_ERROR;
@@ -117007,6 +117703,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
     return MYLITE_ERROR;
@@ -117062,6 +117759,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -121805,6 +122503,8 @@ static int bind_row_scalar_expression_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
         return bind_row_scalar_hex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+        return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -121862,6 +122562,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -122220,6 +122921,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -122382,6 +123084,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         break;
     }
     return MYLITE_ERROR;
@@ -122428,6 +123131,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -122557,6 +123261,21 @@ static int bind_row_scalar_hex_expression_parameters(
         rc = bind_row_scalar_non_concat_expression_parameters(statement, argument, parameter_index);
     }
     return rc;
+}
+
+static int bind_row_scalar_unhex_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
 }
 
 static int bind_select_predicate_parameters(

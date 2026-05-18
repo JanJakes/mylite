@@ -3301,6 +3301,10 @@ expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
 }
+expression(A) ::= UNHEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNHEX_FUNCTION, B, R);
+}
 expression(A) ::= CHARSET(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CHARSET_FUNCTION, B, R);
@@ -3711,6 +3715,15 @@ expression(A) ::= HEX(T) LPAREN expression(B) COMMA function_argument_list(C) RP
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UNHEX(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= UNHEX(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= FORMAT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4746,6 +4759,9 @@ identifier(A) ::= CRC32(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= HEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UNHEX(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FORMAT(T). {

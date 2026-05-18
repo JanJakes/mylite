@@ -505,7 +505,7 @@ tests.
 | `TO_BASE64()` | ❌ | Base64 encode. | [string functions](docs/compatibility/functions-string.md) |
 | `TRIM()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; supports default, `remstr FROM`, and `LEADING` / `TRAILING` / `BOTH` forms over admitted scalar and descriptor-backed text-convertible values. | [string functions](docs/compatibility/functions-string.md) |
 | `UCASE()` | 🟡 | Limited `UPPER()` synonym for ASCII-only scalar and row-scalar projection. | [string functions](docs/compatibility/functions-string.md) |
-| `UNHEX()` | ❌ | Hex decode. | [string functions](docs/compatibility/functions-string.md) |
+| `UNHEX()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; decodes ASCII hex input bytes to binary bytes, treats odd-length input as leading-zero padded, returns `NULL` for `NULL`, and returns `NULL` with warning `1411` for invalid non-hex input. | [string functions](docs/compatibility/functions-string.md), [baseline UNHEX function](docs/specs/baseline-unhex-function/specs.md) |
 | `UPPER()` | 🟡 | Limited ASCII-only no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection over admitted scalar and descriptor-backed values; no Unicode/collation folding, binary-string result typing, predicates, DML assignments, ordering/grouping expressions, or general expression metadata. | [string functions](docs/compatibility/functions-string.md) |
 | `WEIGHT_STRING()` | ❌ | Collation weight string. | [string functions](docs/compatibility/functions-string.md), [collations](docs/compatibility/collations.md) |
 

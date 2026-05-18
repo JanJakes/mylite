@@ -1018,6 +1018,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"UNDO", MYLITE_SQL_KEYWORD_RESERVED},
         {"UNDOFILE", 0U},
         {"UNDO_BUFFER_SIZE", 0U},
+        {"UNHEX", 0U},
         {"UNICODE", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"UNINSTALL", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"UNION", MYLITE_SQL_KEYWORD_RESERVED},

@@ -19274,6 +19274,25 @@ static int test_insert_select_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT id, amount FROM app.source_a UNION ALL SELECT id, amount FROM app.source_b;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select union source statement"
+    );
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
+        "insert select union source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

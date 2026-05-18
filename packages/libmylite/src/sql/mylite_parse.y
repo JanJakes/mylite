@@ -1557,26 +1557,34 @@ insert_values_statement(A) ::=
 
 insert_select_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) INTO table_name(T) insert_column_list_opt(C)
-    select_statement(S). {
+    insert_select_source_statement(S). {
     A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S, M, NULL);
 }
 insert_select_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) IGNORE(G) INTO table_name(T)
-    insert_column_list_opt(C) select_statement(S). {
+    insert_column_list_opt(C) insert_select_source_statement(S). {
     A = mylite_sql_parser_make_insert_select_statement(
         state, I, T, C, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
     );
 }
 insert_select_statement(A) ::=
-    INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C) select_statement(S). {
+    INSERT(I) insert_modifier_opt(M) table_name(T) insert_column_list_opt(C)
+    insert_select_source_statement(S). {
     A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S, M, NULL);
 }
 insert_select_statement(A) ::=
     INSERT(I) insert_modifier_opt(M) IGNORE(G) table_name(T) insert_column_list_opt(C)
-    select_statement(S). {
+    insert_select_source_statement(S). {
     A = mylite_sql_parser_make_insert_select_statement(
         state, I, T, C, S, M, mylite_sql_parser_make_insert_ignore_modifier(state, G)
     );
+}
+
+insert_select_source_statement(A) ::= select_statement(S). {
+    A = S;
+}
+insert_select_source_statement(A) ::= compound_select_statement(S). {
+    A = S;
 }
 
 insert_modifier_opt(A) ::= . {

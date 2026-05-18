@@ -65,6 +65,9 @@ records the runtime probes for this feature. Observed behavior:
 - A compound `SELECT` may be the source of `INSERT ... SELECT`.
 - `UNION` and `UNION DISTINCT` remove duplicate source rows before insertion;
   `NULL` values compare equal for duplicate elimination.
+- Under MySQL's default `utf8mb4_0900_ai_ci` collation, string values such as
+  `'a'` and `'A'` are duplicate-equivalent for this slice; the first observed
+  representative is inserted.
 - `UNION ALL` preserves duplicate source rows.
 - Mixed `UNION ALL` and distinct `UNION` chains follow the same accumulated
   left-side behavior as top-level `UNION`.
@@ -164,8 +167,9 @@ This feature must not implement:
   source metadata. This feature must not read SQLite schema text as metadata
   authority and must not mutate catalog rows except for normal auto-increment
   counter advancement caused by successful generated inserts.
-- SQLite owns physical row storage, scans, filtering, set-operation duplicate
-  elimination, internal temporary storage, and final row insertion. MyLite
+- SQLite owns physical row storage, scans, generated filter execution,
+  internal temporary storage, and final row insertion. MyLite owns the
+  compound duplicate-elimination semantics admitted by this slice. MyLite
   builds all SQLite SQL from descriptors and stable physical names, quotes
   generated identifiers, and binds predicate, scalar, limit, and insert values.
 - Storage/VFS owns the `.mylite` preamble and shifted SQLite payload boundary.
@@ -261,14 +265,20 @@ are validated against the target descriptors.
 
 ### Duplicate Handling And Row Order
 
-MyLite generates a standard SQLite compound query using `UNION` for distinct
-terms and `UNION ALL` for all terms. The supported source branch SQL is built
-from descriptors and bound parameters. This delegates duplicate elimination to
-SQLite's set operation for the internal materialized source. For the admitted
-integer, `NULL`, and compatible descriptor value subset, this matches the
-observed MySQL behavior: `NULL` duplicates collapse for `UNION`, duplicates
-are preserved for `UNION ALL`, and mixed chains apply distinct terms to the
-accumulated left side.
+MyLite materializes all compound source branches into SQLite temporary storage
+with `UNION ALL`, an internal branch marker, descriptor-built projection SQL,
+and bound parameters. For distinct `UNION` terms, MyLite then scans that
+temporary table in insertion order and filters duplicate rows with generated
+SQL before validation and insertion. This avoids relying on SQLite's choice of
+which duplicate representative survives.
+
+Duplicate comparison for the supported subset treats `NULL` values as equal.
+For text-family branch outputs, MyLite applies the registered
+`utf8mb4_0900_ai_ci` collation when comparing duplicates, so case-only
+duplicates collapse while the first observed representative is retained.
+`UNION ALL` chains skip the duplicate filter and preserve every materialized
+row. Mixed chains apply distinct terms to the accumulated prefix and preserve
+later `UNION ALL` terms.
 
 Without a global `ORDER BY`, MySQL does not promise a broad row order. Tests
 must not depend on unspecified row order except for values whose final order is
@@ -306,9 +316,9 @@ inside SQLite temporary storage:
 
 ```sql
 CREATE TEMP TABLE "temp_name" AS
-SELECT ... FROM "source_physical"
-UNION [ALL]
-SELECT ...
+SELECT 0 AS "_mylite_union_branch", ... FROM "source_physical"
+UNION ALL
+SELECT 1, ...
 ```
 
 No source SQL may use catalog names supplied by the user directly. Generated
@@ -316,12 +326,15 @@ SQL must use descriptor-owned physical names, quoted identifiers, and unique
 numbered parameters across all compound branches. MyLite binds all branch
 predicate, row-scalar, `EXISTS`, and limit values through prepared statements.
 
-After materialization, MyLite validates rows from the temporary table and then
-uses the existing descriptor-owned physical insert path. The temporary table is
-dropped on success and best-effort dropped on failure. A statement transaction
-wraps materialization, validation, insertion, auto-increment counter updates,
-foreign-key checks, and temporary-table cleanup so failures leave no partial
-target rows.
+After materialization, MyLite validates rows from the temporary table through a
+generated validation scan. If any distinct `UNION` term is present, that scan
+uses the internal branch marker and SQLite rowid insertion order to keep the
+first duplicate representative in the distinct prefix; later `UNION ALL`
+branches remain visible. MyLite then uses the existing descriptor-owned
+physical insert path. The temporary table is dropped on success and best-effort
+dropped on failure. A statement transaction wraps materialization, validation,
+insertion, auto-increment counter updates, foreign-key checks, and
+temporary-table cleanup so failures leave no partial target rows.
 
 This keeps the feature close to the current `INSERT ... SELECT` performance
 model: the selected row set is materialized once in SQLite temporary storage,
@@ -345,10 +358,9 @@ Successful supported statements:
 
 The implementation must provide deterministic diagnostics for:
 
-- syntax errors;
-- unsupported compound source in `REPLACE ... SELECT`;
+- syntax errors, including compound sources after `REPLACE ... SELECT` and
+  compound insert sources followed by `ON DUPLICATE KEY UPDATE`;
 - unsupported `INSERT IGNORE ... SELECT` compound source;
-- unsupported `ON DUPLICATE KEY UPDATE` compound source;
 - unsupported branch `ORDER BY`, `LIMIT`, locking clauses, select options, or
   `SQL_CALC_FOUND_ROWS`;
 - unsupported joined, grouped, aggregate, parenthesized, `TABLE`, `VALUES`,
@@ -394,9 +406,9 @@ tests. Tests must cover:
 - auto-increment generation for compound source rows;
 - same-table source/target materialization;
 - rejected `IGNORE`, `ON DUPLICATE KEY UPDATE`, branch `ORDER BY`, branch
-  `LIMIT`, locking clauses, joins, global compound `ORDER BY` / `LIMIT`,
-  parenthesized branch expressions, `TABLE`, `VALUES`, CTEs, and `REPLACE`
-  compound sources;
+  `LIMIT`, joins, and `REPLACE` compound sources, with existing parser/runtime
+  boundaries covering locking clauses, global compound `ORDER BY` / `LIMIT`,
+  parenthesized branch expressions, `TABLE`, `VALUES`, and CTEs;
 - affected rows, warning count, absence of result rows, persistence after
   close/reopen, independent file-backed handles, and `.mylite` preamble safety;
 - zero-initialized cleanup for new planner/runtime objects;

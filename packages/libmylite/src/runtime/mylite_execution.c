@@ -590,6 +590,9 @@ static const char national_character_set_warning_message[] =
     "UTF8MB4 in a future release. Please consider using CHAR(x) CHARACTER SET UTF8MB4 in order "
     "to be unambiguous.";
 static const char string_key_collation_name[] = "utf8mb4_0900_ai_ci";
+static const char insert_select_union_branch_column_name[] = "_mylite_union_branch";
+static const char insert_select_union_current_alias[] = "_mylite_union_current";
+static const char insert_select_union_prior_alias[] = "_mylite_union_prior";
 
 struct character_set_descriptor {
     const char *name;
@@ -2565,6 +2568,24 @@ struct row_scalar_select_clauses {
 enum planned_insert_select_source_kind {
     PLANNED_INSERT_SELECT_SOURCE_TABLE = 0,
     PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR = 1,
+    PLANNED_INSERT_SELECT_SOURCE_COMPOUND = 2,
+};
+
+enum planned_insert_select_compound_branch_kind {
+    PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE = 0,
+    PLANNED_INSERT_SELECT_COMPOUND_BRANCH_ROW_SCALAR = 1,
+};
+
+struct planned_insert_select_compound_branch {
+    enum planned_insert_select_compound_branch_kind kind;
+    enum mylite_sql_ast_union_modifier modifier;
+    struct planned_select source;
+    struct planned_row_scalar_select row_source;
+};
+
+struct planned_insert_select_compound_source {
+    struct planned_insert_select_compound_branch *branches;
+    size_t branch_count;
 };
 
 struct planned_insert_select {
@@ -2572,6 +2593,7 @@ struct planned_insert_select {
     enum planned_insert_select_source_kind source_kind;
     struct planned_select source;
     struct planned_row_scalar_select row_source;
+    struct planned_insert_select_compound_source compound_source;
     size_t *target_indexes;
     size_t target_count;
 };
@@ -9823,6 +9845,9 @@ static int plan_insert_select(
     const struct mylite_sql_ast_node *statement,
     struct planned_insert_select *out_plan
 );
+static enum planned_insert_select_source_kind insert_select_source_kind(
+    const struct mylite_sql_ast_node *source_statement
+);
 static bool insert_select_source_is_row_scalar(const struct mylite_sql_ast_node *select_statement);
 static int plan_insert_select_target(
     struct mylite_db *database,
@@ -9837,7 +9862,7 @@ static void apply_insert_select_primary_key_info(
 static int plan_insert_select_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    bool row_scalar_source,
+    enum planned_insert_select_source_kind source_kind,
     struct planned_insert_select *out_plan
 );
 static int plan_insert_select_row_scalar_source(
@@ -9849,6 +9874,42 @@ static int plan_insert_select_table_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_insert_select *out_plan
+);
+static int plan_insert_select_compound_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan
+);
+static int plan_insert_select_compound_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+);
+static int plan_insert_select_compound_table_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+);
+static int plan_insert_select_compound_row_scalar_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+);
+static int validate_insert_select_compound_branch_target_compatibility(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    const struct planned_select *source
+);
+static int validate_insert_select_compound_target_compatibility(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan
+);
+static void planned_insert_select_compound_source_deinit(
+    struct planned_insert_select_compound_source *source
 );
 static int reject_insert_select_key_bearing_target(
     struct mylite_db *database,
@@ -18829,6 +18890,7 @@ static int append_insert_column_names(
 );
 static int append_insert_parameters(struct dynamic_string *string, size_t column_count);
 static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
+static int append_size_literal(struct dynamic_string *string, size_t value);
 static int build_insert_select_temp_table_name(
     const struct mylite_db *database,
     char *destination,
@@ -18839,10 +18901,97 @@ static int build_insert_select_materialize_sql(
     const char *temporary_table_name,
     char **out_sql
 );
+static int build_insert_select_table_materialize_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+);
+static int build_insert_select_compound_materialize_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+);
+static int append_insert_select_compound_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+);
+static int append_insert_select_compound_table_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+);
+static int append_insert_select_compound_branch_marker_sql(
+    struct dynamic_string *string,
+    size_t branch_index,
+    bool alias_columns
+);
+static int append_insert_select_compound_column_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_select *source,
+    size_t column_index
+);
+static int append_insert_select_compound_row_scalar_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+);
+static int append_insert_select_compound_row_scalar_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static bool row_scalar_expression_uses_string_collation(
+    const struct planned_row_scalar_expression *expression
+);
 static int build_insert_select_validation_sql(
     const struct planned_insert_select *plan,
     const char *temporary_table_name,
     char **out_sql
+);
+static int build_insert_select_table_validation_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+);
+static int build_insert_select_compound_validation_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+);
+static bool insert_select_compound_last_distinct_branch(
+    const struct planned_insert_select *plan,
+    size_t *out_branch_index
+);
+static int append_insert_select_compound_distinct_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    size_t last_distinct_branch
+);
+static int append_insert_select_compound_distinct_equality_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select *plan,
+    size_t column_index
+);
+static int append_insert_select_compound_qualified_temp_column_name(
+    struct dynamic_string *string,
+    const char *alias,
+    size_t column_index
+);
+static int append_insert_select_compound_qualified_branch_column_name(
+    struct dynamic_string *string,
+    const char *alias
+);
+static bool insert_select_compound_output_uses_string_collation(
+    const struct planned_insert_select *plan,
+    size_t column_index
 );
 static int build_drop_temp_table_sql(const char *temporary_table_name, char **out_sql);
 static int append_insert_select_source_projection(
@@ -19829,9 +19978,27 @@ static int format_key_value(
     size_t destination_size
 );
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
+static int bind_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_select *plan,
+    int *parameter_index
+);
 static int bind_row_scalar_select_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan
+);
+static int bind_row_scalar_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan,
+    int *parameter_index
+);
+static int bind_insert_select_materialize_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan
+);
+static int bind_insert_select_compound_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan
 );
 static int bind_row_scalar_expression_parameters(
     sqlite3_stmt *statement,
@@ -53607,22 +53774,27 @@ static int plan_insert_select(
     struct planned_insert_select *out_plan
 ) {
     const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_statement = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *source_statement = child_at(statement, 2U);
     struct primary_key_info primary_key = primary_key_info_init();
     bool ignore = child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
-    bool row_scalar_source = insert_select_source_is_row_scalar(select_statement);
+    enum planned_insert_select_source_kind source_kind =
+        insert_select_source_kind(source_statement);
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
     out_plan->target.ignore_errors = ignore;
     out_plan->target.replace_existing_rows =
         statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT;
-    out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_TABLE;
-    if (row_scalar_source) {
-        out_plan->source_kind = PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR;
-    }
-    if (row_scalar_source && statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
+    out_plan->source_kind = source_kind;
+    if (source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR &&
+        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
         set_unsupported_error(database, "REPLACE ... SELECT does not support row-scalar sources");
+        primary_key_info_deinit(&primary_key);
+        return MYLITE_ERROR;
+    }
+    if (source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND &&
+        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
+        set_unsupported_error(database, "REPLACE ... SELECT does not support UNION sources");
         primary_key_info_deinit(&primary_key);
         return MYLITE_ERROR;
     }
@@ -53633,7 +53805,7 @@ static int plan_insert_select(
     if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
         rc = initialize_insert_auto_increment_range(database, &out_plan->target);
     }
-    if (rc == MYLITE_OK && !row_scalar_source &&
+    if (rc == MYLITE_OK && source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE &&
         statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
         rc = reject_insert_select_key_bearing_target(database, statement, out_plan, &primary_key);
     }
@@ -53655,14 +53827,19 @@ static int plan_insert_select(
             out_plan->target_count
         );
     }
-    if (rc == MYLITE_OK && ignore && row_scalar_source) {
+    if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR) {
         set_unsupported_error(
             database,
             "INSERT IGNORE ... SELECT does not support row-scalar sources"
         );
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && ignore && !row_scalar_source && out_plan->target.has_auto_increment) {
+    if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        set_unsupported_error(database, "INSERT IGNORE ... SELECT does not support UNION sources");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE &&
+        out_plan->target.has_auto_increment) {
         set_unsupported_error(
             database,
             "INSERT IGNORE ... SELECT does not support AUTO_INCREMENT targets"
@@ -53670,11 +53847,25 @@ static int plan_insert_select(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = plan_insert_select_source(database, statement, row_scalar_source, out_plan);
+        rc = plan_insert_select_source(database, statement, source_kind, out_plan);
     }
 
     primary_key_info_deinit(&primary_key);
     return rc;
+}
+
+static enum planned_insert_select_source_kind insert_select_source_kind(
+    const struct mylite_sql_ast_node *source_statement
+) {
+    if (source_statement != NULL &&
+        source_statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        return PLANNED_INSERT_SELECT_SOURCE_COMPOUND;
+    }
+    if (insert_select_source_is_row_scalar(source_statement)) {
+        return PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR;
+    }
+
+    return PLANNED_INSERT_SELECT_SOURCE_TABLE;
 }
 
 static bool insert_select_source_is_row_scalar(const struct mylite_sql_ast_node *select_statement) {
@@ -53753,13 +53944,16 @@ static void apply_insert_select_primary_key_info(
 static int plan_insert_select_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    bool row_scalar_source,
+    enum planned_insert_select_source_kind source_kind,
     struct planned_insert_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_statement = child_at(statement, 2U);
 
-    if (row_scalar_source) {
+    if (source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR) {
         return plan_insert_select_row_scalar_source(database, select_statement, out_plan);
+    }
+    if (source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        return plan_insert_select_compound_source(database, statement, out_plan);
     }
 
     return plan_insert_select_table_source(database, statement, out_plan);
@@ -53815,6 +54009,207 @@ static int plan_insert_select_table_source(
     }
 
     return rc;
+}
+
+static int plan_insert_select_compound_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert_select *out_plan
+) {
+    const struct mylite_sql_ast_node *compound_statement = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *terms = child_at(compound_statement, 1U);
+    const struct mylite_sql_ast_node *term = NULL;
+    size_t branch_count = mylite_sql_ast_node_child_count(terms);
+    size_t first_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (compound_statement == NULL ||
+        compound_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT ||
+        branch_count == SIZE_MAX) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    ++branch_count;
+    out_plan->compound_source.branches =
+        calloc(branch_count, sizeof(*out_plan->compound_source.branches));
+    if (out_plan->compound_source.branches == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->compound_source.branch_count = branch_count;
+
+    rc = plan_insert_select_compound_branch(
+        database,
+        child_at(compound_statement, 0U),
+        MYLITE_SQL_AST_UNION_MODIFIER_DISTINCT,
+        &out_plan->compound_source.branches[0],
+        &first_column_count
+    );
+
+    term = child_at(terms, 0U);
+    for (size_t branch_index = 1U; rc == MYLITE_OK && branch_index < branch_count; ++branch_index) {
+        size_t branch_column_count = 0U;
+
+        rc = plan_insert_select_compound_branch(
+            database,
+            child_at(term, 0U),
+            mylite_sql_ast_node_union_modifier(term),
+            &out_plan->compound_source.branches[branch_index],
+            &branch_column_count
+        );
+        if (rc == MYLITE_OK && branch_column_count != first_column_count) {
+            set_union_column_count_mismatch_error(database);
+            rc = MYLITE_ERROR;
+        }
+        term = term->next_sibling;
+    }
+    if (rc == MYLITE_OK && first_column_count != out_plan->target_count) {
+        set_column_count_mismatch_error(database, 1U);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_insert_select_compound_target_compatibility(database, out_plan);
+    }
+
+    if (rc != MYLITE_OK) {
+        planned_insert_select_compound_source_deinit(&out_plan->compound_source);
+    }
+
+    return rc;
+}
+
+static int plan_insert_select_compound_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    enum mylite_sql_ast_union_modifier modifier,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+) {
+    int rc = reject_compound_select_branch_shape(database, branch_statement);
+
+    *out_branch = (struct planned_insert_select_compound_branch){.modifier = modifier};
+    *out_column_count = 0U;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (insert_select_source_is_row_scalar(branch_statement)) {
+        out_branch->kind = PLANNED_INSERT_SELECT_COMPOUND_BRANCH_ROW_SCALAR;
+        return plan_insert_select_compound_row_scalar_branch(
+            database,
+            branch_statement,
+            out_branch,
+            out_column_count
+        );
+    }
+
+    out_branch->kind = PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE;
+    return plan_insert_select_compound_table_branch(
+        database,
+        branch_statement,
+        out_branch,
+        out_column_count
+    );
+}
+
+static int plan_insert_select_compound_table_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+) {
+    int rc = plan_select(database, branch_statement, &out_branch->source);
+
+    if (rc == MYLITE_OK && out_branch->source.source_count > 0U) {
+        set_unsupported_error(database, "INSERT ... SELECT UNION does not support joined SELECT");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_column_count = out_branch->source.column_count;
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_deinit(&out_branch->source);
+    }
+
+    return rc;
+}
+
+static int plan_insert_select_compound_row_scalar_branch(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *branch_statement,
+    struct planned_insert_select_compound_branch *out_branch,
+    size_t *out_column_count
+) {
+    int rc = plan_row_scalar_select(database, branch_statement, &out_branch->row_source);
+
+    if (rc == MYLITE_OK) {
+        *out_column_count = out_branch->row_source.item_count;
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_select_deinit(&out_branch->row_source);
+    }
+
+    return rc;
+}
+
+static int validate_insert_select_compound_branch_target_compatibility(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan,
+    const struct planned_select *source
+) {
+    for (size_t target_position = 0U; target_position < plan->target_count; ++target_position) {
+        size_t column_index = plan->target_indexes[target_position];
+
+        if (!insert_select_source_target_types_are_compatible(
+                &source->columns[target_position],
+                &plan->target.columns[column_index]
+            )) {
+            set_unsupported_error(
+                database,
+                insert_select_implicit_conversion_message(&plan->target.columns[column_index])
+            );
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_insert_select_compound_target_compatibility(
+    struct mylite_db *database,
+    const struct planned_insert_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t branch_index = 0U;
+         rc == MYLITE_OK && branch_index < plan->compound_source.branch_count;
+         ++branch_index) {
+        const struct planned_insert_select_compound_branch *branch =
+            &plan->compound_source.branches[branch_index];
+
+        if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE) {
+            rc = validate_insert_select_compound_branch_target_compatibility(
+                database,
+                plan,
+                &branch->source
+            );
+        }
+    }
+
+    return rc;
+}
+
+static void planned_insert_select_compound_source_deinit(
+    struct planned_insert_select_compound_source *source
+) {
+    if (source == NULL) {
+        return;
+    }
+    for (size_t branch_index = 0U; branch_index < source->branch_count; ++branch_index) {
+        planned_select_deinit(&source->branches[branch_index].source);
+        planned_row_scalar_select_deinit(&source->branches[branch_index].row_source);
+    }
+    free(source->branches);
+    *source = (struct planned_insert_select_compound_source){0};
 }
 
 static int reject_insert_select_key_bearing_target(
@@ -53884,6 +54279,7 @@ static void planned_insert_select_deinit(struct planned_insert_select *plan) {
 
     planned_select_deinit(&plan->source);
     planned_row_scalar_select_deinit(&plan->row_source);
+    planned_insert_select_compound_source_deinit(&plan->compound_source);
     planned_insert_deinit(&plan->target);
     free(plan->target_indexes);
     *plan = (struct planned_insert_select){0};
@@ -54317,7 +54713,7 @@ static int execute_insert_select_materialize(
     *out_temporary_table_created = false;
     rc = prepare_sqlite_statement(database, materialize_sql, &statement);
     if (rc == MYLITE_OK) {
-        rc = bind_select_parameters(statement, &plan->source);
+        rc = bind_insert_select_materialize_parameters(statement, plan);
     }
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -54726,11 +55122,16 @@ static int validate_insert_select_row(
             sqlite3_column_type(statement, (int)target_position) == SQLITE_NULL) {
             continue;
         }
+        const struct mylite_catalog_column_descriptor *source_column =
+            plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE
+                ? &plan->source.columns[target_position]
+                : NULL;
+
         rc = validate_insert_select_value(
             database,
             statement,
             (int)target_position,
-            &plan->source.columns[target_position],
+            source_column,
             &plan->target.columns[column_index],
             row_number
         );
@@ -111551,6 +111952,17 @@ static int append_numbered_parameter(struct dynamic_string *string, size_t param
     return dynamic_string_append(string, parameter);
 }
 
+static int append_size_literal(struct dynamic_string *string, size_t value) {
+    char text[integer_text_capacity];
+    int written = snprintf(text, sizeof(text), "%zu", value);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        return MYLITE_NOMEM;
+    }
+
+    return dynamic_string_append(string, text);
+}
+
 static int build_insert_select_temp_table_name(
     const struct mylite_db *database,
     char *destination,
@@ -111571,6 +111983,18 @@ static int build_insert_select_temp_table_name(
 }
 
 static int build_insert_select_materialize_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+) {
+    if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        return build_insert_select_compound_materialize_sql(plan, temporary_table_name, out_sql);
+    }
+
+    return build_insert_select_table_materialize_sql(plan, temporary_table_name, out_sql);
+}
+
+static int build_insert_select_table_materialize_sql(
     const struct planned_insert_select *plan,
     const char *temporary_table_name,
     char **out_sql
@@ -111623,7 +112047,274 @@ static int build_insert_select_materialize_sql(
     return rc;
 }
 
+static int build_insert_select_compound_materialize_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE TEMP TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, temporary_table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AS ");
+    }
+    for (size_t branch_index = 0U;
+         rc == MYLITE_OK && branch_index < plan->compound_source.branch_count;
+         ++branch_index) {
+        const struct planned_insert_select_compound_branch *branch =
+            &plan->compound_source.branches[branch_index];
+
+        if (branch_index != 0U) {
+            rc = dynamic_string_append(&string, " UNION ALL ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_insert_select_compound_branch_sql(
+                &string,
+                branch,
+                branch_index,
+                branch_index == 0U,
+                &next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_insert_select_compound_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+) {
+    if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_ROW_SCALAR) {
+        return append_insert_select_compound_row_scalar_branch_sql(
+            string,
+            branch,
+            branch_index,
+            alias_columns,
+            next_parameter
+        );
+    }
+
+    return append_insert_select_compound_table_branch_sql(
+        string,
+        branch,
+        branch_index,
+        alias_columns,
+        next_parameter
+    );
+}
+
+static int append_insert_select_compound_table_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+) {
+    const struct planned_select *source = &branch->source;
+    int rc = MYLITE_OK;
+
+    if (source->is_distinct) {
+        rc = dynamic_string_append(string, "SELECT DISTINCT ");
+    } else {
+        rc = dynamic_string_append(string, "SELECT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_branch_marker_sql(string, branch_index, alias_columns);
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < source->column_count;
+         ++column_index) {
+        rc = dynamic_string_append(string, ", ");
+        if (rc == MYLITE_OK) {
+            rc = append_insert_select_compound_column_projection_sql(string, source, column_index);
+        }
+        if (rc == MYLITE_OK && alias_columns) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && alias_columns) {
+            rc = append_insert_select_temp_column_name(string, column_index);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_from_sql(string, source);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &source->predicate, next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_branch_marker_sql(
+    struct dynamic_string *string,
+    size_t branch_index,
+    bool alias_columns
+) {
+    int rc = append_size_literal(string, branch_index);
+
+    if (rc == MYLITE_OK && alias_columns) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK && alias_columns) {
+        rc =
+            dynamic_string_append_quoted_identifier(string, insert_select_union_branch_column_name);
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_column_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_select *source,
+    size_t column_index
+) {
+    const struct mylite_catalog_column_descriptor *column = &source->columns[column_index];
+    int rc = append_descriptor_column_name_sql_for_source(
+        string,
+        column,
+        source->column_source_indexes[column_index],
+        planned_select_qualifies_source_references(source)
+    );
+
+    if (rc == MYLITE_OK && column_descriptor_is_string_family(column)) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_row_scalar_branch_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select_compound_branch *branch,
+    size_t branch_index,
+    bool alias_columns,
+    size_t *next_parameter
+) {
+    const struct planned_row_scalar_select *source = &branch->row_source;
+    int rc = dynamic_string_append(string, "SELECT ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_branch_marker_sql(string, branch_index, alias_columns);
+    }
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < source->item_count; ++item_index) {
+        rc = dynamic_string_append(string, ", ");
+        if (rc == MYLITE_OK) {
+            rc = append_insert_select_compound_row_scalar_projection_sql(
+                string,
+                &source->items[item_index].expression,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK && alias_columns) {
+            rc = dynamic_string_append(string, " AS ");
+        }
+        if (rc == MYLITE_OK && alias_columns) {
+            rc = append_insert_select_temp_column_name(string, item_index);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_tableless_filter_sql(string, source, next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_row_scalar_projection_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = append_row_scalar_expression_sql(string, expression, next_parameter);
+
+    if (rc == MYLITE_OK && row_scalar_expression_uses_string_collation(expression)) {
+        rc = append_string_key_collation_sql(string);
+    }
+
+    return rc;
+}
+
+static bool row_scalar_expression_uses_string_collation(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return false;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return expression->value.is_text;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return column_descriptor_is_string_family(&expression->column);
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+        return true;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+        break;
+    }
+
+    return false;
+}
+
 static int build_insert_select_validation_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+) {
+    if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        return build_insert_select_compound_validation_sql(plan, temporary_table_name, out_sql);
+    }
+
+    return build_insert_select_table_validation_sql(plan, temporary_table_name, out_sql);
+}
+
+static int build_insert_select_table_validation_sql(
     const struct planned_insert_select *plan,
     const char *temporary_table_name,
     char **out_sql
@@ -111635,7 +112326,7 @@ static int build_insert_select_validation_sql(
     dynamic_string_init(&string);
 
     rc = dynamic_string_append(&string, "SELECT ");
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->source.column_count;
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->target_count;
          ++column_index) {
         if (column_index != 0U) {
             rc = dynamic_string_append(&string, ", ");
@@ -111660,6 +112351,275 @@ static int build_insert_select_validation_sql(
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int build_insert_select_compound_validation_sql(
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t last_distinct_branch = 0U;
+    bool has_distinct_branch =
+        insert_select_compound_last_distinct_branch(plan, &last_distinct_branch);
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->target_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_insert_select_compound_qualified_temp_column_name(
+                &string,
+                insert_select_union_current_alias,
+                column_index
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_temp_table_name(&string, temporary_table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, insert_select_union_current_alias);
+    }
+    if (rc == MYLITE_OK && has_distinct_branch) {
+        rc = append_insert_select_compound_distinct_filter_sql(
+            &string,
+            plan,
+            temporary_table_name,
+            last_distinct_branch
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ORDER BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, insert_select_union_current_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ".rowid");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static bool insert_select_compound_last_distinct_branch(
+    const struct planned_insert_select *plan,
+    size_t *out_branch_index
+) {
+    bool found = false;
+
+    *out_branch_index = 0U;
+    for (size_t branch_index = 1U; branch_index < plan->compound_source.branch_count;
+         ++branch_index) {
+        if (plan->compound_source.branches[branch_index].modifier !=
+            MYLITE_SQL_AST_UNION_MODIFIER_ALL) {
+            *out_branch_index = branch_index;
+            found = true;
+        }
+    }
+
+    return found;
+}
+
+static int append_insert_select_compound_distinct_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select *plan,
+    const char *temporary_table_name,
+    size_t last_distinct_branch
+) {
+    int rc = dynamic_string_append(string, " WHERE (");
+
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_branch_column_name(
+            string,
+            insert_select_union_current_alias
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " > ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_size_literal(string, last_distinct_branch);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " OR NOT EXISTS (SELECT 1 FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_temp_table_name(string, temporary_table_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, insert_select_union_prior_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, insert_select_union_prior_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ".rowid < ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, insert_select_union_current_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ".rowid");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->target_count;
+         ++column_index) {
+        rc = dynamic_string_append(string, " AND ");
+        if (rc == MYLITE_OK) {
+            rc = append_insert_select_compound_distinct_equality_sql(string, plan, column_index);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "))");
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_distinct_equality_sql(
+    struct dynamic_string *string,
+    const struct planned_insert_select *plan,
+    size_t column_index
+) {
+    bool use_string_collation =
+        insert_select_compound_output_uses_string_collation(plan, column_index);
+    int rc = dynamic_string_append(string, "((");
+
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_temp_column_name(
+            string,
+            insert_select_union_prior_alias,
+            column_index
+        );
+    }
+    if (rc == MYLITE_OK && use_string_collation) {
+        rc = append_string_key_collation_sql(string);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " = ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_temp_column_name(
+            string,
+            insert_select_union_current_alias,
+            column_index
+        );
+    }
+    if (rc == MYLITE_OK && use_string_collation) {
+        rc = append_string_key_collation_sql(string);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ") OR (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_temp_column_name(
+            string,
+            insert_select_union_prior_alias,
+            column_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_temp_column_name(
+            string,
+            insert_select_union_current_alias,
+            column_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL))");
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_qualified_temp_column_name(
+    struct dynamic_string *string,
+    const char *alias,
+    size_t column_index
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, alias);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_temp_column_name(string, column_index);
+    }
+
+    return rc;
+}
+
+static int append_insert_select_compound_qualified_branch_column_name(
+    struct dynamic_string *string,
+    const char *alias
+) {
+    int rc = dynamic_string_append_quoted_identifier(string, alias);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            dynamic_string_append_quoted_identifier(string, insert_select_union_branch_column_name);
+    }
+
+    return rc;
+}
+
+static bool insert_select_compound_output_uses_string_collation(
+    const struct planned_insert_select *plan,
+    size_t column_index
+) {
+    for (size_t branch_index = 0U; branch_index < plan->compound_source.branch_count;
+         ++branch_index) {
+        const struct planned_insert_select_compound_branch *branch =
+            &plan->compound_source.branches[branch_index];
+
+        if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE) {
+            if (column_index < branch->source.column_count &&
+                column_descriptor_is_string_family(&branch->source.columns[column_index])) {
+                return true;
+            }
+        } else if (
+            column_index < branch->row_source.item_count &&
+            row_scalar_expression_uses_string_collation(
+                &branch->row_source.items[column_index].expression
+            )
+        ) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int build_drop_temp_table_sql(const char *temporary_table_name, char **out_sql) {
@@ -117910,17 +118870,26 @@ static int format_key_value(
 
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan) {
     int parameter_index = 1;
+
+    return bind_select_parameters_at(statement, plan, &parameter_index);
+}
+
+static int bind_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_select *plan,
+    int *parameter_index
+) {
     int rc = MYLITE_OK;
 
-    rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
     if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
-            ++parameter_index;
+            ++(*parameter_index);
         }
     }
     if (rc == MYLITE_OK && plan->limit.has_offset) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
     }
 
     return rc;
@@ -117931,33 +118900,80 @@ static int bind_row_scalar_select_parameters(
     const struct planned_row_scalar_select *plan
 ) {
     int parameter_index = 1;
+
+    return bind_row_scalar_select_parameters_at(statement, plan, &parameter_index);
+}
+
+static int bind_row_scalar_select_parameters_at(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_select *plan,
+    int *parameter_index
+) {
     int rc = MYLITE_OK;
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
         rc = bind_row_scalar_expression_parameters(
             statement,
             &plan->items[item_index].expression,
-            &parameter_index
+            parameter_index
         );
     }
     if (rc == MYLITE_OK && plan->has_source) {
-        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
     }
     if (rc == MYLITE_OK && plan->has_source && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
-            ++parameter_index;
+            ++(*parameter_index);
         }
     }
     if (rc == MYLITE_OK && plan->has_source && plan->limit.has_offset) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
     }
     if (rc == MYLITE_OK && !plan->has_source && plan->tableless_filter.has_filter) {
         rc = bind_select_exists_predicate_parameters(
             statement,
             &plan->tableless_filter.subquery,
-            &parameter_index
+            parameter_index
         );
+    }
+
+    return rc;
+}
+
+static int bind_insert_select_materialize_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan
+) {
+    if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        return bind_insert_select_compound_parameters(statement, plan);
+    }
+
+    return bind_select_parameters(statement, &plan->source);
+}
+
+static int bind_insert_select_compound_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan
+) {
+    int parameter_index = 1;
+    int rc = MYLITE_OK;
+
+    for (size_t branch_index = 0U;
+         rc == MYLITE_OK && branch_index < plan->compound_source.branch_count;
+         ++branch_index) {
+        const struct planned_insert_select_compound_branch *branch =
+            &plan->compound_source.branches[branch_index];
+
+        if (branch->kind == PLANNED_INSERT_SELECT_COMPOUND_BRANCH_ROW_SCALAR) {
+            rc = bind_row_scalar_select_parameters_at(
+                statement,
+                &branch->row_source,
+                &parameter_index
+            );
+        } else {
+            rc = bind_select_parameters_at(statement, &branch->source, &parameter_index);
+        }
     }
 
     return rc;

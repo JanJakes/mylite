@@ -74,6 +74,7 @@ basic_status=$(
         "CREATE DATABASE ${DATABASE};
          USE ${DATABASE};
          CREATE TABLE dst(id INT NOT NULL, n INT NULL);
+         CREATE TABLE string_dst(id INT NOT NULL, v VARCHAR(10));
          INSERT INTO dst(id, n) SELECT 1, 10 UNION SELECT 1, 10 UNION SELECT 2, NULL;
          SELECT ROW_COUNT(), @@warning_count, @@error_count;
          SELECT id, n FROM dst ORDER BY id, n;
@@ -81,6 +82,9 @@ basic_status=$(
          INSERT INTO dst(id, n) SELECT 1, 10 UNION ALL SELECT 1, 10 UNION ALL SELECT 2, NULL;
          SELECT ROW_COUNT(), @@warning_count, @@error_count;
          SELECT id, n FROM dst ORDER BY id, n;
+         INSERT INTO string_dst(id, v) SELECT 4, 'a' UNION SELECT 4, 'A';
+         SELECT ROW_COUNT(), @@warning_count, @@error_count;
+         SELECT id, v FROM string_dst ORDER BY id, BINARY v;
          TRUNCATE dst;
          INSERT INTO dst(id, n)
              SELECT 1, 10 UNION ALL SELECT 1, 10 UNION SELECT 1, 10 UNION ALL SELECT 1, 10;
@@ -96,6 +100,8 @@ expect_value \
 1	10
 1	10
 2	NULL
+1	0	0
+4	a
 2	0	0
 1	10
 1	10" \
@@ -114,7 +120,15 @@ table_status=$(
          TRUNCATE dst;
          INSERT INTO dst SELECT * FROM src UNION SELECT * FROM src;
          SELECT ROW_COUNT(), @@warning_count, @@error_count;
-         SELECT id, n FROM dst ORDER BY id;"
+         SELECT id, n FROM dst ORDER BY id;
+         CREATE TABLE case_src_a(id INT NOT NULL, v VARCHAR(10));
+         CREATE TABLE case_src_b(id INT NOT NULL, v VARCHAR(10));
+         CREATE TABLE case_dst(id INT NOT NULL, v VARCHAR(10));
+         INSERT INTO case_src_a VALUES (4, 'a');
+         INSERT INTO case_src_b VALUES (4, 'A');
+         INSERT INTO case_dst SELECT * FROM case_src_a UNION SELECT * FROM case_src_b;
+         SELECT ROW_COUNT(), @@warning_count, @@error_count;
+         SELECT id, v FROM case_dst ORDER BY id, BINARY v;"
 )
 expect_value \
     "descriptor-backed compound source rows" \
@@ -125,7 +139,9 @@ expect_value \
 3	0	0
 1	10
 2	NULL
-3	30" \
+3	30
+1	0	0
+4	a" \
     "$table_status"
 
 qualified_status=$(
@@ -197,6 +213,13 @@ expect_error \
     21000 \
     "The used SELECT statements have a different number of columns" \
     "USE ${DATABASE}; INSERT INTO dst(id, n) SELECT 1, 2 UNION SELECT 3;"
+
+expect_error \
+    "branch column count mismatch before target count mismatch" \
+    1222 \
+    21000 \
+    "The used SELECT statements have a different number of columns" \
+    "USE ${DATABASE}; INSERT INTO dst(id, n) SELECT 1 UNION SELECT 2, 3;"
 
 expect_error \
     "omitted not-null no-default with matching source" \

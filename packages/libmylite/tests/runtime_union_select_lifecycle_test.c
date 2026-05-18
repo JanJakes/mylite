@@ -17,6 +17,7 @@ enum {
     table_union_all_row_count = 6,
     related_file_suffix_capacity = 16,
     mysql_error_parse = 1064,
+    mysql_error_column_count_mismatch = 1136,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_select_reduced = 1222,
 };
@@ -316,9 +317,9 @@ static int test_union_diagnostics_and_unsupported_forms(void) {
         database,
         "INSERT INTO t1 SELECT id FROM t2 UNION SELECT id FROM t1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'UNION'",
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count",
         }
     );
 

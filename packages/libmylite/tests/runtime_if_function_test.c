@@ -408,11 +408,11 @@ static int test_if_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(1,2,3) FROM t",
+        "SELECT IF('x',2,3) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "IF() row conditions support only integer",
         }
     );
     failures += execute_error(
@@ -480,11 +480,11 @@ static int test_if_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(id,2,3) FROM t",
+        "SELECT IF(id,2+3,4) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "row-scalar SELECT supports only CONCAT()",
         }
     );
     failures += execute_error(

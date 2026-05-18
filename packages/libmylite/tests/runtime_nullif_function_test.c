@@ -521,11 +521,11 @@ static int test_nullif_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT NULLIF(1,2) FROM t",
+        "SELECT NULLIF(1+1,2) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "row-scalar SELECT supports only CONCAT()",
         }
     );
     failures += execute_error(

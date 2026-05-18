@@ -436,11 +436,11 @@ static int test_isnull_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT ISNULL(NULL) FROM t",
+        "SELECT ISNULL(1+1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+            .message_part = "row-scalar SELECT supports only CONCAT()",
         }
     );
     failures += execute_error(

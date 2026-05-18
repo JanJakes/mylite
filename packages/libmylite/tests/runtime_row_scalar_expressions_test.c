@@ -35,6 +35,7 @@ struct expected_query {
 
 static int test_no_source_and_dual_concat(void);
 static int test_table_backed_concat(void);
+static int test_table_backed_control_flow(void);
 static int test_concat_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -67,6 +68,7 @@ int main(void) {
 
     failures += test_no_source_and_dual_concat();
     failures += test_table_backed_concat();
+    failures += test_table_backed_control_flow();
     failures += test_concat_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -265,14 +267,224 @@ static int test_table_backed_concat(void) {
     return failures;
 }
 
+static int test_table_backed_control_flow(void) {
+    static const char *const columns_string[] = {
+        "id",
+        "IFNULL(v,'x')",
+        "COALESCE(n,v,'z')",
+        "NULLIF(v,n)",
+        "ISNULL(v)",
+        "IF(nn, v, n)",
+    };
+    static const char *const values_string[] = {
+        "1",
+        "a",
+        "a",
+        "a",
+        "0",
+        "a",
+        "2",
+        "x",
+        "fallback",
+        NULL,
+        "1",
+        "fallback",
+        "3",
+        "A",
+        "a",
+        NULL,
+        "0",
+        "A",
+    };
+    static const char *const columns_integer[] = {
+        "id",
+        "IFNULL(i,-1)",
+        "COALESCE(i,nn,99)",
+        "NULLIF(i,0)",
+        "ISNULL(i)",
+        "IF(i, 'yes', 'no')",
+    };
+    static const char *const values_integer[] = {
+        "1",
+        "7",
+        "7",
+        "7",
+        "0",
+        "yes",
+        "2",
+        "-1",
+        "0",
+        NULL,
+        "1",
+        "no",
+        "3",
+        "0",
+        "0",
+        NULL,
+        "0",
+        "no",
+    };
+    static const char *const columns_temporal[] = {
+        "id",
+        "IFNULL(d,'2000-01-01')",
+        "COALESCE(dt,'2000-01-01 00:00:00')",
+        "IFNULL(txt,'missing')",
+    };
+    static const char *const values_temporal[] = {
+        "1",
+        "2024-01-02",
+        "2024-01-02 03:04:05",
+        "alpha",
+        "2",
+        "2000-01-01",
+        "2000-01-01 00:00:00",
+        "missing",
+        "3",
+        "2024-12-31",
+        "2024-12-31 23:59:58",
+        "beta",
+    };
+    static const char *const columns_limited[] = {"id", "IFNULL(v,'x')", "ISNULL(n)"};
+    static const char *const values_limited[] = {"3", "A", "0", "2", "x", "0"};
+    static const char *const columns_labels[] = {"IFNULL(v,'x')", "alias_name", "ISNULL(n)"};
+    static const char *const values_labels[] = {"a", "a", "1"};
+    static const char *const columns_qualified[] = {"id", "ifn"};
+    static const char *const values_qualified[] = {"2", "x"};
+    static const char *const columns_nested[] = {"id", "nested"};
+    static const char *const values_nested[] = {"1", "a", "2", "fallback", "3", "a"};
+    static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_status[] = {"-1", "0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "control-flow", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t("
+        "id INT, v VARCHAR(20), n VARCHAR(20), i INT, nn INT NOT NULL, "
+        "d DATE, dt DATETIME, txt TEXT"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES "
+        "(1, 'a', NULL, 7, 1, '2024-01-02', '2024-01-02 03:04:05', 'alpha'), "
+        "(2, NULL, 'fallback', NULL, 0, NULL, NULL, NULL), "
+        "(3, 'A', 'a', 0, 5, '2024-12-31', '2024-12-31 23:59:58', 'beta')",
+        NULL
+    );
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(v,'x'), COALESCE(n,v,'z'), NULLIF(v,n), "
+                   "ISNULL(v), IF(nn, v, n) FROM t ORDER BY id",
+            .columns = columns_string,
+            .column_count = sizeof(columns_string) / sizeof(columns_string[0]),
+            .values = values_string,
+            .row_count = 3U,
+            .context = "table control-flow string projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(i,-1), COALESCE(i,nn,99), NULLIF(i,0), "
+                   "ISNULL(i), IF(i, 'yes', 'no') FROM t ORDER BY id",
+            .columns = columns_integer,
+            .column_count = sizeof(columns_integer) / sizeof(columns_integer[0]),
+            .values = values_integer,
+            .row_count = 3U,
+            .context = "table control-flow integer projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(d,'2000-01-01'), "
+                   "COALESCE(dt,'2000-01-01 00:00:00'), IFNULL(txt,'missing') "
+                   "FROM t ORDER BY id",
+            .columns = columns_temporal,
+            .column_count = sizeof(columns_temporal) / sizeof(columns_temporal[0]),
+            .values = values_temporal,
+            .row_count = 3U,
+            .context = "table control-flow temporal projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(v,'x'), ISNULL(n) FROM t "
+                   "WHERE id >= 1 ORDER BY id DESC LIMIT 2",
+            .columns = columns_limited,
+            .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
+            .values = values_limited,
+            .row_count = 2U,
+            .context = "table control-flow where order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IFNULL(v,'x'), COALESCE(n,v) AS alias_name, ISNULL(n) "
+                   "FROM t WHERE id = 1",
+            .columns = columns_labels,
+            .column_count = sizeof(columns_labels) / sizeof(columns_labels[0]),
+            .values = values_labels,
+            .row_count = 1U,
+            .context = "control-flow labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT x.id, IFNULL(x.v,'x') AS ifn FROM t AS x WHERE x.id = 2",
+            .columns = columns_qualified,
+            .column_count = sizeof(columns_qualified) / sizeof(columns_qualified[0]),
+            .values = values_qualified,
+            .row_count = 1U,
+            .context = "control-flow qualified columns",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(NULLIF(v,n), COALESCE(n,'z')) AS nested "
+                   "FROM t ORDER BY id",
+            .columns = columns_nested,
+            .column_count = sizeof(columns_nested) / sizeof(columns_nested[0]),
+            .values = values_nested,
+            .row_count = 3U,
+            .context = "control-flow nested projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = sizeof(columns_status) / sizeof(columns_status[0]),
+            .values = values_status,
+            .row_count = 1U,
+            .context = "control-flow status after select",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_concat_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
-    failures += execute_ok(database, "CREATE TABLE t(id INT, v VARCHAR(20))", NULL);
-    failures += execute_ok(database, "INSERT INTO t VALUES (1, 'a')", NULL);
+    failures += execute_ok(database, "CREATE TABLE t(id INT, v VARCHAR(20), d DECIMAL(6,2))", NULL);
+    failures += execute_ok(database, "INSERT INTO t VALUES (1, 'a', 1.00)", NULL);
     failures += execute_error(
         database,
         "SELECT CONCAT()",
@@ -307,6 +519,52 @@ static int test_concat_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "row-scalar SELECT supports only CONCAT()",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT IFNULL(v, missing) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT IF(v, 'yes', 'no') FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "IF() row conditions support only integer descriptor columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT IFNULL(1 + 2, 3) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "row-scalar SELECT supports only CONCAT()",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT NULLIF(id, v) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "NULLIF() row projection does not support mixed string and numeric",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT NULLIF(d, '1.0') FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "row-scalar SELECT control-flow functions do not support DECIMAL "
+                            "columns",
         }
     );
 

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 enum mylite_json_normalize_status {
     MYLITE_JSON_NORMALIZE_OK = 0,
@@ -13,6 +14,22 @@ enum mylite_json_normalize_status {
 struct mylite_json_normalize_result {
     enum mylite_json_normalize_status status;
     size_t position;
+};
+
+enum mylite_json_sql_value_kind {
+    MYLITE_JSON_SQL_VALUE_NULL = 0,
+    MYLITE_JSON_SQL_VALUE_INTEGER = 1,
+    MYLITE_JSON_SQL_VALUE_BOOLEAN = 2,
+    MYLITE_JSON_SQL_VALUE_STRING = 3,
+    MYLITE_JSON_SQL_VALUE_JSON = 4,
+};
+
+struct mylite_json_sql_value {
+    enum mylite_json_sql_value_kind kind;
+    const char *text;
+    size_t text_length;
+    int64_t integer;
+    bool boolean;
 };
 
 int mylite_json_normalize(
@@ -41,6 +58,21 @@ int mylite_json_path_validate(
 int mylite_json_unquote(
     const char *text,
     size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_array_from_sql_values(
+    const struct mylite_json_sql_value *values,
+    size_t value_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_object_from_sql_values(
+    const struct mylite_json_sql_value *keys,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
     char **out_text,
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result

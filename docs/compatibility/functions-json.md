@@ -6,7 +6,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | --- | --- | --- |
 | `->` | 🟡 | Limited single-table row-scalar projection shorthand for `JSON_EXTRACT(column, path)` over unqualified or qualified descriptor columns and simple path string literals; no literal/function left operands, wildcards/ranges, predicates, expression ordering, DML assignment expressions, or full expression support |
 | `->>` | 🟡 | Limited single-table row-scalar projection shorthand for `JSON_UNQUOTE(JSON_EXTRACT(column, path))` over unqualified or qualified descriptor columns and simple path string literals; no literal/function left operands, wildcards/ranges, predicates, expression ordering, DML assignment expressions, or full expression support |
-| `JSON_ARRAY()` | ❌ | Create JSON array |
+| `JSON_ARRAY()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection over admitted SQL string, signed-64 integer, boolean, `NULL`, JSON descriptor, integer descriptor, boolean-like integer descriptor, and nonbinary string descriptor values; JSON columns construct as JSON values while string columns construct as JSON strings; no nested construction, arbitrary expression operands, predicates, ordering expressions, DML assignment expressions, aggregation, mutation, or protocol-grade JSON metadata |
 | `JSON_ARRAY_APPEND()` | ❌ | Append data to JSON document |
 | `JSON_ARRAY_INSERT()` | ❌ | Insert into JSON array |
 | `JSON_ARRAYAGG()` | ❌ | Return result set as a single JSON array |
@@ -20,7 +20,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_MERGE()` | ❌ | Deprecated merge synonym |
 | `JSON_MERGE_PATCH()` | ❌ | Merge JSON documents, replacing values of duplicate keys |
 | `JSON_MERGE_PRESERVE()` | ❌ | Merge JSON documents, preserving duplicate keys |
-| `JSON_OBJECT()` | ❌ | Create JSON object |
+| `JSON_OBJECT()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection with zero or even key/value arguments; keys may be admitted string, signed-64 integer, boolean, or non-`NULL` descriptor integer/nonbinary string values, values follow `JSON_ARRAY()` limits including JSON descriptor values, duplicate keys keep the last value, and `NULL` keys report MySQL-compatible `3158`; no nested construction, arbitrary expression operands, JSON-column keys, predicates, ordering expressions, DML assignment expressions, aggregation, mutation, or protocol-grade JSON metadata |
 | `JSON_OBJECTAGG()` | ❌ | Return result set as a single JSON object |
 | `JSON_OVERLAPS()` | ❌ | Shared JSON keys/elements |
 | `JSON_PRETTY()` | ❌ | Print a JSON document in human-readable format |
@@ -36,7 +36,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_TABLE()` | ❌ | Return data from a JSON expression as a relational table |
 | `JSON_TYPE()` | ❌ | Type of JSON value |
 | `JSON_UNQUOTE()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection over SQL string literals, `NULL`, JSON/string columns, and supported `JSON_EXTRACT()` results; unquotes JSON string text and preserves non-string JSON text; no binary/numeric/boolean scalar inputs, predicates, expression ordering, DML assignment expressions, or arbitrary expressions |
-| `JSON_VALID()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar validity check over admitted string, JSON, integer, binary string, `BIT`, boolean, and `NULL` values, including supported row predicates; no arbitrary expression, path, construction, or mutation semantics |
+| `JSON_VALID()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar validity check over admitted string, JSON, integer, binary string, `BIT`, boolean, and `NULL` values, including supported row predicates; no arbitrary expression, path, or mutation semantics |
 | `JSON_VALUE()` | ❌ | JSON path value extraction |
 | `MEMBER OF()` | ❌ | JSON array membership |
 

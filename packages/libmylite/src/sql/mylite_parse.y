@@ -2976,6 +2976,22 @@ expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
 }
+expression(A) ::= JSON_ARRAY(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_FUNCTION, R);
+}
+expression(A) ::= JSON_ARRAY(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_FUNCTION, B, R);
+}
+expression(A) ::= JSON_OBJECT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_OBJECT_FUNCTION, R);
+}
+expression(A) ::= JSON_OBJECT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_OBJECT_FUNCTION, B, R);
+}
 expression(A) ::= json_valid_expression(B). {
     A = B;
 }
@@ -4312,6 +4328,12 @@ identifier(A) ::= CONCAT_WS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_ARRAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_OBJECT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_VALID(T). {

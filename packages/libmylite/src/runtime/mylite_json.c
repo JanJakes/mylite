@@ -2,8 +2,10 @@
 
 #include "mylite_json.h"
 
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,6 +34,7 @@ enum {
     json_control_byte_limit = 0x20,
     json_ascii_byte_limit = 0x7f,
     json_hex_low_nibble = 0x0f,
+    json_sql_integer_buffer_length = 32,
 };
 
 struct json_text {
@@ -141,6 +144,22 @@ struct json_number_integer_part {
 };
 
 static int parse_document(struct json_parser *parser, struct json_value *out_value);
+static int json_value_from_sql_value(
+    const struct mylite_json_sql_value *sql_value,
+    struct json_value *out_value,
+    struct mylite_json_normalize_result *out_result
+);
+static int json_object_key_from_sql_value(
+    const struct mylite_json_sql_value *sql_value,
+    char **out_key,
+    size_t *out_key_length
+);
+static int copy_integer_text(int64_t value, char **out_text, size_t *out_text_length);
+static int emit_constructed_json(
+    struct json_value *value,
+    char **out_text,
+    size_t *out_text_length
+);
 static bool validate_document(struct json_parser *parser);
 static bool validate_state(
     struct json_parser *parser,
@@ -565,6 +584,224 @@ int mylite_json_unquote(
     }
 
     free(decoded);
+    return rc;
+}
+
+int mylite_json_array_from_sql_values(
+    const struct mylite_json_sql_value *values,
+    size_t value_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_value array = {.kind = JSON_VALUE_ARRAY};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_OK,
+        .position = 0U,
+    };
+    if (value_count != 0U && values == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        struct json_value value = {0};
+        struct json_value *stored_value = NULL;
+
+        rc = json_value_from_sql_value(&values[value_index], &value, out_result);
+        if (rc == MYLITE_OK) {
+            rc = array_append_value(&array.payload.array, &value, &stored_value);
+            (void)stored_value;
+        }
+        if (rc != MYLITE_OK) {
+            value_deinit(&value);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = emit_constructed_json(&array, out_text, out_text_length);
+    }
+
+    value_deinit(&array);
+    return rc;
+}
+
+int mylite_json_object_from_sql_values(
+    const struct mylite_json_sql_value *keys,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_value object = {.kind = JSON_VALUE_OBJECT};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_OK,
+        .position = 0U,
+    };
+    if (pair_count != 0U && (keys == NULL || values == NULL)) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t pair_index = 0U; rc == MYLITE_OK && pair_index < pair_count; ++pair_index) {
+        char *key = NULL;
+        size_t key_length = 0U;
+        struct json_value value = {0};
+        struct json_value *stored_value = NULL;
+
+        rc = json_object_key_from_sql_value(&keys[pair_index], &key, &key_length);
+        if (rc == MYLITE_OK) {
+            rc = json_value_from_sql_value(&values[pair_index], &value, out_result);
+        }
+        if (rc == MYLITE_OK) {
+            rc = object_append_member(
+                &object.payload.object,
+                key,
+                key_length,
+                &value,
+                &stored_value
+            );
+            if (rc == MYLITE_OK) {
+                key = NULL;
+            }
+            (void)stored_value;
+        }
+        free(key);
+        if (rc != MYLITE_OK) {
+            value_deinit(&value);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        sort_object_members_by_mysql_display_order(&object.payload.object);
+        rc = emit_constructed_json(&object, out_text, out_text_length);
+    }
+
+    value_deinit(&object);
+    return rc;
+}
+
+static int json_value_from_sql_value(
+    const struct mylite_json_sql_value *sql_value,
+    struct json_value *out_value,
+    struct mylite_json_normalize_result *out_result
+) {
+    if (sql_value == NULL || out_value == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct json_value){0};
+
+    switch (sql_value->kind) {
+    case MYLITE_JSON_SQL_VALUE_NULL:
+        out_value->kind = JSON_VALUE_NULL;
+        return MYLITE_OK;
+    case MYLITE_JSON_SQL_VALUE_INTEGER:
+        out_value->kind = JSON_VALUE_NUMBER;
+        return copy_integer_text(
+            sql_value->integer,
+            &out_value->payload.text.text,
+            &out_value->payload.text.length
+        );
+    case MYLITE_JSON_SQL_VALUE_BOOLEAN:
+        out_value->kind = JSON_VALUE_BOOL;
+        out_value->payload.boolean = sql_value->boolean;
+        return MYLITE_OK;
+    case MYLITE_JSON_SQL_VALUE_STRING:
+        out_value->kind = JSON_VALUE_STRING;
+        return copy_result_text(
+            sql_value->text,
+            sql_value->text_length,
+            &out_value->payload.text.text,
+            &out_value->payload.text.length
+        );
+    case MYLITE_JSON_SQL_VALUE_JSON: {
+        struct json_parser parser = {
+            .text = sql_value->text,
+            .length = sql_value->text_length,
+            .position = 0U,
+            .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+        };
+        int rc = MYLITE_OK;
+
+        if (sql_value->text == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = parse_document(&parser, out_value);
+        *out_result = parser.result;
+        return rc;
+    }
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int json_object_key_from_sql_value(
+    const struct mylite_json_sql_value *sql_value,
+    char **out_key,
+    size_t *out_key_length
+) {
+    if (sql_value == NULL || out_key == NULL || out_key_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_key = NULL;
+    *out_key_length = 0U;
+
+    switch (sql_value->kind) {
+    case MYLITE_JSON_SQL_VALUE_STRING:
+        return copy_result_text(sql_value->text, sql_value->text_length, out_key, out_key_length);
+    case MYLITE_JSON_SQL_VALUE_INTEGER:
+        return copy_integer_text(sql_value->integer, out_key, out_key_length);
+    case MYLITE_JSON_SQL_VALUE_BOOLEAN:
+        if (sql_value->boolean) {
+            return copy_result_text("1", 1U, out_key, out_key_length);
+        }
+        return copy_result_text("0", 1U, out_key, out_key_length);
+    case MYLITE_JSON_SQL_VALUE_NULL:
+    case MYLITE_JSON_SQL_VALUE_JSON:
+        break;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int copy_integer_text(int64_t value, char **out_text, size_t *out_text_length) {
+    char buffer[json_sql_integer_buffer_length];
+    int written = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
+
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return MYLITE_ERROR;
+    }
+    return copy_result_text(buffer, (size_t)written, out_text, out_text_length);
+}
+
+static int emit_constructed_json(
+    struct json_value *value,
+    char **out_text,
+    size_t *out_text_length
+) {
+    struct json_writer writer = {0};
+    int rc = emit_value(&writer, value);
+
+    if (rc == MYLITE_OK) {
+        *out_text_length = writer.length;
+        *out_text = writer_take(&writer);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    writer_deinit(&writer);
     return rc;
 }
 

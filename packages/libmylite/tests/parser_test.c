@@ -52,6 +52,7 @@ static int test_concat_ws_function(void);
 static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
+static int test_json_construction_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
@@ -330,6 +331,7 @@ int main(void) {
     failures += test_field_function();
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
+    failures += test_json_construction_functions();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
@@ -2319,6 +2321,96 @@ static int test_json_extract_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT '{\"a\":1}'->'$.a';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_construction_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT JSON_ARRAY(), JSON_ARRAY(1, 'x', NULL, TRUE), "
+        "JSON_OBJECT(), JSON_OBJECT('a', 1, 'b', NULL) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_FUNCTION,
+        "json_array empty function"
+    );
+    failures += expect_child_count(first_expression, 0U, "json_array empty argument count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_FUNCTION,
+        "json_array populated function"
+    );
+    failures += expect_child_count(second_expression, 1U, "json_array argument-list child count");
+    failures += expect_child_count(
+        child_at(second_expression, 0U),
+        4U,
+        "json_array populated argument count"
+    );
+
+    first_expression = child_at(child_at(select_list, 2U), 0U);
+    second_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_OBJECT_FUNCTION,
+        "json_object empty function"
+    );
+    failures += expect_child_count(first_expression, 0U, "json_object empty argument count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_OBJECT_FUNCTION,
+        "json_object populated function"
+    );
+    failures += expect_child_count(second_expression, 1U, "json_object argument-list child count");
+    failures += expect_child_count(
+        child_at(second_expression, 0U),
+        4U,
+        "json_object populated argument count"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "json constructors dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO JSON_ARRAY(1), JSON_OBJECT('a', 1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json constructors do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_ARRAY_FUNCTION,
+        "do json_array"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_JSON_OBJECT_FUNCTION,
+        "do json_object"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE json_array (json_object INT); SELECT json_object FROM json_array;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_ARRAY(*);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

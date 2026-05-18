@@ -156,6 +156,7 @@ static int test_show_warnings_diagnostics_statements(void);
 static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_show_variables_statement(void);
+static int test_show_status_statement(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_select_group_by_clause(void);
@@ -433,6 +434,7 @@ int main(void) {
     failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_show_variables_statement();
+    failures += test_show_status_statement();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
     failures += test_select_group_by_clause();
@@ -16258,6 +16260,83 @@ static int test_show_variables_statement(void) {
         "variables nonreserved identifiers"
     );
     failures += expect_span_text(child_at(statement, 0U), "variables", "variables table");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_status_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show status");
+    failures += expect_child_count(statement, 0U, "show status child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW GLOBAL STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show global status");
+    failures += expect_span_text(child_at(statement, 0U), "GLOBAL", "global status scope");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW SESSION STATUS LIKE 'threads\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show session status");
+    failures += expect_span_text(child_at(statement, 0U), "SESSION", "session status scope");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "status like");
+    failures += expect_span_text(child_at(statement, 1U), "'threads\\_%'", "status like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW LOCAL STATUS LIKE 'Threads%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show local status");
+    failures += expect_span_text(child_at(statement, 0U), "LOCAL", "local status scope");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIKE 'Threads\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_STATUS_STATEMENT, "show status like");
+    failures +=
+        expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING, "bare status like");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'Threads\\_%'", "bare status like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW STATUS WHERE Variable_name = 'Threads_connected';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW STATUS LIKE 'Threads%' WHERE Variable_name = 'Threads_connected';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW STATUS ORDER BY Variable_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STATUS LIKE N'threads';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

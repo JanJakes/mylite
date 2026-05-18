@@ -206,6 +206,9 @@ statement(A) ::= show_databases_statement(B). {
 statement(A) ::= show_variables_statement(B). {
     A = B;
 }
+statement(A) ::= show_status_statement(B). {
+    A = B;
+}
 statement(A) ::= describe_table_statement(B). {
     A = B;
 }
@@ -1187,6 +1190,31 @@ show_variables_filter_opt(A) ::= LIKE STRING(P). {
 }
 show_variables_filter_opt(A) ::= WHERE(W) predicate(P). {
     A = mylite_sql_parser_make_where_clause(state, W, P);
+}
+
+show_status_statement(A) ::= SHOW(S) show_status_scope_opt(O) STATUS(T)
+        show_status_filter_opt(F). {
+    A = mylite_sql_parser_make_show_status_statement(state, S, O, T, F);
+}
+
+show_status_scope_opt(A) ::= . {
+    A = NULL;
+}
+show_status_scope_opt(A) ::= GLOBAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+show_status_scope_opt(A) ::= SESSION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+show_status_scope_opt(A) ::= LOCAL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+show_status_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_status_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {

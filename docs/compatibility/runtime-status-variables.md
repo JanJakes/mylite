@@ -4,8 +4,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 
 | Variable | Status | Notes |
 | --- | --- | --- |
-| `Aborted_clients` | ❌ | Counter value or embedded zero/empty |
-| `Aborted_connects` | ❌ | Counter value or embedded zero/empty |
+| `Aborted_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Aborted_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Acl_cache_items_count` | ❌ | Counter value or embedded zero/empty |
 | `Audit_log_current_size` | ❌ | Counter value or embedded zero/empty |
 | `Audit_log_direct_writes` | ❌ | Counter value or embedded zero/empty |
@@ -21,8 +21,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Binlog_cache_use` | ❌ | Counter value or embedded zero/empty |
 | `Binlog_stmt_cache_disk_use` | ❌ | Counter value or embedded zero/empty |
 | `Binlog_stmt_cache_use` | ❌ | Counter value or embedded zero/empty |
-| `Bytes_received` | ❌ | Counter value or embedded zero/empty |
-| `Bytes_sent` | ❌ | Counter value or embedded zero/empty |
+| `Bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Bytes_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Caching_sha2_password_rsa_public_key` | ❌ | Counter value or embedded zero/empty |
 | `Com_admin_commands` | ❌ | Counter value or embedded zero/empty |
 | `Com_alter_db` | ❌ | Counter value or embedded zero/empty |
@@ -37,7 +37,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_alter_user_default_role` | ❌ | Counter value or embedded zero/empty |
 | `Com_analyze` | ❌ | Counter value or embedded zero/empty |
 | `Com_assign_to_keycache` | ❌ | Counter value or embedded zero/empty |
-| `Com_begin` | ❌ | Counter value or embedded zero/empty |
+| `Com_begin` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_binlog` | ❌ | Counter value or embedded zero/empty |
 | `Com_call_procedure` | ❌ | Counter value or embedded zero/empty |
 | `Com_change_db` | ❌ | Counter value or embedded zero/empty |
@@ -46,7 +46,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_check` | ❌ | Counter value or embedded zero/empty |
 | `Com_checksum` | ❌ | Counter value or embedded zero/empty |
 | `Com_clone` | ❌ | Counter value or embedded zero/empty |
-| `Com_commit` | ❌ | Counter value or embedded zero/empty |
+| `Com_commit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_create_db` | ❌ | Counter value or embedded zero/empty |
 | `Com_create_event` | ❌ | Counter value or embedded zero/empty |
 | `Com_create_function` | ❌ | Counter value or embedded zero/empty |
@@ -61,7 +61,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_create_user` | ❌ | Counter value or embedded zero/empty |
 | `Com_create_view` | ❌ | Counter value or embedded zero/empty |
 | `Com_dealloc_sql` | ❌ | Counter value or embedded zero/empty |
-| `Com_delete` | ❌ | Counter value or embedded zero/empty |
+| `Com_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_delete_multi` | ❌ | Counter value or embedded zero/empty |
 | `Com_do` | ❌ | Counter value or embedded zero/empty |
 | `Com_drop_db` | ❌ | Counter value or embedded zero/empty |
@@ -89,7 +89,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_ha_open` | ❌ | Counter value or embedded zero/empty |
 | `Com_ha_read` | ❌ | Counter value or embedded zero/empty |
 | `Com_help` | ❌ | Counter value or embedded zero/empty |
-| `Com_insert` | ❌ | Counter value or embedded zero/empty |
+| `Com_insert` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_insert_select` | ❌ | Counter value or embedded zero/empty |
 | `Com_install_component` | ❌ | Counter value or embedded zero/empty |
 | `Com_install_plugin` | ❌ | Counter value or embedded zero/empty |
@@ -105,7 +105,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_rename_table` | ❌ | Counter value or embedded zero/empty |
 | `Com_rename_user` | ❌ | Counter value or embedded zero/empty |
 | `Com_repair` | ❌ | Counter value or embedded zero/empty |
-| `Com_replace` | ❌ | Counter value or embedded zero/empty |
+| `Com_replace` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_replace_select` | ❌ | Counter value or embedded zero/empty |
 | `Com_replica_start` | ❌ | Counter value or embedded zero/empty |
 | `Com_replica_stop` | ❌ | Counter value or embedded zero/empty |
@@ -115,11 +115,11 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_revoke` | ❌ | Counter value or embedded zero/empty |
 | `Com_revoke_all` | ❌ | Counter value or embedded zero/empty |
 | `Com_revoke_roles` | ❌ | Counter value or embedded zero/empty |
-| `Com_rollback` | ❌ | Counter value or embedded zero/empty |
+| `Com_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_rollback_to_savepoint` | ❌ | Counter value or embedded zero/empty |
 | `Com_savepoint` | ❌ | Counter value or embedded zero/empty |
-| `Com_select` | ❌ | Counter value or embedded zero/empty |
-| `Com_set_option` | ❌ | Counter value or embedded zero/empty |
+| `Com_select` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_set_option` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_set_resource_group` | ❌ | Counter value or embedded zero/empty |
 | `Com_set_role` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_authors` | ❌ | Counter value or embedded zero/empty |
@@ -159,12 +159,12 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_show_relaylog_events` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_replica_status` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_replicas` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_status` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_storage_engines` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_table_status` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_tables` | ❌ | Counter value or embedded zero/empty |
 | `Com_show_triggers` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_variables` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_variables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_warnings` | ❌ | Counter value or embedded zero/empty |
 | `Com_shutdown` | ❌ | Counter value or embedded zero/empty |
 | `Com_signal` | ❌ | Counter value or embedded zero/empty |
@@ -179,7 +179,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_uninstall_component` | ❌ | Counter value or embedded zero/empty |
 | `Com_uninstall_plugin` | ❌ | Counter value or embedded zero/empty |
 | `Com_unlock_tables` | ❌ | Counter value or embedded zero/empty |
-| `Com_update` | ❌ | Counter value or embedded zero/empty |
+| `Com_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_update_multi` | ❌ | Counter value or embedded zero/empty |
 | `Com_xa_commit` | ❌ | Counter value or embedded zero/empty |
 | `Com_xa_end` | ❌ | Counter value or embedded zero/empty |
@@ -187,7 +187,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_xa_recover` | ❌ | Counter value or embedded zero/empty |
 | `Com_xa_rollback` | ❌ | Counter value or embedded zero/empty |
 | `Com_xa_start` | ❌ | Counter value or embedded zero/empty |
-| `Compression` | ❌ | Counter value or embedded zero/empty |
+| `Compression` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` value `OFF`; omitted from `GLOBAL`; no compression protocol state |
 | `Compression_algorithm` | ❌ | Counter value or embedded zero/empty |
 | `Compression_level` | ❌ | Counter value or embedded zero/empty |
 | `Connection_control_delay_generated` | ❌ | Counter value or embedded zero/empty |
@@ -197,10 +197,10 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Connection_errors_peer_address` | ❌ | Counter value or embedded zero/empty |
 | `Connection_errors_select` | ❌ | Counter value or embedded zero/empty |
 | `Connection_errors_tcpwrap` | ❌ | Counter value or embedded zero/empty |
-| `Connections` | ❌ | Counter value or embedded zero/empty |
-| `Created_tmp_disk_tables` | ❌ | Counter value or embedded zero/empty |
-| `Created_tmp_files` | ❌ | Counter value or embedded zero/empty |
-| `Created_tmp_tables` | ❌ | Counter value or embedded zero/empty |
+| `Connections` | 🟡 | Limited `SHOW STATUS` embedded value `1`; no live counter lifecycle |
+| `Created_tmp_disk_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Created_tmp_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Created_tmp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Current_tls_ca` | ❌ | Counter value or embedded zero/empty |
 | `Current_tls_capath` | ❌ | Counter value or embedded zero/empty |
 | `Current_tls_cert` | ❌ | Counter value or embedded zero/empty |
@@ -253,23 +253,23 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Gr_transactions_consistency_before_begin_count` | ❌ | Counter value or embedded zero/empty |
 | `Gr_transactions_consistency_before_begin_time_sum` | ❌ | Counter value or embedded zero/empty |
 | `Handler_commit` | ❌ | Counter value or embedded zero/empty |
-| `Handler_delete` | ❌ | Counter value or embedded zero/empty |
+| `Handler_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_discover` | ❌ | Counter value or embedded zero/empty |
 | `Handler_external_lock` | ❌ | Counter value or embedded zero/empty |
 | `Handler_mrr_init` | ❌ | Counter value or embedded zero/empty |
 | `Handler_prepare` | ❌ | Counter value or embedded zero/empty |
-| `Handler_read_first` | ❌ | Counter value or embedded zero/empty |
-| `Handler_read_key` | ❌ | Counter value or embedded zero/empty |
+| `Handler_read_first` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_read_key` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_last` | ❌ | Counter value or embedded zero/empty |
-| `Handler_read_next` | ❌ | Counter value or embedded zero/empty |
+| `Handler_read_next` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_prev` | ❌ | Counter value or embedded zero/empty |
-| `Handler_read_rnd` | ❌ | Counter value or embedded zero/empty |
-| `Handler_read_rnd_next` | ❌ | Counter value or embedded zero/empty |
+| `Handler_read_rnd` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_read_rnd_next` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_rollback` | ❌ | Counter value or embedded zero/empty |
 | `Handler_savepoint` | ❌ | Counter value or embedded zero/empty |
 | `Handler_savepoint_rollback` | ❌ | Counter value or embedded zero/empty |
-| `Handler_update` | ❌ | Counter value or embedded zero/empty |
-| `Handler_write` | ❌ | Counter value or embedded zero/empty |
+| `Handler_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_write` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Innodb_buffer_pool_bytes_data` | ❌ | Counter value or embedded zero/empty |
 | `Innodb_buffer_pool_bytes_dirty` | ❌ | Counter value or embedded zero/empty |
 | `Innodb_buffer_pool_dump_status` | ❌ | Counter value or embedded zero/empty |
@@ -571,13 +571,13 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Ongoing_anonymous_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
 | `Ongoing_anonymous_transaction_count` | ❌ | Counter value or embedded zero/empty |
 | `Ongoing_automatic_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
-| `Open_files` | ❌ | Counter value or embedded zero/empty |
-| `Open_streams` | ❌ | Counter value or embedded zero/empty |
-| `Open_table_definitions` | ❌ | Counter value or embedded zero/empty |
-| `Open_tables` | ❌ | Counter value or embedded zero/empty |
-| `Opened_files` | ❌ | Counter value or embedded zero/empty |
-| `Opened_table_definitions` | ❌ | Counter value or embedded zero/empty |
-| `Opened_tables` | ❌ | Counter value or embedded zero/empty |
+| `Open_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Open_streams` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Open_table_definitions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Open_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Opened_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Opened_table_definitions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Opened_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Performance_schema_accounts_lost` | ❌ | Counter value or embedded zero/empty |
 | `Performance_schema_cond_classes_lost` | ❌ | Counter value or embedded zero/empty |
 | `Performance_schema_cond_instances_lost` | ❌ | Counter value or embedded zero/empty |
@@ -611,9 +611,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Performance_schema_thread_classes_lost` | ❌ | Counter value or embedded zero/empty |
 | `Performance_schema_thread_instances_lost` | ❌ | Counter value or embedded zero/empty |
 | `Performance_schema_users_lost` | ❌ | Counter value or embedded zero/empty |
-| `Prepared_stmt_count` | ❌ | Counter value or embedded zero/empty |
-| `Queries` | ❌ | Counter value or embedded zero/empty |
-| `Questions` | ❌ | Counter value or embedded zero/empty |
+| `Prepared_stmt_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Questions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Replica_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
 | `Resource_group_supported` | ❌ | Counter value or embedded zero/empty |
 | `Rewriter_number_loaded_rules` | ❌ | Counter value or embedded zero/empty |
@@ -652,15 +652,15 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Rpl_semi_sync_source_yes_tx` | ❌ | Counter value or embedded zero/empty |
 | `Rsa_public_key` | ❌ | Counter value or embedded zero/empty |
 | `Secondary_engine_execution_count` | ❌ | Counter value or embedded zero/empty |
-| `Select_full_join` | ❌ | Counter value or embedded zero/empty |
-| `Select_full_range_join` | ❌ | Counter value or embedded zero/empty |
-| `Select_range` | ❌ | Counter value or embedded zero/empty |
+| `Select_full_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Select_full_range_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Select_range` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_range_check` | ❌ | Counter value or embedded zero/empty |
-| `Select_scan` | ❌ | Counter value or embedded zero/empty |
+| `Select_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slave_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
 | `Slave_rows_last_search_algorithm_used` | ❌ | Counter value or embedded zero/empty |
 | `Slow_launch_threads` | ❌ | Counter value or embedded zero/empty |
-| `Slow_queries` | ❌ | Counter value or embedded zero/empty |
+| `Slow_queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Sort_merge_passes` | ❌ | Counter value or embedded zero/empty |
 | `Sort_range` | ❌ | Counter value or embedded zero/empty |
 | `Sort_rows` | ❌ | Counter value or embedded zero/empty |
@@ -668,7 +668,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Ssl_accept_renegotiates` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_accepts` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_callback_cache_hits` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_cipher` | ❌ | Counter value or embedded zero/empty |
+| `Ssl_cipher` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
 | `Ssl_cipher_list` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_client_connects` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_connect_renegotiates` | ❌ | Counter value or embedded zero/empty |
@@ -690,9 +690,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Ssl_used_session_cache_entries` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_verify_depth` | ❌ | Counter value or embedded zero/empty |
 | `Ssl_verify_mode` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_version` | ❌ | Counter value or embedded zero/empty |
-| `Table_locks_immediate` | ❌ | Counter value or embedded zero/empty |
-| `Table_locks_waited` | ❌ | Counter value or embedded zero/empty |
+| `Ssl_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
+| `Table_locks_immediate` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Table_locks_waited` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Table_open_cache_hits` | ❌ | Counter value or embedded zero/empty |
 | `Table_open_cache_misses` | ❌ | Counter value or embedded zero/empty |
 | `Table_open_cache_overflows` | ❌ | Counter value or embedded zero/empty |
@@ -702,14 +702,14 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Telemetry_metrics_supported` | ❌ | Counter value or embedded zero/empty |
 | `Telemetry_traces_supported` | ❌ | Counter value or embedded zero/empty |
 | `telemetry.live_sessions` | ❌ | Counter value or embedded zero/empty |
-| `Threads_cached` | ❌ | Counter value or embedded zero/empty |
-| `Threads_connected` | ❌ | Counter value or embedded zero/empty |
-| `Threads_created` | ❌ | Counter value or embedded zero/empty |
-| `Threads_running` | ❌ | Counter value or embedded zero/empty |
+| `Threads_cached` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server thread cache |
+| `Threads_connected` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
+| `Threads_created` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
+| `Threads_running` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
 | `Tls_library_version` | ❌ | Counter value or embedded zero/empty |
 | `Tls_sni_server_name` | ❌ | Counter value or embedded zero/empty |
-| `Uptime` | ❌ | Counter value or embedded zero/empty |
-| `Uptime_since_flush_status` | ❌ | Counter value or embedded zero/empty |
+| `Uptime` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live uptime clock |
+| `Uptime_since_flush_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no `FLUSH STATUS` lifecycle |
 | `validate_password_dictionary_file_last_parsed` | ❌ | Counter value or embedded zero/empty |
 | `validate_password_dictionary_file_words_count` | ❌ | Counter value or embedded zero/empty |
 | `validate_password.dictionary_file_last_parsed` | ❌ | Counter value or embedded zero/empty |

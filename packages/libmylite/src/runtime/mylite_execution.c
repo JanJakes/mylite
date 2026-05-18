@@ -6422,6 +6422,13 @@ struct system_variable_descriptor {
     bool show_global;
 };
 
+struct show_status_descriptor {
+    const char *name;
+    const char *value;
+    bool show_session;
+    bool show_global;
+};
+
 struct sql_mode_descriptor {
     const char *name;
     uint64_t bit;
@@ -6494,6 +6501,62 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
     {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT, true, true},
     {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT, true, false},
+};
+
+static const struct show_status_descriptor show_status_descriptors[] = {
+    {"Aborted_clients", "0", true, true},
+    {"Aborted_connects", "0", true, true},
+    {"Bytes_received", "0", true, true},
+    {"Bytes_sent", "0", true, true},
+    {"Com_begin", "0", true, true},
+    {"Com_commit", "0", true, true},
+    {"Com_delete", "0", true, true},
+    {"Com_insert", "0", true, true},
+    {"Com_replace", "0", true, true},
+    {"Com_rollback", "0", true, true},
+    {"Com_select", "0", true, true},
+    {"Com_set_option", "0", true, true},
+    {"Com_show_status", "0", true, true},
+    {"Com_show_variables", "0", true, true},
+    {"Com_update", "0", true, true},
+    {"Compression", "OFF", true, false},
+    {"Connections", "1", true, true},
+    {"Created_tmp_disk_tables", "0", true, true},
+    {"Created_tmp_files", "0", true, true},
+    {"Created_tmp_tables", "0", true, true},
+    {"Handler_delete", "0", true, true},
+    {"Handler_read_first", "0", true, true},
+    {"Handler_read_key", "0", true, true},
+    {"Handler_read_next", "0", true, true},
+    {"Handler_read_rnd", "0", true, true},
+    {"Handler_read_rnd_next", "0", true, true},
+    {"Handler_update", "0", true, true},
+    {"Handler_write", "0", true, true},
+    {"Open_files", "0", true, true},
+    {"Open_streams", "0", true, true},
+    {"Open_table_definitions", "0", true, true},
+    {"Open_tables", "0", true, true},
+    {"Opened_files", "0", true, true},
+    {"Opened_table_definitions", "0", true, true},
+    {"Opened_tables", "0", true, true},
+    {"Prepared_stmt_count", "0", true, true},
+    {"Queries", "0", true, true},
+    {"Questions", "0", true, true},
+    {"Select_full_join", "0", true, true},
+    {"Select_full_range_join", "0", true, true},
+    {"Select_range", "0", true, true},
+    {"Select_scan", "0", true, true},
+    {"Slow_queries", "0", true, true},
+    {"Ssl_cipher", "", true, true},
+    {"Ssl_version", "", true, true},
+    {"Table_locks_immediate", "0", true, true},
+    {"Table_locks_waited", "0", true, true},
+    {"Threads_cached", "0", true, true},
+    {"Threads_connected", "1", true, true},
+    {"Threads_created", "1", true, true},
+    {"Threads_running", "1", true, true},
+    {"Uptime", "0", true, true},
+    {"Uptime_since_flush_status", "0", true, true},
 };
 
 static const struct sql_mode_descriptor sql_mode_descriptors[] = {
@@ -7951,6 +8014,11 @@ static int execute_show_collation_statement(
     mylite_result **out_result
 );
 static int execute_show_variables_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_status_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -12255,6 +12323,17 @@ static int format_timestamp_system_variable_value(
     size_t buffer_size
 );
 static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope);
+static bool show_status_descriptor_visible(
+    const struct show_status_descriptor *descriptor,
+    bool global_scope
+);
+static int append_show_status(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    bool global_scope,
+    const struct show_status_descriptor *descriptor
+);
 static int append_show_variable(
     struct mylite_db *database,
     mylite_result *result,
@@ -19702,6 +19781,8 @@ static int execute_parsed_statement(
         return execute_show_collation_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
         return execute_show_variables_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
+        return execute_show_status_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
         return execute_show_triggers_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
@@ -30683,6 +30764,108 @@ static int execute_show_variables_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[2] = {"Variable_name", "Value"};
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *scope = NULL;
+    const struct mylite_sql_ast_node *like_pattern = NULL;
+    bool global_scope = false;
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        scope = first_child;
+        like_pattern = child_at(statement, 1U);
+    } else {
+        like_pattern = first_child;
+    }
+    global_scope = show_variables_scope_is_global(scope);
+
+    rc = make_show_like_filter(database, like_pattern, &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(show_status_descriptors) /
+                                                           sizeof(show_status_descriptors[0]);
+         ++index) {
+        rc = append_show_status(
+            database,
+            result,
+            &filter,
+            global_scope,
+            &show_status_descriptors[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_status(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct show_like_filter *filter,
+    bool global_scope,
+    const struct show_status_descriptor *descriptor
+) {
+    const char *values[2] = {NULL, NULL};
+    int rc = MYLITE_OK;
+
+    if (!show_status_descriptor_visible(descriptor, global_scope)) {
+        return MYLITE_OK;
+    }
+    if (!show_like_filter_matches(filter, descriptor->name, false)) {
+        return MYLITE_OK;
+    }
+
+    values[0] = descriptor->name;
+    values[1] = descriptor->value;
+    rc = mylite_result_append_text_row(result, values);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+
+    return rc;
+}
+
+static bool show_status_descriptor_visible(
+    const struct show_status_descriptor *descriptor,
+    bool global_scope
+) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (global_scope) {
+        return descriptor->show_global;
+    }
+    return descriptor->show_session;
+}
+
 static bool show_variables_scope_is_global(const struct mylite_sql_ast_node *scope) {
     static const char expected[] = "global";
 
@@ -34111,6 +34294,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:

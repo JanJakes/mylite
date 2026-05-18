@@ -114,6 +114,7 @@ enum {
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_default_val_generated = 3773,
     mysql_error_database_does_not_exist = 3503,
     mysql_error_primary_key_index_invisible = 3522,
     mysql_error_data_too_long = 1406,
@@ -15776,6 +15777,15 @@ static int convert_insert_value(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_insert_value_for_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int convert_insert_value_by_descriptor(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -15803,6 +15813,43 @@ static int materialize_dml_default_value(
     const struct mylite_catalog_column_descriptor *column,
     bool ignore_errors,
     struct planned_value *out_value
+);
+static int validate_default_function_source_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int convert_default_function_value_for_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *target_column,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static int resolve_default_function_source_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int materialize_default_function_source_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_column,
+    struct planned_value *out_value
+);
+static bool default_function_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+);
+static const char *default_function_implicit_conversion_message(
+    const struct mylite_catalog_column_descriptor *target_column
 );
 static int materialize_dml_missing_default_value(
     struct mylite_db *database,
@@ -17476,6 +17523,19 @@ static int validate_update_multiple_auto_update_columns(
 );
 static void set_update_multiple_assignment_unsupported_error(struct mylite_db *database);
 static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *database);
+static int validate_update_default_function_sources(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int validate_update_default_function_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
 static int validate_update_scalar_subquery_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -17610,6 +17670,15 @@ static int plan_row_scalar_expression(
     bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_default_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
@@ -21048,6 +21117,7 @@ static void set_invalid_json_text_error(
     const char *column_name
 );
 static void set_no_default_error(struct mylite_db *database, const char *column_name);
+static void set_default_function_expression_error(struct mylite_db *database);
 static void set_out_of_range_error(
     struct mylite_db *database,
     const char *column_name,
@@ -21572,6 +21642,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_DEFAULT_FUNCTION:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -36776,6 +36847,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_DEFAULT_FUNCTION:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -53253,6 +53325,21 @@ static int plan_insert_duplicate_assignment(
         duplicate_assignment->assignment_value_node = value;
         duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
     }
+    const struct mylite_sql_ast_node *default_value =
+        unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
+
+    if (rc == MYLITE_OK && default_value != NULL &&
+        default_value->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        struct select_source_context source_context = {.source = &plan->target};
+
+        rc = validate_default_function_source_value(
+            database,
+            default_value,
+            &source_context,
+            plan->columns,
+            plan->column_count
+        );
+    }
 
     return rc;
 }
@@ -56745,6 +56832,14 @@ static int plan_update(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_update_default_function_sources(
+            database,
+            out_plan,
+            table_columns,
+            table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_select_predicate(
             database,
             where_clause,
@@ -57535,12 +57630,30 @@ static int prepare_update_multiple_assignments(
         return MYLITE_ERROR;
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
-        rc = convert_update_value_for_column(
-            database,
-            plan->assignments[index].value_node,
-            &plan->assignments[index].column,
-            &executable_plan->assignments[index].value
-        );
+        const struct mylite_sql_ast_node *value_node =
+            unwrap_parenthesized_expression(plan->assignments[index].value_node);
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+            struct select_source_context source_context = {.source = &plan->target};
+
+            rc = convert_default_function_value_for_target(
+                database,
+                value_node,
+                &source_context,
+                plan->columns,
+                plan->column_count,
+                &plan->assignments[index].column,
+                false,
+                &executable_plan->assignments[index].value
+            );
+        } else {
+            rc = convert_update_value_for_column(
+                database,
+                value_node,
+                &plan->assignments[index].column,
+                &executable_plan->assignments[index].value
+            );
+        }
     }
 
     return rc;
@@ -92024,8 +92137,9 @@ static int plan_insert_row(
 
     for (size_t target_index = 0U; rc == MYLITE_OK && target_index < target_count; ++target_index) {
         size_t column_index = target_indexes[target_index];
-        rc = convert_insert_value(
+        rc = convert_insert_value_for_plan(
             database,
+            plan,
             value_node,
             &plan->columns[column_index],
             row_number,
@@ -92112,8 +92226,9 @@ static int plan_insert_set_row(
         }
 
         value_node = child_at(assignment, 1U);
-        rc = convert_insert_value(
+        rc = convert_insert_value_for_plan(
             database,
+            plan,
             value_node,
             &plan->columns[column_index],
             1U,
@@ -92336,6 +92451,48 @@ static int convert_insert_value(
         value_node,
         column,
         row_number,
+        ignore_errors,
+        out_value
+    );
+}
+
+static int convert_insert_value_for_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    struct select_source_context source_context = {0};
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || plan == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        return convert_insert_value(
+            database,
+            value_node,
+            column,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+
+    (void)row_number;
+    (void)ignore_errors;
+    source_context.source = &plan->target;
+    return convert_default_function_value_for_target(
+        database,
+        value_node,
+        &source_context,
+        plan->columns,
+        plan->column_count,
+        column,
         ignore_errors,
         out_value
     );
@@ -92637,6 +92794,214 @@ static int materialize_dml_default_value(
         return MYLITE_ERROR;
     }
     return materialize_dml_missing_default_value(database, column, out_value);
+}
+
+static int validate_default_function_source_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct mylite_catalog_column_descriptor source_column = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = resolve_default_function_source_column(
+        database,
+        value_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        &source_column
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = materialize_default_function_source_value(database, &source_column, &value);
+    }
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int convert_default_function_value_for_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct mylite_catalog_column_descriptor *target_column,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    struct mylite_catalog_column_descriptor source_column = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = resolve_default_function_source_column(
+        database,
+        value_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        &source_column
+    );
+
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (rc == MYLITE_OK &&
+        !default_function_source_target_types_are_compatible(&source_column, target_column)) {
+        set_unsupported_error(
+            database,
+            default_function_implicit_conversion_message(target_column)
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = materialize_default_function_source_value(database, &source_column, &value);
+    }
+    if (rc == MYLITE_OK && value.is_null && !target_column->is_nullable) {
+        if (ignore_errors) {
+            planned_value_deinit(&value);
+            return convert_null_insert_value(database, target_column, true, out_value);
+        }
+        set_bad_null_error(database, target_column->name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_value = value;
+        value = (struct planned_value){
+            .is_null = false,
+            .is_text = false,
+            .is_blob = false,
+            .is_real = false,
+            .integer = 0,
+            .real = 0.0,
+            .text = NULL,
+            .text_length = 0U,
+        };
+    }
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int resolve_default_function_source_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    const struct mylite_sql_ast_node *column_node = NULL;
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_DEFAULT_FUNCTION ||
+        mylite_sql_ast_node_child_count(value_node) != 1U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    column_node = child_at(value_node, 0U);
+    if (source_context == NULL || source_context->source == NULL) {
+        rc = collect_column_reference_parts(database, column_node, parts, &part_count);
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc == MYLITE_OK) {
+            set_unknown_column_reference_error(database, COLUMN_REFERENCE_FIELD, column_name);
+            rc = MYLITE_ERROR;
+        }
+        return rc;
+    }
+
+    return resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "DEFAULT() supports only descriptor column references",
+        table_columns,
+        table_column_count,
+        out_column
+    );
+}
+
+static int materialize_default_function_source_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_column,
+    struct planned_value *out_value
+) {
+    if (source_column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+
+    if (column_descriptor_is_auto_increment(source_column)) {
+        *out_value = (struct planned_value){.is_null = false, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (column_default_kind_is_expression(source_column->default_kind)) {
+        set_default_function_expression_error(database);
+        return MYLITE_ERROR;
+    }
+    if (source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
+        source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
+        source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        set_unsupported_error(
+            database,
+            "DEFAULT() does not yet support current date/time column defaults"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return materialize_dml_default_value(database, source_column, false, out_value);
+}
+
+static bool default_function_source_target_types_are_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (source_column == NULL || target_column == NULL) {
+        return false;
+    }
+    if (source_column->column_id == target_column->column_id) {
+        return true;
+    }
+    return (strcmp(source_column->logical_type, target_column->logical_type) == 0 &&
+            strcmp(source_column->physical_type, target_column->physical_type) == 0) != 0;
+}
+
+static const char *default_function_implicit_conversion_message(
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    (void)target_column;
+    return "DEFAULT() assignment does not support implicit descriptor conversion";
 }
 
 static int materialize_dml_missing_default_value(
@@ -96455,6 +96820,17 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        return plan_row_scalar_default_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (is_charset_collation_function_kind(expression->kind)) {
         return plan_row_scalar_charset_collation_expression(
             database,
@@ -96492,6 +96868,51 @@ static int plan_row_scalar_expression(
         allow_scalar_subquery,
         out_expression
     );
+}
+
+static int plan_row_scalar_default_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor source_column = {0};
+    int rc = MYLITE_OK;
+
+    if (!has_source) {
+        return resolve_default_function_source_column(
+            database,
+            expression,
+            NULL,
+            NULL,
+            0U,
+            &source_column
+        );
+    }
+
+    rc = resolve_default_function_source_column(
+        database,
+        expression,
+        source_context,
+        table_columns,
+        table_column_count,
+        &source_column
+    );
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = materialize_default_function_source_value(
+            database,
+            &source_column,
+            &out_expression->value
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
 }
 
 static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expression) {
@@ -103079,6 +103500,7 @@ static bool row_scalar_expression_contains_row_function(
                   MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT)) ||
             current->kind == MYLITE_SQL_AST_HEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION ||
             is_charset_collation_function_kind(current->kind)) {
             found = true;
             break;
@@ -109106,6 +109528,7 @@ static bool update_assignment_value_is_multi_constant_supported(
     switch (value_node->kind) {
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
+    case MYLITE_SQL_AST_DEFAULT_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
@@ -109174,6 +109597,64 @@ static void set_update_multiple_assignment_unsupported_error(struct mylite_db *d
 
 static void set_update_duplicate_assignment_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(database, "UPDATE multiple assignments do not support duplicate targets");
+}
+
+static int validate_update_default_function_sources(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        int rc = MYLITE_OK;
+
+        for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+            rc = validate_update_default_function_source(
+                database,
+                plan->assignments[index].value_node,
+                plan,
+                table_columns,
+                table_column_count
+            );
+        }
+        return rc;
+    }
+
+    return validate_update_default_function_source(
+        database,
+        plan->assignment_value_node,
+        plan,
+        table_columns,
+        table_column_count
+    );
+}
+
+static int validate_update_default_function_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_update *plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    struct select_source_context source_context = {0};
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        return MYLITE_OK;
+    }
+
+    source_context.source = &plan->target;
+    return validate_default_function_source_value(
+        database,
+        value_node,
+        &source_context,
+        table_columns,
+        table_column_count
+    );
 }
 
 static int plan_update_scalar_subquery_assignment(
@@ -109292,6 +109773,20 @@ static int convert_update_value(
         planned_value_deinit(out_value);
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return materialize_update_scalar_subquery_value(database, plan, out_value);
+    }
+    if (value_node->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) {
+        struct select_source_context source_context = {.source = &plan->target};
+
+        return convert_default_function_value_for_target(
+            database,
+            value_node,
+            &source_context,
+            plan->columns,
+            plan->column_count,
+            column,
+            false,
+            out_value
+        );
     }
 
     return convert_update_value_for_column(database, value_node, column, out_value);
@@ -120646,8 +121141,9 @@ static int convert_insert_duplicate_update_value(
         );
     }
 
-    return convert_insert_value(
+    return convert_insert_value_for_plan(
         database,
+        plan,
         duplicate_assignment->assignment_value_node,
         &plan->columns[duplicate_assignment->assignment_column_index],
         row_index + 1U,
@@ -126631,6 +127127,15 @@ static void set_no_default_error(struct mylite_db *database, const char *column_
         mysql_error_field_no_default,
         "HY000",
         message
+    );
+}
+
+static void set_default_function_expression_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_default_val_generated,
+        "HY000",
+        "DEFAULT function cannot be used with default value expressions"
     );
 }
 

@@ -22341,14 +22341,16 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("REPLACE INTO t VALUES (DEFAULT(id));", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("REPLACE INTO t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("REPLACE INTO t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -22393,6 +22395,13 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT id FROM t WHERE id = '1';", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DEFAULT(id), DEFAULT(t.id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DEFAULT(1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -22468,7 +22477,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET id = 1 LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

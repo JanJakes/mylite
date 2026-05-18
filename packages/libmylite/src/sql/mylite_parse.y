@@ -1876,6 +1876,10 @@ insert_value(A) ::= current_time_value(T). {
 insert_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
+insert_value(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
+}
 
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -1945,6 +1949,10 @@ update_value(A) ::= current_time_value(T). {
 }
 update_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
+}
+update_value(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
 }
 update_value(A) ::= arithmetic_update_source_column(B) PLUS(T) INTEGER(C). {
     A = mylite_sql_parser_make_binary_expression(
@@ -2946,6 +2954,10 @@ expression(A) ::= SYSTEM_VARIABLE(T). {
 }
 expression(A) ::= qualified_identifier(B). {
     A = B;
+}
+expression(A) ::= DEFAULT(T) LPAREN qualified_identifier(C) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DEFAULT_FUNCTION, C, R);
 }
 expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);

@@ -451,6 +451,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR = 442,
     MYLITE_SQL_AST_UNHEX_FUNCTION = 443,
     MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR = 444,
+    MYLITE_SQL_AST_DEFAULT_FUNCTION = 445,
 };
 
 enum mylite_sql_ast_literal_kind {

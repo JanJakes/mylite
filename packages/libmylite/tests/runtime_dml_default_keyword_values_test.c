@@ -1190,14 +1190,11 @@ static int test_dml_default_diagnostics_and_ignore_warnings(void) {
             .message_part = "Unknown column 'missing'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
         "UPDATE strict_t SET d = DEFAULT(d)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "update default function no-op"
     );
 
     mylite_close(database);

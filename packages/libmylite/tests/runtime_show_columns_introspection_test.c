@@ -24,6 +24,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_regexp_bracket = 3696,
 };
 
 struct expected_sql_error {
@@ -67,6 +68,12 @@ static const char *const bigint_rows[][show_columns_column_count] = {
     {"b", "bigint", "YES", "", NULL, ""},
     {"bu", "bigint unsigned", "YES", "", NULL, ""},
     {"nn", "bigint unsigned", "NO", "", NULL, ""},
+};
+
+static const char *const id_i_iu_rows[][show_columns_column_count] = {
+    {"id", "int", "NO", "", NULL, ""},
+    {"i", "int", "YES", "", NULL, ""},
+    {"iu", "int unsigned", "YES", "", NULL, ""},
 };
 
 static const char *const id_and_nn_rows[][show_columns_column_count] = {
@@ -283,6 +290,27 @@ static int test_show_columns_where_filters(void) {
     );
     failures += expect_show_columns_result(
         database,
+        "SHOW COLUMNS FROM numbers WHERE Field REGEXP '^i'",
+        id_i_iu_rows,
+        sizeof(id_i_iu_rows) / sizeof(id_i_iu_rows[0]),
+        "show columns where field regexp"
+    );
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Type RLIKE '^BIG'",
+        bigint_rows,
+        sizeof(bigint_rows) / sizeof(bigint_rows[0]),
+        "show columns where type rlike"
+    );
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE `Default` REGEXP '.*'",
+        numbers_rows,
+        0U,
+        "show columns regexp skips null default cells"
+    );
+    failures += expect_show_columns_result(
+        database,
         "SHOW COLUMNS FROM numbers WHERE `Default` <=> NULL AND Field IN ('id','nn')",
         id_and_nn_rows,
         sizeof(id_and_nn_rows) / sizeof(id_and_nn_rows[0]),
@@ -469,11 +497,11 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW COLUMNS FROM numbers WHERE Field REGEXP 'id'",
+        "SHOW COLUMNS FROM numbers WHERE Field REGEXP '['",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SHOW COLUMNS WHERE does not support REGEXP predicates",
+            .code = mysql_error_regexp_bracket,
+            .sqlstate = "HY000",
+            .message_part = "unclosed bracket expression",
         }
     );
     failures += execute_error(

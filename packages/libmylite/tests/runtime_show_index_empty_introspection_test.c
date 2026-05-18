@@ -28,6 +28,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_regexp_range = 3697,
 };
 
 struct expected_sql_error {
@@ -321,6 +322,11 @@ static int test_show_index_where_filters(void) {
         "",        "YES",   NULL,      "indexed", "1",     "k_prefix", "1",       "txt",   "A",
         "0",       "3",     NULL,      "YES",     "BTREE", "",         "",        "YES",   NULL,
     };
+    static const char *const k_rows[] = {
+        "indexed", "1", "k_v", "1",   "v",   "A",       "0", NULL,       NULL,  "YES",
+        "BTREE",   "",  "",    "YES", NULL,  "indexed", "1", "k_prefix", "1",   "txt",
+        "A",       "0", "3",   NULL,  "YES", "BTREE",   "",  "",         "YES", NULL,
+    };
     static const char *const all_rows[] = {
         "indexed",  "0", "PRIMARY", "1",   "id",  "A",       "0", NULL,       NULL,  "",
         "BTREE",    "",  "",        "YES", NULL,  "indexed", "0", "u_n",      "1",   "n",
@@ -390,6 +396,24 @@ static int test_show_index_where_filters(void) {
     failures += expect_show_index_result(
         database,
         (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Key_name REGEXP '^k_'",
+            .context = "where key name regexp",
+            .values = k_rows,
+            .row_count = 2U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Key_name RLIKE '^K_'",
+            .context = "where key name rlike",
+            .values = k_rows,
+            .row_count = 2U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
             .sql = "SHOW INDEX FROM indexed WHERE Sub_part <=> '3'",
             .context = "prefix sub part filter",
             .values = key_prefix_row,
@@ -423,6 +447,22 @@ static int test_show_index_where_filters(void) {
             .context = "numeric metadata filter",
             .values = all_rows,
             .row_count = indexed_show_index_row_count,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Sub_part REGEXP '^3$'",
+            .context = "where numeric metadata regexp",
+            .values = key_prefix_row,
+            .row_count = 1U,
+        }
+    );
+    failures += expect_show_index_empty_result(
+        database,
+        (struct expected_show_index_empty_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Packed REGEXP '.*'",
+            .context = "where regexp skips null packed cells",
         }
     );
     failures += expect_show_index_empty_result(
@@ -596,11 +636,11 @@ static int test_show_index_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW INDEX FROM no_keys WHERE Key_name REGEXP 'idx'",
+        "SHOW INDEX FROM no_keys WHERE Key_name REGEXP '[z-a]'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SHOW INDEX WHERE does not support REGEXP predicates",
+            .code = mysql_error_regexp_range,
+            .sqlstate = "HY000",
+            .message_part = "invalid character range",
         }
     );
     failures += execute_error(

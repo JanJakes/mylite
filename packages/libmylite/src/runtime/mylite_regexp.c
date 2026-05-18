@@ -45,6 +45,7 @@ struct regexp_token {
 
 struct mylite_regexp_program {
     bool anchored_start;
+    bool case_sensitive;
     struct regexp_token *tokens;
     size_t token_count;
     struct regexp_class_range *ranges;
@@ -73,6 +74,12 @@ static void regexp_sqlite_cache_program(
 static void regexp_sqlite_free_compiled_program(struct mylite_regexp_program *compiled_program);
 static const char *regexp_compile_status_message(enum mylite_regexp_compile_status status);
 static const char *regexp_match_status_message(enum mylite_regexp_match_status status);
+static enum mylite_regexp_compile_status regexp_compile_ascii(
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    struct mylite_regexp_program **out_program
+);
 static enum mylite_regexp_compile_status compile_next_token(
     struct mylite_regexp_program *program,
     const char *pattern,
@@ -109,6 +116,12 @@ static bool is_supported_literal_escape(unsigned char byte);
 static bool is_supported_class_escape(unsigned char byte);
 static bool is_quantifier_byte(unsigned char byte);
 static bool is_unsupported_regex_metacharacter(unsigned char byte);
+static enum mylite_regexp_match_status regexp_program_match_ascii(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    bool *out_matches
+);
 static enum mylite_regexp_compile_status append_token(
     struct mylite_regexp_program *program,
     struct regexp_token token
@@ -117,6 +130,10 @@ static enum mylite_regexp_compile_status append_class_range(
     struct mylite_regexp_program *program,
     unsigned char first,
     unsigned char last
+);
+static unsigned char normalize_ascii_byte(
+    const struct mylite_regexp_program *program,
+    unsigned char byte
 );
 static unsigned char fold_ascii(unsigned char byte);
 static bool value_length_is_supported(size_t value_length);
@@ -190,34 +207,15 @@ enum mylite_regexp_compile_status mylite_regexp_compile_ascii_ci(
     size_t pattern_length,
     struct mylite_regexp_program **out_program
 ) {
-    struct mylite_regexp_program *program = NULL;
-    size_t index = 0U;
+    return regexp_compile_ascii(pattern, pattern_length, false, out_program);
+}
 
-    if (pattern == NULL || out_program == NULL) {
-        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
-    }
-    *out_program = NULL;
-    if (pattern_length > regexp_pattern_length_max) {
-        return MYLITE_REGEXP_COMPILE_TOO_LARGE;
-    }
-
-    program = (struct mylite_regexp_program *)calloc(1U, sizeof(*program));
-    if (program == NULL) {
-        return MYLITE_REGEXP_COMPILE_NOMEM;
-    }
-
-    while (index < pattern_length) {
-        enum mylite_regexp_compile_status status =
-            compile_next_token(program, pattern, pattern_length, &index);
-
-        if (status != MYLITE_REGEXP_COMPILE_OK) {
-            mylite_regexp_program_free(program);
-            return status;
-        }
-    }
-
-    *out_program = program;
-    return MYLITE_REGEXP_COMPILE_OK;
+enum mylite_regexp_compile_status mylite_regexp_compile_ascii_cs(
+    const char *pattern,
+    size_t pattern_length,
+    struct mylite_regexp_program **out_program
+) {
+    return regexp_compile_ascii(pattern, pattern_length, true, out_program);
 }
 
 void mylite_regexp_program_free(void *program) {
@@ -233,6 +231,61 @@ void mylite_regexp_program_free(void *program) {
 }
 
 enum mylite_regexp_match_status mylite_regexp_program_match_ascii_ci(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    bool *out_matches
+) {
+    return regexp_program_match_ascii(program, value, value_length, out_matches);
+}
+
+enum mylite_regexp_match_status mylite_regexp_program_match_ascii_cs(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    bool *out_matches
+) {
+    return regexp_program_match_ascii(program, value, value_length, out_matches);
+}
+
+static enum mylite_regexp_compile_status regexp_compile_ascii(
+    const char *pattern,
+    size_t pattern_length,
+    bool case_sensitive,
+    struct mylite_regexp_program **out_program
+) {
+    struct mylite_regexp_program *program = NULL;
+    size_t index = 0U;
+
+    if (pattern == NULL || out_program == NULL) {
+        return MYLITE_REGEXP_COMPILE_UNSUPPORTED;
+    }
+    *out_program = NULL;
+    if (pattern_length > regexp_pattern_length_max) {
+        return MYLITE_REGEXP_COMPILE_TOO_LARGE;
+    }
+
+    program = (struct mylite_regexp_program *)calloc(1U, sizeof(*program));
+    if (program == NULL) {
+        return MYLITE_REGEXP_COMPILE_NOMEM;
+    }
+    program->case_sensitive = case_sensitive;
+
+    while (index < pattern_length) {
+        enum mylite_regexp_compile_status status =
+            compile_next_token(program, pattern, pattern_length, &index);
+
+        if (status != MYLITE_REGEXP_COMPILE_OK) {
+            mylite_regexp_program_free(program);
+            return status;
+        }
+    }
+
+    *out_program = program;
+    return MYLITE_REGEXP_COMPILE_OK;
+}
+
+static enum mylite_regexp_match_status regexp_program_match_ascii(
     const struct mylite_regexp_program *program,
     const char *value,
     size_t value_length,
@@ -517,7 +570,7 @@ static enum mylite_regexp_compile_status compile_atom_token(
             return status;
         }
         out_token->kind = REGEXP_TOKEN_LITERAL;
-        out_token->literal = fold_ascii(byte);
+        out_token->literal = normalize_ascii_byte(program, byte);
         return MYLITE_REGEXP_COMPILE_OK;
     }
     if (byte > ascii_max || is_quantifier_byte(byte) || is_unsupported_regex_metacharacter(byte)) {
@@ -525,7 +578,7 @@ static enum mylite_regexp_compile_status compile_atom_token(
     }
 
     out_token->kind = REGEXP_TOKEN_LITERAL;
-    out_token->literal = fold_ascii(byte);
+    out_token->literal = normalize_ascii_byte(program, byte);
     ++(*index);
     return MYLITE_REGEXP_COMPILE_OK;
 }
@@ -558,7 +611,7 @@ static enum mylite_regexp_compile_status compile_class_token(
         if (status != MYLITE_REGEXP_COMPILE_OK) {
             return status;
         }
-        first = fold_ascii(first);
+        first = normalize_ascii_byte(program, first);
         last = first;
         if (*index + 1U < pattern_length && pattern[*index] == '-' && pattern[*index + 1U] != ']') {
             ++(*index);
@@ -566,7 +619,7 @@ static enum mylite_regexp_compile_status compile_class_token(
             if (status != MYLITE_REGEXP_COMPILE_OK) {
                 return status;
             }
-            last = fold_ascii(last);
+            last = normalize_ascii_byte(program, last);
             if (first > last) {
                 return MYLITE_REGEXP_COMPILE_INVALID_RANGE;
             }
@@ -742,6 +795,16 @@ static enum mylite_regexp_compile_status append_class_range(
     return MYLITE_REGEXP_COMPILE_OK;
 }
 
+static unsigned char normalize_ascii_byte(
+    const struct mylite_regexp_program *program,
+    unsigned char byte
+) {
+    if (program != NULL && program->case_sensitive) {
+        return byte;
+    }
+    return fold_ascii(byte);
+}
+
 static unsigned char fold_ascii(unsigned char byte) {
     if (byte >= ascii_upper_a && byte <= ascii_upper_z) {
         return (unsigned char)(byte + ascii_lower_delta);
@@ -877,14 +940,14 @@ static bool token_matches_byte(
 ) {
     switch (token->kind) {
     case REGEXP_TOKEN_LITERAL:
-        if (fold_ascii(byte) == token->literal) {
+        if (normalize_ascii_byte(program, byte) == token->literal) {
             return true;
         }
         return false;
     case REGEXP_TOKEN_ANY:
         return true;
     case REGEXP_TOKEN_CLASS:
-        return class_contains_byte(program, token, fold_ascii(byte));
+        return class_contains_byte(program, token, normalize_ascii_byte(program, byte));
     case REGEXP_TOKEN_END_ANCHOR:
         break;
     }

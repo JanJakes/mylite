@@ -23,6 +23,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_regexp_bracket = 3696,
     decimal_base = 10,
 };
 
@@ -141,6 +142,10 @@ static const char *const default_rows[][show_full_columns_column_count] = {
 
 static const char *const full_id_and_v_rows[][show_full_columns_column_count] = {
     {"id", "int", NULL, "NO", "PRI", NULL, "auto_increment", privileges, ""},
+    {"v", "varchar(10)", "utf8mb4_0900_ai_ci", "YES", "MUL", "x", "", privileges, ""},
+};
+
+static const char *const full_v_row[][show_full_columns_column_count] = {
     {"v", "varchar(10)", "utf8mb4_0900_ai_ci", "YES", "MUL", "x", "", privileges, ""},
 };
 
@@ -392,10 +397,38 @@ static int test_show_full_columns_where_filters(void) {
     );
     failures += expect_show_full_columns_result(
         database,
+        "SHOW FULL COLUMNS FROM numbers WHERE Collation REGEXP '^utf8mb4'",
+        collation_rows,
+        sizeof(collation_rows) / sizeof(collation_rows[0]),
+        "show full columns where collation regexp"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE Field RLIKE '^V'",
+        like_rows,
+        sizeof(like_rows) / sizeof(like_rows[0]),
+        "show full columns where field rlike"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE Collation NOT REGEXP '^utf8mb4'",
+        full_numbers_rows,
+        0U,
+        "show full columns not regexp skips null collation cells"
+    );
+    failures += expect_show_full_columns_result(
+        database,
         "SHOW FULL COLUMNS FROM numbers WHERE `Default` IS NOT NULL",
         default_rows,
         sizeof(default_rows) / sizeof(default_rows[0]),
         "show full columns where default not null"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE `Default` REGEXP '^x$'",
+        full_v_row,
+        sizeof(full_v_row) / sizeof(full_v_row[0]),
+        "show full columns where default regexp"
     );
     failures += expect_show_full_columns_result(
         database,
@@ -540,11 +573,11 @@ static int test_show_full_columns_diagnostics_and_independent_handles(void) {
     );
     failures += execute_error(
         first,
-        "SHOW FULL COLUMNS FROM numbers WHERE Field REGEXP 'id'",
+        "SHOW FULL COLUMNS FROM numbers WHERE Field REGEXP '['",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SHOW COLUMNS WHERE does not support REGEXP predicates",
+            .code = mysql_error_regexp_bracket,
+            .sqlstate = "HY000",
+            .message_part = "unclosed bracket expression",
         }
     );
     failures += execute_error(

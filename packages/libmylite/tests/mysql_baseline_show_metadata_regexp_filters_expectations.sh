@@ -93,6 +93,11 @@ case "$version" in
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
 
+case "$(run_mysql 'SELECT @@lower_case_table_names;')" in
+    0) ;;
+    *) fail "expected @@lower_case_table_names=0 for SHOW TABLE STATUS Name REGEXP probes" ;;
+esac
+
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 run_mysql \
@@ -151,6 +156,18 @@ expect_value "show index regexp skips null cells" "" "$index_null_regexp"
 
 table_status_regexp=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name REGEXP '^ins';" | row_names)
 expect_value "show table status name regexp" "inspected" "$table_status_regexp"
+
+table_status_name_upper_regexp=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name REGEXP '^INS';" | row_names)
+expect_value "show table status name regexp case-sensitive" "" "$table_status_name_upper_regexp"
+
+table_status_name_not_regexp=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name NOT REGEXP '^INS';" | row_names)
+expect_value "show table status name not regexp case-sensitive" "inspected" "$table_status_name_not_regexp"
+
+table_status_name_upper_rlike=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name RLIKE '^INS';" | row_names)
+expect_value "show table status name rlike case-sensitive" "" "$table_status_name_upper_rlike"
+
+table_status_name_not_rlike=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name NOT RLIKE '^INS';" | row_names)
+expect_value "show table status name not rlike case-sensitive" "inspected" "$table_status_name_not_rlike"
 
 table_status_rlike=$(run_mysql "SHOW TABLE STATUS FROM ${DATABASE} WHERE Engine RLIKE '^innodb$';" | row_names)
 expect_value "show table status rlike" "inspected" "$table_status_rlike"

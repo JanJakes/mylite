@@ -57,7 +57,9 @@ slice:
 - A SQL `NULL` displayed cell produces SQL `UNKNOWN` for `REGEXP`; it is not
   selected by either `REGEXP` or `NOT REGEXP` in a `WHERE` filter.
 - The default metadata collation makes the verified ASCII regex matches
-  case-insensitive.
+  case-insensitive, except `SHOW TABLE STATUS` `Name` follows the current
+  `lower_case_table_names = 0` catalog policy and matches table names
+  case-sensitively.
 - Non-`NULL` numeric metadata cells are matched as their displayed text.
 - Invalid regex patterns are diagnosed before returning a result, including
   `3696 / HY000` for an unclosed bracket expression and `3697 / HY000` for an
@@ -138,7 +140,9 @@ Evaluation is row-local over displayed metadata cells:
    constructs, and invalid supported-subset regex syntax before matching.
 4. For a SQL `NULL` left cell, return `UNKNOWN`.
 5. For a non-`NULL` left cell, match the displayed cell text using the existing
-   baseline ASCII case-insensitive regex implementation.
+   baseline ASCII case-insensitive regex implementation, except `SHOW TABLE
+   STATUS` `Name` uses the same case-sensitive table-name policy as existing
+   equality and `LIKE` filters.
 
 The supported pattern subset is exactly the current
 `baseline-regexp-rlike-predicates` subset: ASCII literals, `.`, `^`, `$`,

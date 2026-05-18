@@ -50,6 +50,7 @@ enum {
     mysql_error_unknown_database = 1049,
     mysql_error_unknown_column = 1054,
     mysql_error_incorrect_database_name = 1102,
+    mysql_error_regexp_bracket = 3696,
 };
 
 struct expected_sql_error {
@@ -534,6 +535,48 @@ static int test_show_table_status_where_filters(void) {
     );
     failures += expect_show_table_status_result(
         database,
+        "SHOW TABLE STATUS WHERE Name REGEXP '^num'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where name regexp"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name REGEXP '^NUM'",
+        NULL,
+        0U,
+        "where name regexp case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name RLIKE '^NUM'",
+        NULL,
+        0U,
+        "where name rlike case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name NOT REGEXP '^NUM' AND Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where name not regexp case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Name NOT RLIKE '^NUM' AND Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where name not rlike case-sensitive"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Engine RLIKE '^innodb$' AND Name = 'numbers'",
+        numbers_row,
+        sizeof(numbers_row) / sizeof(numbers_row[0]),
+        "where engine rlike"
+    );
+    failures += expect_show_table_status_result(
+        database,
         "SHOW TABLE STATUS WHERE Engine = 'INNODB' AND Name IN ('numbers','auto_numbers')",
         auto_and_numbers_rows,
         sizeof(auto_and_numbers_rows) / sizeof(auto_and_numbers_rows[0]),
@@ -581,6 +624,21 @@ static int test_show_table_status_where_filters(void) {
         auto_row,
         sizeof(auto_row) / sizeof(auto_row[0]),
         "where auto increment is not null"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment REGEXP '^3$' AND Name IN "
+        "('numbers','auto_numbers')",
+        auto_row,
+        sizeof(auto_row) / sizeof(auto_row[0]),
+        "where auto increment regexp"
+    );
+    failures += expect_show_table_status_result(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment REGEXP '.*' AND Name = 'numbers'",
+        NULL,
+        0U,
+        "where regexp skips null auto increment"
     );
     failures += expect_show_table_status_result(
         database,
@@ -787,11 +845,11 @@ static int test_show_table_status_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW TABLE STATUS WHERE Name REGEXP 'num.*'",
+        "SHOW TABLE STATUS WHERE Name REGEXP '['",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SHOW TABLE STATUS WHERE does not support REGEXP predicates",
+            .code = mysql_error_regexp_bracket,
+            .sqlstate = "HY000",
+            .message_part = "unclosed bracket expression",
         }
     );
     failures += execute_error(

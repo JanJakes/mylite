@@ -3000,6 +3000,13 @@ struct show_table_status_where_comparison {
     int value;
 };
 
+struct show_metadata_regexp_messages {
+    const char *literal;
+    const char *nul;
+    const char *ascii;
+    const char *unsupported;
+};
+
 struct show_index_filter_nodes {
     const struct mylite_sql_ast_node *table;
     const struct mylite_sql_ast_node *schema;
@@ -18348,6 +18355,14 @@ static int decode_show_table_status_where_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
     char **out_text
+);
+static int evaluate_show_metadata_where_regexp_predicate(
+    struct mylite_db *database,
+    const char *left,
+    const struct mylite_sql_ast_node *right,
+    const struct show_metadata_regexp_messages *messages,
+    bool case_sensitive,
+    enum show_variables_where_truth *out_truth
 );
 static int compare_show_table_status_where_text(
     const char *left,
@@ -106779,17 +106794,29 @@ static int evaluate_show_table_status_where_comparison_predicate(
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
     int rc =
         show_table_status_where_column_value(database, left_node, values, &left, &column_index);
+    static const struct show_metadata_regexp_messages regexp_messages = {
+        .literal = "SHOW TABLE STATUS WHERE REGEXP predicates support only string pattern literals",
+        .nul = "SHOW TABLE STATUS WHERE REGEXP pattern literals do not support NUL bytes",
+        .ascii = "SHOW TABLE STATUS WHERE REGEXP pattern literals support only ASCII text",
+        .unsupported =
+            "SHOW TABLE STATUS WHERE REGEXP patterns support only MyLite's baseline ASCII regular "
+            "expression subset",
+    };
 
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
-        set_unsupported_error(
+        (void)column_index;
+        return evaluate_show_metadata_where_regexp_predicate(
             database,
-            "SHOW TABLE STATUS WHERE does not support REGEXP predicates"
+            left,
+            right_node,
+            &regexp_messages,
+            show_table_status_where_column_is_case_sensitive(column_index),
+            out_truth
         );
-        return MYLITE_ERROR;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         char *pattern = NULL;
@@ -107389,14 +107416,28 @@ static int evaluate_show_columns_where_comparison_predicate(
     const char *left = NULL;
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
     int rc = show_columns_where_column_value(database, left_node, values, full, &left);
+    static const struct show_metadata_regexp_messages regexp_messages = {
+        .literal = "SHOW COLUMNS WHERE REGEXP predicates support only string pattern literals",
+        .nul = "SHOW COLUMNS WHERE REGEXP pattern literals do not support NUL bytes",
+        .ascii = "SHOW COLUMNS WHERE REGEXP pattern literals support only ASCII text",
+        .unsupported =
+            "SHOW COLUMNS WHERE REGEXP patterns support only MyLite's baseline ASCII regular "
+            "expression subset",
+    };
 
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
-        set_unsupported_error(database, "SHOW COLUMNS WHERE does not support REGEXP predicates");
-        return MYLITE_ERROR;
+        return evaluate_show_metadata_where_regexp_predicate(
+            database,
+            left,
+            right_node,
+            &regexp_messages,
+            false,
+            out_truth
+        );
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         char *pattern = NULL;
@@ -107952,14 +107993,29 @@ static int evaluate_show_index_where_comparison_predicate(
     size_t column_index = 0U;
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
     int rc = show_index_where_column_value(database, left_node, values, &left, &column_index);
+    static const struct show_metadata_regexp_messages regexp_messages = {
+        .literal = "SHOW INDEX WHERE REGEXP predicates support only string pattern literals",
+        .nul = "SHOW INDEX WHERE REGEXP pattern literals do not support NUL bytes",
+        .ascii = "SHOW INDEX WHERE REGEXP pattern literals support only ASCII text",
+        .unsupported =
+            "SHOW INDEX WHERE REGEXP patterns support only MyLite's baseline ASCII regular "
+            "expression subset",
+    };
 
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
-        set_unsupported_error(database, "SHOW INDEX WHERE does not support REGEXP predicates");
-        return MYLITE_ERROR;
+        (void)column_index;
+        return evaluate_show_metadata_where_regexp_predicate(
+            database,
+            left,
+            right_node,
+            &regexp_messages,
+            false,
+            out_truth
+        );
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         char *pattern = NULL;
@@ -108358,6 +108414,112 @@ static int decode_show_index_where_string_literal(
         out_text,
         &text_length
     );
+}
+
+static int evaluate_show_metadata_where_regexp_predicate(
+    struct mylite_db *database,
+    const char *left,
+    const struct mylite_sql_ast_node *right,
+    const struct show_metadata_regexp_messages *messages,
+    bool case_sensitive,
+    enum show_variables_where_truth *out_truth
+) {
+    struct mylite_regexp_program *program = NULL;
+    char *pattern = NULL;
+    size_t pattern_length = 0U;
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (messages == NULL || out_truth == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (right == NULL || right->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(right) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, messages->literal);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        right,
+        messages->literal,
+        messages->nul,
+        &pattern,
+        &pattern_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(pattern, pattern_length)) {
+        free(pattern);
+        set_unsupported_error(database, messages->ascii);
+        return MYLITE_ERROR;
+    }
+
+    enum mylite_regexp_compile_status compile_status = MYLITE_REGEXP_COMPILE_OK;
+
+    if (case_sensitive) {
+        compile_status = mylite_regexp_compile_ascii_cs(pattern, pattern_length, &program);
+    } else {
+        compile_status = mylite_regexp_compile_ascii_ci(pattern, pattern_length, &program);
+    }
+    free(pattern);
+    if (compile_status != MYLITE_REGEXP_COMPILE_OK) {
+        mylite_regexp_program_free(program);
+        if (compile_status == MYLITE_REGEXP_COMPILE_NOMEM) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        if (compile_status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+            set_regexp_error(
+                database,
+                "The regular expression contains an unclosed bracket expression."
+            );
+            return MYLITE_ERROR;
+        }
+        if (compile_status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+            set_regexp_character_range_error(
+                database,
+                "The regular expression contains an invalid character range."
+            );
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    if (left == NULL) {
+        mylite_regexp_program_free(program);
+        *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+        return MYLITE_OK;
+    }
+
+    enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
+
+    if (case_sensitive) {
+        match_status = mylite_regexp_program_match_ascii_cs(program, left, strlen(left), &matches);
+    } else {
+        match_status = mylite_regexp_program_match_ascii_ci(program, left, strlen(left), &matches);
+    }
+    mylite_regexp_program_free(program);
+    if (match_status == MYLITE_REGEXP_MATCH_NOMEM) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (match_status != MYLITE_REGEXP_MATCH_OK) {
+        set_unsupported_error(
+            database,
+            "SHOW metadata WHERE REGEXP input is too large for MyLite's baseline subset"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (matches) {
+        *out_truth = SHOW_VARIABLES_WHERE_TRUE;
+    } else {
+        *out_truth = SHOW_VARIABLES_WHERE_FALSE;
+    }
+    return MYLITE_OK;
 }
 
 static int compare_show_index_where_text(const char *left, const char *right) {

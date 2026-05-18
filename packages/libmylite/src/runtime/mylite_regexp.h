@@ -30,8 +30,19 @@ enum mylite_regexp_compile_status mylite_regexp_compile_ascii_ci(
     size_t pattern_length,
     struct mylite_regexp_program **out_program
 );
+enum mylite_regexp_compile_status mylite_regexp_compile_ascii_cs(
+    const char *pattern,
+    size_t pattern_length,
+    struct mylite_regexp_program **out_program
+);
 void mylite_regexp_program_free(void *program);
 enum mylite_regexp_match_status mylite_regexp_program_match_ascii_ci(
+    const struct mylite_regexp_program *program,
+    const char *value,
+    size_t value_length,
+    bool *out_matches
+);
+enum mylite_regexp_match_status mylite_regexp_program_match_ascii_cs(
     const struct mylite_regexp_program *program,
     const char *value,
     size_t value_length,

@@ -115,6 +115,27 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "scalar character union uses default collation" \
+    "a
+-1|0" \
+    "SELECT CAST('a' AS CHAR) UNION SELECT CAST('A' AS CHAR); SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
+    "scalar binary union remains bytewise" \
+    "a
+A" \
+    "SELECT CAST('a' AS BINARY) UNION SELECT CAST('A' AS BINARY);" \
+    "$DATABASE"
+
+expect_output \
+    "mixed scalar character and binary union remains bytewise" \
+    "a
+A" \
+    "SELECT CAST('a' AS CHAR) UNION SELECT CAST('A' AS BINARY);" \
+    "$DATABASE"
+
+expect_output \
     "mixed all and distinct chain" \
     "1
 1" \
@@ -156,6 +177,17 @@ NULL|NULL
 3|c
 NULL|NULL" \
     "SELECT id, v FROM t1 UNION ALL SELECT id, v FROM t2;" \
+    "$DATABASE"
+
+run_mysql \
+    "INSERT INTO t1 VALUES (4, 'a'); INSERT INTO t2 VALUES (4, 'A');" \
+    "$DATABASE" >/dev/null
+
+expect_output_with_names \
+    "descriptor-backed string union uses default collation" \
+    "id|v
+4|a" \
+    "SELECT id, v FROM t1 WHERE id = 4 UNION SELECT id, v FROM t2 WHERE id = 4;" \
     "$DATABASE"
 
 expect_error \

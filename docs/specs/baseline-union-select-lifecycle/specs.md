@@ -50,6 +50,11 @@ records the runtime probes for this feature. Observed behavior:
 
 - `UNION` and `UNION DISTINCT` remove duplicate result rows.
 - `UNION ALL` preserves duplicate result rows.
+- Duplicate removal uses the effective nonbinary string collation for supported
+  scalar character-cast and descriptor string-column outputs. With the current
+  MyLite collation surface, observed ASCII case variants such as `'a'` and
+  `'A'` are duplicate-equivalent under the default collation, while binary
+  casts and mixed character/binary columns remain bytewise distinct.
 - In a mixed chain, a distinct `UNION` removes duplicates from the accumulated
   result to its left and the right query block for that operator; later
   `UNION ALL` terms may add duplicates again.
@@ -83,7 +88,10 @@ The implementation must add:
 - column-count validation after branch execution and before appending branch
   rows to the public result;
 - MySQL-compatible duplicate removal for `UNION` / `UNION DISTINCT` using
-  full-row equality where `NULL` equals `NULL`;
+  full-row equality where `NULL` equals `NULL`, nonbinary descriptor string
+  columns and supported scalar nonbinary string outputs use the current MyLite
+  case-insensitive ASCII collation, and binary or explicitly mixed
+  character/binary outputs remain bytewise;
 - duplicate preservation for `UNION ALL`;
 - mixed-chain behavior where a distinct operator deduplicates the accumulated
   output and the current right branch, while later `UNION ALL` terms append
@@ -111,8 +119,9 @@ This feature must not implement:
 - `UNION` inside `INSERT ... SELECT`, `REPLACE ... SELECT`,
   `CREATE TABLE ... SELECT`, subqueries, `EXISTS`, `IN`, DML assignments, or
   arbitrary expression positions;
-- broad type aggregation across branches, collation aggregation, coercion
-  metadata, widened display lengths, or protocol-grade metadata merging;
+- broad type aggregation across branches, full collation aggregation beyond the
+  current nonbinary ASCII string-collation surface, coercion metadata, widened
+  display lengths, or protocol-grade metadata merging;
 - streaming set-operation execution through SQLite, temporary SQLite tables for
   duplicate removal, optimizer pushdown, or SQLite fork patches;
 - arbitrary SQLite SQL pass-through.
@@ -127,8 +136,9 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans. Parser code remains
   independent of runtime, catalog, storage, and SQLite.
 - Runtime compound execution owns branch sequencing, column-count validation,
-  duplicate handling, result metadata copying from the first branch, and final
-  public result assembly.
+  duplicate handling, current nonbinary string-collation tracking for duplicate
+  checks, result metadata copying from the first branch, and final public result
+  assembly.
 - Existing branch analyzers/planners own schema resolution, descriptor
   authority, expression support, predicate planning, generated SQLite SQL,
   parameter binding, and physical execution for each individual `SELECT`.
@@ -137,8 +147,9 @@ This feature must not implement:
   catalog generation, or `sqlite_schema_generation`.
 - SQLite continues to own physical row storage and branch-local execution for
   the existing translated `SELECT` plans. This slice combines already
-  materialized MyLite branch results in C memory; it does not require a SQLite
-  fork hook.
+  materialized MyLite branch results in C memory and applies the same current
+  ASCII case-folding rule as MyLite's registered default string collation for
+  supported duplicate checks; it does not require a SQLite fork hook.
 - Storage/VFS owns the `.mylite` preamble and shifted SQLite payload boundary.
   Read-only `UNION` statements must not write either region.
 

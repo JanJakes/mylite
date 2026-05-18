@@ -85,6 +85,9 @@ static int test_scalar_union_values_and_metadata(void) {
     static const char *const values_distinct[] = {"1", "2"};
     static const char *const values_all[] = {"1", "1", "2"};
     static const char *const values_null[] = {NULL, "1"};
+    static const char *const values_string_case[] = {"a"};
+    static const char *const values_binary_case[] = {"a", "A"};
+    static const char *const values_mixed_binary_case[] = {"a", "A"};
     static const char *const values_mixed[] = {"1", "1"};
     static const char *const columns_ab[] = {"a", "b"};
     static const char *const values_ab[] = {"1", "2", "3", "4"};
@@ -130,6 +133,39 @@ static int test_scalar_union_values_and_metadata(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT CAST('a' AS CHAR) UNION SELECT CAST('A' AS CHAR)",
+            .columns = (const char *const[]){"CAST('a' AS CHAR)"},
+            .column_count = 1U,
+            .values = values_string_case,
+            .row_count = 1U,
+            .context = "scalar character duplicate uses collation",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('a' AS BINARY) UNION SELECT CAST('A' AS BINARY)",
+            .columns = (const char *const[]){"CAST('a' AS BINARY)"},
+            .column_count = 1U,
+            .values = values_binary_case,
+            .row_count = 2U,
+            .context = "scalar binary duplicate remains bytewise",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CAST('a' AS CHAR) UNION SELECT CAST('A' AS BINARY)",
+            .columns = (const char *const[]){"CAST('a' AS CHAR)"},
+            .column_count = 1U,
+            .values = values_mixed_binary_case,
+            .row_count = 2U,
+            .context = "mixed character and binary duplicate remains bytewise",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT 1 UNION ALL SELECT 1 UNION SELECT 1 UNION ALL SELECT 1",
             .columns = column_one,
             .column_count = 1U,
@@ -167,6 +203,7 @@ static int test_scalar_union_values_and_metadata(void) {
 
 static int test_table_union_persistence_and_file_safety(void) {
     static const char *const columns_id_v[] = {"id", "v"};
+    static const char *const values_string_case[] = {"4", "a"};
     static const char *const values_distinct[] = {
         "1",
         "a",
@@ -195,6 +232,7 @@ static int test_table_union_persistence_and_file_safety(void) {
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "table_union") != 0) {
@@ -227,6 +265,29 @@ static int test_table_union_persistence_and_file_safety(void) {
             .context = "table union all",
         }
     );
+    failures += execute_ok(database, "INSERT INTO t1 VALUES (4, 'a')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO t2 VALUES (4, 'A')", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t1 WHERE id = 4 UNION SELECT id, v FROM t2 WHERE id = 4",
+            .columns = columns_id_v,
+            .column_count = 2U,
+            .values = values_string_case,
+            .row_count = 1U,
+            .context = "table string duplicate uses collation",
+        }
+    );
+    failures += execute_ok(database, "DELETE FROM t1 WHERE id = 4", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "DELETE FROM t2 WHERE id = 4", &result);
+    mylite_result_free(result);
+    result = NULL;
     mylite_close(database);
     database = NULL;
 

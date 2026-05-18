@@ -38,6 +38,7 @@ struct expected_result {
 
 static int test_where_and_predicates(void);
 static int test_where_xor_predicates(void);
+static int test_where_scalar_literal_predicates(void);
 static int test_independent_where_and_handles(void);
 static int seed_database(mylite_db *database);
 static int reset_numbers(mylite_db *database);
@@ -73,6 +74,7 @@ int main(void) {
 
     failures += test_where_and_predicates();
     failures += test_where_xor_predicates();
+    failures += test_where_scalar_literal_predicates();
     failures += test_independent_where_and_handles();
 
     return failures == 0 ? 0 : 1;
@@ -84,6 +86,8 @@ static int test_where_and_predicates(void) {
     static const char *const null_row[] = {"3"};
     static const char *const distinct_row[] = {"9"};
     static const char *const count_row[] = {"1"};
+    static const char *const scalar_all_count_row[] = {"3"};
+    static const char *const scalar_true_and_row[] = {"1"};
     static const char *const max_row[] = {"2147483647"};
     static const char *const grouped_rows[] = {"1", "1", "2", "2"};
     static const char *const copy_row[] = {"2", "1", "9"};
@@ -2620,13 +2624,16 @@ static int test_where_and_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE 1 IS TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 1 IS TRUE",
+            .values = scalar_all_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal is true predicate",
         }
     );
     failures += execute_error(
@@ -2665,13 +2672,16 @@ static int test_where_and_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE TRUE AND id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE TRUE AND id = 1",
+            .values = scalar_true_and_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar truth and predicate",
         }
     );
     failures += execute_error(
@@ -3348,6 +3358,454 @@ static int test_where_xor_predicates(void) {
     return failures;
 }
 
+static int test_where_scalar_literal_predicates(void) {
+    static const char *const all_ids[] = {"1", "2", "3", "4"};
+    static const char *const count_all_row[] = {"4"};
+    static const char *const count_empty_row[] = {"0"};
+    static const char *const id_two_row[] = {"2"};
+    static const char *const positive_i_ids[] = {"2", "3"};
+    static const char *const null_n_ids[] = {"1", "3"};
+    static const char *const update_rows[] = {"1", NULL, "2", "11", "3", NULL, "4", "9"};
+    static const char *const delete_rows[] = {"2", "4"};
+    static const char *const copy_rows[] = {"2", "1"};
+    static const char *const inserted_rows[] = {"4", "0"};
+    static const char *const persisted_count_row[] = {"4"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "scalar_literals") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open scalar literal database");
+    failures += seed_database(database);
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE TRUE ORDER BY id",
+            .values = all_ids,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE FALSE",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE NULL",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar null truth predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE -1",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "negative scalar truth predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 9223372036854775807",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "signed max scalar truth predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE -9223372036854775808",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "signed min scalar truth predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE 1 = i",
+            .values = id_two_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "literal-left equality predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE 0 < i ORDER BY id",
+            .values = positive_i_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "literal-left ordered predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NULL <=> n ORDER BY id",
+            .values = null_n_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "literal-left null-safe predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE n = NULL",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column equal null predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 1 = 1",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal equality predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE NULL = NULL",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar null equality predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE NULL <=> NULL",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar null-safe equality predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 1 IS TRUE",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 0 IS FALSE",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar is false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE NULL IS UNKNOWN",
+            .values = count_all_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar is unknown predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 1 IS NOT TRUE",
+            .values = count_empty_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar is not true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE TRUE AND 1 = i OR FALSE",
+            .values = id_two_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar logical predicate",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE 1 = i", &result);
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            1,
+            "scalar literal update affected rows"
+        );
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "scalar literal update warnings");
+        failures += expect_size(mylite_result_row_count(result), 0U, "scalar literal update rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal update result",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE NULL <=> n", &result);
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            2,
+            "scalar literal delete affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = delete_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal delete result",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_scalar SELECT id, i FROM numbers WHERE 1 = i",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM copy_scalar",
+            .values = copy_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal create select source",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE inserted_scalar (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO inserted_scalar SELECT id, i FROM numbers WHERE TRUE AND i = 0",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM inserted_scalar",
+            .values = inserted_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar literal insert select source",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE '1' = i",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE 1.0 = i",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE 2147483648 = id",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'id' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE -1 = iu",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'iu' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE 9223372036854775808",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "WHERE scalar literal integer literals must fit the signed 64-bit range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE -9223372036854775809",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "WHERE scalar literal integer literals must fit the signed 64-bit range",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET nn = 33 WHERE NULL IS UNKNOWN", &result);
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            4,
+            "scalar literal persisted update affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    mylite_close(database);
+    database = NULL;
+
+    if (read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) != 0) {
+        fprintf(stderr, "failed to read scalar literal database preamble\n");
+        ++failures;
+    } else {
+        failures += expect_bytes(
+            actual_preamble,
+            expected_preamble,
+            sizeof(expected_preamble),
+            "scalar literal preamble"
+        );
+    }
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen scalar literal database");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE nn = 33",
+            .values = persisted_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened scalar literal update result",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_independent_where_and_handles(void) {
     static const char *const first_values[] = {"31"};
     static const char *const second_values[] = {"41"};
@@ -3470,6 +3928,30 @@ static int test_independent_where_and_handles(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "second independent handle in predicate",
+        }
+    );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE TRUE AND 2 = id",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle scalar literal predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE TRUE AND 2 = id",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle scalar literal predicate",
         }
     );
     failures += expect_result(

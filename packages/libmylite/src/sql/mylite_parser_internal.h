@@ -135,6 +135,11 @@ struct mylite_sql_alter_table_options {
     int has_span;
 };
 
+struct mylite_sql_comparison_operator_tokens {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_operator operator_kind;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root

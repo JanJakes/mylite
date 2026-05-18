@@ -70,6 +70,7 @@
 %type alter_table_algorithm_lock_option { struct mylite_sql_alter_table_options }
 %type alter_algorithm_value { struct mylite_sql_alter_algorithm_value }
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
+%type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -2424,6 +2425,51 @@ predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
 predicate_atom(A) ::= EXISTS(E) LPAREN select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_exists_predicate(state, E, S, R);
 }
+predicate_atom(A) ::= predicate_scalar_literal(V). {
+    A = V;
+}
+predicate_atom(A) ::= predicate_scalar_literal(L) predicate_comparison_operator(O)
+        predicate_scalar_literal(R). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, L, O.token, O.operator_kind, R);
+}
+predicate_atom(A) ::= predicate_scalar_literal(L) predicate_comparison_operator(O)
+        qualified_identifier(C). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, L, O.token, O.operator_kind, C);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) TRUE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_TRUE, T);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NOT TRUE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE, T);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) FALSE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_FALSE, T);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NOT FALSE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE, T);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) UNKNOWN(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN, T);
+}
+predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NOT UNKNOWN(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN, T);
+}
 predicate_atom(A) ::= find_in_set_expression(C). {
     A = C;
 }
@@ -2505,11 +2551,6 @@ predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_valu
 predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
-}
-predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) NULL(T). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
-        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL));
 }
 predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
@@ -2659,6 +2700,9 @@ predicate_comparison_value(A) ::= STRING(T). {
 predicate_comparison_value(A) ::= BIT_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
+predicate_comparison_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
 predicate_comparison_value(A) ::= DATABASE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
@@ -2686,6 +2730,72 @@ predicate_integer_value(A) ::= TRUE(T). {
 }
 predicate_integer_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+
+predicate_scalar_literal(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+predicate_scalar_literal(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+predicate_scalar_literal(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+predicate_scalar_literal(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+predicate_scalar_literal(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+predicate_scalar_literal(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+predicate_comparison_operator(A) ::= EQUAL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_EQUAL,
+    };
+}
+predicate_comparison_operator(A) ::= NULL_SAFE_EQUAL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+    };
+}
+predicate_comparison_operator(A) ::= NOT_EQUAL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+    };
+}
+predicate_comparison_operator(A) ::= LESS(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS,
+    };
+}
+predicate_comparison_operator(A) ::= LESS_EQUAL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+    };
+}
+predicate_comparison_operator(A) ::= GREATER(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER,
+    };
+}
+predicate_comparison_operator(A) ::= GREATER_EQUAL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+    };
 }
 
 order_clause_opt(A) ::= . {

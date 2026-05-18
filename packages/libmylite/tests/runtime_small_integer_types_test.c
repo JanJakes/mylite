@@ -2265,13 +2265,14 @@ static int test_boolean_literal_lifecycle(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM flags WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE TRUE ORDER BY id",
+            .values = remaining_id_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "boolean literal bare true predicate",
         }
     );
     failures += expect_query_values(

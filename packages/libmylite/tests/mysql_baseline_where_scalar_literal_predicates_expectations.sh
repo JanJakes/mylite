@@ -83,6 +83,26 @@ expect_output \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE -1;"
 
 expect_output \
+    "WHERE signed max integer is true" \
+    "1,2,3,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE 9223372036854775807;"
+
+expect_output \
+    "WHERE signed min integer is true" \
+    "1,2,3,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE -9223372036854775808;"
+
+expect_output \
+    "MySQL accepts scalar literal above MyLite signed range" \
+    "1,2,3,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE 9223372036854775808;"
+
+expect_output \
+    "MySQL accepts scalar literal below MyLite signed range" \
+    "1,2,3,4" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE -9223372036854775809;"
+
+expect_output \
     "scalar literal true comparison" \
     "1,2,3,4" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE 1 = 1;"

@@ -16903,6 +16903,11 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id = NULL;",
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id IS NULL;",
             MYLITE_SQL_AST_OPERATOR_IS_NULL,
             MYLITE_SQL_AST_IS_NULL_PREDICATE,
@@ -16961,6 +16966,76 @@ static int test_select_where_predicates(void) {
         failures += expect_span_text(child_at(predicate, 0U), "id", "where predicate column");
         mylite_sql_parse_result_deinit(&result);
     }
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE TRUE;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_literal(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "scalar literal truth predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE -1;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "signed scalar literal truth predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE 1 = id;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "literal-left column predicate"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        "1",
+        "literal-left column predicate literal"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        "id",
+        "literal-left column predicate column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE NULL <=> id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+        "literal-left null-safe predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE 1 = 1;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "scalar literal comparison predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE NULL IS UNKNOWN;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN,
+        "scalar literal unknown predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app';",
@@ -17345,11 +17420,8 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "SELECT id FROM simple_lifecycle WHERE 1 IS TRUE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE 1 IS TRUE;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -21858,16 +21930,6 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
-        parse_sql("SELECT id FROM t WHERE id = NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("SELECT id FROM t WHERE 1 = id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("SELECT id FROM t WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

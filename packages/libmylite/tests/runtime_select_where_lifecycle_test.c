@@ -538,13 +538,12 @@ static int test_filtered_select_diagnostics(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE 1 = i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE 1 = i",
+            .expected = "1",
+            .context = "literal-left comparison predicate",
         }
     );
     failures += execute_error(
@@ -556,13 +555,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE i = NULL",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE i = NULL",
+            .expected = "0",
+            .context = "column equal null predicate",
         }
     );
     failures += execute_error(
@@ -601,13 +599,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE TRUE OR nn = 6",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_single_value_query){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE TRUE OR nn = 6",
+            .expected = "3",
+            .context = "scalar truth logical predicate",
         }
     );
     failures += execute_error(

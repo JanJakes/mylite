@@ -294,6 +294,11 @@ void mylite_sql_ast_node_set_column_visibility(
         return;
     }
 
+    if (node->kind == MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT) {
+        node->payload.alter_table_options.visibility = visibility;
+        return;
+    }
+
     node->payload.column_visibility.kind = visibility;
 }
 
@@ -694,7 +699,13 @@ enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
 enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
     const struct mylite_sql_ast_node *node
 ) {
-    if (node == NULL || node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT) {
+    if (node == NULL) {
+        return MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
+    }
+    if (node->kind == MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT) {
+        return node->payload.alter_table_options.visibility;
+    }
+    if (node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT) {
         return MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
     }
 
@@ -1341,6 +1352,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "index_hint_for_order_by";
     case MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY:
         return "index_hint_for_group_by";
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
+        return "alter_table_index_visibility_statement";
     case MYLITE_SQL_AST_WHERE_CLAUSE:
         return "where_clause";
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:

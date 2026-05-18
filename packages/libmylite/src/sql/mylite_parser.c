@@ -2412,6 +2412,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_index_visibility_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_column_visibility visibility,
+    struct mylite_sql_alter_table_options options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    span = span_join(span, span_from_token(&visibility_token));
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, index_name);
+    apply_alter_table_options(statement, options);
+    mylite_sql_ast_node_set_column_visibility(statement, visibility);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

@@ -441,6 +441,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN = 432,
     MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY = 433,
     MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY = 434,
+    MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT = 435,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -704,6 +705,7 @@ struct mylite_sql_ast_column_visibility_payload {
 struct mylite_sql_ast_alter_table_options_payload {
     enum mylite_sql_ast_alter_algorithm algorithm;
     enum mylite_sql_ast_alter_lock lock;
+    enum mylite_sql_ast_column_visibility visibility;
 };
 
 union mylite_sql_ast_node_payload {

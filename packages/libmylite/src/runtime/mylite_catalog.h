@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 22
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 22
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 23
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 23
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -126,6 +126,7 @@ struct mylite_catalog_index_descriptor {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     enum mylite_catalog_index_kind kind;
     bool is_unique;
+    bool is_visible;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
@@ -314,6 +315,7 @@ int mylite_catalog_insert_index_in_mutation(
     const char *physical_name,
     enum mylite_catalog_index_kind kind,
     bool is_unique,
+    bool is_visible,
     struct mylite_catalog_index_descriptor *out_index
 );
 int mylite_catalog_insert_index_column_in_mutation(
@@ -401,6 +403,13 @@ int mylite_catalog_rename_index_in_mutation(
     int64_t table_id,
     int64_t index_id,
     const char *name
+);
+int mylite_catalog_set_index_visibility_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t index_id,
+    bool is_visible
 );
 int mylite_catalog_delete_foreign_keys_for_child_table_in_mutation(
     struct mylite_db *database,

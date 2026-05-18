@@ -242,6 +242,9 @@ statement(A) ::= alter_table_drop_index_statement(B). {
 statement(A) ::= alter_table_rename_index_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_index_visibility_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_add_check_statement(B). {
     A = B;
 }
@@ -1335,6 +1338,20 @@ alter_table_rename_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) RENAME KEY old_identifier(O) TO new_identifier(N)
     alter_table_option_tail_opt(P). {
     A = mylite_sql_parser_make_alter_table_rename_index_statement(state, A1, T, O, N, P);
+}
+
+alter_table_index_visibility_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER INDEX identifier(I) VISIBLE(V)
+    alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_index_visibility_statement(
+        state, A1, T, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE, O);
+}
+
+alter_table_index_visibility_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER INDEX identifier(I) INVISIBLE(V)
+    alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_index_visibility_statement(
+        state, A1, T, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE, O);
 }
 
 alter_table_add_check_statement(A) ::=

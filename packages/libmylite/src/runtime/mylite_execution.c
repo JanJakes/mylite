@@ -111,6 +111,7 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_database_does_not_exist = 3503,
+    mysql_error_primary_key_index_invisible = 3522,
     mysql_error_data_too_long = 1406,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
@@ -1545,6 +1546,7 @@ struct planned_secondary_index {
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     enum mylite_catalog_index_kind kind;
     bool is_unique;
+    bool is_visible;
 };
 
 struct secondary_index_part_nodes {
@@ -1966,6 +1968,14 @@ struct planned_alter_table_column_visibility {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor column;
     bool is_visible;
+};
+
+struct planned_alter_table_index_visibility {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct loaded_index_info index;
+    bool is_visible;
+    int64_t affected_rows;
 };
 
 struct planned_alter_table_default_charset_collation {
@@ -7288,6 +7298,11 @@ static int execute_alter_table_column_visibility_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_index_visibility_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_default_charset_collation_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -7742,6 +7757,7 @@ static int append_information_schema_statistics_base_index_row(
     const struct mylite_catalog_table_descriptor *table,
     const struct loaded_index_info *index
 );
+static const char *index_visibility_text(bool is_visible);
 static int information_schema_append_result_columns(
     struct mylite_db *database,
     mylite_result *result,
@@ -9381,6 +9397,18 @@ static int plan_alter_table_column_visibility(
 static int alter_table_column_visibility_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_column_visibility *plan
+);
+static int plan_alter_table_index_visibility(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_index_visibility *out_plan
+);
+static int alter_table_index_visibility_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_index_visibility *plan
+);
+static void planned_alter_table_index_visibility_deinit(
+    struct planned_alter_table_index_visibility *plan
 );
 static int plan_alter_table_default_charset_collation(
     struct mylite_db *database,
@@ -19498,6 +19526,7 @@ static void set_key_does_not_exist_in_table_error(
     const char *index_name,
     const char *table_name
 );
+static void set_primary_key_index_invisible_error(struct mylite_db *database);
 static void set_storage_engine_cant_index_column_error(
     struct mylite_db *database,
     const char *column_name
@@ -20011,6 +20040,8 @@ static int execute_parsed_statement(
         return execute_alter_table_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
         return execute_alter_table_rename_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
+        return execute_alter_table_index_visibility_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
         return execute_alter_table_add_check_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
@@ -21697,6 +21728,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
@@ -25165,6 +25197,35 @@ static int execute_alter_table_column_visibility_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_alter_table_index_visibility_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_index_visibility plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_index_visibility(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_index_visibility_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_index_visibility_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_index_visibility_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_alter_table_default_charset_collation_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -25441,6 +25502,7 @@ static int validate_alter_table_algorithm_lock_options(
 
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
         return validate_alter_table_online_metadata_algorithm_options(database, algorithm);
 
@@ -25578,6 +25640,7 @@ static bool alter_table_statement_accepts_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
@@ -28408,7 +28471,7 @@ static int append_information_schema_statistics_base_index_row(
             index_type,
             "",
             "",
-            "YES",
+            index_visibility_text(index->index.is_visible),
             NULL,
         };
 
@@ -33888,6 +33951,10 @@ static int append_show_create_table_index(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
     }
+    if (rc == MYLITE_OK && index->index.kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY &&
+        !index->index.is_visible) {
+        rc = dynamic_string_append(string, " /*!80000 INVISIBLE */");
+    }
     if (rc == MYLITE_OK && !is_last_index) {
         rc = dynamic_string_append_char(string, ',');
     }
@@ -34563,6 +34630,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
@@ -35476,6 +35544,7 @@ static int apply_create_table_inline_unique_indexes(
             snprintf(index->name, sizeof(index->name), "%s", index_name);
             index->kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
             index->is_unique = true;
+            index->is_visible = true;
             rc = reserve_planned_secondary_index_parts(database, index, 1U);
             if (rc == MYLITE_OK) {
                 index->parts[0] = (struct planned_secondary_index_part){
@@ -35618,6 +35687,7 @@ static int apply_create_table_secondary_index_definition(
     if (rc == MYLITE_OK) {
         planned_index.kind = index_kind;
         planned_index.is_unique = is_unique;
+        planned_index.is_visible = true;
         snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < part_count; ++index) {
@@ -37635,6 +37705,7 @@ static int add_create_table_foreign_key_child_index(
     if (rc == MYLITE_OK) {
         index.kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
         index.is_unique = false;
+        index.is_visible = true;
     }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < foreign_key->part_count;
          ++part_index) {
@@ -38970,6 +39041,7 @@ static int clone_create_table_like_indexes(
         snprintf(target_index->name, sizeof(target_index->name), "%s", source_index->index.name);
         target_index->kind = source_index->index.kind;
         target_index->is_unique = source_index->index.is_unique;
+        target_index->is_visible = source_index->index.is_visible;
         rc =
             reserve_planned_secondary_index_parts(database, target_index, source_index->part_count);
         for (size_t part_index = 0U; rc == MYLITE_OK && part_index < source_index->part_count;
@@ -41308,6 +41380,7 @@ static int insert_create_table_index_catalog_rows(
             plan->primary_key_physical_name,
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
+            true,
             NULL
         );
     }
@@ -41349,6 +41422,7 @@ static int insert_create_table_index_catalog_rows(
             secondary->physical_name,
             secondary->kind,
             secondary->is_unique,
+            secondary->is_visible,
             NULL
         );
         for (size_t part_index = 0U; rc == MYLITE_OK && part_index < secondary->part_count;
@@ -41721,6 +41795,7 @@ static int append_temporary_primary_index_descriptor(
         .table_id = table_id,
         .kind = MYLITE_CATALOG_INDEX_KIND_PRIMARY,
         .is_unique = true,
+        .is_visible = true,
     };
     snprintf(index->name, sizeof(index->name), "%s", "PRIMARY");
     snprintf(
@@ -41783,6 +41858,7 @@ static int append_temporary_secondary_index_descriptor(
         .table_id = table_id,
         .kind = planned->kind,
         .is_unique = planned->is_unique,
+        .is_visible = planned->is_visible,
     };
     snprintf(index->name, sizeof(index->name), "%s", planned->name);
     snprintf(index->physical_name, sizeof(index->physical_name), "%s", planned->physical_name);
@@ -43011,6 +43087,7 @@ static int alter_table_add_primary_key_from_plan(
             primary_key_physical_name,
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
+            true,
             NULL
         );
     }
@@ -44151,6 +44228,7 @@ static int add_secondary_index_from_plan(
             index_physical_name,
             plan->kind,
             plan->is_unique,
+            true,
             NULL
         );
     }
@@ -44704,6 +44782,7 @@ static int alter_table_add_foreign_key_from_plan(
             child_index_physical_name,
             MYLITE_CATALOG_INDEX_KIND_SECONDARY,
             false,
+            true,
             NULL
         );
     }
@@ -46276,6 +46355,7 @@ static int copy_alter_table_check_secondary_index(
     target->index_id = index->index.index_id;
     target->kind = index->index.kind;
     target->is_unique = index->index.is_unique;
+    target->is_visible = index->index.is_visible;
     snprintf(target->name, sizeof(target->name), "%s", index->index.name);
     snprintf(
         target->physical_name,
@@ -48561,6 +48641,150 @@ static int alter_table_column_visibility_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_alter_table_index_visibility(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_index_visibility *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    size_t resolved_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_index_visibility){0};
+    out_plan->is_visible = mylite_sql_ast_node_column_visibility(statement) ==
+                           MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
+    rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            copy_identifier_text(child_at(statement, 1U), index_name, sizeof(index_name), database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ALTER INDEX supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_loaded_index_by_name(indexes, index_count, index_name, &resolved_index);
+        if (rc != MYLITE_OK) {
+            set_key_does_not_exist_in_table_error(
+                database,
+                index_name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK &&
+        indexes[resolved_index].index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        set_primary_key_index_invisible_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        !loaded_index_kind_is_secondary_or_fulltext(indexes[resolved_index].index.kind)) {
+        set_unsupported_error(database, "ALTER TABLE ALTER INDEX supports only secondary indexes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->index = indexes[resolved_index];
+        indexes[resolved_index] = (struct loaded_index_info){0};
+    }
+    if (rc == MYLITE_OK &&
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+        rc = read_show_table_status_row_count(database, &out_plan->table, &out_plan->affected_rows);
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static int alter_table_index_visibility_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_index_visibility *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_set_index_visibility_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->index.index.index_id,
+            plan->is_visible
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to set index visibility");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static void planned_alter_table_index_visibility_deinit(
+    struct planned_alter_table_index_visibility *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    loaded_index_info_deinit(&plan->index);
+    *plan = (struct planned_alter_table_index_visibility){0};
 }
 
 static int plan_alter_table_default_charset_collation(
@@ -103798,7 +104022,7 @@ static int append_show_index(
             index_type,
             "",
             "",
-            "YES",
+            index_visibility_text(index->index.is_visible),
             NULL,
         };
 
@@ -103814,6 +104038,14 @@ static int append_show_index(
     }
 
     return rc;
+}
+
+static const char *index_visibility_text(bool is_visible) {
+    if (!is_visible) {
+        return "NO";
+    }
+
+    return "YES";
 }
 
 static int show_column_type_text(
@@ -115439,6 +115671,15 @@ static void set_key_does_not_exist_in_table_error(
         mysql_error_key_does_not_exist,
         "42000",
         message
+    );
+}
+
+static void set_primary_key_index_invisible_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_primary_key_index_invisible,
+        "HY000",
+        "A primary key index cannot be invisible."
     );
 }
 

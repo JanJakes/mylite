@@ -727,6 +727,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_stat
     struct mylite_sql_ast_node *new_index_name,
     struct mylite_sql_alter_table_options options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_index_visibility_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_column_visibility visibility,
+    struct mylite_sql_alter_table_options options
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

@@ -138,6 +138,7 @@ static int test_alter_table_add_foreign_key_statements(void);
 static int test_alter_table_drop_foreign_key_statements(void);
 static int test_alter_table_drop_index_statements(void);
 static int test_alter_table_rename_index_statements(void);
+static int test_alter_table_index_visibility_statements(void);
 static int test_alter_table_check_constraint_statements(void);
 static int test_alter_table_drop_primary_key_statements(void);
 static int test_alter_table_auto_increment_option_statements(void);
@@ -418,6 +419,7 @@ int main(void) {
     failures += test_alter_table_drop_foreign_key_statements();
     failures += test_alter_table_drop_index_statements();
     failures += test_alter_table_rename_index_statements();
+    failures += test_alter_table_index_visibility_statements();
     failures += test_alter_table_check_constraint_statements();
     failures += test_alter_table_drop_primary_key_statements();
     failures += test_alter_table_auto_increment_option_statements();
@@ -14519,6 +14521,104 @@ static int test_alter_table_rename_index_statements(void) {
     failures += expect_true(
         mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
         "alter rename index lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_index_visibility_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER INDEX k_v INVISIBLE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT,
+        "alter index invisible statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter index invisible child count");
+    failures += expect_span_text(child_at(statement, 0U), "idx_visibility", "alter index table");
+    failures += expect_span_text(child_at(statement, 1U), "k_v", "alter index name");
+    failures += expect_column_visibility(
+        statement,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE,
+        "alter index invisible payload"
+    );
+    failures += expect_span_text(
+        statement,
+        "ALTER TABLE idx_visibility ALTER INDEX k_v INVISIBLE",
+        "alter index invisible span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.idx_visibility ALTER INDEX `k_v` VISIBLE, ALGORITHM=COPY, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.idx_visibility",
+        "schema-qualified alter index visibility table"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "`k_v`", "quoted alter index name");
+    failures += expect_column_visibility(
+        statement,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE,
+        "alter index visible payload"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter index visibility algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter index visibility lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER INDEX `PRIMARY` INVISIBLE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 1U), "`PRIMARY`", "quoted primary index");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER INDEX PRIMARY INVISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER KEY k_v INVISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER INDEX idx_visibility.k_v INVISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE idx_visibility ALTER INDEX k_v INVISIBLE, ALTER INDEX k2 VISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

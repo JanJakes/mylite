@@ -724,6 +724,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_json_construction_functions_test)
 
+  add_executable(mylite_runtime_json_introspection_functions_test
+    tests/runtime_json_introspection_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_json_introspection_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_json_introspection_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_json_introspection_functions_test)
+
   add_executable(mylite_runtime_scalar_comparison_projection_test
     tests/runtime_scalar_comparison_projection_test.c
   )
@@ -3059,6 +3070,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.json_construction_functions
     COMMAND mylite_runtime_json_construction_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.json_introspection_functions
+    COMMAND mylite_runtime_json_introspection_functions_test
   )
   add_test(
     NAME libmylite.runtime.scalar_comparison_projection

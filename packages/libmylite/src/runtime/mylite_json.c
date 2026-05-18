@@ -289,6 +289,8 @@ static int extract_path_value(
     const struct json_value **out_value,
     bool *out_matched
 );
+static const char *json_value_type_name(const struct json_value *value);
+static int json_value_shallow_length(const struct json_value *value, int64_t *out_length);
 static int parse_path_member_leg(
     struct json_parser *parser,
     const struct json_value **inout_value,
@@ -433,6 +435,103 @@ int mylite_json_validate(const char *text, size_t text_length, bool *out_is_vali
 
     *out_is_valid = validate_document(&parser);
     return MYLITE_OK;
+}
+
+int mylite_json_type(
+    const char *text,
+    size_t text_length,
+    const char **out_type,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value value = {0};
+    int rc = MYLITE_OK;
+
+    if (out_type == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_type = NULL;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&parser, &value);
+    *out_result = parser.result;
+    if (rc == MYLITE_OK) {
+        *out_type = json_value_type_name(&value);
+    }
+
+    value_deinit(&value);
+    return rc;
+}
+
+int mylite_json_length(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    int64_t *out_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser path_parser = {
+        .text = path,
+        .length = path_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value document = {0};
+    const struct json_value *measured_value = NULL;
+    bool matched = false;
+    int rc = MYLITE_OK;
+
+    if (out_length == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_length = 0;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL || (has_path && path == NULL)) {
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_document(&document_parser, &document);
+    *out_result = document_parser.result;
+    if (rc == MYLITE_OK && has_path) {
+        rc = extract_path_value(&path_parser, &document, &measured_value, &matched);
+        *out_result = path_parser.result;
+        if (rc == MYLITE_OK && !matched) {
+            *out_is_null = true;
+        }
+    } else if (rc == MYLITE_OK) {
+        measured_value = &document;
+        matched = true;
+    }
+    if (rc == MYLITE_OK && matched) {
+        rc = json_value_shallow_length(measured_value, out_length);
+    }
+
+    value_deinit(&document);
+    return rc;
 }
 
 int mylite_json_extract(
@@ -585,6 +684,48 @@ int mylite_json_unquote(
 
     free(decoded);
     return rc;
+}
+
+static const char *json_value_type_name(const struct json_value *value) {
+    if (value == NULL) {
+        return NULL;
+    }
+
+    switch (value->kind) {
+    case JSON_VALUE_NULL:
+        return "NULL";
+    case JSON_VALUE_BOOL:
+        return "BOOLEAN";
+    case JSON_VALUE_NUMBER:
+        return "INTEGER";
+    case JSON_VALUE_STRING:
+        return "STRING";
+    case JSON_VALUE_ARRAY:
+        return "ARRAY";
+    case JSON_VALUE_OBJECT:
+        return "OBJECT";
+    }
+
+    return NULL;
+}
+
+static int json_value_shallow_length(const struct json_value *value, int64_t *out_length) {
+    size_t length = 1U;
+
+    if (value == NULL || out_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->kind == JSON_VALUE_ARRAY) {
+        length = value->payload.array.count;
+    } else if (value->kind == JSON_VALUE_OBJECT) {
+        length = value->payload.object.count;
+    }
+    if (length > (size_t)INT64_MAX) {
+        return MYLITE_NOMEM;
+    }
+
+    *out_length = (int64_t)length;
+    return MYLITE_OK;
 }
 
 int mylite_json_array_from_sql_values(

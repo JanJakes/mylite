@@ -53,6 +53,7 @@ static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
 static int test_json_construction_functions(void);
+static int test_json_introspection_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
@@ -332,6 +333,7 @@ int main(void) {
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
     failures += test_json_construction_functions();
+    failures += test_json_introspection_functions();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
@@ -2411,6 +2413,138 @@ static int test_json_construction_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT JSON_ARRAY(*);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_introspection_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT JSON_TYPE('{\"a\":1}'), JSON_LENGTH('{\"a\":[1,2]}'), "
+        "JSON_LENGTH(j, '$.a') FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_JSON_TYPE_FUNCTION, "json_type function");
+    failures += expect_span_text(first_expression, "JSON_TYPE('{\"a\":1}')", "json_type span");
+    failures += expect_child_count(first_expression, 1U, "json_type argument count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "json_type document"
+    );
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, "json_length function");
+    failures +=
+        expect_span_text(second_expression, "JSON_LENGTH('{\"a\":[1,2]}')", "json_length span");
+    failures += expect_child_count(second_expression, 1U, "json_length argument count");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_JSON_LENGTH_FUNCTION,
+        "json_length path function"
+    );
+    failures += expect_child_count(third_expression, 2U, "json_length path argument count");
+    failures += expect_node(child_at(third_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "json doc");
+    failures +=
+        expect_literal(child_at(third_expression, 1U), MYLITE_SQL_AST_LITERAL_STRING, "json path");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT JSON_TYPE(JSON_EXTRACT('{\"a\":[1]}', '$.a')), "
+        "JSON_LENGTH(JSON_EXTRACT('{\"a\":[1]}', '$.a'));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION,
+        "json_type nested json_extract"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION,
+        "json_length nested json_extract"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json introspection do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_TYPE_FUNCTION,
+        "do json_type"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_JSON_LENGTH_FUNCTION,
+        "do json_length"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_TYPE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR,
+        "json_type zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_TYPE('{}', '$');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR,
+        "json_type many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_LENGTH();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR,
+        "json_length zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT JSON_LENGTH('{}', '$', '$.a');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR,
+        "json_length many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE json_type (json_length INT); SELECT json_length FROM json_type;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

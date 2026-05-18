@@ -16,7 +16,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_EXTRACT()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection with one JSON document operand and one simple path string literal; supports SQL string literals, `NULL`, JSON columns, and nonbinary string columns, returning JSON text or SQL `NULL`; no multiple paths, wildcards/ranges, predicates, expression ordering, DML assignment expressions, or arbitrary expressions |
 | `JSON_INSERT()` | ❌ | Insert data into JSON document |
 | `JSON_KEYS()` | ❌ | Array of keys from JSON document |
-| `JSON_LENGTH()` | ❌ | Number of elements in JSON document |
+| `JSON_LENGTH()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar shallow length over SQL string literals, `NULL`, JSON columns, nonbinary string columns, and supported `JSON_EXTRACT()` results, with optional simple path string literal; no wildcards, multi-match paths, arbitrary expressions, predicates, expression ordering, DML assignment expressions, or full JSON number grammar |
 | `JSON_MERGE()` | ❌ | Deprecated merge synonym |
 | `JSON_MERGE_PATCH()` | ❌ | Merge JSON documents, replacing values of duplicate keys |
 | `JSON_MERGE_PRESERVE()` | ❌ | Merge JSON documents, preserving duplicate keys |
@@ -34,7 +34,7 @@ JSON construction, extraction, mutation, aggregation, validation, and storage-ob
 | `JSON_STORAGE_FREE()` | ❌ | Partial-update free space |
 | `JSON_STORAGE_SIZE()` | ❌ | Binary JSON storage size |
 | `JSON_TABLE()` | ❌ | Return data from a JSON expression as a relational table |
-| `JSON_TYPE()` | ❌ | Type of JSON value |
+| `JSON_TYPE()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar value type labels over SQL string literals, `NULL`, JSON columns, nonbinary string columns, and supported `JSON_EXTRACT()` results; currently reports `OBJECT`, `ARRAY`, `BOOLEAN`, `NULL`, `STRING`, and signed-integer `INTEGER`; no decimal/exponent JSON numbers, arbitrary expressions, predicates, expression ordering, DML assignment expressions, or protocol-grade JSON metadata |
 | `JSON_UNQUOTE()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar projection over SQL string literals, `NULL`, JSON/string columns, and supported `JSON_EXTRACT()` results; unquotes JSON string text and preserves non-string JSON text; no binary/numeric/boolean scalar inputs, predicates, expression ordering, DML assignment expressions, or arbitrary expressions |
 | `JSON_VALID()` | 🟡 | Limited no-source/`DUAL`/`DO` and single-table row-scalar validity check over admitted string, JSON, integer, binary string, `BIT`, boolean, and `NULL` values, including supported row predicates; no arbitrary expression, path, or mutation semantics |
 | `JSON_VALUE()` | ❌ | JSON path value extraction |

@@ -40,6 +40,22 @@ int mylite_json_normalize(
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_validate(const char *text, size_t text_length, bool *out_is_valid);
+int mylite_json_type(
+    const char *text,
+    size_t text_length,
+    const char **out_type,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_length(
+    const char *text,
+    size_t text_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    int64_t *out_length,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_extract(
     const char *text,
     size_t text_length,

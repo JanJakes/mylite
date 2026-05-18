@@ -1137,28 +1137,30 @@ show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) IN identifier
     A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
 }
 
-show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL);
+show_index_statement(A) ::= SHOW(S) show_index_keyword show_index_table_keyword table_name(T)
+        show_index_filter_opt(F). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL, F);
 }
-show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL);
-}
-show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
-}
-show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
-}
-show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
-}
-show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
+show_index_statement(A) ::= SHOW(S) show_index_keyword show_index_table_keyword table_name(T)
+        show_index_schema_keyword identifier(D) show_index_filter_opt(F). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, D, F);
 }
 
 show_index_keyword ::= INDEX.
 show_index_keyword ::= INDEXES.
 show_index_keyword ::= KEYS.
+
+show_index_table_keyword ::= FROM.
+show_index_table_keyword ::= IN.
+show_index_schema_keyword ::= FROM.
+show_index_schema_keyword ::= IN.
+
+show_index_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_index_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
+}
 
 show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);

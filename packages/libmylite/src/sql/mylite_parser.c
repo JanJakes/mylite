@@ -2013,12 +2013,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *schema_name
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *where_clause
 ) {
     struct mylite_sql_source_span span = span_from_token(&show_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (schema_name != NULL) {
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    } else if (schema_name != NULL) {
         span = span_join(span, schema_name->span);
     } else if (table_name != NULL) {
         span = span_join(span, table_name->span);
@@ -2031,6 +2034,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, schema_name);
+    mylite_sql_ast_node_append_child(statement, where_clause);
     return statement;
 }
 

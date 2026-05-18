@@ -17,12 +17,14 @@
 enum {
     test_path_capacity = 1024,
     show_index_column_count = 15,
+    indexed_show_index_row_count = 5,
     decimal_base = 10,
     row_count_text_capacity = 32,
     suffix_capacity = 16,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
@@ -37,6 +39,13 @@ struct expected_sql_error {
 struct expected_show_index_empty_result {
     const char *sql;
     const char *context;
+};
+
+struct expected_show_index_result {
+    const char *sql;
+    const char *context;
+    const char *const *values;
+    size_t row_count;
 };
 
 static const char *const show_index_names[show_index_column_count] = {
@@ -58,12 +67,17 @@ static const char *const show_index_names[show_index_column_count] = {
 };
 
 static int test_show_index_result_shape_persistence_rename_and_drop(void);
+static int test_show_index_where_filters(void);
 static int test_show_index_diagnostics_and_unsupported_forms(void);
 static int test_independent_show_index_handles(void);
 static int create_show_index_schema(mylite_db *database);
 static int expect_show_index_empty_result(
     mylite_db *database,
     struct expected_show_index_empty_result expectation
+);
+static int expect_show_index_result(
+    mylite_db *database,
+    struct expected_show_index_result expectation
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int execute_statement_ok(mylite_db *database, const char *sql);
@@ -90,6 +104,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_show_index_result_shape_persistence_rename_and_drop();
+    failures += test_show_index_where_filters();
     failures += test_show_index_diagnostics_and_unsupported_forms();
     failures += test_independent_show_index_handles();
 
@@ -242,6 +257,203 @@ static int test_show_index_result_shape_persistence_rename_and_drop(void) {
     return failures;
 }
 
+static int test_show_index_where_filters(void) {
+    static const char *const key_v_row[show_index_column_count] = {
+        "indexed",
+        "1",
+        "k_v",
+        "1",
+        "v",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const key_prefix_row[show_index_column_count] = {
+        "indexed",
+        "1",
+        "k_prefix",
+        "1",
+        "txt",
+        "A",
+        "0",
+        "3",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const fulltext_row[show_index_column_count] = {
+        "indexed",
+        "1",
+        "ft_txt",
+        "1",
+        "txt",
+        NULL,
+        "0",
+        NULL,
+        NULL,
+        "YES",
+        "FULLTEXT",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const primary_unique_rows[] = {
+        "indexed", "0", "PRIMARY", "1",   "id",  "A",       "0", NULL,  NULL,  "",
+        "BTREE",   "",  "",        "YES", NULL,  "indexed", "0", "u_n", "1",   "n",
+        "A",       "0", NULL,      NULL,  "YES", "BTREE",   "",  "",    "YES", NULL,
+    };
+    static const char *const id_and_k_rows[] = {
+        "indexed", "0",     "PRIMARY", "1",       "id",    "A",        "0",       NULL,    NULL,
+        "",        "BTREE", "",        "",        "YES",   NULL,       "indexed", "1",     "k_v",
+        "1",       "v",     "A",       "0",       NULL,    NULL,       "YES",     "BTREE", "",
+        "",        "YES",   NULL,      "indexed", "1",     "k_prefix", "1",       "txt",   "A",
+        "0",       "3",     NULL,      "YES",     "BTREE", "",         "",        "YES",   NULL,
+    };
+    static const char *const all_rows[] = {
+        "indexed",  "0", "PRIMARY", "1",   "id",  "A",       "0", NULL,       NULL,  "",
+        "BTREE",    "",  "",        "YES", NULL,  "indexed", "0", "u_n",      "1",   "n",
+        "A",        "0", NULL,      NULL,  "YES", "BTREE",   "",  "",         "YES", NULL,
+        "indexed",  "1", "k_v",     "1",   "v",   "A",       "0", NULL,       NULL,  "YES",
+        "BTREE",    "",  "",        "YES", NULL,  "indexed", "1", "k_prefix", "1",   "txt",
+        "A",        "0", "3",       NULL,  "YES", "BTREE",   "",  "",         "YES", NULL,
+        "indexed",  "1", "ft_txt",  "1",   "txt", NULL,      "0", NULL,       NULL,  "YES",
+        "FULLTEXT", "",  "",        "YES", NULL,
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "where") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open where file");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE indexed ("
+        "id INT NOT NULL,"
+        "v VARCHAR(20),"
+        "txt TEXT,"
+        "n INT,"
+        "PRIMARY KEY (id),"
+        "KEY k_v (v),"
+        "UNIQUE KEY u_n (n),"
+        "KEY k_prefix (txt(3)),"
+        "FULLTEXT KEY ft_txt (txt)"
+        ")"
+    );
+
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Key_name = 'k_v'",
+            .context = "key name filter",
+            .values = key_v_row,
+            .row_count = 1U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW KEYS FROM indexed WHERE Expression <=> NULL "
+                   "AND Key_name IN ('PRIMARY','u_n')",
+            .context = "null-safe and in filter",
+            .values = primary_unique_rows,
+            .row_count = 2U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Key_name LIKE 'k\\_%' "
+                   "OR Column_name = 'ID'",
+            .context = "like or case-insensitive column filter",
+            .values = id_and_k_rows,
+            .row_count = 3U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Sub_part <=> '3'",
+            .context = "prefix sub part filter",
+            .values = key_prefix_row,
+            .row_count = 1U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE `Column_name` IN ('id','v') "
+                   "AND Non_unique = '1'",
+            .context = "backticked output column and numeric string filter",
+            .values = key_v_row,
+            .row_count = 1U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE NOT (Visible = 'NO') "
+                   "AND Index_type = 'FULLTEXT'",
+            .context = "not and fulltext filter",
+            .values = fulltext_row,
+            .row_count = 1U,
+        }
+    );
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Cardinality >= '0' AND Seq_in_index = '1'",
+            .context = "numeric metadata filter",
+            .values = all_rows,
+            .row_count = indexed_show_index_row_count,
+        }
+    );
+    failures += expect_show_index_empty_result(
+        database,
+        (struct expected_show_index_empty_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Key_name = 'missing'",
+            .context = "empty filtered index result",
+        }
+    );
+    failures += expect_row_count(database, -1, "row count after show index where");
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen where file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_show_index_result(
+        database,
+        (struct expected_show_index_result){
+            .sql = "SHOW INDEX FROM indexed WHERE Sub_part IN (NULL, '3')",
+            .context = "reopened prefix filter",
+            .values = key_prefix_row,
+            .row_count = 1U,
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_show_index_diagnostics_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -330,9 +542,70 @@ static int test_show_index_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
+    failures += expect_show_index_empty_result(
+        database,
+        (struct expected_show_index_empty_result){
+            .sql = "SHOW INDEX FROM no_keys WHERE Key_name = 'idx'",
+            .context = "filtered no-index table",
+        }
+    );
     failures += execute_error(
         database,
-        "SHOW INDEX FROM no_keys WHERE Key_name = 'idx'",
+        "SHOW INDEX FROM no_keys WHERE missing = 'x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys WHERE indexes.Key_name = 'idx'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'indexes.Key_name' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys WHERE Key_name = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW INDEX WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys WHERE Expression = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW INDEX WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys WHERE Expression IN (1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW INDEX WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys WHERE Key_name REGEXP 'idx'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW INDEX WHERE does not support REGEXP predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW INDEX FROM no_keys LIKE 'idx'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -341,7 +614,7 @@ static int test_show_index_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW INDEX FROM no_keys LIKE 'idx'",
+        "SHOW INDEX FROM no_keys WHERE Key_name = 'idx' ORDER BY Key_name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -458,6 +731,51 @@ static int expect_show_index_empty_result(
     failures += expect_size(mylite_result_row_count(result), 0U, expectation.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expectation.context);
     failures += expect_size(mylite_result_warning_count(result), 0U, expectation.context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_index_result(
+    mylite_db *database,
+    struct expected_show_index_result expectation
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += execute_ok(database, expectation.sql, &result);
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(
+        mylite_result_column_count(result),
+        show_index_column_count,
+        "show index column count"
+    );
+    for (size_t column_index = 0U; column_index < show_index_column_count; ++column_index) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, column_index),
+            show_index_names[column_index],
+            expectation.context
+        );
+    }
+    failures +=
+        expect_size(mylite_result_row_count(result), expectation.row_count, expectation.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, expectation.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, expectation.context);
+
+    for (size_t row_index = 0U; row_index < expectation.row_count; ++row_index) {
+        for (size_t column_index = 0U; column_index < show_index_column_count; ++column_index) {
+            size_t value_index = (row_index * show_index_column_count) + column_index;
+
+            failures += expect_text_or_null(
+                mylite_result_value_text(result, row_index, column_index),
+                expectation.values[value_index],
+                expectation.context
+            );
+        }
+    }
 
     mylite_result_free(result);
     return failures;

@@ -16582,11 +16582,39 @@ static int test_show_index_empty_introspection_statements(void) {
         parse_sql("SHOW EXTENDED INDEX FROM numbers;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SHOW INDEX FROM numbers WHERE Key_name = 'idx';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show index where");
+    failures += expect_child_count(statement, 2U, "show index where child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show index where table");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE, "show index where");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "SHOW INDEX FROM numbers WHERE Key_name = 'idx';",
+        "SHOW KEYS IN app.numbers IN other WHERE `Column_name` IN ('id','v');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show keys where");
+    failures += expect_child_count(statement, 3U, "show keys where child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "show keys where table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "show keys where schema");
+    failures +=
+        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "show keys where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW INDEX FROM numbers WHERE Key_name = 'idx' ORDER BY Key_name;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW INDEX FROM numbers LIKE 'idx';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

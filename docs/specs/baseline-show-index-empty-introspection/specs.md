@@ -137,7 +137,8 @@ This feature must not implement:
   key descriptor storage, or SQLite physical indexes;
 - rows in `SHOW INDEX` for any index kind;
 - `SHOW EXTENDED INDEX`;
-- `SHOW INDEX ... WHERE`;
+- `SHOW INDEX ... WHERE`, which is specified separately by
+  `baseline-show-index-where`;
 - index cardinality/statistics, visibility, comments, packing, prefix length,
   collations, or expression metadata;
 - temporary tables, views, privileges, optimizer metadata, `INFORMATION_SCHEMA`
@@ -286,9 +287,10 @@ The implementation must provide deterministic diagnostics for:
 - allocation failures;
 - public API misuse through existing `mylite_execute()` behavior.
 
-Unsupported `SHOW EXTENDED INDEX`, `SHOW INDEX ... WHERE`, missing table names,
-missing `FROM`/`IN`, and malformed schema clauses are syntax errors for this
-slice. Supported successful statements produce no warnings.
+Unsupported `SHOW EXTENDED INDEX`, missing table names, missing `FROM`/`IN`,
+and malformed schema clauses are syntax errors for this slice. `SHOW INDEX ...
+WHERE` is covered by the later `baseline-show-index-where` slice. Supported
+successful statements produce no warnings.
 
 ## Physical SQLite Handling
 

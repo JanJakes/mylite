@@ -15781,6 +15781,16 @@ static int test_show_columns_introspection_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
+        parse_sql("SHOW COLUMNS FROM numbers WHERE Field = 'id';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show columns where");
+    failures += expect_child_count(statement, 2U, "show columns where child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show columns where table");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE, "columns where clause");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
         parse_sql("SHOW FULL COLUMNS FROM numbers LIKE 'i%';", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures +=
@@ -15800,6 +15810,24 @@ static int test_show_columns_introspection_statements(void) {
     failures += expect_child_count(statement, 2U, "show full fields child count");
     failures += expect_span_text(child_at(statement, 0U), "app.numbers", "full fields table");
     failures += expect_span_text(child_at(statement, 1U), "other", "full fields schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW FULL FIELDS IN app.numbers FROM other WHERE Collation IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT,
+        "show full fields where"
+    );
+    failures += expect_child_count(statement, 3U, "show full fields where child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "full fields where table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "full fields where schema");
+    failures +=
+        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "full fields where");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -20873,7 +20901,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SHOW COLUMNS FROM t WHERE Field = 'id';",
+        "SHOW COLUMNS FROM t LIKE 'i%' WHERE Field = 'id';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

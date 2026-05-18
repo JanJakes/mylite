@@ -1064,77 +1064,38 @@ show_errors_statement(A) ::= SHOW(S) COUNT(C) LPAREN(L) STAR RPAREN ERRORS(E). {
         });
 }
 
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+show_columns_statement(A) ::= SHOW(S) show_columns_keyword show_columns_table_keyword table_name(T)
+        show_columns_filter_opt(F). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, F);
 }
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+show_columns_statement(A) ::= SHOW(S) show_columns_keyword show_columns_table_keyword table_name(T)
+        show_columns_schema_keyword identifier(D) show_columns_filter_opt(F). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, F);
 }
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+show_columns_statement(A) ::= SHOW(S) FULL show_columns_keyword show_columns_table_keyword table_name(T)
+        show_columns_filter_opt(F). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, F);
 }
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+show_columns_statement(A) ::= SHOW(S) FULL show_columns_keyword show_columns_table_keyword table_name(T)
+        show_columns_schema_keyword identifier(D) show_columns_filter_opt(F). {
+    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, F);
 }
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+
+show_columns_keyword ::= COLUMNS.
+show_columns_keyword ::= FIELDS.
+show_columns_table_keyword ::= FROM.
+show_columns_table_keyword ::= IN.
+show_columns_schema_keyword ::= FROM.
+show_columns_schema_keyword ::= IN.
+
+show_columns_filter_opt(A) ::= . {
+    A = NULL;
 }
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+show_columns_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, NULL, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL COLUMNS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
-}
-show_columns_statement(A) ::= SHOW(S) FULL FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
-    A = mylite_sql_parser_make_show_full_columns_statement(state, S, T, D, L);
+show_columns_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_index_statement(A) ::= SHOW(S) show_index_keyword show_index_table_keyword table_name(T)

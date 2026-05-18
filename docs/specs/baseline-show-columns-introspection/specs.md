@@ -95,7 +95,8 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   count `0`, and makes the following `ROW_COUNT()` return `-1`.
 - MySQL accepts `SHOW FULL COLUMNS`, `SHOW EXTENDED COLUMNS`, `SHOW COLUMNS
   ... LIKE`, `SHOW COLUMNS ... WHERE`, `DESCRIBE t column_name`, and
-  `DESCRIBE SELECT ...`; those forms remain outside this slice.
+  `DESCRIBE SELECT ...`; `LIKE`, `FULL`, and `WHERE` are covered by later
+  baseline slices, while the remaining forms stay outside this slice.
 
 ## Scope
 
@@ -122,7 +123,7 @@ The implementation must add:
 
 This feature must not implement:
 
-- `SHOW FULL COLUMNS`, `SHOW EXTENDED COLUMNS`, `LIKE`, `WHERE`, hidden
+- `SHOW FULL COLUMNS`, `SHOW EXTENDED COLUMNS`, `LIKE`, hidden
   physical columns, column privileges, comments, collations, generated
   invisible primary keys, or `INFORMATION_SCHEMA.COLUMNS`;
 - `DESCRIBE table column_name`, wildcard/pattern `DESCRIBE`, `DESCRIBE SELECT`,
@@ -310,7 +311,7 @@ The C tests must cover:
   `ROW_COUNT()`;
 - missing default schema, unknown schema, unknown table, and reserved target
   names;
-- unsupported syntax including `FULL`, `EXTENDED`, `LIKE`, `WHERE`,
+- unsupported syntax including `FULL`, `EXTENDED`, `LIKE`,
   column-filtered `DESCRIBE`, `DESCRIBE SELECT`, and `EXPLAIN`;
 - reopen persistence, rename behavior, drop behavior, independent file-backed
   handles, and preamble preservation;

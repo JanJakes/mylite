@@ -11,10 +11,11 @@ session temporary-table shadowing, descriptor type metadata, current
 The slice is intentionally narrow. It supports `SHOW FULL COLUMNS` and
 `SHOW FULL FIELDS` for the same persistent base tables and shadowing temporary
 tables currently admitted by ordinary `SHOW COLUMNS`. It does not add
-`EXTENDED`, `WHERE`, column-filtered `DESCRIBE`, execution-plan `EXPLAIN`,
-views, hidden MySQL storage columns, privileges beyond MyLite's fixed embedded
-placeholder, column comments, generated columns, or new `INFORMATION_SCHEMA`
-surfaces.
+`EXTENDED`, column-filtered `DESCRIBE`, execution-plan `EXPLAIN`, views, hidden
+MySQL storage columns, privileges beyond MyLite's fixed embedded placeholder,
+column comments, generated columns, or new `INFORMATION_SCHEMA` surfaces. A
+later baseline slice adds the limited `SHOW COLUMNS ... WHERE` filter for
+ordinary and `FULL` output rows.
 
 ## Sources
 
@@ -99,7 +100,7 @@ This feature must not implement:
 - `SHOW EXTENDED COLUMNS`, `SHOW EXTENDED FULL COLUMNS`, hidden physical or
   storage-engine columns, generated invisible primary keys, or internal MySQL
   columns;
-- `SHOW COLUMNS ... WHERE`, column-filtered `DESCRIBE`, wildcard
+- column-filtered `DESCRIBE`, wildcard
   `DESCRIBE`, `DESCRIBE SELECT`, execution-plan `EXPLAIN`, `EXPLAIN ANALYZE`,
   `FORMAT`, or `FOR CONNECTION`;
 - views, trigger metadata, privilege filtering, mutable privilege rows, column
@@ -224,7 +225,7 @@ function, virtual table, SQL rewrite, storage mutation, or SQLite fork patch.
 
 The implementation must preserve existing diagnostics for:
 
-- syntax errors and unsupported `WHERE` / `EXTENDED` / column-filtered
+- syntax errors and unsupported `EXTENDED` / column-filtered
   `DESCRIBE` forms;
 - missing default schema (`1046` / `3D000`);
 - unknown schema (`1049` / `42000`);
@@ -252,7 +253,7 @@ Tests must cover:
 - temporary-table shadowing, reopen persistence for persistent descriptors,
   table rename/drop effects, independent handles, and preamble safety;
 - missing default schema, unknown schema, unknown table, reserved target names,
-  unsupported `WHERE`, and unsupported `EXTENDED`;
+  and unsupported `EXTENDED`;
 - compatibility expectation generation/comparison against MySQL 8.4.9.
 
 ## Compatibility Documentation
@@ -260,6 +261,6 @@ Tests must cover:
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` to
 state that `FULL` is supported only for the current `SHOW COLUMNS` /
 `SHOW FIELDS` descriptor subset, with fixed embedded privileges and empty
-comments. Do not claim `EXTENDED`, `WHERE`, views, privilege filtering, hidden
+comments. Do not claim `EXTENDED`, views, privilege filtering, hidden
 columns, generated columns, column comments, or full `INFORMATION_SCHEMA`
 parity.

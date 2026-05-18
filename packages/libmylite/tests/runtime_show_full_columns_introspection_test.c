@@ -19,6 +19,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
@@ -104,8 +105,48 @@ static const char *const binary_collation_rows[][show_full_columns_column_count]
     {"v", "varchar(4)", "utf8mb4_bin", "YES", "", NULL, "", privileges, ""},
 };
 
+static const char *const collation_rows[][show_full_columns_column_count] = {
+    {"c", "char(3)", "utf8mb4_0900_ai_ci", "NO", "", NULL, "", privileges, ""},
+    {"v", "varchar(10)", "utf8mb4_0900_ai_ci", "YES", "MUL", "x", "", privileges, ""},
+    {"txt", "text", "utf8mb4_0900_ai_ci", "YES", "", NULL, "", privileges, ""},
+    {"e", "enum('a','b')", "utf8mb4_0900_ai_ci", "YES", "", NULL, "", privileges, ""},
+    {"s", "set('a','b')", "utf8mb4_0900_ai_ci", "YES", "", NULL, "", privileges, ""},
+};
+
+static const char *const default_rows[][show_full_columns_column_count] = {
+    {
+        "dt",
+        "datetime",
+        NULL,
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+        privileges,
+        "",
+    },
+    {
+        "ts",
+        "timestamp",
+        NULL,
+        "YES",
+        "",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        privileges,
+        "",
+    },
+    {"v", "varchar(10)", "utf8mb4_0900_ai_ci", "YES", "MUL", "x", "", privileges, ""},
+};
+
+static const char *const full_id_and_v_rows[][show_full_columns_column_count] = {
+    {"id", "int", NULL, "NO", "PRI", NULL, "auto_increment", privileges, ""},
+    {"v", "varchar(10)", "utf8mb4_0900_ai_ci", "YES", "MUL", "x", "", privileges, ""},
+};
+
 static int test_show_full_columns_values_persistence_rename_and_drop(void);
 static int test_show_full_columns_temporary_shadow_and_collation(void);
+static int test_show_full_columns_where_filters(void);
 static int test_show_full_columns_diagnostics_and_independent_handles(void);
 static int create_full_columns_schema(mylite_db *database);
 static int expect_show_full_columns_result(
@@ -141,6 +182,7 @@ int main(void) {
 
     failures += test_show_full_columns_values_persistence_rename_and_drop();
     failures += test_show_full_columns_temporary_shadow_and_collation();
+    failures += test_show_full_columns_where_filters();
     failures += test_show_full_columns_diagnostics_and_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -327,6 +369,56 @@ static int test_show_full_columns_temporary_shadow_and_collation(void) {
     return failures;
 }
 
+static int test_show_full_columns_where_filters(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "where") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open where file");
+    failures += create_full_columns_schema(database);
+    failures += execute_statement_ok(database, "USE app");
+
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE Collation IS NOT NULL",
+        collation_rows,
+        sizeof(collation_rows) / sizeof(collation_rows[0]),
+        "show full columns where collation"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE `Default` IS NOT NULL",
+        default_rows,
+        sizeof(default_rows) / sizeof(default_rows[0]),
+        "show full columns where default not null"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL FIELDS FROM numbers "
+        "WHERE Privileges LIKE '%update%' AND Comment = '' AND Field IN ('id','v')",
+        full_id_and_v_rows,
+        sizeof(full_id_and_v_rows) / sizeof(full_id_and_v_rows[0]),
+        "show full fields where privileges comment and in"
+    );
+    failures += expect_show_full_columns_result(
+        database,
+        "SHOW FULL COLUMNS FROM numbers WHERE Collation IS NULL AND Field = 'id'",
+        full_numbers_rows,
+        1U,
+        "show full columns where null collation"
+    );
+    failures += expect_row_count(database, -1, "row count after show full columns where");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_show_full_columns_diagnostics_and_independent_handles(void) {
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
@@ -403,11 +495,65 @@ static int test_show_full_columns_diagnostics_and_independent_handles(void) {
     );
     failures += execute_error(
         first,
-        "SHOW FULL COLUMNS FROM numbers WHERE Field = 'id'",
+        "SHOW FULL COLUMNS FROM numbers LIKE 'id' WHERE Field = 'id'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE missing = 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE numbers.Field = 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'numbers.Field' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE Field = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE Field IN ('id', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE IN supports only string and NULL literals",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE Field REGEXP 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE does not support REGEXP predicates",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SHOW FULL COLUMNS FROM numbers WHERE Field = 'id' XOR Type = 'int'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE does not support XOR predicates",
         }
     );
     failures += execute_error(

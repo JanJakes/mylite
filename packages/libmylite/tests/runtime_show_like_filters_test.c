@@ -506,14 +506,12 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_show_columns_result(
         database,
         "SHOW COLUMNS FROM alpha WHERE Field LIKE 'i%'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        columns_i_percent,
+        sizeof(columns_i_percent) / sizeof(columns_i_percent[0]),
+        "show columns where field like"
     );
     failures += execute_error(
         database,

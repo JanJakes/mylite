@@ -20,6 +20,7 @@ enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
@@ -62,7 +63,23 @@ static const char *const other_numbers_rows[][show_columns_column_count] = {
     {"other_id", "bigint", "YES", "", NULL, ""},
 };
 
+static const char *const bigint_rows[][show_columns_column_count] = {
+    {"b", "bigint", "YES", "", NULL, ""},
+    {"bu", "bigint unsigned", "YES", "", NULL, ""},
+    {"nn", "bigint unsigned", "NO", "", NULL, ""},
+};
+
+static const char *const id_and_nn_rows[][show_columns_column_count] = {
+    {"id", "int", "NO", "", NULL, ""},
+    {"nn", "bigint unsigned", "NO", "", NULL, ""},
+};
+
+static const char *const nn_row[][show_columns_column_count] = {
+    {"nn", "bigint unsigned", "NO", "", NULL, ""},
+};
+
 static int test_show_columns_values_persistence_rename_and_drop(void);
+static int test_show_columns_where_filters(void);
 static int test_show_columns_diagnostics_and_unsupported_forms(void);
 static int test_independent_show_columns_handles(void);
 static int create_numbers_schema(mylite_db *database);
@@ -98,6 +115,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_show_columns_values_persistence_rename_and_drop();
+    failures += test_show_columns_where_filters();
     failures += test_show_columns_diagnostics_and_unsupported_forms();
     failures += test_independent_show_columns_handles();
 
@@ -235,6 +253,69 @@ static int test_show_columns_values_persistence_rename_and_drop(void) {
     return failures;
 }
 
+static int test_show_columns_where_filters(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "where") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open where database");
+    failures += create_numbers_schema(database);
+    failures += execute_statement_ok(database, "USE app");
+
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field = 'ID'",
+        single_column_rows,
+        sizeof(single_column_rows) / sizeof(single_column_rows[0]),
+        "show columns where field"
+    );
+    failures += expect_show_columns_result(
+        database,
+        "SHOW FIELDS FROM numbers WHERE Type LIKE 'bigint%'",
+        bigint_rows,
+        sizeof(bigint_rows) / sizeof(bigint_rows[0]),
+        "show fields where type like"
+    );
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE `Default` <=> NULL AND Field IN ('id','nn')",
+        id_and_nn_rows,
+        sizeof(id_and_nn_rows) / sizeof(id_and_nn_rows[0]),
+        "show columns where default null-safe and in"
+    );
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field NOT IN (NULL, 'id')",
+        numbers_rows,
+        0U,
+        "show columns where not in with null"
+    );
+    failures += expect_row_count(database, -1, "row count after where introspection");
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen where database");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(database, "RENAME TABLE numbers TO renamed_numbers");
+    failures += expect_show_columns_result(
+        database,
+        "SHOW COLUMNS FROM renamed_numbers WHERE Field = 'nn'",
+        nn_row,
+        sizeof(nn_row) / sizeof(nn_row[0]),
+        "renamed show columns where"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_show_columns_diagnostics_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -334,11 +415,83 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW COLUMNS FROM numbers WHERE Field = 'id'",
+        "SHOW COLUMNS FROM numbers LIKE 'i%' WHERE Field = 'id'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE missing = 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Collation IS NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'Collation' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE numbers.Field = 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'numbers.Field' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field IN ('id', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE IN supports only string and NULL literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field REGEXP 'id'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE does not support REGEXP predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field BETWEEN 'a' AND 'z'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE supports output-column predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW COLUMNS FROM numbers WHERE Field = 'id' XOR Type = 'int'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW COLUMNS WHERE does not support XOR predicates",
         }
     );
     failures += execute_error(

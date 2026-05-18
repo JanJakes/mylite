@@ -532,6 +532,27 @@ static const char *const show_index_result_columns[show_index_result_column_coun
     "Expression",
 };
 
+static const char *const show_columns_result_columns[show_columns_result_column_count] = {
+    "Field",
+    "Type",
+    "Null",
+    "Key",
+    "Default",
+    "Extra",
+};
+
+static const char *const show_full_columns_result_columns[show_full_columns_result_column_count] = {
+    "Field",
+    "Type",
+    "Collation",
+    "Null",
+    "Key",
+    "Default",
+    "Extra",
+    "Privileges",
+    "Comment",
+};
+
 static const char *const show_table_status_result_columns[show_table_status_result_column_count] = {
     "Name",
     "Engine",
@@ -2978,6 +2999,7 @@ struct show_columns_context {
     struct mylite_db *database;
     mylite_result *result;
     const struct show_like_filter *filter;
+    const struct mylite_sql_ast_node *where_clause;
     const struct mylite_catalog_table_descriptor *table;
     const struct primary_key_info *primary_key;
     const struct loaded_index_info *indexes;
@@ -2988,6 +3010,13 @@ struct show_columns_context {
 struct show_columns_target_nodes {
     const struct mylite_sql_ast_node *table;
     const struct mylite_sql_ast_node *schema;
+};
+
+struct show_columns_filter_nodes {
+    const struct mylite_sql_ast_node *table;
+    const struct mylite_sql_ast_node *schema;
+    const struct mylite_sql_ast_node *like;
+    const struct mylite_sql_ast_node *where;
 };
 
 enum information_schema_table_kind {
@@ -8147,6 +8176,88 @@ static int append_show_columns_result_columns(
     struct mylite_db *database,
     mylite_result *result,
     bool full
+);
+static int resolve_show_columns_filter_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct show_columns_filter_nodes *out_nodes
+);
+static int validate_show_columns_where_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    bool full
+);
+static int show_columns_where_clause_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *const *values,
+    bool full,
+    bool *out_matches
+);
+static int evaluate_show_columns_where_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+);
+static int visit_show_columns_where_predicate(
+    struct mylite_db *database,
+    struct show_variables_where_frame_stack *frame_stack,
+    const struct mylite_sql_ast_node *predicate
+);
+static int evaluate_show_columns_where_frame(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    struct show_variables_where_truth_stack *truth_stack
+);
+static int evaluate_show_columns_where_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+);
+static int evaluate_show_columns_where_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+);
+static int evaluate_show_columns_where_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+);
+static int show_columns_where_column_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const char *const *values,
+    bool full,
+    const char **out_value
+);
+static int resolve_show_columns_where_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    bool full,
+    size_t *out_column_index
+);
+static int compare_show_columns_where_literal(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left,
+    const struct mylite_sql_ast_node *right,
+    enum show_variables_where_truth *out_truth
+);
+static int decode_show_columns_where_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    char **out_text
 );
 static int execute_show_index_statement(
     struct mylite_db *database,
@@ -33443,6 +33554,7 @@ static int execute_show_columns_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    struct show_columns_filter_nodes nodes = {0};
     struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
     struct mylite_catalog_column_descriptor *columns = NULL;
@@ -33450,9 +33562,6 @@ static int execute_show_columns_statement(
     struct primary_key_info primary_key = primary_key_info_init();
     size_t column_count = 0U;
     bool missing_schema = false;
-    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *schema_node = second_child;
-    const struct mylite_sql_ast_node *like_node = child_at(statement, 2U);
     struct show_like_filter filter = {
         .has_pattern = false,
         .pattern = NULL,
@@ -33463,19 +33572,18 @@ static int execute_show_columns_statement(
     bool full = statement->kind == MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT;
     int rc = MYLITE_OK;
 
-    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_LITERAL) {
-        schema_node = NULL;
-        like_node = second_child;
+    rc = resolve_show_columns_filter_nodes(database, statement, &nodes);
+    if (rc == MYLITE_OK) {
+        rc = resolve_show_columns_table_name(
+            database,
+            (struct show_columns_target_nodes){
+                .table = nodes.table,
+                .schema = nodes.schema,
+            },
+            &target,
+            &missing_schema
+        );
     }
-    rc = resolve_show_columns_table_name(
-        database,
-        (struct show_columns_target_nodes){
-            .table = child_at(statement, 0U),
-            .schema = schema_node,
-        },
-        &target,
-        &missing_schema
-    );
     if (rc == MYLITE_OK) {
         rc = resolve_readable_table(database, &target, missing_schema, &table);
     }
@@ -33502,7 +33610,10 @@ static int execute_show_columns_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = make_show_like_filter(database, like_node, &filter);
+        rc = make_show_like_filter(database, nodes.like, &filter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_show_columns_where_clause(database, nodes.where, full);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -33517,6 +33628,7 @@ static int execute_show_columns_statement(
         context.database = database;
         context.result = result;
         context.filter = &filter;
+        context.where_clause = nodes.where;
         context.table = &table;
         context.primary_key = &primary_key;
         context.indexes = indexes;
@@ -33555,25 +33667,12 @@ static int append_show_columns_result_columns(
     mylite_result *result,
     bool full
 ) {
-    static const char *const result_columns[show_columns_result_column_count] =
-        {"Field", "Type", "Null", "Key", "Default", "Extra"};
-    static const char *const full_result_columns[show_full_columns_result_column_count] = {
-        "Field",
-        "Type",
-        "Collation",
-        "Null",
-        "Key",
-        "Default",
-        "Extra",
-        "Privileges",
-        "Comment",
-    };
-    const char *const *selected_result_columns = result_columns;
+    const char *const *selected_result_columns = show_columns_result_columns;
     size_t selected_result_column_count = show_columns_result_column_count;
     int rc = MYLITE_OK;
 
     if (full) {
-        selected_result_columns = full_result_columns;
+        selected_result_columns = show_full_columns_result_columns;
         selected_result_column_count = show_full_columns_result_column_count;
     }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < selected_result_column_count;
@@ -33584,6 +33683,274 @@ static int append_show_columns_result_columns(
         }
     }
 
+    return rc;
+}
+
+static int resolve_show_columns_filter_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct show_columns_filter_nodes *out_nodes
+) {
+    size_t child_count = 0U;
+
+    if (statement == NULL || out_nodes == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_nodes = (struct show_columns_filter_nodes){0};
+    out_nodes->table = child_at(statement, 0U);
+    child_count = mylite_sql_ast_node_child_count(statement);
+    for (size_t index = 1U; index < child_count; ++index) {
+        const struct mylite_sql_ast_node *child = child_at(statement, index);
+
+        if (child == NULL) {
+            continue;
+        }
+        if (child->kind == MYLITE_SQL_AST_LITERAL) {
+            if (out_nodes->like != NULL || out_nodes->where != NULL) {
+                set_runtime_error(database, "invalid SHOW COLUMNS filter");
+                return MYLITE_ERROR;
+            }
+            out_nodes->like = child;
+        } else if (child->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            if (out_nodes->like != NULL || out_nodes->where != NULL) {
+                set_runtime_error(database, "invalid SHOW COLUMNS filter");
+                return MYLITE_ERROR;
+            }
+            out_nodes->where = child;
+        } else {
+            if (out_nodes->schema != NULL) {
+                set_runtime_error(database, "invalid SHOW COLUMNS schema");
+                return MYLITE_ERROR;
+            }
+            out_nodes->schema = child;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_show_columns_where_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    bool full
+) {
+    static const char *const validation_values[show_columns_result_column_count] = {
+        "field",
+        "type",
+        "YES",
+        "",
+        NULL,
+        "extra",
+    };
+    static const char *const full_validation_values[show_full_columns_result_column_count] = {
+        "field",
+        "type",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "extra",
+        "select,insert,update,references",
+        "",
+    };
+    const char *const *selected_validation_values = validation_values;
+    bool matches = false;
+
+    if (where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (full) {
+        selected_validation_values = full_validation_values;
+    }
+    return show_columns_where_clause_matches(
+        database,
+        where_clause,
+        selected_validation_values,
+        full,
+        &matches
+    );
+}
+
+static int show_columns_where_clause_matches(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *const *values,
+    bool full,
+    bool *out_matches
+) {
+    enum show_variables_where_truth truth = SHOW_VARIABLES_WHERE_FALSE;
+    int rc = MYLITE_OK;
+
+    if (where_clause == NULL || where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE ||
+        values == NULL || out_matches == NULL) {
+        set_runtime_error(database, "invalid SHOW COLUMNS WHERE predicate");
+        return MYLITE_ERROR;
+    }
+
+    *out_matches = false;
+    rc = evaluate_show_columns_where_predicate(
+        database,
+        child_at(where_clause, 0U),
+        values,
+        full,
+        &truth
+    );
+    if (rc == MYLITE_OK) {
+        *out_matches = truth == SHOW_VARIABLES_WHERE_TRUE;
+    }
+    return rc;
+}
+
+static int evaluate_show_columns_where_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+) {
+    struct show_variables_where_frame_stack frame_stack = {0};
+    struct show_variables_where_truth_stack truth_stack = {0};
+    struct show_variables_where_eval_frame frame = {
+        .node = predicate,
+        .action = SHOW_VARIABLES_WHERE_VISIT,
+    };
+    int rc = MYLITE_OK;
+
+    if (predicate == NULL || values == NULL || out_truth == NULL) {
+        set_runtime_error(database, "invalid SHOW COLUMNS WHERE predicate");
+        return MYLITE_ERROR;
+    }
+
+    rc = show_variables_where_frame_stack_push(database, &frame_stack, frame);
+    while (rc == MYLITE_OK && show_variables_where_frame_stack_pop(&frame_stack, &frame)) {
+        const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(frame.node);
+
+        if (current == NULL) {
+            set_runtime_error(database, "invalid SHOW COLUMNS WHERE predicate");
+            rc = MYLITE_ERROR;
+        } else if (frame.action == SHOW_VARIABLES_WHERE_VISIT) {
+            rc = visit_show_columns_where_predicate(database, &frame_stack, current);
+        } else {
+            rc = evaluate_show_columns_where_frame(database, current, values, full, &truth_stack);
+        }
+    }
+
+    if (rc == MYLITE_OK) {
+        if (truth_stack.count != 1U ||
+            !show_variables_where_truth_stack_pop(&truth_stack, out_truth)) {
+            set_runtime_error(database, "invalid SHOW COLUMNS WHERE predicate state");
+            rc = MYLITE_ERROR;
+        }
+    }
+
+    show_variables_where_truth_stack_deinit(&truth_stack);
+    show_variables_where_frame_stack_deinit(&frame_stack);
+    return rc;
+}
+
+static int visit_show_columns_where_predicate(
+    struct mylite_db *database,
+    struct show_variables_where_frame_stack *frame_stack,
+    const struct mylite_sql_ast_node *predicate
+) {
+    int rc = show_variables_where_frame_stack_push(
+        database,
+        frame_stack,
+        (struct show_variables_where_eval_frame){
+            .node = predicate,
+            .action = SHOW_VARIABLES_WHERE_EVALUATE,
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (predicate->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return show_variables_where_frame_stack_push(
+            database,
+            frame_stack,
+            (struct show_variables_where_eval_frame){
+                .node = child_at(predicate, 0U),
+                .action = SHOW_VARIABLES_WHERE_VISIT,
+            }
+        );
+    }
+    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
+        rc = show_variables_where_frame_stack_push(
+            database,
+            frame_stack,
+            (struct show_variables_where_eval_frame){
+                .node = child_at(predicate, 1U),
+                .action = SHOW_VARIABLES_WHERE_VISIT,
+            }
+        );
+        if (rc == MYLITE_OK) {
+            rc = show_variables_where_frame_stack_push(
+                database,
+                frame_stack,
+                (struct show_variables_where_eval_frame){
+                    .node = child_at(predicate, 0U),
+                    .action = SHOW_VARIABLES_WHERE_VISIT,
+                }
+            );
+        }
+    }
+    return rc;
+}
+
+static int evaluate_show_columns_where_frame(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    struct show_variables_where_truth_stack *truth_stack
+) {
+    enum show_variables_where_truth truth = SHOW_VARIABLES_WHERE_FALSE;
+    int rc = MYLITE_OK;
+
+    if (predicate->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        rc = evaluate_show_columns_where_comparison_predicate(
+            database,
+            predicate,
+            values,
+            full,
+            &truth
+        );
+    } else if (predicate->kind == MYLITE_SQL_AST_IN_PREDICATE) {
+        rc = evaluate_show_columns_where_in_predicate(database, predicate, values, full, &truth);
+    } else if (predicate->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        rc = evaluate_show_columns_where_is_null_predicate(
+            database,
+            predicate,
+            values,
+            full,
+            &truth
+        );
+    } else if (predicate->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        enum show_variables_where_truth child_truth = SHOW_VARIABLES_WHERE_FALSE;
+
+        if (!show_variables_where_truth_stack_pop(truth_stack, &child_truth)) {
+            set_runtime_error(database, "invalid SHOW COLUMNS WHERE predicate stack");
+            return MYLITE_ERROR;
+        }
+        truth = negate_show_variables_where_truth(child_truth);
+    } else if (
+        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
+    ) {
+        rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
+    } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
+        set_unsupported_error(database, "SHOW COLUMNS WHERE does not support XOR predicates");
+        return MYLITE_ERROR;
+    } else {
+        set_unsupported_error(database, "SHOW COLUMNS WHERE supports output-column predicates");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = show_variables_where_truth_stack_push(database, truth_stack, truth);
+    }
     return rc;
 }
 
@@ -106295,6 +106662,8 @@ static int append_show_column(
     values[0] = column->name;
     values[1] = type_text;
     if (context->full) {
+        bool where_matches = true;
+
         values[2] = show_column_collation_text(context->table, column);
         values[3] = "NO";
         if (column->is_nullable) {
@@ -106322,6 +106691,18 @@ static int append_show_column(
         values[show_full_columns_privileges_column] = "select,insert,update,references";
         values[show_full_columns_comment_column] = "";
 
+        if (context->where_clause != NULL) {
+            rc = show_columns_where_clause_matches(
+                context->database,
+                context->where_clause,
+                values,
+                context->full,
+                &where_matches
+            );
+        }
+        if (rc == MYLITE_OK && !where_matches) {
+            return MYLITE_OK;
+        }
         return mylite_result_append_text_row(context->result, values);
     }
 
@@ -106349,7 +106730,305 @@ static int append_show_column(
     }
     values[show_columns_extra_column] = column_extra_text(column);
 
+    if (context->where_clause != NULL) {
+        bool where_matches = true;
+
+        rc = show_columns_where_clause_matches(
+            context->database,
+            context->where_clause,
+            values,
+            context->full,
+            &where_matches
+        );
+        if (rc == MYLITE_OK && !where_matches) {
+            return MYLITE_OK;
+        }
+    }
+
     return mylite_result_append_text_row(context->result, values);
+}
+
+static int evaluate_show_columns_where_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+) {
+    const struct mylite_sql_ast_node *left_node = child_at(predicate, 0U);
+    const struct mylite_sql_ast_node *right_node = child_at(predicate, 1U);
+    const char *left = NULL;
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
+    int rc = show_columns_where_column_value(database, left_node, values, full, &left);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
+        set_unsupported_error(database, "SHOW COLUMNS WHERE does not support REGEXP predicates");
+        return MYLITE_ERROR;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        char *pattern = NULL;
+
+        rc = decode_show_columns_where_string_literal(database, right_node, &pattern);
+        if (rc == MYLITE_OK) {
+            if (left == NULL) {
+                *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+            } else if (
+                show_like_pattern_matches(pattern, strlen(pattern), left, strlen(left), false)
+            ) {
+                *out_truth = SHOW_VARIABLES_WHERE_TRUE;
+            } else {
+                *out_truth = SHOW_VARIABLES_WHERE_FALSE;
+            }
+        }
+        free(pattern);
+        return rc;
+    }
+
+    return compare_show_columns_where_literal(database, operator_kind, left, right_node, out_truth);
+}
+
+static int evaluate_show_columns_where_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+) {
+    const struct mylite_sql_ast_node *left_node = child_at(predicate, 0U);
+    const struct mylite_sql_ast_node *value_list = child_at(predicate, 1U);
+    const char *left = NULL;
+    size_t value_count = 0U;
+    bool matched = false;
+    bool saw_null = false;
+    int rc = show_columns_where_column_value(database, left_node, values, full, &left);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_runtime_error(database, "invalid SHOW COLUMNS WHERE IN list");
+        return MYLITE_ERROR;
+    }
+
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    for (size_t index = 0U; index < value_count; ++index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, index);
+        enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+        char *right = NULL;
+
+        if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL) {
+            set_unsupported_error(
+                database,
+                "SHOW COLUMNS WHERE IN supports only string and NULL literals"
+            );
+            return MYLITE_ERROR;
+        }
+
+        literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            saw_null = true;
+            continue;
+        }
+        if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+            set_unsupported_error(
+                database,
+                "SHOW COLUMNS WHERE IN supports only string and NULL literals"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = decode_show_columns_where_string_literal(database, value_node, &right);
+        if (rc == MYLITE_OK && left != NULL &&
+            compare_ascii_case_insensitive_text(left, right) == 0) {
+            matched = true;
+        }
+        free(right);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    if (matched) {
+        *out_truth = SHOW_VARIABLES_WHERE_TRUE;
+    } else if (left == NULL || saw_null) {
+        *out_truth = SHOW_VARIABLES_WHERE_UNKNOWN;
+    } else {
+        *out_truth = SHOW_VARIABLES_WHERE_FALSE;
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_show_columns_where_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate,
+    const char *const *values,
+    bool full,
+    enum show_variables_where_truth *out_truth
+) {
+    const char *value = NULL;
+    int rc =
+        show_columns_where_column_value(database, child_at(predicate, 0U), values, full, &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_sql_ast_node_operator(predicate) == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+        *out_truth = value == NULL ? SHOW_VARIABLES_WHERE_FALSE : SHOW_VARIABLES_WHERE_TRUE;
+    } else {
+        *out_truth = value == NULL ? SHOW_VARIABLES_WHERE_TRUE : SHOW_VARIABLES_WHERE_FALSE;
+    }
+    return MYLITE_OK;
+}
+
+static int show_columns_where_column_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const char *const *values,
+    bool full,
+    const char **out_value
+) {
+    size_t column_index = 0U;
+    int rc = resolve_show_columns_where_column(database, column_node, full, &column_index);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (values == NULL || out_value == NULL) {
+        set_runtime_error(database, "invalid SHOW COLUMNS WHERE row");
+        return MYLITE_ERROR;
+    }
+
+    *out_value = values[column_index];
+    return MYLITE_OK;
+}
+
+static int resolve_show_columns_where_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    bool full,
+    size_t *out_column_index
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *display_text = NULL;
+    const char *const *columns = show_columns_result_columns;
+    size_t column_count = show_columns_result_column_count;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_column_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_column_index = 0U;
+    if (column_node == NULL || (column_node->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                                column_node->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(database, "SHOW COLUMNS WHERE supports only output columns");
+        return MYLITE_ERROR;
+    }
+
+    if (full) {
+        columns = show_full_columns_result_columns;
+        column_count = show_full_columns_result_column_count;
+    }
+
+    rc = collect_identifier_parts(
+        column_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+            if (text_equals_ascii_case_insensitive(parts[0], columns[column_index])) {
+                *out_column_index = column_index;
+                return MYLITE_OK;
+            }
+        }
+    }
+
+    rc = show_variables_column_reference_text(database, column_node, &display_text);
+    if (rc == MYLITE_OK) {
+        set_unknown_where_column_error(database, display_text);
+        rc = MYLITE_ERROR;
+    }
+    free(display_text);
+    return rc;
+}
+
+static int compare_show_columns_where_literal(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const char *left,
+    const struct mylite_sql_ast_node *right,
+    enum show_variables_where_truth *out_truth
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *right_text = NULL;
+    int comparison = 0;
+    int rc = MYLITE_OK;
+
+    if (right == NULL || out_truth == NULL) {
+        set_runtime_error(database, "invalid SHOW COLUMNS WHERE comparison");
+        return MYLITE_ERROR;
+    }
+    if (right->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SHOW COLUMNS WHERE comparisons support only string and NULL literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(right);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL &&
+        compare_show_index_where_null_operand(operator_kind, left, literal_kind, out_truth)) {
+        return MYLITE_OK;
+    }
+
+    rc = decode_show_columns_where_string_literal(database, right, &right_text);
+    if (rc != MYLITE_OK) {
+        free(right_text);
+        return rc;
+    }
+    if (left == NULL &&
+        compare_show_index_where_null_operand(operator_kind, left, literal_kind, out_truth)) {
+        free(right_text);
+        return MYLITE_OK;
+    }
+
+    comparison = compare_ascii_case_insensitive_text(left, right_text);
+    rc = show_index_where_truth_from_comparison(
+        database,
+        operator_kind,
+        (struct show_table_status_where_comparison){.value = comparison},
+        out_truth
+    );
+
+    free(right_text);
+    return rc;
+}
+
+static int decode_show_columns_where_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    char **out_text
+) {
+    size_t text_length = 0U;
+
+    return decode_sql_string_literal(
+        database,
+        literal_node,
+        "SHOW COLUMNS WHERE supports only string literal predicates",
+        "SHOW COLUMNS WHERE string literals do not support NUL bytes",
+        out_text,
+        &text_length
+    );
 }
 
 static int append_show_index(

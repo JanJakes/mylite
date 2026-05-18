@@ -1032,12 +1032,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *alias
+    struct mylite_sql_ast_node *alias,
+    struct mylite_sql_ast_node *index_hints
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_source(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *alias
+    struct mylite_sql_ast_node *alias,
+    struct mylite_sql_ast_node *index_hints
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
@@ -1046,6 +1048,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     enum mylite_sql_ast_join_kind join_kind,
     struct mylite_sql_ast_node *right,
     struct mylite_sql_ast_node *condition
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_hint_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *hint
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_index_hint(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *hint
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_hint(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *scope,
+    struct mylite_sql_ast_node *names,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_hint_scope(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_token for_token,
+    struct mylite_sql_token last_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     struct mylite_sql_parser_state *state,

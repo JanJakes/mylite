@@ -15,6 +15,8 @@ enum {
     warning_code_text_capacity = 16,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
+    mysql_error_key_does_not_exist = 1176,
+    mysql_error_wrong_usage = 1221,
 };
 
 struct expected_sql_error {
@@ -35,6 +37,7 @@ static const char sql_calc_warning_message[] =
 static int test_scalar_noop_modifiers(void);
 static int test_table_noop_modifiers(void);
 static int test_source_select_noop_modifiers(void);
+static int test_select_index_hints_noop(void);
 static int test_unsupported_modifier_forms(void);
 static int prepare_fixture(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -84,6 +87,7 @@ int main(void) {
     failures += test_scalar_noop_modifiers();
     failures += test_table_noop_modifiers();
     failures += test_source_select_noop_modifiers();
+    failures += test_select_index_hints_noop();
     failures += test_unsupported_modifier_forms();
 
     return failures == 0 ? 0 : 1;
@@ -319,6 +323,149 @@ static int test_source_select_noop_modifiers(void) {
     return failures;
 }
 
+static int test_select_index_hints_noop(void) {
+    static const char *const use_rows[] = {"2", "3"};
+    static const char *const primary_rows[] = {"1", "2"};
+    static const char *const grouped_values[] = {"20", "2", "30", "1"};
+    static const char *const join_values[] = {"2", "7", "3", "7"};
+    static const char *const status_values[] = {"-1", "0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "index-hints") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open index hints");
+    failures += prepare_fixture(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE r (id INT NOT NULL, n INT NULL, PRIMARY KEY(id), KEY r_n (n))"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO r VALUES (7, 20), (8, 30), (9, 40)");
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t USE INDEX (k_n) WHERE n = 20 ORDER BY id", &result);
+    failures += expect_rows(result, use_rows, 2U, 0U, "use index no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t USE INDEX (zet) WHERE n = 20 ORDER BY id", &result);
+    failures += expect_rows(result, use_rows, 2U, 0U, "unambiguous prefix index no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT ROW_COUNT(), @@warning_count", &result);
+    failures += expect_grid(result, status_values, 1U, 2U, 0U, "use index select status");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t USE KEY () WHERE n = 20 ORDER BY id", &result);
+    failures += expect_rows(result, use_rows, 2U, 0U, "empty use key no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT id FROM t FORCE KEY FOR ORDER BY (PRIMARY) ORDER BY id LIMIT 2",
+        &result
+    );
+    failures += expect_rows(result, primary_rows, 2U, 0U, "force primary no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT id FROM t USE KEY (PRI) WHERE id = 1", &result);
+    failures += expect_rows(result, primary_rows, 1U, 0U, "primary prefix no-op row");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT n, COUNT(*) FROM t USE INDEX FOR GROUP BY (k_n) "
+        "WHERE n IS NOT NULL GROUP BY n ORDER BY n",
+        &result
+    );
+    failures += expect_grid(result, grouped_values, 2U, 2U, 0U, "group index no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT x.id, y.id FROM t AS x USE INDEX (k_n) "
+        "JOIN r AS y FORCE KEY FOR JOIN (r_n) ON x.n = y.n "
+        "WHERE x.n = 20 ORDER BY x.id",
+        &result
+    );
+    failures += expect_grid(result, join_values, 2U, 2U, 0U, "join index hints no-op rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_error(
+        database,
+        "SELECT id FROM t USE INDEX (missing) WHERE n = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_key_does_not_exist,
+            .sqlstate = "42000",
+            .message_part = "Key 'missing' doesn't exist in table 't'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t USE INDEX (k) WHERE n = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_key_does_not_exist,
+            .sqlstate = "42000",
+            .message_part = "Key 'k' doesn't exist in table 't'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t USE INDEX FOR JOIN (k_n) FORCE INDEX FOR ORDER BY (PRIMARY) "
+        "WHERE n = 20 ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_wrong_usage,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect usage of USE INDEX and FORCE INDEX",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t FORCE INDEX () WHERE n = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t IGNORE INDEX () WHERE n = 20",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM t USE INDEX(k_n) WHERE n = 999",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_unsupported_modifier_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -424,7 +571,11 @@ static int prepare_fixture(mylite_db *database) {
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
-    failures += execute_statement_ok(database, "CREATE TABLE t (id INT NOT NULL, n INT NULL)");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE t (id INT NOT NULL, n INT NULL, PRIMARY KEY(id), "
+        "KEY k_n (n), KEY k_n_copy (n), KEY zeta_n (n))"
+    );
     failures +=
         execute_statement_ok(database, "INSERT INTO t VALUES (1, NULL), (2, 20), (3, 20), (4, 30)");
     return failures;

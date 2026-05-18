@@ -1983,10 +1983,11 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
-    limit_clause_opt(L) select_locking_clause_opt(K). {
+    table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
-        state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
+        state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O,
+        L, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator(JO)
@@ -2008,11 +2009,11 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
-    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) order_clause_opt(O)
-    limit_clause_opt(L) select_locking_clause_opt(K). {
+    table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L, K);
+        mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O, L, K);
 }
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator(JO)
@@ -2048,8 +2049,76 @@ union_modifier_opt(A) ::= ALL. {
     A = MYLITE_SQL_AST_UNION_MODIFIER_ALL;
 }
 
-table_source(A) ::= table_name(N) table_alias_opt(AL). {
-    A = mylite_sql_parser_make_table_source(state, N, AL);
+table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+
+table_index_hints_opt(A) ::= . {
+    A = NULL;
+}
+table_index_hints_opt(A) ::= table_index_hint_list(H). {
+    A = H;
+}
+
+table_index_hint_list(A) ::= table_index_hint(H). {
+    A = mylite_sql_parser_make_index_hint_list(state, H);
+}
+table_index_hint_list(A) ::= table_index_hint_list(L) table_index_hint(H). {
+    A = mylite_sql_parser_append_index_hint(state, L, H);
+}
+
+table_index_hint(A) ::= USE(T) index_hint_keyword index_hint_scope_opt(S)
+    LPAREN index_hint_name_list(N) RPAREN(R). {
+    A = mylite_sql_parser_make_index_hint(
+        state, MYLITE_SQL_AST_USE_INDEX_HINT, T, S, N, R);
+}
+table_index_hint(A) ::= USE(T) index_hint_keyword index_hint_scope_opt(S) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_index_hint(
+        state, MYLITE_SQL_AST_USE_INDEX_HINT, T, S,
+        mylite_sql_parser_make_empty_identifier_list(state, L, R), R);
+}
+table_index_hint(A) ::= FORCE(T) index_hint_keyword index_hint_scope_opt(S)
+    LPAREN index_hint_name_list(N) RPAREN(R). {
+    A = mylite_sql_parser_make_index_hint(
+        state, MYLITE_SQL_AST_FORCE_INDEX_HINT, T, S, N, R);
+}
+table_index_hint(A) ::= IGNORE(T) index_hint_keyword index_hint_scope_opt(S)
+    LPAREN index_hint_name_list(N) RPAREN(R). {
+    A = mylite_sql_parser_make_index_hint(
+        state, MYLITE_SQL_AST_IGNORE_INDEX_HINT, T, S, N, R);
+}
+
+index_hint_keyword ::= INDEX.
+index_hint_keyword ::= KEY.
+
+index_hint_scope_opt(A) ::= . {
+    A = NULL;
+}
+index_hint_scope_opt(A) ::= FOR(F) JOIN(J). {
+    A = mylite_sql_parser_make_index_hint_scope(
+        state, MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN, F, J);
+}
+index_hint_scope_opt(A) ::= FOR(F) ORDER BY(B). {
+    A = mylite_sql_parser_make_index_hint_scope(
+        state, MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY, F, B);
+}
+index_hint_scope_opt(A) ::= FOR(F) GROUP BY(B). {
+    A = mylite_sql_parser_make_index_hint_scope(
+        state, MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY, F, B);
+}
+
+index_hint_name_list(A) ::= index_hint_name(N). {
+    A = mylite_sql_parser_make_identifier_list(state, N);
+}
+index_hint_name_list(A) ::= index_hint_name_list(L) COMMA index_hint_name(N). {
+    A = mylite_sql_parser_append_identifier(state, L, N);
+}
+
+index_hint_name(A) ::= identifier(I). {
+    A = I;
+}
+index_hint_name(A) ::= PRIMARY(P). {
+    A = mylite_sql_parser_make_identifier(state, P);
 }
 
 join_operator(A) ::= JOIN. {

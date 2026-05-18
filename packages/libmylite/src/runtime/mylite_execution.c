@@ -1483,6 +1483,12 @@ struct select_source_context {
     size_t source_count;
 };
 
+struct select_index_hint_lookup_context {
+    const char *name;
+    bool exact_match;
+    size_t prefix_match_count;
+};
+
 enum column_reference_diagnostic_context {
     COLUMN_REFERENCE_FIELD = 0,
     COLUMN_REFERENCE_WHERE = 1,
@@ -9884,6 +9890,42 @@ static int plan_select(
     const struct mylite_sql_ast_node *statement,
     struct planned_select *out_plan
 );
+static const struct mylite_sql_ast_node *from_table_alias_node(
+    const struct mylite_sql_ast_node *from_table
+);
+static const struct mylite_sql_ast_node *from_table_index_hint_list_node(
+    const struct mylite_sql_ast_node *from_table
+);
+static int validate_select_index_hints(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_table,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int validate_select_index_hint(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *hint,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *has_use,
+    bool *has_force
+);
+static const struct mylite_sql_ast_node *index_hint_name_list_node(
+    const struct mylite_sql_ast_node *hint
+);
+static int validate_select_index_hint_names(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_list,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int select_index_hint_name_exists(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *index_name,
+    bool *out_exists
+);
+static int match_select_index_hint_name(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+);
 static int collect_select_optional_clauses(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -14209,6 +14251,7 @@ static int check_duplicate_column_names(
     size_t column_count
 );
 static bool text_equals_ascii_case_insensitive(const char *left, const char *right);
+static bool text_has_ascii_case_insensitive_prefix(const char *text, const char *prefix);
 static char ascii_lower(unsigned char byte);
 static bool enum_label_equals_ascii_case_insensitive(
     const char *left,
@@ -19449,6 +19492,7 @@ static void set_invalid_use_of_null_error(struct mylite_db *database);
 static void set_primary_key_part_null_error(struct mylite_db *database);
 static void set_duplicate_key_name_error(struct mylite_db *database, const char *index_name);
 static void set_incorrect_index_name_error(struct mylite_db *database, const char *index_name);
+static void set_index_hint_use_force_error(struct mylite_db *database);
 static void set_key_does_not_exist_in_table_error(
     struct mylite_db *database,
     const char *index_name,
@@ -20202,6 +20246,13 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INSERT_VALUES_REFERENCE:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_FROM_JOIN:
+    case MYLITE_SQL_AST_INDEX_HINT_LIST:
+    case MYLITE_SQL_AST_USE_INDEX_HINT:
+    case MYLITE_SQL_AST_FORCE_INDEX_HINT:
+    case MYLITE_SQL_AST_IGNORE_INDEX_HINT:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_HAVING_CLAUSE:
@@ -29750,9 +29801,13 @@ static int information_schema_resolve_source(
         set_unknown_information_schema_table_error(database, table_name);
         return MYLITE_ERROR;
     }
-    if (child_at(from_clause, 1U) != NULL) {
+    if (from_table_index_hint_list_node(from_clause) != NULL) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT does not support index hints");
+        return MYLITE_ERROR;
+    }
+    if (from_table_alias_node(from_clause) != NULL) {
         rc = copy_identifier_text(
-            child_at(from_clause, 1U),
+            from_table_alias_node(from_clause),
             out_query->alias,
             sizeof(out_query->alias),
             database
@@ -34704,6 +34759,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_VALUES_REFERENCE:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_FROM_JOIN:
+    case MYLITE_SQL_AST_INDEX_HINT_LIST:
+    case MYLITE_SQL_AST_USE_INDEX_HINT:
+    case MYLITE_SQL_AST_FORCE_INDEX_HINT:
+    case MYLITE_SQL_AST_IGNORE_INDEX_HINT:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY:
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_HAVING_CLAUSE:
@@ -55383,7 +55445,7 @@ static int init_select_source_context(
     const struct table_name_resolution *source,
     struct select_source_context *out_context
 ) {
-    const struct mylite_sql_ast_node *alias = child_at(from_clause, 1U);
+    const struct mylite_sql_ast_node *alias = from_table_alias_node(from_clause);
 
     *out_context = (struct select_source_context){.source = source};
     if (alias == NULL) {
@@ -55445,6 +55507,9 @@ static int plan_select(
             &out_plan->source,
             &out_plan->table
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(database, from_clause, &out_plan->table);
     }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
@@ -55719,7 +55784,12 @@ static int plan_joined_select_source(
         return rc;
     }
 
-    alias = child_at(source_node, 1U);
+    rc = validate_select_index_hints(database, source_node, &out_source->table);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    alias = from_table_alias_node(source_node);
     if (alias != NULL) {
         if (alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
             set_parse_error(database, NULL);
@@ -55738,6 +55808,218 @@ static int plan_joined_select_source(
         &out_source->columns,
         &out_source->column_count
     );
+}
+
+static const struct mylite_sql_ast_node *from_table_alias_node(
+    const struct mylite_sql_ast_node *from_table
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (from_table == NULL || from_table->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return NULL;
+    }
+    child = child_at(from_table, 1U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+
+    return NULL;
+}
+
+static const struct mylite_sql_ast_node *from_table_index_hint_list_node(
+    const struct mylite_sql_ast_node *from_table
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (from_table == NULL || from_table->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return NULL;
+    }
+    child = child_at(from_table, 1U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_INDEX_HINT_LIST) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+
+    return NULL;
+}
+
+static int validate_select_index_hints(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_table,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    const struct mylite_sql_ast_node *hint_list = from_table_index_hint_list_node(from_table);
+    bool has_use = false;
+    bool has_force = false;
+
+    if (hint_list == NULL) {
+        return MYLITE_OK;
+    }
+    if (table == NULL || hint_list->kind != MYLITE_SQL_AST_INDEX_HINT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    for (const struct mylite_sql_ast_node *hint = child_at(hint_list, 0U); hint != NULL;
+         hint = hint->next_sibling) {
+        int rc = validate_select_index_hint(database, hint, table, &has_use, &has_force);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_select_index_hint(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *hint,
+    const struct mylite_catalog_table_descriptor *table,
+    bool *has_use,
+    bool *has_force
+) {
+    const struct mylite_sql_ast_node *name_list = NULL;
+
+    if (hint == NULL || table == NULL || has_use == NULL || has_force == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (hint->kind == MYLITE_SQL_AST_USE_INDEX_HINT) {
+        *has_use = true;
+    } else if (hint->kind == MYLITE_SQL_AST_FORCE_INDEX_HINT) {
+        *has_force = true;
+    } else if (hint->kind != MYLITE_SQL_AST_IGNORE_INDEX_HINT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (*has_use && *has_force) {
+        set_index_hint_use_force_error(database);
+        return MYLITE_ERROR;
+    }
+
+    name_list = index_hint_name_list_node(hint);
+    if (name_list == NULL || name_list->kind != MYLITE_SQL_AST_IDENTIFIER_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (hint->kind != MYLITE_SQL_AST_USE_INDEX_HINT && child_at(name_list, 0U) == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return validate_select_index_hint_names(database, name_list, table);
+}
+
+static const struct mylite_sql_ast_node *index_hint_name_list_node(
+    const struct mylite_sql_ast_node *hint
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (hint == NULL) {
+        return NULL;
+    }
+    child = child_at(hint, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER_LIST) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+
+    return NULL;
+}
+
+static int validate_select_index_hint_names(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_list,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    for (const struct mylite_sql_ast_node *name_node = child_at(name_list, 0U); name_node != NULL;
+         name_node = name_node->next_sibling) {
+        char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        bool exists = false;
+        int rc = copy_identifier_text(name_node, index_name, sizeof(index_name), database);
+
+        if (rc == MYLITE_OK) {
+            rc = select_index_hint_name_exists(database, table->table_id, index_name, &exists);
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!exists) {
+            set_key_does_not_exist_in_table_error(database, index_name, table->name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int select_index_hint_name_exists(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *index_name,
+    bool *out_exists
+) {
+    struct select_index_hint_lookup_context context = {
+        .name = index_name,
+        .exact_match = false,
+        .prefix_match_count = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_exists == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_exists = false;
+    if (table_id < 0) {
+        rc = mylite_temporary_catalog_for_each_index_in_table(
+            &database->session.temporary_catalog,
+            table_id,
+            match_select_index_hint_name,
+            &context
+        );
+    } else {
+        rc = mylite_catalog_for_each_index_in_table(
+            database,
+            table_id,
+            match_select_index_hint_name,
+            &context
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to validate index hints");
+        return rc;
+    }
+
+    if (context.exact_match || context.prefix_match_count == 1U) {
+        *out_exists = true;
+    }
+    return MYLITE_OK;
+}
+
+static int match_select_index_hint_name(
+    const struct mylite_catalog_index_descriptor *index,
+    void *user_data
+) {
+    struct select_index_hint_lookup_context *context = user_data;
+
+    if (index != NULL && context != NULL &&
+        text_equals_ascii_case_insensitive(index->name, context->name)) {
+        context->exact_match = true;
+    } else if (
+        index != NULL && context != NULL &&
+        text_has_ascii_case_insensitive_prefix(index->name, context->name)
+    ) {
+        ++context->prefix_match_count;
+    }
+    return MYLITE_OK;
 }
 
 static int init_join_select_source_context(
@@ -56015,6 +56297,9 @@ static int plan_row_scalar_select_source(
         &out_plan->source,
         &out_plan->table
     );
+    if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(database, from_clause, &out_plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
@@ -56363,6 +56648,9 @@ static int plan_grouped_aggregate_source(
         &out_plan->table
     );
 
+    if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(database, from_clause, &out_plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
@@ -59860,6 +60148,9 @@ static int plan_count_table_source(
         &out_plan->table
     );
     if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(database, nodes->from_clause, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
         rc = init_select_source_context(
             database,
             nodes->from_clause,
@@ -60421,6 +60712,9 @@ static int plan_column_aggregate(
         &out_plan->source,
         &out_plan->table
     );
+    if (rc == MYLITE_OK) {
+        rc = validate_select_index_hints(database, from_clause, &out_plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
     }
@@ -82591,6 +82885,23 @@ static bool text_equals_ascii_case_insensitive(const char *left, const char *rig
     }
     if (right[index] != '\0') {
         return false;
+    }
+
+    return true;
+}
+
+static bool text_has_ascii_case_insensitive_prefix(const char *text, const char *prefix) {
+    size_t index = 0U;
+
+    if (text == NULL || prefix == NULL) {
+        return false;
+    }
+    while (prefix[index] != '\0') {
+        if (text[index] == '\0' ||
+            ascii_lower((unsigned char)text[index]) != ascii_lower((unsigned char)prefix[index])) {
+            return false;
+        }
+        ++index;
     }
 
     return true;
@@ -115094,6 +115405,15 @@ static void set_incorrect_index_name_error(struct mylite_db *database, const cha
         mysql_error_incorrect_index_name,
         "42000",
         message
+    );
+}
+
+static void set_index_hint_use_force_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_wrong_usage,
+        "HY000",
+        "Incorrect usage of USE INDEX and FORCE INDEX"
     );
 }
 

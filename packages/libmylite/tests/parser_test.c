@@ -18384,6 +18384,9 @@ static int test_select_table_alias_clause(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *hint_list = NULL;
+    const struct mylite_sql_ast_node *hint = NULL;
+    const struct mylite_sql_ast_node *name_list = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -18492,6 +18495,69 @@ static int test_select_table_alias_clause(void) {
     failures += expect_span_text(child_at(from_table, 1U), "s", "min alias");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle USE INDEX (k_id) WHERE id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    hint_list = child_at(from_table, 1U);
+    hint = child_at(hint_list, 0U);
+    name_list = child_at(hint, 0U);
+    failures += expect_child_count(from_table, 2U, "hint without alias child count");
+    failures += expect_node(hint_list, MYLITE_SQL_AST_INDEX_HINT_LIST, "use hint list");
+    failures += expect_node(hint, MYLITE_SQL_AST_USE_INDEX_HINT, "use index hint");
+    failures += expect_node(name_list, MYLITE_SQL_AST_IDENTIFIER_LIST, "use index names");
+    failures += expect_span_text(child_at(name_list, 0U), "k_id", "use index name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle AS s FORCE KEY FOR ORDER BY (PRIMARY, k_n) "
+        "ORDER BY s.id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    hint_list = child_at(from_table, 2U);
+    hint = child_at(hint_list, 0U);
+    failures += expect_child_count(from_table, 3U, "hint with alias child count");
+    failures += expect_span_text(child_at(from_table, 1U), "s", "hint alias");
+    failures += expect_node(hint_list, MYLITE_SQL_AST_INDEX_HINT_LIST, "force hint list");
+    failures += expect_node(hint, MYLITE_SQL_AST_FORCE_INDEX_HINT, "force key hint");
+    failures += expect_node(
+        child_at(hint, 0U),
+        MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY,
+        "force order scope"
+    );
+    name_list = child_at(hint, 1U);
+    failures += expect_span_text(child_at(name_list, 0U), "PRIMARY", "primary hint name");
+    failures += expect_span_text(child_at(name_list, 1U), "k_n", "force second hint name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle USE INDEX ();", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    hint = child_at(child_at(from_table, 1U), 0U);
+    name_list = child_at(hint, 0U);
+    failures += expect_child_count(name_list, 0U, "empty use index names");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle FORCE INDEX ();",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle IGNORE INDEX ();",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT n FROM simple_lifecycle AS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -18511,6 +18577,8 @@ static int test_select_inner_join_clause(void) {
     const struct mylite_sql_ast_node *from_join = NULL;
     const struct mylite_sql_ast_node *left_source = NULL;
     const struct mylite_sql_ast_node *right_source = NULL;
+    const struct mylite_sql_ast_node *hint_list = NULL;
+    const struct mylite_sql_ast_node *hint = NULL;
     const struct mylite_sql_ast_node *condition = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -18548,6 +18616,33 @@ static int test_select_inner_join_clause(void) {
     failures += expect_span_text(child_at(order_clause, 0U), "r.w", "join order key");
     failures += expect_span_text(child_at(limit_clause, 0U), "1", "join limit row count");
     failures += expect_span_text(child_at(limit_clause, 1U), "0", "join limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts AS l USE INDEX (k_l) "
+        "JOIN rights r IGNORE KEY FOR JOIN (k_r, PRIMARY) ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    left_source = child_at(from_join, 0U);
+    right_source = child_at(from_join, 1U);
+    hint_list = child_at(left_source, 2U);
+    hint = child_at(hint_list, 0U);
+    failures += expect_node(hint_list, MYLITE_SQL_AST_INDEX_HINT_LIST, "join left hint list");
+    failures += expect_node(hint, MYLITE_SQL_AST_USE_INDEX_HINT, "join left use hint");
+    failures += expect_span_text(child_at(child_at(hint, 0U), 0U), "k_l", "join left hint name");
+    hint_list = child_at(right_source, 2U);
+    hint = child_at(hint_list, 0U);
+    failures += expect_span_text(child_at(right_source, 1U), "r", "join right alias stable");
+    failures += expect_node(hint, MYLITE_SQL_AST_IGNORE_INDEX_HINT, "join right ignore hint");
+    failures += expect_node(
+        child_at(hint, 0U),
+        MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN,
+        "join right hint scope"
+    );
+    failures += expect_span_text(child_at(child_at(hint, 1U), 1U), "PRIMARY", "join primary hint");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT * FROM lefts CROSS JOIN rights;", MYLITE_SQL_PARSE_OK, &result);

@@ -1327,6 +1327,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "from_table";
     case MYLITE_SQL_AST_FROM_JOIN:
         return "from_join";
+    case MYLITE_SQL_AST_INDEX_HINT_LIST:
+        return "index_hint_list";
+    case MYLITE_SQL_AST_USE_INDEX_HINT:
+        return "use_index_hint";
+    case MYLITE_SQL_AST_FORCE_INDEX_HINT:
+        return "force_index_hint";
+    case MYLITE_SQL_AST_IGNORE_INDEX_HINT:
+        return "ignore_index_hint";
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_JOIN:
+        return "index_hint_for_join";
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY:
+        return "index_hint_for_order_by";
+    case MYLITE_SQL_AST_INDEX_HINT_FOR_GROUP_BY:
+        return "index_hint_for_group_by";
     case MYLITE_SQL_AST_WHERE_CLAUSE:
         return "where_clause";
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:

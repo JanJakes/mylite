@@ -276,7 +276,7 @@ static int resolve_joined_delete_target(
 
 static int reject_reserved_joined_delete_target(
     struct mylite_db *database,
-    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count
 ) {
     if (part_count == 0U || part_count > table_name_part_capacity) {
@@ -295,7 +295,7 @@ static int reject_reserved_joined_delete_target(
 }
 
 static bool joined_delete_target_matches_source(
-    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
     size_t part_count,
     const struct mylite_catalog_schema_descriptor *selected_schema,
     const struct planned_select_source *source

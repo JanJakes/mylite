@@ -21,6 +21,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_date_value = 1292,
+    mysql_error_incorrect_temporal_value = 1525,
 };
 
 struct expected_sql_error {
@@ -35,6 +36,7 @@ struct expected_query {
     size_t column_count;
     size_t row_count;
     const char *context;
+    size_t warning_count;
 };
 
 struct expected_dml_result {
@@ -159,6 +161,15 @@ static int test_date_success_metadata_dml_and_persistence(void) {
         "2024-02-29",
     };
     static const char *const predicate_rows[] = {"1", "3"};
+    static const char *const iso_less_rows[] = {"1", "3"};
+    static const char *const iso_greater_rows[] = {"2"};
+    static const char *const iso_in_rows[] = {"2"};
+    static const char *const iso_not_in_rows[] = {"1", "3"};
+    static const char *const date_z_warning_rows[] = {
+        "Warning",
+        "1292",
+        "Incorrect date value: '2025-01-02T00:00:00Z' for column 'd' at row 1",
+    };
     static const char *const null_rows[] = {"4"};
     static const char *const order_asc_rows[] = {"4", "3", "1", "2"};
     static const char *const order_desc_rows[] = {"2", "1", "3", "4"};
@@ -175,6 +186,7 @@ static int test_date_success_metadata_dml_and_persistence(void) {
     static const char *const ordered_limit_rows[] = {"1", "1", "2", "1", "3", "0", "4", "0"};
     static const char *const updated_count_rows[] = {"1"};
     static const char *const delete_order_rows[] = {"2", "2024-01-01"};
+    static const char *const date_iso_dml_rows[] = {"1", "2016-01-15", "7"};
     static const char *const added_rows[] = {
         "1",
         "2020-01-01",
@@ -283,6 +295,131 @@ static int test_date_success_metadata_dml_and_persistence(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2025-01-02T00:00:00'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date ISO equality at midnight",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2025-01-02T23:59:59'",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "date ISO equality rejects non-midnight",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d < '2025-01-02T23:59:59' ORDER BY id",
+            .values = iso_less_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "date ISO less-than includes same-day midnight",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d <= '2025-01-02 23:59:59' ORDER BY id",
+            .values = iso_less_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "date space datetime less-equal includes same-day midnight",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d > '2025-01-02T00:00:00' ORDER BY id",
+            .values = iso_greater_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date ISO greater-than starts after midnight",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d <=> '2025-01-02T00:00:00+14:00'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date offset predicate does not shift by session zone",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d BETWEEN '2025-01-02T00:00:00' "
+                   "AND '2025-01-02T23:59:59'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date ISO BETWEEN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d NOT BETWEEN '2025-01-02T00:00:00' "
+                   "AND '9999-12-31T00:00:00' ORDER BY id",
+            .values = (const char *const[]){"3"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date ISO NOT BETWEEN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d IN ('2025-01-02T23:59:59', "
+                   "'9999-12-31T00:00:00', NULL) ORDER BY id",
+            .values = iso_in_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date ISO IN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d NOT IN ('2025-01-02T23:59:59', "
+                   "'9999-12-31T00:00:00') ORDER BY id",
+            .values = iso_not_in_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "date ISO NOT IN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM dates WHERE d = '2025-01-02T00:00:00Z'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "date trailing-Z predicate",
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = date_z_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "date trailing-Z warning row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM dates WHERE d IS NULL",
             .values = null_rows,
             .column_count = 1U,
@@ -386,6 +523,37 @@ static int test_date_success_metadata_dml_and_persistence(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "date delete order limit",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE date_iso_dml (id INT NOT NULL, d DATE, flag INT NOT NULL DEFAULT 0)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO date_iso_dml VALUES "
+        "(1, '2016-01-15', 0), (2, '2016-01-16', 0), (3, NULL, 0)",
+        3
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE date_iso_dml SET flag = 7 WHERE d = '2016-01-15T00:00:00Z'",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_dml_result(
+        database,
+        "DELETE FROM date_iso_dml WHERE d = '2016-01-16 00:00:00z'",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, flag FROM date_iso_dml WHERE d IS NOT NULL",
+            .values = date_iso_dml_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "date ISO predicates feed update and delete",
         }
     );
 
@@ -599,6 +767,42 @@ static int test_date_diagnostics(void) {
             .message_part = "WHERE DATE predicates support only string literals",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00+1:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATE value: '2024-01-01T00:00:00+1:00'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00-00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATE value: '2024-01-01T00:00:00-00:00'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00+14:01'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATE value: '2024-01-01T00:00:00+14:01'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM dates WHERE d = '2024-01-01T00:00:00Z+00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_temporal_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect DATE value: '2024-01-01T00:00:00Z+00:00'",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -774,7 +978,8 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
         }
     }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), query.warning_count, query.context);
     mylite_result_free(result);
 
     return failures;

@@ -2294,6 +2294,7 @@ struct planned_select_predicate_node {
     struct planned_value upper_value;
     struct planned_value *values;
     size_t value_count;
+    bool compare_date_as_datetime;
     size_t left_index;
     size_t right_index;
     bool like_uses_escape;
@@ -17827,6 +17828,50 @@ static int convert_predicate_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static int convert_predicate_value_with_date_comparison_mode(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value,
+    bool *out_compare_date_as_datetime
+);
+static int convert_predicate_date_between_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *lower_node,
+    const struct mylite_sql_ast_node *upper_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_lower_value,
+    struct planned_value *out_upper_value,
+    bool *out_compare_date_as_datetime
+);
+static int convert_predicate_date_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count,
+    bool *out_compare_date_as_datetime
+);
+static int convert_predicate_date_in_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count,
+    bool *out_uses_datetime
+);
+static int convert_predicate_date_in_values_to_datetime(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count
+);
+static bool date_in_value_already_compares_as_datetime(
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_value *value
+);
+static void planned_value_array_deinit(struct planned_value *values, size_t value_count);
 static int convert_predicate_year_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -17852,6 +17897,19 @@ static int convert_predicate_date_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
+    bool force_datetime_comparison,
+    struct planned_value *out_value,
+    bool *out_compare_as_datetime
+);
+static bool normalize_date_datetime_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    bool *out_append_warning
+);
+static int copy_date_midnight_predicate_value(
+    struct mylite_db *database,
+    const char *date_text,
     struct planned_value *out_value
 );
 static int convert_predicate_time_literal(
@@ -20586,6 +20644,17 @@ static int append_descriptor_value_sql_for_source(
     size_t source_index,
     bool qualify
 );
+static int append_select_predicate_subject_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    bool qualify
+);
+static int append_date_midnight_value_sql_for_source(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify
+);
 static int append_descriptor_column_name_sql_for_source(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column,
@@ -21815,6 +21884,11 @@ static void set_incorrect_datetime_literal_error(
 );
 static void set_incorrect_timestamp_value_error(struct mylite_db *database, const char *value_text);
 static int append_incorrect_datetime_predicate_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name
+);
+static int append_incorrect_date_predicate_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name
@@ -110393,15 +110467,18 @@ static int plan_comparison_predicate(
         } else if (predicate_comparison_value_is_null(child_at(predicate_node, 1U))) {
             node.value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         } else {
-            rc = convert_predicate_value(
+            rc = convert_predicate_value_with_date_comparison_mode(
                 database,
                 child_at(predicate_node, 1U),
                 &node.column,
-                &node.value
+                &node.value,
+                &node.compare_date_as_datetime
             );
         }
     }
     if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
         return rc;
     }
 
@@ -110492,15 +110569,18 @@ static int plan_literal_left_column_comparison_predicate(
         if (predicate_comparison_value_is_null(child_at(predicate_node, 0U))) {
             node.value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         } else {
-            rc = convert_predicate_value(
+            rc = convert_predicate_value_with_date_comparison_mode(
                 database,
                 child_at(predicate_node, 0U),
                 &node.column,
-                &node.value
+                &node.value,
+                &node.compare_date_as_datetime
             );
         }
     }
     if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
         return rc;
     }
 
@@ -112020,22 +112100,36 @@ static int plan_between_predicate(
             set_unsupported_error(database, "WHERE set predicates do not yet support BETWEEN");
             return MYLITE_ERROR;
         }
-        rc = convert_predicate_value(
-            database,
-            child_at(predicate_node, 1U),
-            &node.column,
-            &node.value
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = convert_predicate_value(
-            database,
-            child_at(predicate_node, 2U),
-            &node.column,
-            &node.upper_value
-        );
+        if (column_descriptor_is_date(&node.column)) {
+            rc = convert_predicate_date_between_values(
+                database,
+                child_at(predicate_node, 1U),
+                child_at(predicate_node, 2U),
+                &node.column,
+                &node.value,
+                &node.upper_value,
+                &node.compare_date_as_datetime
+            );
+        } else {
+            rc = convert_predicate_value(
+                database,
+                child_at(predicate_node, 1U),
+                &node.column,
+                &node.value
+            );
+            if (rc == MYLITE_OK) {
+                rc = convert_predicate_value(
+                    database,
+                    child_at(predicate_node, 2U),
+                    &node.column,
+                    &node.upper_value
+                );
+            }
+        }
     }
     if (rc != MYLITE_OK) {
+        planned_value_deinit(&node.value);
+        planned_value_deinit(&node.upper_value);
         return rc;
     }
 
@@ -112169,13 +112263,24 @@ static int plan_in_literal_predicate(
             set_unsupported_error(database, "WHERE set predicates do not yet support IN");
             return MYLITE_ERROR;
         }
-        rc = convert_predicate_in_value_list(
-            database,
-            child_at(predicate_node, 1U),
-            &node.column,
-            &node.values,
-            &node.value_count
-        );
+        if (column_descriptor_is_date(&node.column)) {
+            rc = convert_predicate_date_in_value_list(
+                database,
+                child_at(predicate_node, 1U),
+                &node.column,
+                &node.values,
+                &node.value_count,
+                &node.compare_date_as_datetime
+            );
+        } else {
+            rc = convert_predicate_in_value_list(
+                database,
+                child_at(predicate_node, 1U),
+                &node.column,
+                &node.values,
+                &node.value_count
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
@@ -112877,7 +112982,7 @@ static int convert_predicate_value(
         return convert_predicate_year_literal(database, value_node, column, out_value);
     }
     if (column_descriptor_is_date(column)) {
-        return convert_predicate_date_literal(database, value_node, column, out_value);
+        return convert_predicate_date_literal(database, value_node, column, false, out_value, NULL);
     }
     if (column_descriptor_is_time(column)) {
         return convert_predicate_time_literal(database, value_node, column, out_value);
@@ -112889,6 +112994,250 @@ static int convert_predicate_value(
         return convert_predicate_timestamp_literal(database, value_node, column, out_value);
     }
     return convert_predicate_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_predicate_value_with_date_comparison_mode(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value,
+    bool *out_compare_date_as_datetime
+) {
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    if (column_descriptor_is_date(column)) {
+        return convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            false,
+            out_value,
+            out_compare_date_as_datetime
+        );
+    }
+    return convert_predicate_value(database, value_node, column, out_value);
+}
+
+static int convert_predicate_date_between_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *lower_node,
+    const struct mylite_sql_ast_node *upper_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_lower_value,
+    struct planned_value *out_upper_value,
+    bool *out_compare_date_as_datetime
+) {
+    bool lower_is_datetime = false;
+    bool upper_is_datetime = false;
+    int rc = MYLITE_OK;
+
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    rc = convert_predicate_date_literal(
+        database,
+        lower_node,
+        column,
+        false,
+        out_lower_value,
+        &lower_is_datetime
+    );
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_date_literal(
+            database,
+            upper_node,
+            column,
+            false,
+            out_upper_value,
+            &upper_is_datetime
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!lower_is_datetime && !upper_is_datetime) {
+        return MYLITE_OK;
+    }
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = true;
+    }
+    if (!lower_is_datetime) {
+        planned_value_deinit(out_lower_value);
+        rc = convert_predicate_date_literal(
+            database,
+            lower_node,
+            column,
+            true,
+            out_lower_value,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK && !upper_is_datetime) {
+        planned_value_deinit(out_upper_value);
+        rc = convert_predicate_date_literal(
+            database,
+            upper_node,
+            column,
+            true,
+            out_upper_value,
+            NULL
+        );
+    }
+
+    return rc;
+}
+
+static int convert_predicate_date_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count,
+    bool *out_compare_date_as_datetime
+) {
+    struct planned_value *values = NULL;
+    size_t value_count = 0U;
+    bool uses_datetime = false;
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    *out_value_count = 0U;
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = false;
+    }
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST ||
+        mylite_sql_ast_node_child_count(value_list) == 0U) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(value_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = convert_predicate_date_in_values(
+        database,
+        value_list,
+        column,
+        values,
+        value_count,
+        &uses_datetime
+    );
+    if (rc == MYLITE_OK && uses_datetime) {
+        rc = convert_predicate_date_in_values_to_datetime(
+            database,
+            value_list,
+            column,
+            values,
+            value_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_array_deinit(values, value_count);
+        free(values);
+        return rc;
+    }
+
+    if (out_compare_date_as_datetime != NULL) {
+        *out_compare_date_as_datetime = uses_datetime;
+    }
+    *out_values = values;
+    *out_value_count = value_count;
+    return MYLITE_OK;
+}
+
+static int convert_predicate_date_in_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count,
+    bool *out_uses_datetime
+) {
+    *out_uses_datetime = false;
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+        bool value_is_datetime = false;
+        int rc = MYLITE_OK;
+
+        if (predicate_comparison_value_is_null(value_node)) {
+            values[value_index] = (struct planned_value){.is_null = true, .integer = 0};
+            continue;
+        }
+        rc = convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            false,
+            &values[value_index],
+            &value_is_datetime
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (value_is_datetime) {
+            *out_uses_datetime = true;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int convert_predicate_date_in_values_to_datetime(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *values,
+    size_t value_count
+) {
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+
+        if (date_in_value_already_compares_as_datetime(value_node, &values[value_index])) {
+            continue;
+        }
+        planned_value_deinit(&values[value_index]);
+        int rc = convert_predicate_date_literal(
+            database,
+            value_node,
+            column,
+            true,
+            &values[value_index],
+            NULL
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool date_in_value_already_compares_as_datetime(
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_value *value
+) {
+    if (predicate_comparison_value_is_null(value_node)) {
+        return true;
+    }
+    if (!value->is_text) {
+        return false;
+    }
+    if (value->text_length != datetime_text_length) {
+        return false;
+    }
+    return true;
+}
+
+static void planned_value_array_deinit(struct planned_value *values, size_t value_count) {
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        planned_value_deinit(&values[value_index]);
+    }
 }
 
 static int convert_predicate_enum_literal(
@@ -113110,13 +113459,19 @@ static int convert_predicate_date_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
-    struct planned_value *out_value
+    bool force_datetime_comparison,
+    struct planned_value *out_value,
+    bool *out_compare_as_datetime
 ) {
     char *text = NULL;
     size_t text_length = 0U;
+    char normalized[datetime_text_length + 1U];
+    bool append_warning = false;
     int rc = MYLITE_OK;
 
-    (void)column;
+    if (out_compare_as_datetime != NULL) {
+        *out_compare_as_datetime = false;
+    }
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "WHERE DATE predicates support only string literals");
@@ -113134,13 +113489,101 @@ static int convert_predicate_date_literal(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!predicate_date_text_admitted(database, text, text_length)) {
-        set_incorrect_date_literal_error(database, text);
-        free(text);
-        return MYLITE_ERROR;
+    if (predicate_date_text_admitted(database, text, text_length)) {
+        if (force_datetime_comparison) {
+            rc = copy_date_midnight_predicate_value(database, text, out_value);
+            free(text);
+            return rc;
+        }
+        return assign_text_value(database, text, text_length, out_value);
     }
 
-    return assign_text_value(database, text, text_length, out_value);
+    if (normalize_date_datetime_predicate_text(text, text_length, normalized, &append_warning)) {
+        if (!predicate_datetime_text_admitted(database, normalized, datetime_text_length)) {
+            set_incorrect_date_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        if (append_warning) {
+            rc = append_incorrect_date_predicate_warning(database, text, column->name);
+            if (rc != MYLITE_OK) {
+                free(text);
+                return rc;
+            }
+        }
+        if (out_compare_as_datetime != NULL) {
+            *out_compare_as_datetime = true;
+        }
+        free(text);
+        return copy_text_value(database, normalized, out_value);
+    }
+
+    set_incorrect_date_literal_error(database, text);
+    free(text);
+    return MYLITE_ERROR;
+}
+
+static bool normalize_date_datetime_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text,
+    bool *out_append_warning
+) {
+    int ignored_offset_minutes = 0;
+
+    if (text == NULL || out_text == NULL || out_append_warning == NULL) {
+        return false;
+    }
+    *out_append_warning = false;
+    if (text_length == datetime_text_length && (text[datetime_date_time_separator_offset] == ' ' ||
+                                                text[datetime_date_time_separator_offset] == 'T')) {
+        memcpy(out_text, text, datetime_text_length);
+        out_text[datetime_date_time_separator_offset] = ' ';
+        out_text[datetime_text_length] = '\0';
+        return datetime_text_has_canonical_shape(out_text, datetime_text_length);
+    }
+    if (text_length == datetime_text_length + temporal_predicate_offset_text_length &&
+        (text[datetime_date_time_separator_offset] == ' ' ||
+         text[datetime_date_time_separator_offset] == 'T')) {
+        memcpy(out_text, text, datetime_text_length);
+        out_text[datetime_date_time_separator_offset] = ' ';
+        out_text[datetime_text_length] = '\0';
+        if (!datetime_text_has_canonical_shape(out_text, datetime_text_length)) {
+            return false;
+        }
+        return parse_temporal_predicate_offset(
+            text + datetime_text_length,
+            &ignored_offset_minutes
+        );
+    }
+    if (text_length == datetime_text_length + 1U &&
+        (text[datetime_date_time_separator_offset] == ' ' ||
+         text[datetime_date_time_separator_offset] == 'T') &&
+        (text[datetime_text_length] == 'Z' || text[datetime_text_length] == 'z')) {
+        memcpy(out_text, text, datetime_text_length);
+        out_text[datetime_date_time_separator_offset] = ' ';
+        out_text[datetime_text_length] = '\0';
+        *out_append_warning = true;
+        return datetime_text_has_canonical_shape(out_text, datetime_text_length);
+    }
+
+    return false;
+}
+
+static int copy_date_midnight_predicate_value(
+    struct mylite_db *database,
+    const char *date_text,
+    struct planned_value *out_value
+) {
+    char text[datetime_text_length + 1U];
+
+    if (date_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    memcpy(text, date_text, date_text_length);
+    memcpy(text + date_text_length, " 00:00:00", datetime_text_length - date_text_length);
+    text[datetime_text_length] = '\0';
+    return copy_text_value(database, text, out_value);
 }
 
 static int convert_predicate_time_literal(
@@ -124305,12 +124748,8 @@ static int append_select_predicate_column_term_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    int rc = append_descriptor_value_sql_for_source(
-        string,
-        &node->column,
-        node->column_source_index,
-        predicate->qualify_column_references
-    );
+    int rc =
+        append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -124346,12 +124785,8 @@ static int append_select_predicate_column_term_sql_without_subqueries(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
-    int rc = append_descriptor_value_sql_for_source(
-        string,
-        &node->column,
-        node->column_source_index,
-        predicate->qualify_column_references
-    );
+    int rc =
+        append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -124493,6 +124928,46 @@ static int append_descriptor_value_sql_for_source(
     }
 
     return append_descriptor_column_name_sql_for_source(string, column, source_index, qualify);
+}
+
+static int append_select_predicate_subject_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    bool qualify
+) {
+    if (node->compare_date_as_datetime) {
+        return append_date_midnight_value_sql_for_source(
+            string,
+            &node->column,
+            node->column_source_index,
+            qualify
+        );
+    }
+
+    return append_descriptor_value_sql_for_source(
+        string,
+        &node->column,
+        node->column_source_index,
+        qualify
+    );
+}
+
+static int append_date_midnight_value_sql_for_source(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_column_name_sql_for_source(string, column, source_index, qualify);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " || ' 00:00:00')");
+    }
+
+    return rc;
 }
 
 static int append_descriptor_column_name_sql_for_source(
@@ -132473,6 +132948,36 @@ static int append_incorrect_datetime_predicate_warning(
         message,
         sizeof(message),
         "Incorrect datetime value: '%s' for column '%s' at row 1",
+        value_text,
+        column_name
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_temporal,
+        "22007",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_incorrect_date_predicate_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect date value: '%s' for column '%s' at row 1",
         value_text,
         column_name
     );

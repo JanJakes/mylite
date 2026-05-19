@@ -3403,6 +3403,14 @@ expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
 }
+expression(A) ::= GREATEST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_GREATEST_FUNCTION, B, R);
+}
+expression(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
+}
 expression(A) ::= JSON_ARRAY(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_JSON_ARRAY_FUNCTION, R);
@@ -3967,6 +3975,14 @@ expression(A) ::= CONCAT_WS(T) LPAREN RPAREN(R). {
 expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= GREATEST(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LEAST(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= JSON_VALID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4860,6 +4876,12 @@ identifier(A) ::= CONCAT_WS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= GREATEST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LEAST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_ARRAY(T). {

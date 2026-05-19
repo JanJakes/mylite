@@ -1208,6 +1208,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "field_function";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         return "field_argument_count_error";
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+        return "greatest_function";
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+        return "greatest_argument_count_error";
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+        return "least_function";
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+        return "least_argument_count_error";
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
         return "find_in_set_function";
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:

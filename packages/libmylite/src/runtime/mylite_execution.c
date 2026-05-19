@@ -2479,6 +2479,8 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE = 31,
     PLANNED_ROW_SCALAR_EXPRESSION_UNHEX = 32,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT = 33,
+    PLANNED_ROW_SCALAR_EXPRESSION_GREATEST = 34,
+    PLANNED_ROW_SCALAR_EXPRESSION_LEAST = 35,
 };
 
 enum planned_row_scalar_field_domain {
@@ -6357,6 +6359,12 @@ struct field_scalar_argument {
 struct field_scalar_argument_list {
     const struct field_scalar_argument *values;
     size_t count;
+};
+
+struct greatest_least_scalar_selection {
+    size_t argument_count;
+    enum planned_row_scalar_field_domain domain;
+    bool is_greatest;
 };
 
 struct date_add_datetime_parts {
@@ -11947,6 +11955,59 @@ static int field_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int greatest_least_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static const char *greatest_least_function_name(const struct mylite_sql_ast_node *expression);
+static int evaluate_greatest_least_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct field_scalar_argument *values,
+    size_t argument_count,
+    enum planned_row_scalar_field_domain *out_domain
+);
+static int evaluate_greatest_least_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+);
+static int evaluate_greatest_least_scalar_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct field_scalar_argument *out_argument
+);
+static int evaluate_greatest_least_scalar_integer_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+);
+static int merge_greatest_least_domain(
+    struct mylite_db *database,
+    enum planned_row_scalar_field_domain incoming,
+    enum planned_row_scalar_field_domain *inout_domain
+);
+static size_t greatest_least_scalar_result_index(
+    const struct field_scalar_argument *values,
+    struct greatest_least_scalar_selection selection
+);
+static int compare_greatest_least_scalar_arguments(
+    const struct field_scalar_argument *left,
+    const struct field_scalar_argument *right,
+    enum planned_row_scalar_field_domain domain
+);
+static int field_ascii_text_compare_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+);
+static int format_greatest_least_scalar_result(
+    struct mylite_db *database,
+    const struct field_scalar_argument *value,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_field_scalar_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *arguments,
@@ -13620,6 +13681,7 @@ static bool is_date_interval_second_projection_expression(
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_field_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_greatest_least_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_regexp_like_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_valid_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_json_extract_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -18976,6 +19038,43 @@ static int plan_row_scalar_field_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_greatest_least_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_greatest_least_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum planned_row_scalar_field_domain *inout_domain
+);
+static int plan_row_scalar_greatest_least_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_greatest_least_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_greatest_least_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_date_format_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -19998,6 +20097,11 @@ static int append_row_scalar_concat_ws_expression_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_field_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_greatest_least_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -21050,6 +21154,11 @@ static int bind_row_scalar_non_concat_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_field_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_reversed_arguments_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -22372,6 +22481,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
     case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
@@ -29771,9 +29884,9 @@ static int execute_do_statement(
             "CRC32()/HEX()/UNHEX()/FORMAT()/TRUNCATE(), limited CAST(value AS BINARY/CHAR/"
             "SIGNED/UNSIGNED), limited CONVERT(value, BINARY/CHAR/SIGNED/UNSIGNED), limited "
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
-            "extract, limited FIELD(), limited CONCAT_WS(), limited JSON_VALID(), JSON_ARRAY(), "
-            "JSON_OBJECT(), and limited string length, string case, string slice, CHARSET(), and "
-            "COLLATION() functions, and top-level CASE expressions"
+            "extract, limited FIELD(), GREATEST(), LEAST(), limited CONCAT_WS(), limited "
+            "JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), and limited string length, string case, "
+            "string slice, CHARSET(), and COLLATION() functions, and top-level CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -29920,8 +30033,8 @@ static int execute_select_statement(
             "CRC32()/FORMAT()/TRUNCATE(), and "
             "CAST(value AS BINARY/CHAR/SIGNED/UNSIGNED), CONVERT(value, BINARY/CHAR/SIGNED/"
             "UNSIGNED), DATE_ADD(... INTERVAL ... SECOND), DATE_FORMAT(), and "
-            "limited JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), string length, string case, "
-            "string trim, and string slice functions"
+            "limited FIELD(), GREATEST(), LEAST(), JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), "
+            "string length, string case, string trim, and string slice functions"
         );
         return MYLITE_ERROR;
     }
@@ -39293,6 +39406,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
     case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
@@ -67985,6 +68102,10 @@ static const char *argument_count_error_node_function_name(
         return "CONCAT_WS";
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
         return "FIELD";
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+        return "GREATEST";
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+        return "LEAST";
     case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
         return "JSON_VALID";
     case MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR:
@@ -68383,6 +68504,15 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_FIELD_FUNCTION:
         return field_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "GREATEST");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "LEAST");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+        return greatest_least_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FIND_IN_SET");
         return MYLITE_ERROR;
@@ -73622,6 +73752,9 @@ static int session_scalar_value_without_case(
         return nullif_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
         return isnull_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+        return greatest_least_function_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
@@ -73726,6 +73859,423 @@ static int field_function_value(
     }
     free(values);
     return rc;
+}
+
+static int greatest_least_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const char *function_name = greatest_least_function_name(expression);
+    const struct mylite_sql_ast_node *arguments = NULL;
+    struct field_scalar_argument *values = NULL;
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    size_t argument_count = 0U;
+    size_t result_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (function_name == NULL || expression == NULL ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "GREATEST() and LEAST() support only flat argument lists");
+        return MYLITE_ERROR;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < 2U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    if (argument_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = (struct field_scalar_argument *)calloc(argument_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = evaluate_greatest_least_scalar_arguments(
+        database,
+        arguments,
+        values,
+        argument_count,
+        &domain
+    );
+    if (rc == MYLITE_OK) {
+        for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+            if (values[argument_index].is_null) {
+                goto done;
+            }
+        }
+        result_index = greatest_least_scalar_result_index(
+            values,
+            (struct greatest_least_scalar_selection){
+                .argument_count = argument_count,
+                .domain = domain,
+                .is_greatest = expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION,
+            }
+        );
+        rc = format_greatest_least_scalar_result(database, &values[result_index], out_cell);
+    }
+
+done:
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        field_scalar_argument_deinit(&values[argument_index]);
+    }
+    free(values);
+    return rc;
+}
+
+static const char *greatest_least_function_name(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR) {
+        return "GREATEST";
+    }
+    if (expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR) {
+        return "LEAST";
+    }
+    return NULL;
+}
+
+static int evaluate_greatest_least_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct field_scalar_argument *values,
+    size_t argument_count,
+    enum planned_row_scalar_field_domain *out_domain
+) {
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+
+    if (values == NULL || out_domain == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        int rc = MYLITE_OK;
+
+        if (argument == NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        rc = evaluate_greatest_least_scalar_argument(database, argument, &values[argument_index]);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = merge_greatest_least_domain(database, values[argument_index].domain, &domain);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        argument = argument->next_sibling;
+    }
+    if (argument != NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_domain = domain;
+    return MYLITE_OK;
+}
+
+static int evaluate_greatest_least_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_argument = (struct field_scalar_argument){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return evaluate_greatest_least_scalar_integer_argument(database, expression, out_argument);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        return evaluate_greatest_least_scalar_string_argument(database, expression, out_argument);
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return evaluate_greatest_least_scalar_integer_argument(database, expression, out_argument);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+        out_argument->integer = 1;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+        out_argument->integer = 0;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_argument->is_null = true;
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int evaluate_greatest_least_scalar_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct field_scalar_argument *out_argument
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "GREATEST() and LEAST() support only string literals",
+        "GREATEST() and LEAST() string literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!field_ascii_text_is_supported(text, text_length)) {
+        free(text);
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() string literals support only ASCII values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+    out_argument->text = text;
+    out_argument->text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int evaluate_greatest_least_scalar_integer_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct field_scalar_argument *out_argument
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "GREATEST() and LEAST() support only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only signed integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK || (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        out_argument->integer = INT64_MIN;
+    } else if (is_negative) {
+        out_argument->integer = -(int64_t)magnitude;
+    } else {
+        out_argument->integer = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int merge_greatest_least_domain(
+    struct mylite_db *database,
+    enum planned_row_scalar_field_domain incoming,
+    enum planned_row_scalar_field_domain *inout_domain
+) {
+    if (inout_domain == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (incoming == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+        return MYLITE_OK;
+    }
+    if (*inout_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+        *inout_domain = incoming;
+        return MYLITE_OK;
+    }
+    if (*inout_domain == incoming) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "GREATEST() and LEAST() do not support mixed string and numeric arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static size_t greatest_least_scalar_result_index(
+    const struct field_scalar_argument *values,
+    struct greatest_least_scalar_selection selection
+) {
+    size_t result_index = 0U;
+
+    if (values == NULL || selection.argument_count == 0U) {
+        return 0U;
+    }
+    for (size_t argument_index = 1U; argument_index < selection.argument_count; ++argument_index) {
+        int comparison = compare_greatest_least_scalar_arguments(
+            &values[argument_index],
+            &values[result_index],
+            selection.domain
+        );
+
+        if ((selection.is_greatest && comparison >= 0) ||
+            (!selection.is_greatest && comparison < 0)) {
+            result_index = argument_index;
+        }
+    }
+    return result_index;
+}
+
+static int compare_greatest_least_scalar_arguments(
+    const struct field_scalar_argument *left,
+    const struct field_scalar_argument *right,
+    enum planned_row_scalar_field_domain domain
+) {
+    if (domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) {
+        return field_ascii_text_compare_case_insensitive(
+            left->text,
+            left->text_length,
+            right->text,
+            right->text_length
+        );
+    }
+    if (left->integer < right->integer) {
+        return -1;
+    }
+    if (left->integer > right->integer) {
+        return 1;
+    }
+    return 0;
+}
+
+static int field_ascii_text_compare_case_insensitive(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+) {
+    size_t common_length = left_length < right_length ? left_length : right_length;
+
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < common_length; ++index) {
+        unsigned char left_byte = (unsigned char)ascii_lower((unsigned char)left[index]);
+        unsigned char right_byte = (unsigned char)ascii_lower((unsigned char)right[index]);
+
+        if (left_byte < right_byte) {
+            return -1;
+        }
+        if (left_byte > right_byte) {
+            return 1;
+        }
+    }
+    if (left_length < right_length) {
+        return -1;
+    }
+    if (left_length > right_length) {
+        return 1;
+    }
+    return 0;
+}
+
+static int format_greatest_least_scalar_result(
+    struct mylite_db *database,
+    const struct field_scalar_argument *value,
+    struct session_scalar_cell *out_cell
+) {
+    if (value == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value->domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING) {
+        out_cell->owned_text = (char *)malloc(value->text_length + 1U);
+        if (out_cell->owned_text == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(out_cell->owned_text, value->text, value->text_length);
+        out_cell->owned_text[value->text_length] = '\0';
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = value->text_length;
+        out_cell->has_value_size = true;
+        return MYLITE_OK;
+    }
+
+    int written = snprintf(
+        out_cell->integer_text,
+        sizeof(out_cell->integer_text),
+        "%" PRId64,
+        value->integer
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format GREATEST() or LEAST() value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
 }
 
 static int evaluate_field_scalar_arguments(
@@ -85574,6 +86124,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_field_projection_expression(expression)) {
         return true;
     }
+    if (is_greatest_least_projection_expression(expression)) {
+        return true;
+    }
     if (is_regexp_like_projection_expression(expression)) {
         return true;
     }
@@ -86328,6 +86881,24 @@ static bool is_field_projection_expression(const struct mylite_sql_ast_node *exp
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_FIELD_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return false;
+    }
+    return mylite_sql_ast_node_child_count(arguments) >= 1U;
+}
+
+static bool is_greatest_least_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL ||
+        (expression->kind != MYLITE_SQL_AST_GREATEST_FUNCTION &&
+         expression->kind != MYLITE_SQL_AST_LEAST_FUNCTION) ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }
@@ -99851,6 +100422,26 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "GREATEST");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "LEAST");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION) {
+        return plan_row_scalar_greatest_least_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) {
         return plan_row_scalar_date_format_expression(
             database,
@@ -105219,6 +105810,8 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return expression->field_domain;
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
@@ -105332,6 +105925,17 @@ static int plan_row_scalar_non_concat_expression(
         expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return plan_row_scalar_session_value(database, expression, out_expression);
     }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level "
+            "projection expressions"
+        );
+        return MYLITE_ERROR;
+    }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -105367,11 +105971,11 @@ static int plan_row_scalar_non_concat_expression(
 
     set_unsupported_error(
         database,
-        "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), DATE_FORMAT(), "
-        "descriptor columns, limited temporal extract, string length, string case, string trim, "
-        "string codepoint, string slice, string search, string replacement, control-flow "
-        "functions, HEX(), JSON_VALID(), CHARSET(), and COLLATION() functions, literals, "
-        "DATABASE(), and system variables"
+        "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), GREATEST(), LEAST(), "
+        "DATE_FORMAT(), descriptor columns, limited temporal extract, string length, string "
+        "case, string trim, string codepoint, string slice, string search, string replacement, "
+        "control-flow functions, HEX(), JSON_VALID(), CHARSET(), and COLLATION() functions, "
+        "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
 }
@@ -106873,6 +107477,309 @@ static enum planned_row_scalar_field_domain row_scalar_field_column_domain(
     return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
 }
 
+static int plan_row_scalar_greatest_least_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const char *function_name = greatest_least_function_name(expression);
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || mylite_sql_ast_node_child_count(expression) != 1U ||
+        arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < 2U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    if (argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION
+                               ? PLANNED_ROW_SCALAR_EXPRESSION_GREATEST
+                               : PLANNED_ROW_SCALAR_EXPRESSION_LEAST;
+    out_expression->argument_count = argument_count;
+
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        rc = plan_row_scalar_greatest_least_argument(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index],
+            &domain
+        );
+        argument = argument->next_sibling;
+    }
+    if (rc == MYLITE_OK && argument != NULL) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->field_domain = domain;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_greatest_least_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum planned_row_scalar_field_domain *inout_domain
+) {
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        rc = plan_row_scalar_greatest_least_literal_value(database, expression, out_expression);
+    } else if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = plan_row_scalar_greatest_least_integer_value(database, expression, out_expression);
+    } else if (
+        expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER
+    ) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+
+            rc = collect_column_reference_parts(database, expression, parts, &part_count);
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        rc = plan_row_scalar_greatest_least_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    } else {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    domain = row_scalar_field_argument_domain(out_expression);
+    if (out_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
+        domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING &&
+        !field_ascii_text_is_supported(
+            out_expression->value.text,
+            out_expression->value.text_length
+        )) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() string literals support only ASCII values"
+        );
+        return MYLITE_ERROR;
+    }
+    return merge_greatest_least_domain(database, domain, inout_domain);
+}
+
+static int plan_row_scalar_greatest_least_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT GREATEST() and LEAST() support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    domain = row_scalar_field_column_domain(&column);
+    if (domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_greatest_least_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "GREATEST() and LEAST() support only string literals",
+            "GREATEST() and LEAST() string literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc == MYLITE_OK) {
+            rc = assign_text_value(database, text, text_length, &out_expression->value);
+        }
+        return rc;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return plan_row_scalar_greatest_least_integer_value(database, literal, out_expression);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 0};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_greatest_least_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "GREATEST() and LEAST() support only signed integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() support only signed integer literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK || (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "GREATEST() and LEAST() integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        value = INT64_MIN;
+    } else if (is_negative) {
+        value = -(int64_t)magnitude;
+    } else {
+        value = (int64_t)magnitude;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = false, .integer = value};
+    return MYLITE_OK;
+}
+
 static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expression *expression) {
     if (expression == NULL) {
         return;
@@ -106966,6 +107873,10 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION ||
             current->kind == MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_FIELD_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
@@ -119379,6 +120290,9 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
         return true;
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
@@ -120174,6 +121088,9 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_concat_ws_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
         return append_row_scalar_field_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
         return append_row_scalar_date_format_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
@@ -120274,6 +121191,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -120439,6 +121358,52 @@ static int append_row_scalar_field_expression_sql(
         rc = dynamic_string_append(string, " ELSE 0 END)");
     }
 
+    return rc;
+}
+
+static int append_row_scalar_greatest_least_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *sqlite_function = NULL;
+    bool use_string_collation = false;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_GREATEST) {
+        sqlite_function = "max";
+    } else if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_LEAST) {
+        sqlite_function = "min";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    use_string_collation = expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+    rc = dynamic_string_append(string, sqlite_function);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t offset = 0U; rc == MYLITE_OK && offset < expression->argument_count; ++offset) {
+        size_t argument_index = expression->argument_count - 1U - offset;
+
+        if (offset != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_field_operand_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter,
+                use_string_collation
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
     return rc;
 }
 
@@ -121115,6 +122080,8 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -121293,6 +122260,8 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -121346,6 +122315,8 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -121732,6 +122703,8 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -121789,6 +122762,8 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -126694,6 +127669,13 @@ static int bind_row_scalar_expression_parameters(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
         return bind_row_scalar_field_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return bind_row_scalar_reversed_arguments_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
         return bind_row_scalar_date_format_expression_parameters(
             statement,
@@ -126861,6 +127843,8 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -126928,6 +127912,28 @@ static int bind_row_scalar_field_expression_parameters(
         }
     }
 
+    return rc;
+}
+
+static int bind_row_scalar_reversed_arguments_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t offset = 0U; rc == MYLITE_OK && offset < expression->argument_count; ++offset) {
+        size_t argument_index = expression->argument_count - 1U - offset;
+
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
     return rc;
 }
 
@@ -127237,6 +128243,8 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -127400,6 +128408,8 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -127448,6 +128458,8 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:

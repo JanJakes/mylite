@@ -2050,6 +2050,15 @@ insert_value(A) ::= current_date_value(T). {
 insert_value(A) ::= current_time_value(T). {
     A = T;
 }
+insert_value(A) ::= utc_date_value(T). {
+    A = T;
+}
+insert_value(A) ::= utc_time_value(T). {
+    A = T;
+}
+insert_value(A) ::= utc_timestamp_value(T). {
+    A = T;
+}
 insert_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_dml_default_value(state, T);
 }
@@ -2122,6 +2131,15 @@ update_value(A) ::= current_date_value(T). {
     A = T;
 }
 update_value(A) ::= current_time_value(T). {
+    A = T;
+}
+update_value(A) ::= utc_date_value(T). {
+    A = T;
+}
+update_value(A) ::= utc_time_value(T). {
+    A = T;
+}
+update_value(A) ::= utc_timestamp_value(T). {
     A = T;
 }
 update_value(A) ::= DEFAULT(T). {
@@ -3270,6 +3288,15 @@ expression(A) ::= current_date_value(T). {
 expression(A) ::= current_time_value(T). {
     A = T;
 }
+expression(A) ::= utc_date_value(T). {
+    A = T;
+}
+expression(A) ::= utc_time_value(T). {
+    A = T;
+}
+expression(A) ::= utc_timestamp_value(T). {
+    A = T;
+}
 expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
     A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
@@ -3365,6 +3392,27 @@ current_time_value(A) ::= CURRENT_TIME(T) LPAREN RPAREN(R). {
 current_time_value(A) ::= CURTIME(T) LPAREN(L) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
         state, T, L, MYLITE_SQL_AST_CURRENT_TIME_VALUE, R);
+}
+utc_date_value(A) ::= UTC_DATE(T). {
+    A = mylite_sql_parser_make_utc_date_keyword(state, T);
+}
+utc_date_value(A) ::= UTC_DATE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UTC_DATE_VALUE, R);
+}
+utc_time_value(A) ::= UTC_TIME(T). {
+    A = mylite_sql_parser_make_utc_time_keyword(state, T);
+}
+utc_time_value(A) ::= UTC_TIME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UTC_TIME_VALUE, R);
+}
+utc_timestamp_value(A) ::= UTC_TIMESTAMP(T). {
+    A = mylite_sql_parser_make_utc_timestamp_keyword(state, T);
+}
+utc_timestamp_value(A) ::= UTC_TIMESTAMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE, R);
 }
 expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(

@@ -86,6 +86,9 @@ static int test_keywords(void) {
     failures += expect_keyword("version", 0U);
     failures += expect_keyword("connection_id", 0U);
     failures += expect_keyword("count", 0U);
+    failures += expect_keyword("utc_date", MYLITE_SQL_KEYWORD_RESERVED);
+    failures += expect_keyword("utc_time", MYLITE_SQL_KEYWORD_RESERVED);
+    failures += expect_keyword("utc_timestamp", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_keyword("avg", 0U);
     failures += expect_keyword("pi", 0U);
     failures += expect_keyword("sqrt", 0U);

@@ -1505,6 +1505,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_time_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_time_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_date_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_date_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_time_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_time_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_timestamp_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_timestamp_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column

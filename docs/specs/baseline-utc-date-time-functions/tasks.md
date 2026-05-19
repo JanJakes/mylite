@@ -5,11 +5,11 @@
 - [x] Specify the independently authored MyLite grammar and runtime semantics.
 - [x] Add MySQL expectation script coverage for supported and deferred
       user-visible behavior.
-- [ ] Extend lexer/parser/AST support for `UTC_DATE`, `UTC_TIME`, and
+- [x] Extend lexer/parser/AST support for `UTC_DATE`, `UTC_TIME`, and
       `UTC_TIMESTAMP`.
-- [ ] Add runtime UTC scalar formatting and compatible `DATE` / `TIME` /
+- [x] Add runtime UTC scalar formatting and compatible `DATE` / `TIME` /
       `DATETIME` / `TIMESTAMP` DML value conversion.
-- [ ] Add parser and runtime C tests.
-- [ ] Update compatibility documentation with limited wording.
-- [ ] Run focused build/tests plus `cmake --workflow --preset check`.
-- [ ] Review, commit, and push the completed slice.
+- [x] Add parser and runtime C tests.
+- [x] Update compatibility documentation with limited wording.
+- [x] Run focused build/tests plus `cmake --workflow --preset check`.
+- [x] Review, commit, and push the completed slice.

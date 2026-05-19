@@ -134,6 +134,7 @@ static int test_datetime_type_statements(void);
 static int test_time_type_statements(void);
 static int test_timestamp_type_statements(void);
 static int test_current_date_time_function_statements(void);
+static int test_utc_date_time_function_statements(void);
 static int test_create_table_primary_key_statements(void);
 static int test_create_table_foreign_key_statements(void);
 static int test_create_index_statements(void);
@@ -421,6 +422,7 @@ int main(void) {
     failures += test_time_type_statements();
     failures += test_timestamp_type_statements();
     failures += test_current_date_time_function_statements();
+    failures += test_utc_date_time_function_statements();
     failures += test_create_table_primary_key_statements();
     failures += test_create_table_foreign_key_statements();
     failures += test_create_index_statements();
@@ -13320,6 +13322,144 @@ static int test_current_date_time_function_statements(void) {
         MYLITE_SQL_AST_CURRENT_TIME_VALUE,
         "ignore_space CURTIME select item"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_utc_date_time_function_statements(void) {
+    enum {
+        utc_date_item_index = 0U,
+        utc_date_call_item_index = 1U,
+        utc_time_item_index = 2U,
+        utc_time_call_item_index = 3U,
+        utc_timestamp_item_index = 4U,
+        utc_timestamp_call_item_index = 5U,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT UTC_DATE, UTC_DATE(), UTC_TIME, UTC_TIME(), UTC_TIMESTAMP, UTC_TIMESTAMP();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, utc_date_item_index), 0U),
+        MYLITE_SQL_AST_UTC_DATE_VALUE,
+        "UTC_DATE select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, utc_date_call_item_index), 0U),
+        MYLITE_SQL_AST_UTC_DATE_VALUE,
+        "UTC_DATE() select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, utc_time_item_index), 0U),
+        MYLITE_SQL_AST_UTC_TIME_VALUE,
+        "UTC_TIME select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, utc_time_call_item_index), 0U),
+        MYLITE_SQL_AST_UTC_TIME_VALUE,
+        "UTC_TIME() select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, utc_timestamp_item_index), 0U),
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        "UTC_TIMESTAMP select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, utc_timestamp_call_item_index), 0U),
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        "UTC_TIMESTAMP() select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT UTC_DATE (), UTC_TIME (), UTC_TIMESTAMP ();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, utc_date_item_index), 0U),
+        MYLITE_SQL_AST_UTC_DATE_VALUE,
+        "UTC_DATE whitespace select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_UTC_TIME_VALUE,
+        "UTC_TIME whitespace select item"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 2U), 0U),
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        "UTC_TIMESTAMP whitespace select item"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO t VALUES (UTC_DATE(), UTC_TIME(), UTC_TIMESTAMP());",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "INSERT INTO t SET d = UTC_DATE, tm = UTC_TIME, dt = UTC_TIMESTAMP;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "REPLACE INTO t VALUES (UTC_DATE(), UTC_TIME(), UTC_TIMESTAMP());",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "REPLACE INTO t SET d = UTC_DATE, tm = UTC_TIME, dt = UTC_TIMESTAMP;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE t SET d = UTC_DATE, tm = UTC_TIME, dt = UTC_TIMESTAMP;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_UTC_DATE_VALUE,
+        "UTC_DATE update assignment"
+    );
+    assignment = child_at(child_at(statement, 1U), 1U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_UTC_TIME_VALUE,
+        "UTC_TIME update assignment"
+    );
+    assignment = child_at(child_at(statement, 1U), 2U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        "UTC_TIMESTAMP update assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT UTC_DATE(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT UTC_TIME(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT UTC_TIMESTAMP(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

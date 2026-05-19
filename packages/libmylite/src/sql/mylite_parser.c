@@ -5162,6 +5162,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_time_keyword(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_date_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_date_token
+) {
+    return make_node(state, MYLITE_SQL_AST_UTC_DATE_VALUE, span_from_token(&utc_date_token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_time_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_time_token
+) {
+    return make_node(state, MYLITE_SQL_AST_UTC_TIME_VALUE, span_from_token(&utc_time_token));
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_utc_timestamp_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token utc_timestamp_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE,
+        span_from_token(&utc_timestamp_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column
@@ -6667,6 +6692,9 @@ static bool map_keyword_token(
         {"CURRENT_TIMESTAMP", MYLITE_SQL_PARSE_CURRENT_TIMESTAMP},
         {"CURRENT_USER", MYLITE_SQL_PARSE_CURRENT_USER},
         {"CURTIME", MYLITE_SQL_PARSE_CURTIME},
+        {"UTC_DATE", MYLITE_SQL_PARSE_UTC_DATE},
+        {"UTC_TIME", MYLITE_SQL_PARSE_UTC_TIME},
+        {"UTC_TIMESTAMP", MYLITE_SQL_PARSE_UTC_TIMESTAMP},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},

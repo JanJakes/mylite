@@ -56,9 +56,9 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `TO_DAYS()` | ❌ | Return date argument converted to days |
 | `TO_SECONDS()` | ❌ | Seconds since year 0 |
 | `UNIX_TIMESTAMP()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `UNIX_TIMESTAMP()` / `UNIX_TIMESTAMP(value)` over `NULL`, canonical date/datetime string literals, and descriptor `DATE` / `DATETIME` / `TIMESTAMP` columns; no-argument form respects the current statement timestamp override, string/`DATE`/`DATETIME` values use the limited session fixed-offset `time_zone`, and `TIMESTAMP` descriptor values are treated as fixed UTC storage values; invalid string and full-zero-date inputs produce MySQL-compatible warning 1292; no fractional seconds, compact numeric temporal coercion, string descriptor columns, predicates, DML assignments, defaults, generated columns, named time zones, or general temporal expression evaluation |
-| `UTC_DATE()` | ❌ | Return current UTC date |
-| `UTC_TIME()` | ❌ | Return current UTC time |
-| `UTC_TIMESTAMP()` | ❌ | Return current UTC date and time |
+| `UTC_DATE(), UTC_DATE` | 🟡 | Limited zero-fractional statement UTC date in no-source, `FROM DUAL`, `DO`, row-scalar projection, and compatible `DATE` DML assignment; respects the limited session `timestamp` override but ignores session `time_zone`; no fractional precision, defaults, named time-zone tables, or general temporal expression evaluation |
+| `UTC_TIME(), UTC_TIME` | 🟡 | Limited zero-fractional statement UTC time in no-source, `FROM DUAL`, `DO`, row-scalar projection, and compatible `TIME` DML assignment; respects the limited session `timestamp` override but ignores session `time_zone`; no fractional precision, defaults, named time-zone tables, or general temporal expression evaluation |
+| `UTC_TIMESTAMP(), UTC_TIMESTAMP` | 🟡 | Limited zero-fractional statement UTC timestamp in no-source, `FROM DUAL`, `DO`, row-scalar projection, and compatible `DATETIME` / `TIMESTAMP` DML assignment; respects the limited session `timestamp` override but ignores session `time_zone`; no fractional precision, defaults, named time-zone tables, or TIMESTAMP row storage/retrieval conversion |
 | `WEEK()` | ❌ | Return week number |
 | `WEEKDAY()` | ❌ | Return weekday index |
 | `WEEKOFYEAR()` | ❌ | Return calendar week of the date (1-53) |

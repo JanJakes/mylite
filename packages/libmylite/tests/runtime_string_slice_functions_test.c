@@ -17,6 +17,7 @@ enum {
     path_suffix_capacity = 16,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
+    mysql_error_native_function_argument_count = 1582,
 };
 
 struct expected_sql_error {
@@ -142,6 +143,17 @@ static int test_no_source_dual_and_do_string_slices(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_substring_index[] = {
+        "p2",    "n2",     "missp",  "missn", "zero",    "emptyv", "nullv",
+        "nulld", "nullc",  "casea",  "caseA", "utf8",    "dash",   "over1",
+        "over2", "overn1", "overn2", "truth", "signedc", "num",    "falsec",
+    };
+    static const char *const values_substring_index[] = {
+        "www.mysql", "mysql.com", "abc", "abc", "",   "",
+        NULL,        NULL,        NULL,  "A",   "Aa", "\xC3\xA9/\xF0\x9F\x99\x82",
+        "c",         "",          "aa",  "",    "aa", "a",
+        "c",         "1",         "",
+    };
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -212,6 +224,37 @@ static int test_no_source_dual_and_do_string_slices(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2) AS p2, "
+                   "SUBSTRING_INDEX('www.mysql.com', '.', -2) AS n2, "
+                   "SUBSTRING_INDEX('abc', '.', 1) AS missp, "
+                   "SUBSTRING_INDEX('abc', '.', -1) AS missn, "
+                   "SUBSTRING_INDEX('abc', '.', 0) AS zero, "
+                   "SUBSTRING_INDEX('abc', '', 1) AS emptyv, "
+                   "SUBSTRING_INDEX(NULL, '.', 1) AS nullv, "
+                   "SUBSTRING_INDEX('abc', NULL, 1) AS nulld, "
+                   "SUBSTRING_INDEX('abc', '.', NULL) AS nullc, "
+                   "SUBSTRING_INDEX('AaA', 'a', 1) AS casea, "
+                   "SUBSTRING_INDEX('AaA', 'A', 2) AS caseA, "
+                   "SUBSTRING_INDEX('\xC3\xA9/\xF0\x9F\x99\x82/x', '/', 2) AS utf8, "
+                   "SUBSTRING_INDEX('a--b--c', '--', -1) AS dash, "
+                   "SUBSTRING_INDEX('aaaa', 'aa', 1) AS over1, "
+                   "SUBSTRING_INDEX('aaaa', 'aa', 2) AS over2, "
+                   "SUBSTRING_INDEX('aaaa', 'aa', -1) AS overn1, "
+                   "SUBSTRING_INDEX('aaaa', 'aa', -2) AS overn2, "
+                   "SUBSTRING_INDEX('abc', 'b', TRUE) AS truth, "
+                   "SUBSTRING_INDEX('abc', 'b', -1) AS signedc, "
+                   "SUBSTRING_INDEX(12345, '2', 1) AS num, "
+                   "SUBSTRING_INDEX('abc', 'b', FALSE) AS falsec",
+            .columns = columns_substring_index,
+            .column_count = sizeof(columns_substring_index) / sizeof(columns_substring_index[0]),
+            .values = values_substring_index,
+            .row_count = 1U,
+            .context = "no-source substring_index values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ROW_COUNT(), @@warning_count",
             .columns = columns_row_status,
             .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
@@ -224,7 +267,8 @@ static int test_no_source_dual_and_do_string_slices(void) {
     failures += execute_ok(
         database,
         "DO LEFT('abc', 1), RIGHT(NULL, 1), LEFT(TRUE, 1), "
-        "SUBSTRING('abc', 1), SUBSTR(NULL, 1), MID('abc', 1, 1)",
+        "SUBSTRING('abc', 1), SUBSTR(NULL, 1), MID('abc', 1, 1), "
+        "SUBSTRING_INDEX('abc', 'b', 1), SUBSTRING_INDEX(NULL, '.', 1)",
         &result
     );
     if (failures == 0) {
@@ -392,6 +436,73 @@ static int test_table_backed_string_slices_and_reopen(void) {
     static const char *const values_reopen[] = {"ab", "c"};
     static const char *const columns_substring_reopen[] = {"sv", "st"};
     static const char *const values_substring_reopen[] = {"bc", "el"};
+    static const char *const columns_substring_index_table[] = {
+        "id",
+        "s",
+        "dot",
+        "sc",
+        "si",
+        "sd",
+        "sy",
+        "sdt",
+        "tail",
+    };
+    static const char *const values_substring_index_table[] = {
+        "1",
+        "www.mysql",
+        "mysql.com",
+        "ab",
+        "1",
+        "12",
+        "",
+        "2024-01",
+        "c",
+        "2",
+        "AaA",
+        "AaA",
+        "AA",
+        "-",
+        "-4",
+        "1970",
+        NULL,
+        "",
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "4",
+        "\xC3\xA9/\xF0\x9F\x99\x82",
+        "\xC3\xA9/\xF0\x9F\x99\x82/x",
+        "\xC3\xA9/\xF0\x9F\x99\x82",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "right",
+    };
+    static const char *const columns_substring_index_limited[] = {"id", "s"};
+    static const char *const values_substring_index_limited[] = {
+        "4",
+        "\xC3\xA9/\xF0\x9F\x99\x82",
+        "3",
+        NULL,
+        "2",
+        "AaA",
+    };
+    static const char *const columns_substring_index_labels[] = {
+        "SUBSTRING_INDEX(v, '.', 1)",
+        "s",
+    };
+    static const char *const values_substring_index_labels[] = {"www", "mysql.com"};
+    static const char *const columns_substring_index_qualified[] = {"s"};
+    static const char *const values_substring_index_qualified[] = {"www.mysql"};
+    static const char *const columns_substring_index_reopen[] = {"s", "tail"};
+    static const char *const values_substring_index_reopen[] = {"www.mysql", "c"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -419,6 +530,25 @@ static int test_table_backed_string_slices_and_reopen(void) {
         NULL
     );
     failures += execute_ok(database, "ALTER TABLE t ALTER hidden SET INVISIBLE", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE si("
+        "id INT, v VARCHAR(40), delim VARCHAR(8), c CHAR(6), txt TEXT, i INT, "
+        "d DECIMAL(8,2), y YEAR, dt DATETIME"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO si VALUES "
+        "(1, 'www.mysql.com', '.', 'ab.cd', 'a/b/c', 12345, 12.30, 2024, "
+        "'2024-01-02 13:29:17'), "
+        "(2, 'AaA', 'a', 'AA', '', -22, -4.50, 70, NULL), "
+        "(3, NULL, '.', NULL, NULL, NULL, NULL, NULL, NULL), "
+        "(4, '\xC3\xA9/\xF0\x9F\x99\x82/x', '/', '\xC3\xA9/\xF0\x9F\x99\x82', "
+        "'left/right', NULL, NULL, NULL, NULL)",
+        NULL
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -523,6 +653,63 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .context = "substring labels",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, SUBSTRING_INDEX(v, delim, 2) AS s, "
+                   "SUBSTRING_INDEX(v, '.', -2) AS dot, "
+                   "SUBSTRING_INDEX(c, '.', 1) AS sc, "
+                   "SUBSTRING_INDEX(i, '2', 1) AS si, "
+                   "SUBSTRING_INDEX(d, '.', 1) AS sd, "
+                   "SUBSTRING_INDEX(y, '2', 1) AS sy, "
+                   "SUBSTRING_INDEX(dt, '-', 2) AS sdt, "
+                   "SUBSTRING_INDEX(txt, '/', -1) AS tail FROM si ORDER BY id",
+            .columns = columns_substring_index_table,
+            .column_count =
+                sizeof(columns_substring_index_table) / sizeof(columns_substring_index_table[0]),
+            .values = values_substring_index_table,
+            .row_count = 4U,
+            .context = "table substring_index values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, SUBSTRING_INDEX(v, delim, 2) AS s FROM si "
+                   "WHERE id >= 2 ORDER BY id DESC LIMIT 3",
+            .columns = columns_substring_index_limited,
+            .column_count = sizeof(columns_substring_index_limited) /
+                            sizeof(columns_substring_index_limited[0]),
+            .values = values_substring_index_limited,
+            .row_count = 3U,
+            .context = "table substring_index row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(v, '.', 1), SUBSTRING_INDEX(v, '.', -2) AS s "
+                   "FROM si WHERE id = 1",
+            .columns = columns_substring_index_labels,
+            .column_count =
+                sizeof(columns_substring_index_labels) / sizeof(columns_substring_index_labels[0]),
+            .values = values_substring_index_labels,
+            .row_count = 1U,
+            .context = "substring_index labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(s.v, s.delim, 2) AS s FROM si AS s WHERE s.id = 1",
+            .columns = columns_substring_index_qualified,
+            .column_count = sizeof(columns_substring_index_qualified) /
+                            sizeof(columns_substring_index_qualified[0]),
+            .values = values_substring_index_qualified,
+            .row_count = 1U,
+            .context = "substring_index qualified descriptor arguments",
+        }
+    );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
@@ -555,6 +742,19 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = values_substring_reopen,
             .row_count = 1U,
             .context = "substring reopen",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(v, delim, 2) AS s, "
+                   "SUBSTRING_INDEX(txt, '/', -1) AS tail FROM si WHERE id = 1",
+            .columns = columns_substring_index_reopen,
+            .column_count =
+                sizeof(columns_substring_index_reopen) / sizeof(columns_substring_index_reopen[0]),
+            .values = values_substring_index_reopen,
+            .row_count = 1U,
+            .context = "substring_index reopen",
         }
     );
 
@@ -605,6 +805,46 @@ static int test_string_slice_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'SUBSTRING_INDEX'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX('a')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'SUBSTRING_INDEX'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX('a', 'b')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'SUBSTRING_INDEX'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX('a', 'b', 1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect parameter count in the call to native function 'SUBSTRING_INDEX'",
         }
     );
     failures += execute_error(
@@ -676,6 +916,24 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT SUBSTRING_INDEX('abc', 'b', '2')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() count supports only integer, boolean, and NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX('abc', 'b', 9223372036854775808)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() count literals must fit the signed 64-bit range",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEFT(CAST('ABC' AS BINARY), 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -690,6 +948,24 @@ static int test_string_slice_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "string slice functions support only string, integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(CAST('ABC' AS BINARY), '.', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(X'61', '.', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -712,11 +988,83 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT SUBSTRING_INDEX(b, '.', 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() does not support binary columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEFT(f, 1) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "string slice functions do not support approximate numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(f, '.', 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() does not support approximate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(missing, '.', 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(v, '.', id) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() count supports only integer, boolean, and NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SUBSTRING_INDEX(LEFT(v, 1), '.', 1) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE SUBSTRING_INDEX(v, '.', 1) = 'a'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '('",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t ORDER BY SUBSTRING_INDEX(v, '.', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near '('",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE t SET v = SUBSTRING_INDEX(v, '.', 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'SUBSTRING_INDEX'",
         }
     );
     failures += execute_error(

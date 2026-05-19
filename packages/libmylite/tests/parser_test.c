@@ -5084,6 +5084,39 @@ static int test_string_slice_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT SUBSTRING_INDEX(v, '.', 2), SUBSTRING_INDEX ('abc', 'b', -1) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION, "substring_index");
+    failures += expect_span_text(expression, "SUBSTRING_INDEX(v, '.', 2)", "substring_index span");
+    failures += expect_child_count(expression, 3U, "substring_index arity");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "index value");
+    failures +=
+        expect_literal(child_at(expression, 1U), MYLITE_SQL_AST_LITERAL_STRING, "index delimiter");
+    failures +=
+        expect_literal(child_at(expression, 2U), MYLITE_SQL_AST_LITERAL_INTEGER, "index count");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION, "spaced substring_index");
+    failures += expect_span_text(
+        expression,
+        "SUBSTRING_INDEX ('abc', 'b', -1)",
+        "spaced substring_index span"
+    );
+    failures += expect_operator(
+        child_at(expression, 2U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "substring_index signed count"
+    );
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "substring_index from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT LEFT ('abc', 1), (RIGHT('abc', 1)) FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5110,6 +5143,35 @@ static int test_string_slice_functions(void) {
     failures += parse_sql("SELECT MID('a', 1, 2, 3);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("SELECT SUBSTRING ('abc', 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
 
+    failures += parse_sql("SELECT SUBSTRING_INDEX();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR,
+        "substring_index zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUBSTRING_INDEX('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR,
+        "substring_index one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUBSTRING_INDEX('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR,
+        "substring_index two argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SUBSTRING_INDEX('a', 'b', 1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR,
+        "substring_index many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("DO LEFT('abc', 1), RIGHT('abc', 1);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     expression_list = child_at(statement, 0U);
@@ -5135,8 +5197,19 @@ static int test_string_slice_functions(void) {
     failures += expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_MID_FUNCTION, "do mid");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("DO SUBSTRING_INDEX('abc', 'b', 1);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "substring_index do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION,
+        "do substring_index"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "CREATE TABLE substring_words (substring INT, substr INT, mid INT);",
+        "CREATE TABLE substring_words (substring INT, substr INT, mid INT, substring_index INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );

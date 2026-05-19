@@ -974,6 +974,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"SUBPARTITIONS", 0U},
         {"SUBSTR", 0U},
         {"SUBSTRING", 0U},
+        {"SUBSTRING_INDEX", 0U},
         {"SUM", 0U},
         {"SUPER", MYLITE_SQL_KEYWORD_RESTRICTED_ROLE},
         {"SUSPEND", 0U},

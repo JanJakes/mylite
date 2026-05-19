@@ -1128,6 +1128,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "substr_function";
     case MYLITE_SQL_AST_MID_FUNCTION:
         return "mid_function";
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
+        return "substring_index_function";
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
+        return "substring_index_argument_count_error";
     case MYLITE_SQL_AST_LOCATE_FUNCTION:
         return "locate_function";
     case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:

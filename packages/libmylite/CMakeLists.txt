@@ -56,6 +56,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_concat.c
   src/runtime/mylite_string_replace.c
   src/runtime/mylite_string_search.c
+  src/runtime/mylite_string_substring_index.c
   src/runtime/mylite_string_trim.c
   src/runtime/mylite_string_unhex.c
   src/runtime/mylite_temporal_extract.c

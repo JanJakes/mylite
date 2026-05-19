@@ -3813,6 +3813,11 @@ expression(A) ::= MID(T) LPAREN(L) expression(B) FROM expression(C) FOR expressi
     A = mylite_sql_parser_make_no_space_three_argument_function(
         state, T, L, MYLITE_SQL_AST_MID_FUNCTION, B, C, D, R);
 }
+expression(A) ::=
+    SUBSTRING_INDEX(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION, B, C, D, R);
+}
 expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);
@@ -4104,6 +4109,28 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= SUBSTRING_INDEX(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SUBSTRING_INDEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= SUBSTRING_INDEX(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::=
+    SUBSTRING_INDEX(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D)
+    COMMA function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR, E, R);
 }
 expression(A) ::= DATE_FORMAT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -5175,6 +5202,9 @@ identifier(A) ::= SUBSTR(T). {
 }
 identifier(A) ::= MID(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
+}
+identifier(A) ::= SUBSTRING_INDEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOCATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);

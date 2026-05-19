@@ -77,6 +77,7 @@ static int test_string_length_functions(void);
 static int test_string_case_functions(void);
 static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
+static int test_string_padding_functions(void);
 static int test_string_search_functions(void);
 static int test_find_in_set_function(void);
 static int test_regexp_like_function(void);
@@ -366,6 +367,7 @@ int main(void) {
     failures += test_string_case_functions();
     failures += test_string_trim_functions();
     failures += test_string_slice_functions();
+    failures += test_string_padding_functions();
     failures += test_string_search_functions();
     failures += test_find_in_set_function();
     failures += test_regexp_like_function();
@@ -5232,6 +5234,137 @@ static int test_string_slice_functions(void) {
         fprintf(stderr, "left join after left function: expected left outer join kind\n");
         ++failures;
     }
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_padding_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LPAD(v, 5, '0'), RPAD('abc', +4, 'x'), REPEAT(v, 2), SPACE(3) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LPAD_FUNCTION, "lpad function");
+    failures += expect_span_text(expression, "LPAD(v, 5, '0')", "lpad span");
+    failures += expect_child_count(expression, 3U, "lpad arity");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "lpad column");
+    failures +=
+        expect_literal(child_at(expression, 1U), MYLITE_SQL_AST_LITERAL_INTEGER, "lpad length");
+    failures += expect_literal(child_at(expression, 2U), MYLITE_SQL_AST_LITERAL_STRING, "lpad pad");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_RPAD_FUNCTION, "rpad function");
+    failures += expect_operator(
+        child_at(expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "rpad signed length"
+    );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_REPEAT_FUNCTION, "repeat function");
+    failures += expect_child_count(expression, 2U, "repeat arity");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SPACE_FUNCTION, "space function");
+    failures += expect_child_count(expression, 1U, "space arity");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "padding from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT LPAD ('hi', 4, '?'), RPAD ('hi', 4, '?'), REPEAT ('x', 2), SPACE (2) "
+        "FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_LPAD_FUNCTION, "spaced lpad");
+    failures += expect_span_text(expression, "LPAD ('hi', 4, '?')", "spaced lpad span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_RPAD_FUNCTION, "spaced rpad");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_REPEAT_FUNCTION, "spaced repeat");
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_SPACE_FUNCTION, "spaced space");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LPAD();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR,
+        "lpad zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LPAD('a', 1);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR,
+        "lpad two argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LPAD('a', 1, '0', 'x');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR,
+        "lpad many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT RPAD('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR,
+        "rpad one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SPACE();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR,
+        "space zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT SPACE(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR,
+        "space many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT REPEAT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT REPEAT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+
+    failures += parse_sql(
+        "DO LPAD('abc', 5, '0'), RPAD('abc', 5, '0'), REPEAT('x', 2), SPACE(2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "padding do");
+    failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_LPAD_FUNCTION, "do lpad");
+    failures += expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_RPAD_FUNCTION, "do rpad");
+    failures +=
+        expect_node(child_at(expression_list, 2U), MYLITE_SQL_AST_REPEAT_FUNCTION, "do repeat");
+    failures +=
+        expect_node(child_at(expression_list, 3U), MYLITE_SQL_AST_SPACE_FUNCTION, "do space");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE padding_words (lpad INT, rpad INT, space INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "padding identifiers");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

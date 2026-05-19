@@ -14,6 +14,7 @@
 #include "mylite_string_case.h"
 #include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
+#include "mylite_string_padding.h"
 #include "mylite_string_replace.h"
 #include "mylite_string_search.h"
 #include "mylite_string_substring_index.h"
@@ -2486,6 +2487,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_GREATEST = 34,
     PLANNED_ROW_SCALAR_EXPRESSION_LEAST = 35,
     PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX = 36,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING = 37,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2534,6 +2536,14 @@ enum planned_string_search_function_kind {
     PLANNED_STRING_SEARCH_FUNCTION_POSITION = 3,
 };
 
+enum planned_string_padding_function_kind {
+    PLANNED_STRING_PADDING_FUNCTION_NONE = 0,
+    PLANNED_STRING_PADDING_FUNCTION_LPAD = 1,
+    PLANNED_STRING_PADDING_FUNCTION_RPAD = 2,
+    PLANNED_STRING_PADDING_FUNCTION_REPEAT = 3,
+    PLANNED_STRING_PADDING_FUNCTION_SPACE = 4,
+};
+
 enum planned_charset_collation_function_kind {
     PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
     PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
@@ -2563,6 +2573,7 @@ struct planned_row_scalar_expression {
     enum planned_string_trim_function_kind string_trim_kind;
     enum planned_string_slice_function_kind string_slice_kind;
     enum planned_string_search_function_kind string_search_kind;
+    enum planned_string_padding_function_kind string_padding_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     struct planned_value value;
     enum mylite_json_sql_value_kind json_value_kind;
@@ -11753,6 +11764,63 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int string_padding_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_pad_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_string_padding_function_kind function_kind,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+);
+static int evaluate_repeat_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+);
+static int evaluate_space_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+);
+static int evaluate_string_padding_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_string_padding_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_count,
+    bool *out_is_null
+);
+static int string_padding_set_owned_result(
+    struct mylite_db *database,
+    int rc,
+    char *value,
+    size_t value_length,
+    bool is_null,
+    struct session_scalar_cell *out_cell
+);
+static enum planned_string_padding_function_kind string_padding_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static enum mylite_string_padding_side string_padding_function_to_side(
+    enum planned_string_padding_function_kind function_kind
+);
+static bool is_string_padding_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int string_search_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -18456,6 +18524,42 @@ static bool string_slice_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_string_padding_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_padding_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_padding_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_padding_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_padding_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_string_search_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -20337,6 +20441,14 @@ static int append_row_scalar_string_slice_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_string_padding_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_string_padding_sql_function(
+    enum planned_string_padding_function_kind function_kind
+);
 static int append_row_scalar_string_search_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -21372,6 +21484,11 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_slice_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_padding_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -22792,6 +22909,13 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
@@ -30712,6 +30836,10 @@ static bool compound_expression_uses_string_collation(
     case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
@@ -39743,6 +39871,13 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
     case MYLITE_SQL_AST_LEFT_FUNCTION:
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
@@ -68439,6 +68574,12 @@ static const char *argument_count_error_node_function_name(
         return "FIND_IN_SET";
     case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
         return "SUBSTRING_INDEX";
+    case MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR:
+        return "LPAD";
+    case MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR:
+        return "RPAD";
+    case MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR:
+        return "SPACE";
     case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
         return "REGEXP_LIKE";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
@@ -68597,6 +68738,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:
     case MYLITE_SQL_AST_MID_FUNCTION:
         return string_slice_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+        return string_padding_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LOCATE_FUNCTION:
     case MYLITE_SQL_AST_INSTR_FUNCTION:
     case MYLITE_SQL_AST_POSITION_FUNCTION:
@@ -72493,6 +72639,445 @@ static enum planned_string_slice_function_kind string_slice_function_kind(
 
 static bool is_string_slice_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return string_slice_function_kind(ast_kind) != PLANNED_STRING_SLICE_FUNCTION_NONE;
+}
+
+static int string_padding_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_padding_function_kind function_kind = PLANNED_STRING_PADDING_FUNCTION_NONE;
+    char *result = NULL;
+    size_t result_length = 0U;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_PADDING_FUNCTION_NONE
+                                       : string_padding_function_kind(expression->kind);
+    switch (function_kind) {
+    case PLANNED_STRING_PADDING_FUNCTION_LPAD:
+    case PLANNED_STRING_PADDING_FUNCTION_RPAD:
+        rc = evaluate_pad_string_padding_function(
+            database,
+            expression,
+            function_kind,
+            &result,
+            &result_length,
+            &result_is_null
+        );
+        break;
+    case PLANNED_STRING_PADDING_FUNCTION_REPEAT:
+        rc = evaluate_repeat_string_padding_function(
+            database,
+            expression,
+            &result,
+            &result_length,
+            &result_is_null
+        );
+        break;
+    case PLANNED_STRING_PADDING_FUNCTION_SPACE:
+        rc = evaluate_space_string_padding_function(
+            database,
+            expression,
+            &result,
+            &result_length,
+            &result_is_null
+        );
+        break;
+    default:
+        set_unsupported_error(
+            database,
+            "string padding functions support LPAD, RPAD, REPEAT, and SPACE"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = string_padding_set_owned_result(
+            database,
+            rc,
+            result,
+            result_length,
+            result_is_null,
+            out_cell
+        );
+        result = NULL;
+    } else if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_runtime_error(database, "invalid UTF-8 value in string padding function");
+    }
+
+    free(result);
+    return rc;
+}
+
+static int evaluate_pad_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum planned_string_padding_function_kind function_kind,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+) {
+    struct session_scalar_cell first_cell = {0};
+    struct session_scalar_cell third_cell = {0};
+    char *owned_first_text = NULL;
+    char *owned_third_text = NULL;
+    const char *first_text = NULL;
+    const char *third_text = NULL;
+    size_t first_length = 0U;
+    size_t third_length = 0U;
+    int64_t count = 0;
+    size_t argument_count = 0U;
+    bool first_is_null = false;
+    bool count_is_null = false;
+    bool third_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL || out_result_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    *out_result_length = 0U;
+    *out_is_null = false;
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (argument_count != 3U) {
+        set_native_function_parameter_count_error(
+            database,
+            function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ? "LPAD" : "RPAD"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_padding_text_argument(
+        database,
+        child_at(expression, 0U),
+        &first_cell,
+        &owned_first_text,
+        &first_text,
+        &first_length,
+        &first_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_padding_count_argument(
+            database,
+            child_at(expression, 1U),
+            &count,
+            &count_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_padding_text_argument(
+            database,
+            child_at(expression, 2U),
+            &third_cell,
+            &owned_third_text,
+            &third_text,
+            &third_length,
+            &third_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !first_is_null && !count_is_null && !third_is_null) {
+        rc = mylite_string_pad_value(
+            database,
+            string_padding_function_to_side(function_kind),
+            (struct mylite_string_padding_slice){
+                .text = first_text,
+                .length = first_length,
+            },
+            count,
+            (struct mylite_string_padding_slice){
+                .text = third_text,
+                .length = third_length,
+            },
+            out_result,
+            out_result_length,
+            out_is_null
+        );
+    } else {
+        *out_is_null = rc == MYLITE_OK;
+    }
+
+    free(owned_first_text);
+    free(owned_third_text);
+    session_scalar_cell_deinit(&first_cell);
+    session_scalar_cell_deinit(&third_cell);
+    return rc;
+}
+
+static int evaluate_repeat_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+) {
+    struct session_scalar_cell first_cell = {0};
+    char *owned_first_text = NULL;
+    const char *first_text = NULL;
+    size_t first_length = 0U;
+    size_t argument_count = 0U;
+    int64_t count = 0;
+    bool first_is_null = false;
+    bool count_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL || out_result_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    *out_result_length = 0U;
+    *out_is_null = false;
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if (argument_count != 2U) {
+        set_native_function_parameter_count_error(database, "REPEAT");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_padding_text_argument(
+        database,
+        child_at(expression, 0U),
+        &first_cell,
+        &owned_first_text,
+        &first_text,
+        &first_length,
+        &first_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_string_padding_count_argument(
+            database,
+            child_at(expression, 1U),
+            &count,
+            &count_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !first_is_null && !count_is_null) {
+        rc = mylite_string_repeat_value(
+            database,
+            (struct mylite_string_padding_slice){
+                .text = first_text,
+                .length = first_length,
+            },
+            count,
+            out_result,
+            out_result_length,
+            out_is_null
+        );
+    } else {
+        *out_is_null = rc == MYLITE_OK;
+    }
+
+    free(owned_first_text);
+    session_scalar_cell_deinit(&first_cell);
+    return rc;
+}
+
+static int evaluate_space_string_padding_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_result,
+    size_t *out_result_length,
+    bool *out_is_null
+) {
+    int64_t count = 0;
+    size_t argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    bool count_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL || out_result_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    *out_result_length = 0U;
+    *out_is_null = false;
+    if (argument_count != 1U) {
+        set_native_function_parameter_count_error(database, "SPACE");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_padding_count_argument(
+        database,
+        child_at(expression, 0U),
+        &count,
+        &count_is_null
+    );
+    if (rc == MYLITE_OK && !count_is_null) {
+        rc = mylite_string_space_value(count, out_result, out_result_length, out_is_null);
+    } else {
+        *out_is_null = rc == MYLITE_OK;
+    }
+    return rc;
+}
+
+static int evaluate_string_padding_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string padding functions support only string, integer, boolean, NULL, session "
+            "scalar, and system variable string arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "string padding functions support only string literals",
+                "string padding function literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_string_padding_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_count,
+    bool *out_is_null
+) {
+    if (out_count == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_count = 0;
+    *out_is_null = false;
+
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string padding functions support only integer, boolean, and NULL length/count "
+            "literals"
+        );
+        return MYLITE_ERROR;
+    }
+    return string_slice_signed_integer_value(
+        database,
+        expression,
+        "string padding functions support only integer, boolean, and NULL length/count literals",
+        "string padding function length/count literals must fit the signed 64-bit range",
+        out_count,
+        out_is_null
+    );
+}
+
+static int string_padding_set_owned_result(
+    struct mylite_db *database,
+    int rc,
+    char *value,
+    size_t value_length,
+    bool is_null,
+    struct session_scalar_cell *out_cell
+) {
+    if (out_cell == NULL) {
+        free(value);
+        return MYLITE_MISUSE;
+    }
+    if (rc == MYLITE_NOMEM) {
+        free(value);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (rc != MYLITE_OK) {
+        free(value);
+        set_runtime_error(database, "invalid UTF-8 value in string padding function");
+        return rc;
+    }
+    if (is_null) {
+        free(value);
+        return MYLITE_OK;
+    }
+    if (value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strlen(value) != value_length) {
+        free(value);
+        set_runtime_error(database, "invalid NUL byte in string padding function result");
+        return MYLITE_ERROR;
+    }
+    out_cell->owned_text = value;
+    out_cell->value = value;
+    return MYLITE_OK;
+}
+
+static enum planned_string_padding_function_kind string_padding_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+        return PLANNED_STRING_PADDING_FUNCTION_LPAD;
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+        return PLANNED_STRING_PADDING_FUNCTION_RPAD;
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+        return PLANNED_STRING_PADDING_FUNCTION_REPEAT;
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+        return PLANNED_STRING_PADDING_FUNCTION_SPACE;
+    default:
+        return PLANNED_STRING_PADDING_FUNCTION_NONE;
+    }
+}
+
+static enum mylite_string_padding_side string_padding_function_to_side(
+    enum planned_string_padding_function_kind function_kind
+) {
+    return function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD ? MYLITE_STRING_PADDING_RIGHT
+                                                                 : MYLITE_STRING_PADDING_LEFT;
+}
+
+static bool is_string_padding_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_padding_function_kind(ast_kind) != PLANNED_STRING_PADDING_FUNCTION_NONE;
 }
 
 static int string_search_function_value(
@@ -87240,6 +87825,36 @@ static bool is_substring_index_projection_expression(const struct mylite_sql_ast
             string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
 }
 
+static bool is_string_padding_projection_expression(const struct mylite_sql_ast_node *expression) {
+    enum planned_string_padding_function_kind function_kind = PLANNED_STRING_PADDING_FUNCTION_NONE;
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+
+    function_kind = string_padding_function_kind(expression->kind);
+    argument_count = mylite_sql_ast_node_child_count(expression);
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+        function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) {
+        return (argument_count == 3U &&
+                string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
+                string_slice_length_argument_is_admitted(child_at(expression, 1U)) &&
+                string_slice_scalar_text_argument_is_admitted(child_at(expression, 2U))) != 0;
+    }
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_REPEAT) {
+        return (argument_count == 2U &&
+                string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
+                string_slice_length_argument_is_admitted(child_at(expression, 1U))) != 0;
+    }
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_SPACE) {
+        return (argument_count == 1U &&
+                string_slice_length_argument_is_admitted(child_at(expression, 0U))) != 0;
+    }
+    return false;
+}
+
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *arguments = NULL;
     const struct mylite_sql_ast_node *argument = NULL;
@@ -87320,6 +87935,9 @@ static bool is_string_metadata_projection_expression(const struct mylite_sql_ast
         return true;
     }
     if (is_substring_index_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_padding_projection_expression(expression)) {
         return true;
     }
     if (is_string_replace_projection_expression(expression)) {
@@ -101266,7 +101884,8 @@ static int plan_row_scalar_expression(
 static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_kind kind) {
     if (is_string_length_function_kind(kind) || is_string_codepoint_function_kind(kind) ||
         is_string_case_function_kind(kind) || is_string_trim_function_kind(kind) ||
-        is_string_slice_function_kind(kind) || is_string_search_function_kind(kind)) {
+        is_string_slice_function_kind(kind) || is_string_padding_function_kind(kind) ||
+        is_string_search_function_kind(kind)) {
         return true;
     }
 
@@ -101336,6 +101955,17 @@ static int plan_row_scalar_string_expression(
     }
     if (is_string_slice_function_kind(expression->kind)) {
         return plan_row_scalar_string_slice_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_padding_function_kind(expression->kind)) {
+        return plan_row_scalar_string_padding_expression(
             database,
             expression,
             has_source,
@@ -102701,6 +103331,269 @@ static bool string_slice_column_descriptor_is_supported(
     set_unsupported_error(
         database,
         "string slice functions support only integer, DECIMAL, nonbinary string, YEAR, and "
+        "temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_padding_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_padding_function_kind function_kind = PLANNED_STRING_PADDING_FUNCTION_NONE;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_PADDING_FUNCTION_NONE
+                                       : string_padding_function_kind(expression->kind);
+    argument_count = expression == NULL ? 0U : mylite_sql_ast_node_child_count(expression);
+    if ((function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+         function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) &&
+        argument_count != 3U) {
+        set_native_function_parameter_count_error(
+            database,
+            function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ? "LPAD" : "RPAD"
+        );
+        return MYLITE_ERROR;
+    }
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_REPEAT && argument_count != 2U) {
+        set_native_function_parameter_count_error(database, "REPEAT");
+        return MYLITE_ERROR;
+    }
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_SPACE && argument_count != 1U) {
+        set_native_function_parameter_count_error(database, "SPACE");
+        return MYLITE_ERROR;
+    }
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_NONE) {
+        set_unsupported_error(
+            database,
+            "string padding functions support LPAD, RPAD, REPEAT, and SPACE"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING;
+    out_expression->string_padding_kind = function_kind;
+    out_expression->argument_count = argument_count;
+
+    if (function_kind == PLANNED_STRING_PADDING_FUNCTION_SPACE) {
+        return plan_row_scalar_string_padding_count_argument(
+            database,
+            child_at(expression, 0U),
+            &out_expression->arguments[0]
+        );
+    }
+
+    rc = plan_row_scalar_string_padding_value_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string padding functions support only string, integer, boolean, NULL, session scalar, "
+        "system variable, and descriptor column value arguments",
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_string_padding_count_argument(
+            database,
+            child_at(expression, 1U),
+            &out_expression->arguments[1]
+        );
+    }
+    if (rc == MYLITE_OK && (function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+                            function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD)) {
+        rc = plan_row_scalar_string_padding_value_argument(
+            database,
+            child_at(expression, 2U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "string padding functions support only string, integer, boolean, NULL, session "
+            "scalar, system variable, and descriptor column pad-string arguments",
+            &out_expression->arguments[2]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_string_padding_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_string_padding_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "string padding functions do not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_replace_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_padding_count_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int64_t value = 0;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_length_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string padding functions support only integer, boolean, and NULL length/count "
+            "literals"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = string_slice_signed_integer_value(
+        database,
+        expression,
+        "string padding functions support only integer, boolean, and NULL length/count literals",
+        "string padding function length/count literals must fit the signed 64-bit range",
+        &value,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_integer_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_padding_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string padding functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_padding_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_padding_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "string padding functions do not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "string padding functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "string padding functions support only integer, DECIMAL, nonbinary string, YEAR, and "
         "temporal columns"
     );
     return false;
@@ -106743,6 +107636,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -108811,6 +109705,7 @@ static bool row_scalar_expression_contains_row_function(
             is_string_case_function_kind(current->kind) ||
             is_string_trim_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
+            is_string_padding_function_kind(current->kind) ||
             is_string_search_function_kind(current->kind) ||
             current->kind == MYLITE_SQL_AST_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION ||
@@ -121639,6 +122534,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -122477,6 +123373,8 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+        return append_row_scalar_string_padding_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
         return append_row_scalar_string_search_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
@@ -122564,6 +123462,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -123184,6 +124083,81 @@ static int append_row_scalar_string_slice_expression_sql(
     return append_row_scalar_left_right_expression_sql(string, expression, next_parameter);
 }
 
+static int append_row_scalar_string_padding_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_SPACE) {
+        if (expression->argument_count != 1U) {
+            return MYLITE_ERROR;
+        }
+    } else if (expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_REPEAT) {
+        if (expression->argument_count != 2U) {
+            return MYLITE_ERROR;
+        }
+    } else if (
+        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD
+    ) {
+        if (expression->argument_count != 3U) {
+            return MYLITE_ERROR;
+        }
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    function_name = row_scalar_string_padding_sql_function(expression->string_padding_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *row_scalar_string_padding_sql_function(
+    enum planned_string_padding_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_PADDING_FUNCTION_LPAD:
+        return "_mylite_lpad";
+    case PLANNED_STRING_PADDING_FUNCTION_RPAD:
+        return "_mylite_rpad";
+    case PLANNED_STRING_PADDING_FUNCTION_REPEAT:
+        return "_mylite_repeat";
+    case PLANNED_STRING_PADDING_FUNCTION_SPACE:
+        return "_mylite_space";
+    case PLANNED_STRING_PADDING_FUNCTION_NONE:
+        break;
+    }
+    return NULL;
+}
+
 static int append_row_scalar_string_search_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -123484,6 +124458,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -123665,6 +124640,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -123721,6 +124697,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -124110,6 +125087,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -124170,6 +125148,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -129171,6 +130150,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+        return bind_row_scalar_string_padding_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
         return bind_row_scalar_string_search_expression_parameters(
             statement,
@@ -129290,6 +130275,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -129518,6 +130504,27 @@ static int bind_row_scalar_string_slice_expression_parameters(
     return bind_row_scalar_left_right_expression_parameters(statement, expression, parameter_index);
 }
 
+static int bind_row_scalar_string_padding_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_string_search_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -129711,6 +130718,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -129877,6 +130885,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
@@ -129928,6 +130937,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:

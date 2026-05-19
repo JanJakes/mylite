@@ -3754,6 +3754,24 @@ expression(A) ::= RIGHT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_RIGHT_FUNCTION, B, C, R);
 }
+expression(A) ::=
+    LPAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_LPAD_FUNCTION, B, C, D, R);
+}
+expression(A) ::=
+    RPAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_RPAD_FUNCTION, B, C, D, R);
+}
+expression(A) ::= REPEAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_REPEAT_FUNCTION, B, C, R);
+}
+expression(A) ::= SPACE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SPACE_FUNCTION, B, R);
+}
 expression(A) ::= LOCATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_LOCATE_FUNCTION, B, C, R);
@@ -4546,6 +4564,59 @@ expression(A) ::= RTRIM(T) LPAREN expression(B) COMMA function_argument_list(C) 
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR, C, R);
 }
+expression(A) ::= LPAD(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= LPAD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= LPAD(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::=
+    LPAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) COMMA
+    function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR, E, R);
+}
+expression(A) ::= RPAD(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= RPAD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= RPAD(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::=
+    RPAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) COMMA
+    function_argument_list(E) RPAREN(R). {
+    (void)B;
+    (void)C;
+    (void)D;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR, E, R);
+}
+expression(A) ::= SPACE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SPACE(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR, C, R);
+}
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_FUNCTION, R);
@@ -4958,6 +5029,15 @@ identifier(A) ::= CONCAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONCAT_WS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LPAD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= RPAD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SPACE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELD(T). {

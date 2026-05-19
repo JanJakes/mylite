@@ -1122,6 +1122,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "left_function";
     case MYLITE_SQL_AST_RIGHT_FUNCTION:
         return "right_function";
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+        return "lpad_function";
+    case MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR:
+        return "lpad_argument_count_error";
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+        return "rpad_function";
+    case MYLITE_SQL_AST_RPAD_ARGUMENT_COUNT_ERROR:
+        return "rpad_argument_count_error";
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+        return "repeat_function";
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+        return "space_function";
+    case MYLITE_SQL_AST_SPACE_ARGUMENT_COUNT_ERROR:
+        return "space_argument_count_error";
     case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
         return "substring_function";
     case MYLITE_SQL_AST_SUBSTR_FUNCTION:

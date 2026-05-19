@@ -1538,6 +1538,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
     return option;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&comment_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_COMMENT_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -6794,6 +6815,7 @@ static bool map_keyword_token(
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
         {"ENUM", MYLITE_SQL_PARSE_ENUM},
+        {"COMMENT", MYLITE_SQL_PARSE_COMMENT},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},

@@ -36,6 +36,7 @@ enum {
     exp_log_power_power_index = 6,
     exp_log_power_wrong_arity_power_index = 7,
     exp_log_power_identifier_count = 7,
+    reverse_table_option_count = 5,
 };
 
 static int test_empty_script(void);
@@ -109,6 +110,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_create_table_comment_option_statements(void);
 static int test_show_full_tables_statements(void);
 static int test_show_table_status_where_statement(void);
 static int test_table_binary_charset_options(void);
@@ -397,6 +399,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_create_table_comment_option_statements();
     failures += test_show_full_tables_statements();
     failures += test_show_table_status_where_statement();
     failures += test_table_binary_charset_options();
@@ -9319,40 +9322,6 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "CREATE TABLE combined_options (id INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
-        "COLLATE=utf8mb4_0900_ai_ci;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    statement = child_at(result.root, 0U);
-    table_options = child_at(statement, 2U);
-    failures += expect_child_count(table_options, 3U, "combined option list child count");
-    failures += expect_node(
-        child_at(table_options, 0U),
-        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
-        "combined engine option"
-    );
-    failures += expect_node(
-        child_at(table_options, 1U),
-        MYLITE_SQL_AST_TABLE_CHARSET_OPTION,
-        "combined charset option"
-    );
-    failures += expect_node(
-        child_at(table_options, 2U),
-        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
-        "combined collation option"
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "CREATE TABLE reverse_options (id INT) COLLATE=utf8mb4_0900_ai_ci "
-        "DEFAULT CHARSET=`utf8mb4` ENGINE=InnoDB;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql("CREATE TABLE status (status INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -10596,6 +10565,88 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_comment_option_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_options = NULL;
+    const struct mylite_sql_ast_node *comment_option = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE combined_options (id INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci COMMENT='metadata';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 2U);
+    failures += expect_child_count(table_options, 4U, "combined option list child count");
+    failures += expect_node(
+        child_at(table_options, 0U),
+        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
+        "combined engine option"
+    );
+    failures += expect_node(
+        child_at(table_options, 1U),
+        MYLITE_SQL_AST_TABLE_CHARSET_OPTION,
+        "combined charset option"
+    );
+    failures += expect_node(
+        child_at(table_options, 2U),
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "combined collation option"
+    );
+    comment_option = child_at(table_options, 3U);
+    failures +=
+        expect_node(comment_option, MYLITE_SQL_AST_TABLE_COMMENT_OPTION, "combined comment option");
+    failures += expect_literal(
+        child_at(comment_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "combined comment literal"
+    );
+    failures += expect_span_text(child_at(comment_option, 0U), "'metadata'", "comment literal");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE reverse_options (id INT) COMMENT \"first\" COLLATE=utf8mb4_0900_ai_ci "
+        "DEFAULT CHARSET=`utf8mb4` COMMENT='second' ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 2U);
+    failures +=
+        expect_child_count(table_options, reverse_table_option_count, "reverse option child count");
+    failures += expect_node(
+        child_at(table_options, 0U),
+        MYLITE_SQL_AST_TABLE_COMMENT_OPTION,
+        "first reverse comment option"
+    );
+    failures += expect_span_text(
+        child_at(child_at(table_options, 0U), 0U),
+        "\"first\"",
+        "double quoted comment literal"
+    );
+    failures += expect_node(
+        child_at(table_options, 3U),
+        MYLITE_SQL_AST_TABLE_COMMENT_OPTION,
+        "second reverse comment option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE comment_identifier (COMMENT INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(
+        child_at(child_at(child_at(statement, 1U), 0U), 0U),
+        "COMMENT",
+        "comment identifier column"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -22070,7 +22121,15 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("CREATE TABLE t (id INT) COMMENT='x';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("CREATE TABLE t (id INT) COMMENT=123;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT) COMMENT=abc;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT) COMMENT=NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

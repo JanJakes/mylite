@@ -499,6 +499,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
     struct mylite_sql_token auto_increment_token,
     struct mylite_sql_ast_node *value
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,

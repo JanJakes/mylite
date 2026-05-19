@@ -39,7 +39,7 @@
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
-%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM.
+%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -913,6 +913,12 @@ table_option(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V). {
         state,
         T,
         mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+table_option(A) ::= COMMENT(T) equal_opt STRING(V). {
+    A = mylite_sql_parser_make_table_comment_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
 
 default_opt ::= .

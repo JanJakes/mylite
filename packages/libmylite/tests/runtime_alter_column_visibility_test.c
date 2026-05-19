@@ -718,6 +718,7 @@ static int make_catalog_look_like_v3(sqlite3 *sqlite) {
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN default_charset");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN default_collation");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN comment");
     failures += execute_sql(
         sqlite,
         "ALTER TABLE _mylite_catalog_tables DROP COLUMN fulltext_doc_id_initialized"

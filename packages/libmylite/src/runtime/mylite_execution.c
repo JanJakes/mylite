@@ -96,6 +96,7 @@ enum {
     mysql_error_variable_cant_be_set = 1231,
     mysql_error_incorrect_argument_type = 1232,
     mysql_error_session_variable_read_only = 1621,
+    mysql_error_table_comment_too_long = 1628,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_not_supported_yet = 1235,
@@ -1706,6 +1707,7 @@ struct planned_create_table {
     int64_t auto_increment_next;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
 };
 
 struct schema_default_option_validation {
@@ -8929,6 +8931,11 @@ static int apply_create_table_auto_increment_option(
     const struct mylite_sql_ast_node *table_options,
     struct planned_create_table *plan
 );
+static int apply_create_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
+);
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option
@@ -8942,6 +8949,10 @@ static int validate_create_table_collation_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *collation_option,
     bool allow_binary
+);
+static int validate_create_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *comment_option
 );
 static int validate_table_charset_collation_option_values(
     struct mylite_db *database,
@@ -13955,6 +13966,10 @@ static bool show_create_table_should_append_default_collation(
 );
 static int append_show_create_table_auto_increment_option(
     struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+);
+static int append_show_create_table_comment_option(
     struct dynamic_string *string,
     const struct planned_show_create_table *plan
 );
@@ -19941,6 +19956,7 @@ static int append_sqlite_blob_default(
     size_t byte_count
 );
 static int append_quoted_sql_text(struct dynamic_string *string, const char *text);
+static int append_mysql_quoted_text(struct dynamic_string *string, const char *text);
 static int append_mysql_quoted_default_text(struct dynamic_string *string, const char *text);
 static int build_alter_table_drop_column_sql(
     const struct planned_alter_table_drop_column *plan,
@@ -21802,6 +21818,7 @@ static void set_key_part_length_cannot_be_zero_error(
     const char *column_name
 );
 static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes);
+static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name);
 static void set_non_ascii_string_key_error(struct mylite_db *database);
 static void set_duplicate_key_error(
     struct mylite_db *database,
@@ -22622,6 +22639,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
+    case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
     case MYLITE_SQL_AST_ORDER_BY_ITEM_LIST:
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
@@ -31730,7 +31748,7 @@ static int append_information_schema_tables_base_row(
         table->default_collation,
         NULL,
         "",
-        "",
+        table->comment,
     };
 
     return append_information_schema_row(database, rows, values);
@@ -38514,19 +38532,20 @@ static int append_show_create_table_table_options(
     if (rc == MYLITE_OK && charset_name_is_binary(plan->table.default_charset) &&
         collation_name_is_binary(plan->table.default_collation)) {
         rc = dynamic_string_append(string, " DEFAULT CHARSET=binary");
-        return rc;
-    }
-    if (rc == MYLITE_OK) {
+    } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " DEFAULT CHARSET=");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, plan->table.default_charset);
+        }
+        if (rc == MYLITE_OK && show_create_table_should_append_default_collation(plan)) {
+            rc = dynamic_string_append(string, " COLLATE=");
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append(string, plan->table.default_collation);
+            }
+        }
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, plan->table.default_charset);
-    }
-    if (rc == MYLITE_OK && show_create_table_should_append_default_collation(plan)) {
-        rc = dynamic_string_append(string, " COLLATE=");
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, plan->table.default_collation);
-        }
+        rc = append_show_create_table_comment_option(string, plan);
     }
 
     return rc;
@@ -38579,6 +38598,24 @@ static bool show_create_table_has_auto_increment(const struct planned_show_creat
     }
 
     return false;
+}
+
+static int append_show_create_table_comment_option(
+    struct dynamic_string *string,
+    const struct planned_show_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || plan->table.comment[0] == '\0') {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " COMMENT=");
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_quoted_text(string, plan->table.comment);
+    }
+
+    return rc;
 }
 
 static int append_show_create_table_index(
@@ -39553,6 +39590,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TABLE_OPTION_LIST:
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
+    case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
     case MYLITE_SQL_AST_ORDER_BY_ITEM_LIST:
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
@@ -39878,6 +39916,13 @@ static int plan_create_table(
         create_table_options_node(statement),
         out_plan
     );
+    if (rc == MYLITE_OK) {
+        rc = apply_create_table_comment_option(
+            database,
+            create_table_options_node(statement),
+            out_plan
+        );
+    }
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
         return rc;
@@ -43550,6 +43595,11 @@ static int plan_create_table_like(
             out_plan->source_table.default_collation,
             strlen(out_plan->source_table.default_collation) + 1U
         );
+        memcpy(
+            out_plan->create_table.comment,
+            out_plan->source_table.comment,
+            strlen(out_plan->source_table.comment) + 1U
+        );
     }
     if (rc == MYLITE_OK) {
         rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
@@ -44662,6 +44712,9 @@ static int validate_create_table_option(
     if (table_option->kind == MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION) {
         return MYLITE_OK;
     }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
+        return validate_create_table_comment_option(database, table_option);
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -44940,6 +44993,66 @@ static int apply_create_table_auto_increment_option(
     return MYLITE_OK;
 }
 
+static int apply_create_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options,
+    struct planned_create_table *plan
+) {
+    const struct mylite_sql_ast_node *table_option = NULL;
+
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid table comment plan");
+        return MYLITE_ERROR;
+    }
+    if (table_options == NULL) {
+        return MYLITE_OK;
+    }
+    if (table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (table_option != NULL) {
+        if (table_option->kind == MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
+            char *decoded = NULL;
+            size_t decoded_length = 0U;
+            size_t decoded_character_count = 0U;
+            int rc = decode_table_option_string_literal(
+                database,
+                child_at(table_option, 0U),
+                &decoded,
+                (struct table_option_name_policy){
+                    .identifier_kind = "table comment",
+                    .nul_message = "table comments do not support NUL bytes",
+                }
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            decoded_length = strlen(decoded);
+            if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) !=
+                MYLITE_OK) {
+                free(decoded);
+                set_unsupported_error(database, "table comments support only valid UTF-8 text");
+                return MYLITE_ERROR;
+            }
+            if (decoded_character_count > MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS ||
+                decoded_length >= sizeof(plan->comment)) {
+                free(decoded);
+                set_table_comment_too_long_error(database, plan->target.table_name);
+                return MYLITE_ERROR;
+            }
+            memcpy(plan->comment, decoded, decoded_length + 1U);
+            free(decoded);
+        }
+        table_option = table_option->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option
@@ -45038,6 +45151,31 @@ static int validate_create_table_collation_option(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_create_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *comment_option
+) {
+    char *decoded = NULL;
+    int rc = MYLITE_OK;
+
+    if (comment_option == NULL || comment_option->kind != MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_table_option_string_literal(
+        database,
+        child_at(comment_option, 0U),
+        &decoded,
+        (struct table_option_name_policy){
+            .identifier_kind = "table comment",
+            .nul_message = "table comments do not support NUL bytes",
+        }
+    );
+    free(decoded);
+    return rc;
 }
 
 static int validate_table_charset_collation_option_values(
@@ -46004,6 +46142,7 @@ static int insert_create_table_catalog_rows(
         plan->auto_increment_next > 0 ? plan->auto_increment_next : 1,
         plan->default_charset,
         plan->default_collation,
+        plan->comment,
         created_time_utc_epoch,
         created_time_utc_epoch,
         out_table
@@ -46311,6 +46450,7 @@ static int build_temporary_table_descriptors(
         "%s",
         plan->default_collation
     );
+    snprintf(out_table->table.comment, sizeof(out_table->table.comment), "%s", plan->comment);
 
     rc = build_temporary_table_column_descriptors(database, plan, table_id, out_table, &column_ids);
     if (rc == MYLITE_OK) {
@@ -116187,7 +116327,7 @@ static int append_show_table_status(
         table->default_collation,
         NULL,
         "",
-        "",
+        table->comment,
     };
 
     if (context->where_clause != NULL) {
@@ -120055,7 +120195,17 @@ static int append_quoted_sql_text(struct dynamic_string *string, const char *tex
 }
 
 static int append_mysql_quoted_default_text(struct dynamic_string *string, const char *text) {
-    int rc = dynamic_string_append(string, " DEFAULT '");
+    int rc = dynamic_string_append(string, " DEFAULT ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_quoted_text(string, text);
+    }
+
+    return rc;
+}
+
+static int append_mysql_quoted_text(struct dynamic_string *string, const char *text) {
+    int rc = dynamic_string_append_char(string, '\'');
 
     for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
         switch (text[index]) {
@@ -120070,6 +120220,9 @@ static int append_mysql_quoted_default_text(struct dynamic_string *string, const
             break;
         case '\r':
             rc = dynamic_string_append(string, "\\r");
+            break;
+        case '\t':
+            rc = dynamic_string_append(string, "\\t");
             break;
         default:
             rc = dynamic_string_append_char(string, text[index]);
@@ -132406,6 +132559,26 @@ static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_
         mylite_connection_diagnostics(database),
         mysql_error_key_too_long,
         "42000",
+        message
+    );
+}
+
+static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Comment for table '%s' is too long (max = 2048)",
+        table_name == NULL ? "" : table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_table_comment_too_long,
+        "HY000",
         message
     );
 }

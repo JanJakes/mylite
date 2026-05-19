@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 23
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 23
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 24
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 24
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -24,6 +24,11 @@ enum {
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 1024,
     MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY = 1024,
+    MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER = 4,
+    MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS = 2048,
+    MYLITE_CATALOG_TABLE_COMMENT_CAPACITY = (MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS *
+                                             MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
+                                            1,
     MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY = 4096,
 };
 
@@ -91,6 +96,7 @@ struct mylite_catalog_table_descriptor {
     int64_t auto_increment_next;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
     bool fulltext_doc_id_initialized;
     int64_t created_time_utc_epoch;
     int64_t updated_time_utc_epoch;
@@ -283,6 +289,7 @@ int mylite_catalog_insert_table_in_mutation(
     int64_t auto_increment_next,
     const char *default_charset,
     const char *default_collation,
+    const char *comment,
     int64_t created_time_utc_epoch,
     int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table
@@ -635,6 +642,7 @@ int mylite_catalog_create_table(
     enum mylite_catalog_table_kind kind,
     const char *default_charset,
     const char *default_collation,
+    const char *comment,
     int64_t created_time_utc_epoch,
     int64_t updated_time_utc_epoch,
     struct mylite_catalog_table_descriptor *out_table

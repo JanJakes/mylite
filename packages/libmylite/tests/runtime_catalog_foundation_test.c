@@ -179,6 +179,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             MYLITE_CATALOG_TABLE_KIND_BASE,
             MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
             MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+            "items comment",
             catalog_test_timestamp_epoch,
             catalog_test_timestamp_epoch,
             &table
@@ -244,6 +245,7 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
     );
     failures += expect_text(table.name, "renamed_items", "reopened table name");
     failures += expect_text(table.physical_name, "phys_items", "reopened physical table name");
+    failures += expect_text(table.comment, "items comment", "reopened table comment");
     failures += expect_int64(
         table.created_time_utc_epoch,
         catalog_test_timestamp_epoch,
@@ -415,6 +417,7 @@ static int test_catalog_default_text_validation(void) {
             MYLITE_CATALOG_TABLE_KIND_BASE,
             MYLITE_CATALOG_DEFAULT_TABLE_CHARSET,
             MYLITE_CATALOG_DEFAULT_TABLE_COLLATION,
+            "",
             catalog_test_timestamp_epoch,
             catalog_test_timestamp_epoch,
             &table

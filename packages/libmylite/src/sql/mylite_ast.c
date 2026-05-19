@@ -820,6 +820,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         return "date_format_argument_count_error";
+    case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
+        return "datediff_function";
+    case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
+        return "datediff_argument_count_error";
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
         return "unix_timestamp_function";
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:

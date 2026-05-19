@@ -59,6 +59,7 @@ static int test_json_introspection_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
 static int test_date_format_function(void);
+static int test_datediff_function(void);
 static int test_unix_timestamp_function(void);
 static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
@@ -349,6 +350,7 @@ int main(void) {
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
     failures += test_date_format_function();
+    failures += test_datediff_function();
     failures += test_unix_timestamp_function();
     failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
@@ -3279,6 +3281,111 @@ static int test_date_format_function(void) {
 
     failures += parse_sql(
         "CREATE TABLE date_format (date_format INT); SELECT date_format FROM date_format;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_datediff_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DATEDIFF('2008-01-02', '2008-01-01'), "
+        "DateDiff(option_value, created_at) AS days FROM options;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_DATEDIFF_FUNCTION, "datediff");
+    failures +=
+        expect_span_text(first_expression, "DATEDIFF('2008-01-02', '2008-01-01')", "datediff span");
+    failures += expect_child_count(first_expression, 2U, "datediff child count");
+    failures +=
+        expect_literal(child_at(first_expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "left");
+    failures +=
+        expect_literal(child_at(first_expression, 1U), MYLITE_SQL_AST_LITERAL_STRING, "right");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_DATEDIFF_FUNCTION,
+        "datediff column function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "datediff column left"
+    );
+    failures += expect_node(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "datediff column right"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "datediff alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO DATEDIFF(NULL, '2008-01-01');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "datediff do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_DATEDIFF_FUNCTION, "do datediff");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATEDIFF();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR,
+        "datediff zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DATEDIFF('2008-01-02');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR,
+        "datediff one argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATEDIFF('2008-01-03', '2008-01-02', '2008-01-01');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR,
+        "datediff extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATEDIFF ('2008-01-02', '2008-01-01') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE datediff (datediff INT); SELECT datediff FROM datediff;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

@@ -395,6 +395,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"DATABASES", MYLITE_SQL_KEYWORD_RESERVED},
         {"DATAFILE", 0U},
         {"DATE", 0U},
+        {"DATEDIFF", 0U},
         {"DATETIME", 0U},
         {"DATE_ADD", 0U},
         {"DATE_FORMAT", 0U},

@@ -863,6 +863,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "index_comment_option";
     case MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION:
         return "index_visibility_option";
+    case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
+        return "column_comment_attribute";
     case MYLITE_SQL_AST_HOUR_FUNCTION:
         return "hour_function";
     case MYLITE_SQL_AST_MINUTE_FUNCTION:

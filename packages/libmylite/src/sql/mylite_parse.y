@@ -5997,6 +5997,12 @@ column_attribute(A) ::= COLLATE(C) BINARY(N). {
         C,
         mylite_sql_parser_make_identifier(state, N));
 }
+column_attribute(A) ::= COMMENT(C) STRING(V). {
+    A = mylite_sql_parser_make_column_comment_attribute(
+        state,
+        C,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
 }

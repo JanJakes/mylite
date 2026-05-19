@@ -31,6 +31,7 @@ struct mylite_sql_parse_error {
 struct column_attribute_positions {
     size_t charset;
     size_t collation;
+    size_t comment;
     size_t nullability;
     size_t default_value;
     size_t primary_key;
@@ -5859,6 +5860,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_collation_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *comment
+) {
+    struct mylite_sql_source_span span = span_from_token(&comment_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (comment != NULL) {
+        span = span_join(span, comment->span);
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(attribute, comment);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -5955,6 +5977,7 @@ static int scan_column_attribute_positions(
     *out_positions = (struct column_attribute_positions){
         .charset = (size_t)-1,
         .collation = (size_t)-1,
+        .comment = (size_t)-1,
         .nullability = (size_t)-1,
         .default_value = (size_t)-1,
         .primary_key = (size_t)-1,
@@ -5970,6 +5993,11 @@ static int scan_column_attribute_positions(
             break;
         case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
             rc = record_column_attribute_position(state, &out_positions->collation, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
+            if (!column_attribute_position_is_set(out_positions->comment)) {
+                out_positions->comment = position;
+            }
             break;
         case MYLITE_SQL_AST_NULLABILITY:
             rc = record_column_attribute_position(state, &out_positions->nullability, position);
@@ -6090,6 +6118,8 @@ static bool legacy_column_attribute_precedes_charset_collation(
              positions->primary_key < charset_collation_limit) ||
             (column_attribute_position_is_set(positions->unique_key) &&
              positions->unique_key < charset_collation_limit) ||
+            (column_attribute_position_is_set(positions->comment) &&
+             positions->comment < charset_collation_limit) ||
             (column_attribute_position_is_set(positions->auto_increment) &&
              positions->auto_increment < charset_collation_limit)) != 0;
 }

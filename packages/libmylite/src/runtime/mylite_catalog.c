@@ -35,6 +35,7 @@ enum {
     catalog_schema_version_v22 = 22U,
     catalog_schema_version_v23 = 23U,
     catalog_schema_version_v24 = 24U,
+    catalog_schema_version_v25 = 25U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -82,7 +83,8 @@ enum catalog_column_insert_bind_index {
     catalog_column_insert_on_update_current_timestamp_bind = 12,
     catalog_column_insert_character_set_name_bind = 13,
     catalog_column_insert_collation_name_bind = 14,
-    catalog_column_insert_generation_bind = 15,
+    catalog_column_insert_comment_bind = 15,
+    catalog_column_insert_generation_bind = 16,
 };
 
 enum catalog_column_replace_bind_index {
@@ -98,9 +100,10 @@ enum catalog_column_replace_bind_index {
     catalog_column_replace_on_update_current_timestamp_bind = 10,
     catalog_column_replace_character_set_name_bind = 11,
     catalog_column_replace_collation_name_bind = 12,
-    catalog_column_replace_generation_bind = 13,
-    catalog_column_replace_table_id_bind = 14,
-    catalog_column_replace_column_id_bind = 15,
+    catalog_column_replace_comment_bind = 13,
+    catalog_column_replace_generation_bind = 14,
+    catalog_column_replace_table_id_bind = 15,
+    catalog_column_replace_column_id_bind = 16,
 };
 
 enum catalog_column_reorder_offset_bind_index {
@@ -211,9 +214,10 @@ enum catalog_column_select_column_index {
     catalog_column_select_on_update_current_timestamp_column = 12,
     catalog_column_select_character_set_name_column = 13,
     catalog_column_select_collation_name_column = 14,
-    catalog_column_select_descriptor_version_column = 15,
-    catalog_column_select_created_generation_column = 16,
-    catalog_column_select_updated_generation_column = 17,
+    catalog_column_select_comment_column = 15,
+    catalog_column_select_descriptor_version_column = 16,
+    catalog_column_select_created_generation_column = 17,
+    catalog_column_select_updated_generation_column = 18,
 };
 
 enum catalog_index_select_column_index {
@@ -328,6 +332,7 @@ struct catalog_column_values {
     bool on_update_current_timestamp;
     const char *character_set_name;
     const char *collation_name;
+    const char *comment;
 };
 
 struct catalog_table_descriptor_input {
@@ -370,6 +375,7 @@ static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite);
 static int migrate_catalog_schema_v22_to_v23(sqlite3 *sqlite);
 static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite);
 static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite);
+static int migrate_catalog_schema_v25_to_v26(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -1115,6 +1121,7 @@ int mylite_catalog_insert_column_in_mutation(
     bool on_update_current_timestamp,
     const char *character_set_name,
     const char *collation_name,
+    const char *comment,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct catalog_column_values values = {
@@ -1130,6 +1137,7 @@ int mylite_catalog_insert_column_in_mutation(
         .on_update_current_timestamp = on_update_current_timestamp,
         .character_set_name = character_set_name,
         .collation_name = collation_name,
+        .comment = comment == NULL ? "" : comment,
     };
     sqlite3_stmt *statement = NULL;
     int rc = MYLITE_OK;
@@ -1163,9 +1171,10 @@ int mylite_catalog_insert_column_in_mutation(
         "INSERT INTO _mylite_catalog_columns "
         "(table_id, ordinal_position, name, logical_type, physical_type, is_nullable, "
         "is_visible, is_auto_increment, default_kind, default_integer, default_text, "
-        "on_update_current_timestamp, character_set_name, collation_name, "
+        "on_update_current_timestamp, character_set_name, collation_name, comment, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 1, ?15, ?15)",
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, "
+        "1, ?16, ?16)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -2955,7 +2964,8 @@ int mylite_catalog_replace_column_in_mutation(
     const char *default_text,
     bool on_update_current_timestamp,
     const char *character_set_name,
-    const char *collation_name
+    const char *collation_name,
+    const char *comment
 ) {
     const struct catalog_column_values values = {
         .name = name,
@@ -2970,6 +2980,7 @@ int mylite_catalog_replace_column_in_mutation(
         .on_update_current_timestamp = on_update_current_timestamp,
         .character_set_name = character_set_name,
         .collation_name = collation_name,
+        .comment = comment == NULL ? "" : comment,
     };
     sqlite3_stmt *statement = NULL;
     int rc = validate_catalog_ready_database(database);
@@ -3000,8 +3011,8 @@ int mylite_catalog_replace_column_in_mutation(
         "SET name = ?1, logical_type = ?2, physical_type = ?3, is_nullable = ?4, "
         "is_visible = ?5, is_auto_increment = ?6, default_kind = ?7, default_integer = ?8, "
         "default_text = ?9, on_update_current_timestamp = ?10, character_set_name = ?11, "
-        "collation_name = ?12, descriptor_version = descriptor_version + 1, "
-        "updated_catalog_generation = ?13 WHERE table_id = ?14 AND column_id = ?15",
+        "collation_name = ?12, comment = ?13, descriptor_version = descriptor_version + 1, "
+        "updated_catalog_generation = ?14 WHERE table_id = ?15 AND column_id = ?16",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -3894,7 +3905,7 @@ int mylite_catalog_for_each_column_in_table(
         database->sqlite,
         "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
         "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
-        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, comment, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_columns WHERE table_id = ?1 ORDER BY ordinal_position",
         &statement
@@ -5021,6 +5032,7 @@ int mylite_catalog_create_column(
     bool on_update_current_timestamp,
     const char *character_set_name,
     const char *collation_name,
+    const char *comment,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct catalog_column_values values = {
@@ -5036,6 +5048,7 @@ int mylite_catalog_create_column(
         .on_update_current_timestamp = on_update_current_timestamp,
         .character_set_name = character_set_name,
         .collation_name = collation_name,
+        .comment = comment == NULL ? "" : comment,
     };
     struct catalog_generation_change generation = {0};
     struct mylite_catalog_table_descriptor table = {0};
@@ -5077,9 +5090,10 @@ int mylite_catalog_create_column(
         "INSERT INTO _mylite_catalog_columns "
         "(table_id, ordinal_position, name, logical_type, physical_type, is_nullable, "
         "is_visible, is_auto_increment, default_kind, default_integer, default_text, "
-        "on_update_current_timestamp, character_set_name, collation_name, "
+        "on_update_current_timestamp, character_set_name, collation_name, comment, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 1, ?15, ?15)",
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, "
+        "1, ?16, ?16)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -5353,6 +5367,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v24:
         rc = migrate_catalog_schema_v24_to_v25(sqlite);
+        next_schema_version = catalog_schema_version_v25;
+        break;
+    case catalog_schema_version_v25:
+        rc = migrate_catalog_schema_v25_to_v26(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -6109,6 +6127,23 @@ static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v25_to_v26(sqlite3 *sqlite) {
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "ALTER TABLE _mylite_catalog_columns "
+                             "ADD COLUMN comment TEXT NOT NULL DEFAULT '';"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 26, minimum_reader_schema_version = 26;"
+                             "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -6134,6 +6169,7 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
             "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
             "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
             "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+            "comment, "
             "descriptor_version, created_catalog_generation, updated_catalog_generation "
             "FROM _mylite_catalog_columns WHERE 0"
         );
@@ -6249,6 +6285,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "CHECK(on_update_current_timestamp IN (0, 1)),"
         "character_set_name TEXT NOT NULL,"
         "collation_name TEXT NOT NULL,"
+        "comment TEXT NOT NULL,"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -6804,6 +6841,13 @@ static int bind_catalog_column_insert_values(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_column_insert_comment_bind,
+            values->comment == NULL ? "" : values->comment
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = bind_u64(statement, catalog_column_insert_generation_bind, generation);
     }
 
@@ -6888,6 +6932,13 @@ static int bind_catalog_column_replace_values(
             statement,
             catalog_column_replace_collation_name_bind,
             values->collation_name == NULL ? "" : values->collation_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(
+            statement,
+            catalog_column_replace_comment_bind,
+            values->comment == NULL ? "" : values->comment
         );
     }
     if (rc == MYLITE_OK) {
@@ -7137,7 +7188,7 @@ static int read_column_by_name(
         sqlite,
         "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
         "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
-        "default_text, on_update_current_timestamp, character_set_name, collation_name, "
+        "default_text, on_update_current_timestamp, character_set_name, collation_name, comment, "
         "descriptor_version, created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_columns WHERE table_id = ?1 AND name = ?2",
         &statement
@@ -7578,6 +7629,14 @@ static int materialize_column_identity(
             catalog_column_select_collation_name_column,
             out_column->collation_name,
             sizeof(out_column->collation_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_column_select_comment_column,
+            out_column->comment,
+            sizeof(out_column->comment)
         );
     }
 
@@ -8387,6 +8446,10 @@ static int validate_catalog_column_values(
         return rc;
     }
     rc = validate_optional_name(values->collation_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_optional_name(values->comment, MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }

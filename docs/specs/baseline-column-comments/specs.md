@@ -61,6 +61,8 @@ Runtime probes establish:
   column attributes.
 - Duplicate column `COMMENT` attributes are accepted; the final comment wins.
 - `CREATE TABLE ... LIKE source` copies source column comments.
+- `CREATE TABLE ... SELECT` direct source column projections copy source column
+  comments.
 - `ALTER TABLE ... ADD COLUMN ... COMMENT 'text'` stores the comment on the new
   column.
 - `ALTER TABLE ... MODIFY COLUMN ... COMMENT 'text'` and
@@ -89,6 +91,8 @@ Supported:
   definitions;
 - persistent and session-temporary `CREATE TABLE`;
 - persistent and session-temporary `CREATE TABLE ... LIKE` descriptor cloning;
+- persistent `CREATE TABLE ... SELECT` direct descriptor-column projections
+  where descriptor inference is already supported;
 - persistent `ALTER TABLE ... ADD COLUMN`, `MODIFY COLUMN`, and
   `CHANGE COLUMN` where those actions are already supported;
 - ordinary MySQL string-literal decoding using the current session SQL mode,
@@ -187,8 +191,9 @@ comments:
   `1629 / HY000`.
 
 `CREATE TABLE ... LIKE` copies descriptor comments exactly. `CREATE TABLE ...
-SELECT` continues to use its current descriptor-inference policy and does not
-infer comments from the source projection.
+SELECT` copies comments for direct source descriptor-column projections handled
+by the current descriptor-inference path. It does not invent comments for
+literal, expression, or otherwise unsupported projection forms.
 
 `ALTER TABLE ... ADD COLUMN` stores the planned column comment. `MODIFY COLUMN`
 and `CHANGE COLUMN` store the comment from the replacement definition, or the
@@ -245,9 +250,10 @@ Required fast C coverage:
 - empty comments omitted from `SHOW CREATE TABLE` and rendered as empty
   metadata;
 - escaped quote/backslash rendering and `NO_BACKSLASH_ESCAPES`;
-- `CREATE TABLE ... LIKE`, temporary table comments, rename table, rename
-  column, add/modify/change column, and replacement definitions that clear
-  prior comments;
+- `CREATE TABLE ... LIKE`, `CREATE TABLE ... SELECT` direct column projection
+  comments, temporary table comments, rename table, rename column,
+  add/modify/change column, and replacement definitions that clear prior
+  comments;
 - close/reopen persistence and `.mylite` preamble preservation;
 - independent file-backed handles with independent comments;
 - NUL and too-long diagnostics;
@@ -258,7 +264,8 @@ Required fast C coverage:
 Required MySQL expectation coverage:
 
 - create-time metadata;
-- `CREATE TABLE ... LIKE`;
+- `CREATE TABLE ... LIKE` and `CREATE TABLE ... SELECT` direct column
+  projections;
 - `ALTER TABLE ... ADD/MODIFY/CHANGE`;
 - duplicate comments;
 - syntax errors for unsupported column-comment forms;

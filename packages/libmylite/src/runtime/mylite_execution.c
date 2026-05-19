@@ -99,6 +99,7 @@ enum {
     mysql_error_incorrect_argument_type = 1232,
     mysql_error_session_variable_read_only = 1621,
     mysql_error_table_comment_too_long = 1628,
+    mysql_error_column_comment_too_long = 1629,
     mysql_error_index_comment_too_long = 1688,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
@@ -372,6 +373,7 @@ enum {
     information_schema_columns_column_type_column = 15,
     information_schema_columns_column_key_column = 16,
     information_schema_columns_extra_column = 17,
+    information_schema_columns_column_comment_column = 19,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -1597,6 +1599,7 @@ struct planned_column {
     char default_text[MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY];
     char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char comment[MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY];
 };
 
 struct planned_secondary_index_part {
@@ -15270,6 +15273,11 @@ static int apply_column_charset_collation_attributes(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *column
 );
+static int apply_column_comment_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+);
 static bool column_charset_collation_requests_binary(
     bool has_charset,
     const char *charset_name,
@@ -22131,6 +22139,7 @@ static void set_key_part_length_cannot_be_zero_error(
 );
 static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes);
 static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name);
+static void set_column_comment_too_long_error(struct mylite_db *database, const char *column_name);
 static void set_index_comment_too_long_error(struct mylite_db *database, const char *index_name);
 static void set_non_ascii_string_key_error(struct mylite_db *database);
 static void set_duplicate_key_error(
@@ -22915,6 +22924,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
+    case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -32519,6 +32529,7 @@ static int append_information_schema_columns_base_column_row(
         column
     );
     values[information_schema_columns_extra_column] = extra;
+    values[information_schema_columns_column_comment_column] = column->comment;
 
     return append_information_schema_row(database, rows, values);
 }
@@ -38743,6 +38754,12 @@ static int append_show_create_table_column_suffix(
     if (rc == MYLITE_OK && column->on_update_current_timestamp) {
         rc = dynamic_string_append(string, " ON UPDATE CURRENT_TIMESTAMP");
     }
+    if (rc == MYLITE_OK && column->comment[0] != '\0') {
+        rc = dynamic_string_append(string, " COMMENT ");
+        if (rc == MYLITE_OK) {
+            rc = append_mysql_quoted_text(string, column->comment);
+        }
+    }
     if (rc == MYLITE_OK && !column->is_visible) {
         rc = dynamic_string_append(string, " /*!80023 INVISIBLE */");
     }
@@ -39921,6 +39938,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_CHARSET_ATTRIBUTE:
     case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
+    case MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE:
     case MYLITE_SQL_AST_TABLE_AUTO_INCREMENT_OPTION:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
@@ -46684,6 +46702,7 @@ static int insert_create_table_catalog_rows(
             column->on_update_current_timestamp,
             column->character_set_name,
             column->collation_name,
+            column->comment,
             &inserted_column
         );
         if (rc == MYLITE_OK) {
@@ -47056,6 +47075,7 @@ static int build_temporary_table_column_descriptors(
             "%s",
             column->collation_name
         );
+        snprintf(descriptor->comment, sizeof(descriptor->comment), "%s", column->comment);
     }
     if (rc != MYLITE_OK) {
         free(column_ids);
@@ -48005,6 +48025,7 @@ static int alter_table_add_column_from_plan(
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
             plan->column.collation_name,
+            plan->column.comment,
             &inserted_column
         );
     }
@@ -48435,7 +48456,8 @@ static int alter_table_add_primary_key_from_plan(
             default_text,
             column->on_update_current_timestamp,
             column->character_set_name,
-            column->collation_name
+            column->collation_name,
+            column->comment
         );
     }
     if (rc == MYLITE_OK) {
@@ -54198,7 +54220,8 @@ static int alter_table_set_default_from_plan(
             plan->column.default_text,
             plan->original_column.on_update_current_timestamp,
             plan->original_column.character_set_name,
-            plan->original_column.collation_name
+            plan->original_column.collation_name,
+            plan->original_column.comment
         );
     }
     if (rc == MYLITE_OK) {
@@ -54318,7 +54341,8 @@ static int alter_table_drop_default_from_plan(
             NULL,
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
-            plan->column.collation_name
+            plan->column.collation_name,
+            plan->column.comment
         );
     }
     if (rc == MYLITE_OK) {
@@ -55067,6 +55091,7 @@ static void planned_column_from_catalog_descriptor(
         "%s",
         descriptor->collation_name
     );
+    snprintf(out_column->comment, sizeof(out_column->comment), "%s", descriptor->comment);
 }
 
 static int resolve_alter_table_column_replacement_plan(
@@ -55442,6 +55467,9 @@ static bool modify_column_definition_matches(
     if (strcmp(original_column->collation_name, replacement_column->collation_name) != 0) {
         return false;
     }
+    if (strcmp(original_column->comment, replacement_column->comment) != 0) {
+        return false;
+    }
     if (original_column->default_kind != replacement_column->default_kind) {
         return false;
     }
@@ -55553,7 +55581,8 @@ static int alter_table_modify_column_from_plan(
             plan->column.default_text,
             plan->column.on_update_current_timestamp,
             plan->column.character_set_name,
-            plan->column.collation_name
+            plan->column.collation_name,
+            plan->column.comment
         );
     }
     if (rc == MYLITE_OK && plan->changes_position) {
@@ -91252,10 +91281,61 @@ static int plan_column(
         rc = validate_column_default(database, out_column->default_node, out_column);
     }
     if (rc == MYLITE_OK) {
+        rc = apply_column_comment_attributes(database, column_node, out_column);
+    }
+    if (rc == MYLITE_OK) {
         rc = validate_column_attributes(database, column_node, out_column);
     }
 
     return rc;
+}
+
+static int apply_column_comment_attributes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    struct planned_column *column
+) {
+    const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
+
+    column->comment[0] = '\0';
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE) {
+            char *decoded = NULL;
+            size_t decoded_length = 0U;
+            size_t decoded_character_count = 0U;
+            int rc = decode_table_option_string_literal(
+                database,
+                child_at(child, 0U),
+                &decoded,
+                (struct table_option_name_policy){
+                    .identifier_kind = "column comment",
+                    .nul_message = "column comments do not support NUL bytes",
+                }
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            decoded_length = strlen(decoded);
+            if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) !=
+                MYLITE_OK) {
+                free(decoded);
+                set_unsupported_error(database, "column comments support only valid UTF-8 text");
+                return MYLITE_ERROR;
+            }
+            if (decoded_character_count > MYLITE_CATALOG_COLUMN_COMMENT_MAX_CHARACTERS ||
+                decoded_length >= sizeof(column->comment)) {
+                free(decoded);
+                set_column_comment_too_long_error(database, column->name);
+                return MYLITE_ERROR;
+            }
+            memcpy(column->comment, decoded, decoded_length + 1U);
+            free(decoded);
+        }
+        child = child->next_sibling;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_column_attributes(
@@ -91286,8 +91366,10 @@ static int validate_column_attributes(
         } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
             ++primary_key_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY) {
-            /* Inline UNIQUE is lowered into a table-level unique index after column validation. */
+        } else if (
+            child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
+            child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE
+        ) {
             previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
             ++auto_increment_count;
@@ -119419,7 +119501,7 @@ static int append_show_column(
         }
         values[show_full_columns_extra_column] = column_extra_text(column);
         values[show_full_columns_privileges_column] = "select,insert,update,references";
-        values[show_full_columns_comment_column] = "";
+        values[show_full_columns_comment_column] = column->comment;
 
         if (context->where_clause != NULL) {
             rc = show_columns_where_clause_matches(
@@ -135091,6 +135173,26 @@ static void set_table_comment_too_long_error(struct mylite_db *database, const c
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_table_comment_too_long,
+        "HY000",
+        message
+    );
+}
+
+static void set_column_comment_too_long_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Comment for field '%s' is too long (max = 1024)",
+        column_name == NULL ? "" : column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_column_comment_too_long,
         "HY000",
         message
     );

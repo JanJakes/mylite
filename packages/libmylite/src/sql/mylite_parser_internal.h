@@ -1704,6 +1704,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_collation_attribute(
     struct mylite_sql_token collate_token,
     struct mylite_sql_ast_node *collation_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *comment
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,

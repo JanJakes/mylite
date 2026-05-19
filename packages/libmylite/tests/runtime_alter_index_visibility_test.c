@@ -646,6 +646,7 @@ static int make_catalog_look_like_v22(sqlite3 *sqlite) {
     );
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_indexes DROP COLUMN comment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_indexes DROP COLUMN is_visible");
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_columns DROP COLUMN comment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN comment");
     failures += execute_sql(
         sqlite,

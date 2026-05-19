@@ -495,6 +495,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INDEX_TYPE_OPTION = 486,
     MYLITE_SQL_AST_INDEX_COMMENT_OPTION = 487,
     MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION = 488,
+    MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE = 489,
 };
 
 enum mylite_sql_ast_literal_kind {

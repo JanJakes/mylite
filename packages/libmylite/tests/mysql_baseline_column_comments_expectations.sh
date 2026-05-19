@@ -147,6 +147,24 @@ expect_output \
 "WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'clone' ORDER BY ORDINAL_POSITION;" \
     "$DATABASE"
 
+ctas_expected=$(cat <<\EXPECTED
+ctas	CREATE TABLE `ctas` (
+  `a` int DEFAULT NULL COMMENT 'alpha',
+  `b` varchar(5) DEFAULT 'x' COMMENT 'bee'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+a	alpha
+b	bee
+EXPECTED
+)
+expect_output \
+    "create table select copies direct column comments" \
+    "$ctas_expected" \
+    "CREATE TABLE ctas AS SELECT a, b FROM t; "\
+"SHOW CREATE TABLE ctas; "\
+"SELECT COLUMN_NAME, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'ctas' ORDER BY ORDINAL_POSITION;" \
+    "$DATABASE"
+
 alter_expected=$(cat <<\EXPECTED
 0	0
 0	0

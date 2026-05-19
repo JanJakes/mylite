@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 25
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 25
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 26
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 26
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -33,6 +33,10 @@ enum {
     MYLITE_CATALOG_INDEX_COMMENT_CAPACITY = (MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS *
                                              MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
                                             1,
+    MYLITE_CATALOG_COLUMN_COMMENT_MAX_CHARACTERS = 1024,
+    MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY = (MYLITE_CATALOG_COLUMN_COMMENT_MAX_CHARACTERS *
+                                              MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
+                                             1,
     MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY = 4096,
 };
 
@@ -125,6 +129,7 @@ struct mylite_catalog_column_descriptor {
     bool on_update_current_timestamp;
     char character_set_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char comment[MYLITE_CATALOG_COLUMN_COMMENT_CAPACITY];
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -317,6 +322,7 @@ int mylite_catalog_insert_column_in_mutation(
     bool on_update_current_timestamp,
     const char *character_set_name,
     const char *collation_name,
+    const char *comment,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_insert_index_in_mutation(
@@ -483,7 +489,8 @@ int mylite_catalog_replace_column_in_mutation(
     const char *default_text,
     bool on_update_current_timestamp,
     const char *character_set_name,
-    const char *collation_name
+    const char *collation_name,
+    const char *comment
 );
 
 struct mylite_catalog_column_reorder {
@@ -694,6 +701,7 @@ int mylite_catalog_create_column(
     bool on_update_current_timestamp,
     const char *character_set_name,
     const char *collation_name,
+    const char *comment,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

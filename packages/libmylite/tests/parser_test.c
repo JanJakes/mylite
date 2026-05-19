@@ -11305,6 +11305,7 @@ static int test_column_charset_collation_attribute_statements(void) {
     const struct mylite_sql_ast_node *column = NULL;
     const struct mylite_sql_ast_node *charset_option = NULL;
     const struct mylite_sql_ast_node *collation_option = NULL;
+    const struct mylite_sql_ast_node *comment_attribute = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -11353,6 +11354,94 @@ static int test_column_charset_collation_attribute_statements(void) {
     column = child_at(columns, 1U);
     collation_option = child_at(column, 2U);
     failures += expect_span_text(child_at(collation_option, 0U), "binary", "binary collation name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_comment ("
+        "a INT COMMENT 'alpha', "
+        "b VARCHAR(5) CHARACTER SET ascii COMMENT 'bee' NOT NULL, "
+        "c INT COMMENT 'first' COMMENT 'second'"
+        ");",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    comment_attribute = child_at(column, 2U);
+    failures += expect_node(
+        comment_attribute,
+        MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE,
+        "column comment attribute"
+    );
+    failures += expect_literal(
+        child_at(comment_attribute, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "column comment literal"
+    );
+    failures +=
+        expect_span_text(child_at(comment_attribute, 0U), "'alpha'", "column comment literal text");
+    column = child_at(columns, 2U);
+    failures += expect_node(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE,
+        "first duplicate column comment"
+    );
+    failures += expect_node(
+        child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE,
+        "second duplicate column comment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE column_comment ADD COLUMN d INT COMMENT 'dee' FIRST;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE column_comment MODIFY COLUMN a BIGINT COMMENT 'modified';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE column_comment CHANGE COLUMN b bb VARCHAR(7) COMMENT 'changed';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_comment_equal (a INT COMMENT='x');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_comment_number (a INT COMMENT 123);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_comment_null (a INT COMMENT NULL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE column_comment_before_charset ("
+        "v VARCHAR(10) COMMENT 'x' CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

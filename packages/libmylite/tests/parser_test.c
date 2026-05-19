@@ -3498,10 +3498,14 @@ static int test_unix_timestamp_function(void) {
 
 static int test_temporal_extract_functions(void) {
     enum {
-        temporal_extract_time_projection_index = 5,
-        temporal_extract_hour_projection_index = 6,
-        temporal_extract_minute_projection_index = 7,
-        temporal_extract_second_projection_index = 8
+        temporal_extract_dayofweek_projection_index = 5,
+        temporal_extract_dayofyear_projection_index = 6,
+        temporal_extract_last_day_projection_index = 7,
+        temporal_extract_time_projection_index = 8,
+        temporal_extract_hour_projection_index = 9,
+        temporal_extract_minute_projection_index = 10,
+        temporal_extract_second_projection_index = 11,
+        temporal_extract_do_hour_index = 6
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -3512,7 +3516,8 @@ static int test_temporal_extract_functions(void) {
 
     failures += parse_sql(
         "SELECT DATE('2008-01-02 13:29:17'), YEAR(d), MONTH(d), DAY(d), "
-        "DAYOFMONTH(d), TIME(dt), HOUR(tm), MINUTE(tm), SECOND(tm) FROM t;",
+        "DAYOFMONTH(d), DAYOFWEEK(d), DAYOFYEAR(d), LAST_DAY(d), TIME(dt), HOUR(tm), "
+        "MINUTE(tm), SECOND(tm) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -3544,6 +3549,21 @@ static int test_temporal_extract_functions(void) {
         "dayofmonth extract function"
     );
     failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_dayofweek_projection_index), 0U),
+        MYLITE_SQL_AST_DAYOFWEEK_FUNCTION,
+        "dayofweek extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_dayofyear_projection_index), 0U),
+        MYLITE_SQL_AST_DAYOFYEAR_FUNCTION,
+        "dayofyear extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_last_day_projection_index), 0U),
+        MYLITE_SQL_AST_LAST_DAY_FUNCTION,
+        "last_day extract function"
+    );
+    failures += expect_node(
         child_at(child_at(select_list, temporal_extract_time_projection_index), 0U),
         MYLITE_SQL_AST_TIME_FUNCTION,
         "time extract function"
@@ -3564,15 +3584,17 @@ static int test_temporal_extract_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SELECT DATE ('2008-01-02 13:29:17'), TIME ('13:29:17') AS tm, "
-        "HOUR ('13:29:17') AS h FROM DUAL;",
+        "SELECT DATE ('2008-01-02 13:29:17'), DAYOFWEEK ('2008-01-02') AS dow, "
+        "DAYOFYEAR ('2008-01-02') AS doy, LAST_DAY ('2008-01-02') AS month_end, "
+        "TIME ('13:29:17') AS tm, HOUR ('13:29:17') AS h FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "DO DATE(NULL), TIME('13:29:17'), YEAR('2008-01-02'), HOUR('13:29:17');",
+        "DO DATE(NULL), DAYOFWEEK('2008-01-02'), DAYOFYEAR('2008-01-02'), "
+        "LAST_DAY('2008-01-02'), TIME('13:29:17'), YEAR('2008-01-02'), HOUR('13:29:17');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -3581,10 +3603,28 @@ static int test_temporal_extract_functions(void) {
     failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "temporal extract do");
     failures +=
         expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_DATE_FUNCTION, "do date extract");
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_DAYOFWEEK_FUNCTION,
+        "do dayofweek extract"
+    );
+    failures += expect_node(
+        child_at(expression_list, 2U),
+        MYLITE_SQL_AST_DAYOFYEAR_FUNCTION,
+        "do dayofyear extract"
+    );
+    failures += expect_node(
+        child_at(expression_list, 3U),
+        MYLITE_SQL_AST_LAST_DAY_FUNCTION,
+        "do last_day extract"
+    );
     failures +=
-        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_TIME_FUNCTION, "do time extract");
-    failures +=
-        expect_node(child_at(expression_list, 3U), MYLITE_SQL_AST_HOUR_FUNCTION, "do hour extract");
+        expect_node(child_at(expression_list, 4U), MYLITE_SQL_AST_TIME_FUNCTION, "do time extract");
+    failures += expect_node(
+        child_at(expression_list, temporal_extract_do_hour_index),
+        MYLITE_SQL_AST_HOUR_FUNCTION,
+        "do hour extract"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT DAYOFMONTH();", MYLITE_SQL_PARSE_OK, &result);
@@ -3596,9 +3636,37 @@ static int test_temporal_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT DAYOFWEEK();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR,
+        "dayofweek zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DAYOFYEAR('2008-01-02', 'x');", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR,
+        "dayofyear extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LAST_DAY();", MYLITE_SQL_PARSE_OK, &result);
+    expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        expression,
+        MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR,
+        "last_day zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "CREATE TABLE temporal_extract_keywords(day INT, dayofmonth INT, hour INT, minute INT, "
-        "month INT, second INT, year INT, date DATE, time TIME);",
+        "CREATE TABLE temporal_extract_keywords(day INT, dayofmonth INT, dayofweek INT, "
+        "dayofyear INT, last_day INT, hour INT, minute INT, month INT, second INT, year INT, "
+        "date DATE, time TIME);",
         MYLITE_SQL_PARSE_OK,
         &result
     );

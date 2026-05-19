@@ -13,10 +13,13 @@ enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_YEAR = 1,
     MYLITE_TEMPORAL_EXTRACT_MONTH = 2,
     MYLITE_TEMPORAL_EXTRACT_DAY = 3,
-    MYLITE_TEMPORAL_EXTRACT_HOUR = 4,
-    MYLITE_TEMPORAL_EXTRACT_MINUTE = 5,
-    MYLITE_TEMPORAL_EXTRACT_SECOND = 6,
-    MYLITE_TEMPORAL_EXTRACT_TIME = 7,
+    MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK = 4,
+    MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR = 5,
+    MYLITE_TEMPORAL_EXTRACT_LAST_DAY = 6,
+    MYLITE_TEMPORAL_EXTRACT_HOUR = 7,
+    MYLITE_TEMPORAL_EXTRACT_MINUTE = 8,
+    MYLITE_TEMPORAL_EXTRACT_SECOND = 9,
+    MYLITE_TEMPORAL_EXTRACT_TIME = 10,
 };
 
 enum mylite_temporal_extract_input_kind {
@@ -33,6 +36,7 @@ bool mylite_temporal_extract_kind_from_name(
     size_t name_length,
     enum mylite_temporal_extract_kind *out_kind
 );
+bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_kind kind);
 bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind kind);
 bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind kind);
 

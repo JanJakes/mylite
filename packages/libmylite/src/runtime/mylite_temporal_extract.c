@@ -20,6 +20,7 @@ enum {
     date_february = 2,
     date_leap_day = 29,
     time_hour_max = 838,
+    datetime_hour_max = 23,
     time_minute_second_max = 59,
     date_text_length = 10,
     time_text_min_length = 8,
@@ -42,6 +43,8 @@ enum {
     leap_quadrennial_year_cycle = 4,
     leap_century_year_cycle = 100,
     leap_quadricentennial_year_cycle = 400,
+    days_per_common_year = 365,
+    days_per_week = 7,
     digit_radix = 10,
 };
 
@@ -99,6 +102,18 @@ static int extract_date_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int extract_calendar_date_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
+static int parse_calendar_date_value(
+    const struct temporal_extract_request *request,
+    struct temporal_date_parts *out_date
+);
+static int invalid_calendar_date_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
 static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
@@ -124,10 +139,25 @@ static bool parse_string_date_value(
     size_t value_length,
     struct temporal_date_parts *out_date
 );
+static bool parse_calendar_string_date_value(
+    const char *value,
+    size_t value_length,
+    struct temporal_date_parts *out_date
+);
 static bool parse_string_time_value(
     const char *value,
     size_t value_length,
     struct temporal_time_parts *out_time
+);
+static bool parse_calendar_datetime_text(
+    const char *value,
+    size_t value_length,
+    struct temporal_datetime_parts *out_parts
+);
+static bool parse_calendar_date_text(
+    const char *value,
+    size_t value_length,
+    struct temporal_date_parts *out_parts
 );
 static bool parse_datetime_text(
     const char *value,
@@ -145,10 +175,18 @@ static bool parse_time_text(
     struct temporal_time_parts *out_parts
 );
 static bool parse_fixed_digits(const char *text, size_t count, int *out_value);
+static bool calendar_complete_date_is_valid(const struct temporal_date_parts *parts);
+static bool calendar_last_day_argument_is_valid(const struct temporal_date_parts *parts);
 static bool date_parts_are_valid(const struct temporal_date_parts *parts);
+static bool datetime_time_parts_are_valid(const struct temporal_time_parts *parts);
 static bool time_parts_are_valid(const struct temporal_time_parts *parts);
+static bool calendar_is_leap_year(int year);
 static bool is_leap_year(int year);
+static int calendar_days_in_month(int year, int month);
 static int days_in_month(int year, int month);
+static int calendar_day_of_year(const struct temporal_date_parts *parts);
+static int calendar_day_of_week(const struct temporal_date_parts *parts);
+static int64_t calendar_day_number(const struct temporal_date_parts *parts);
 static int append_incorrect_temporal_warning(
     struct mylite_db *database,
     const char *prefix,
@@ -168,6 +206,12 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
         return "month";
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return "day";
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+        return "dayofweek";
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+        return "dayofyear";
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+        return "last_day";
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
         return "hour";
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
@@ -192,6 +236,9 @@ bool mylite_temporal_extract_kind_from_name(
         {"year", MYLITE_TEMPORAL_EXTRACT_YEAR},
         {"month", MYLITE_TEMPORAL_EXTRACT_MONTH},
         {"day", MYLITE_TEMPORAL_EXTRACT_DAY},
+        {"dayofweek", MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK},
+        {"dayofyear", MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR},
+        {"last_day", MYLITE_TEMPORAL_EXTRACT_LAST_DAY},
         {"hour", MYLITE_TEMPORAL_EXTRACT_HOUR},
         {"minute", MYLITE_TEMPORAL_EXTRACT_MINUTE},
         {"second", MYLITE_TEMPORAL_EXTRACT_SECOND},
@@ -211,12 +258,34 @@ bool mylite_temporal_extract_kind_from_name(
     return false;
 }
 
+bool mylite_temporal_extract_kind_is_calendar_date(enum mylite_temporal_extract_kind kind) {
+    switch (kind) {
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+        return true;
+    case MYLITE_TEMPORAL_EXTRACT_DATE:
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_MONTH:
+    case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SECOND:
+        return false;
+    }
+    return false;
+}
+
 bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind kind) {
     switch (kind) {
     case MYLITE_TEMPORAL_EXTRACT_DATE:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
@@ -238,6 +307,9 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
         return false;
     }
     return false;
@@ -473,7 +545,9 @@ static int temporal_extract_sqlite_result(
     if (is_null) {
         sqlite3_result_null(context);
     } else if (
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE || extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME ||
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_LAST_DAY
     ) {
         sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
     } else {
@@ -491,6 +565,9 @@ static int extract_date_part_value(
     struct temporal_datetime_parts datetime = {0};
     int rc = MYLITE_OK;
 
+    if (mylite_temporal_extract_kind_is_calendar_date(request->extract_kind)) {
+        return extract_calendar_date_value(database, request);
+    }
     if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
         request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
         if (parse_datetime_text(request->value, request->value_length, &datetime)) {
@@ -536,6 +613,9 @@ static int extract_date_part_value(
         return format_integer_result(database, date.month, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return format_integer_result(database, date.day, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
     case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
@@ -543,6 +623,96 @@ static int extract_date_part_value(
         break;
     }
     return MYLITE_ERROR;
+}
+
+static int extract_calendar_date_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_date_parts date = {0};
+
+    if (parse_calendar_date_value(request, &date) != MYLITE_OK) {
+        return invalid_calendar_date_value(database, request);
+    }
+
+    switch (request->extract_kind) {
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+        if (!calendar_complete_date_is_valid(&date)) {
+            return invalid_calendar_date_value(database, request);
+        }
+        return format_integer_result(database, calendar_day_of_week(&date), request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+        if (!calendar_complete_date_is_valid(&date)) {
+            return invalid_calendar_date_value(database, request);
+        }
+        return format_integer_result(database, calendar_day_of_year(&date), request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
+        if (!calendar_last_day_argument_is_valid(&date)) {
+            return invalid_calendar_date_value(database, request);
+        }
+        date.day = calendar_days_in_month(date.year, date.month);
+        return format_date_result(database, &date, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_DATE:
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
+    case MYLITE_TEMPORAL_EXTRACT_YEAR:
+    case MYLITE_TEMPORAL_EXTRACT_MONTH:
+    case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_HOUR:
+    case MYLITE_TEMPORAL_EXTRACT_MINUTE:
+    case MYLITE_TEMPORAL_EXTRACT_SECOND:
+        break;
+    }
+    return MYLITE_ERROR;
+}
+
+static int parse_calendar_date_value(
+    const struct temporal_extract_request *request,
+    struct temporal_date_parts *out_date
+) {
+    struct temporal_datetime_parts datetime = {0};
+
+    if (request == NULL || out_date == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        if (parse_calendar_datetime_text(request->value, request->value_length, &datetime)) {
+            *out_date = datetime.date;
+            return MYLITE_OK;
+        }
+        return MYLITE_ERROR;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        if (parse_calendar_date_text(request->value, request->value_length, out_date)) {
+            return MYLITE_OK;
+        }
+        return MYLITE_ERROR;
+    }
+    if (parse_calendar_string_date_value(request->value, request->value_length, out_date)) {
+        return MYLITE_OK;
+    }
+    return MYLITE_ERROR;
+}
+
+static int invalid_calendar_date_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    int rc = MYLITE_OK;
+
+    if (request == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_STRING) {
+        rc = append_incorrect_temporal_warning(
+            database,
+            "Incorrect datetime value",
+            request->value,
+            request->value_length
+        );
+    }
+    *request->out_is_null = true;
+    return rc;
 }
 
 static int extract_time_part_value(
@@ -605,6 +775,9 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFWEEK:
+    case MYLITE_TEMPORAL_EXTRACT_DAYOFYEAR:
+    case MYLITE_TEMPORAL_EXTRACT_LAST_DAY:
         break;
     }
     return MYLITE_ERROR;
@@ -786,6 +959,23 @@ static bool parse_string_date_value(
     return false;
 }
 
+static bool parse_calendar_string_date_value(
+    const char *value,
+    size_t value_length,
+    struct temporal_date_parts *out_date
+) {
+    struct temporal_datetime_parts datetime = {0};
+
+    if (parse_calendar_date_text(value, value_length, out_date)) {
+        return true;
+    }
+    if (parse_calendar_datetime_text(value, value_length, &datetime)) {
+        *out_date = datetime.date;
+        return true;
+    }
+    return false;
+}
+
 static bool parse_string_time_value(
     const char *value,
     size_t value_length,
@@ -801,6 +991,48 @@ static bool parse_string_time_value(
         return true;
     }
     return false;
+}
+
+static bool parse_calendar_datetime_text(
+    const char *value,
+    size_t value_length,
+    struct temporal_datetime_parts *out_parts
+) {
+    struct temporal_datetime_parts parts = {0};
+
+    if (value == NULL || out_parts == NULL || value_length != datetime_text_length ||
+        value[date_text_length] != ' ') {
+        return false;
+    }
+    if (!parse_calendar_date_text(value, date_text_length, &parts.date) ||
+        !parse_time_text(value + date_text_length + 1U, time_text_min_length, &parts.time) ||
+        !datetime_time_parts_are_valid(&parts.time)) {
+        return false;
+    }
+    *out_parts = parts;
+    return true;
+}
+
+static bool parse_calendar_date_text(
+    const char *value,
+    size_t value_length,
+    struct temporal_date_parts *out_parts
+) {
+    struct temporal_date_parts parts = {0};
+
+    if (value == NULL || out_parts == NULL || value_length != date_text_length ||
+        value[date_first_separator_index] != '-' || value[date_second_separator_index] != '-') {
+        return false;
+    }
+    if (!parse_fixed_digits(value, date_year_digit_count, &parts.year) ||
+        !parse_fixed_digits(value + date_month_offset, date_month_day_digit_count, &parts.month) ||
+        !parse_fixed_digits(value + date_day_offset, date_month_day_digit_count, &parts.day) ||
+        parts.month < 0 || parts.month > date_month_max || parts.day < 0 ||
+        parts.day > date_day_max) {
+        return false;
+    }
+    *out_parts = parts;
+    return true;
 }
 
 static bool parse_datetime_text(
@@ -904,6 +1136,25 @@ static bool parse_fixed_digits(const char *text, size_t count, int *out_value) {
     return true;
 }
 
+static bool calendar_complete_date_is_valid(const struct temporal_date_parts *parts) {
+    if (parts == NULL || parts->month < 1 || parts->month > date_month_max || parts->day < 1 ||
+        parts->day > date_day_max) {
+        return false;
+    }
+    return parts->day <= calendar_days_in_month(parts->year, parts->month);
+}
+
+static bool calendar_last_day_argument_is_valid(const struct temporal_date_parts *parts) {
+    if (parts == NULL || parts->month < 1 || parts->month > date_month_max || parts->day < 0 ||
+        parts->day > date_day_max) {
+        return false;
+    }
+    if (parts->day == 0) {
+        return true;
+    }
+    return parts->day <= calendar_days_in_month(parts->year, parts->month);
+}
+
 static bool date_parts_are_valid(const struct temporal_date_parts *parts) {
     if (parts == NULL || parts->month < 0 || parts->month > date_month_max || parts->day < 0 ||
         parts->day > date_day_max) {
@@ -918,6 +1169,15 @@ static bool date_parts_are_valid(const struct temporal_date_parts *parts) {
     return parts->day <= days_in_month(parts->year, parts->month);
 }
 
+static bool datetime_time_parts_are_valid(const struct temporal_time_parts *parts) {
+    if (parts == NULL || parts->negative || parts->hour < 0 || parts->hour > datetime_hour_max ||
+        parts->minute < 0 || parts->minute > time_minute_second_max || parts->second < 0 ||
+        parts->second > time_minute_second_max) {
+        return false;
+    }
+    return true;
+}
+
 static bool time_parts_are_valid(const struct temporal_time_parts *parts) {
     if (parts == NULL) {
         return false;
@@ -930,12 +1190,31 @@ static bool time_parts_are_valid(const struct temporal_time_parts *parts) {
     return true;
 }
 
+static bool calendar_is_leap_year(int year) {
+    if (year == 0) {
+        return false;
+    }
+    return is_leap_year(year);
+}
+
 static bool is_leap_year(int year) {
     if ((year % leap_quadrennial_year_cycle == 0 && year % leap_century_year_cycle != 0) ||
         year % leap_quadricentennial_year_cycle == 0) {
         return true;
     }
     return false;
+}
+
+static int calendar_days_in_month(int year, int month) {
+    static const int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+    if (month == date_february && calendar_is_leap_year(year)) {
+        return date_leap_day;
+    }
+    if (month < 1 || month > date_month_max) {
+        return 0;
+    }
+    return days[month - 1];
 }
 
 static int days_in_month(int year, int month) {
@@ -948,6 +1227,37 @@ static int days_in_month(int year, int month) {
         return 0;
     }
     return days[month - 1];
+}
+
+static int calendar_day_of_year(const struct temporal_date_parts *parts) {
+    int day = parts == NULL ? 0 : parts->day;
+
+    if (parts == NULL) {
+        return 0;
+    }
+    for (int month = 1; month < parts->month; ++month) {
+        day += calendar_days_in_month(parts->year, month);
+    }
+    return day;
+}
+
+static int calendar_day_of_week(const struct temporal_date_parts *parts) {
+    int value = (int)(calendar_day_number(parts) % days_per_week);
+
+    return value == 0 ? days_per_week : value;
+}
+
+static int64_t calendar_day_number(const struct temporal_date_parts *parts) {
+    int64_t year = parts == NULL ? 0 : parts->year;
+    int64_t years_before = year <= 0 ? 0 : year - 1;
+    int64_t leap_days_before_year = (years_before / leap_quadrennial_year_cycle) -
+                                    (years_before / leap_century_year_cycle) +
+                                    (years_before / leap_quadricentennial_year_cycle);
+
+    if (year > 0) {
+        return (year * days_per_common_year) + leap_days_before_year + calendar_day_of_year(parts);
+    }
+    return calendar_day_of_year(parts);
 }
 
 static int append_incorrect_temporal_warning(

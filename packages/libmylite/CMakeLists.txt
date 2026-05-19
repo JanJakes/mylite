@@ -742,6 +742,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_datediff_function_test)
 
+  add_executable(mylite_runtime_calendar_date_functions_test
+    tests/runtime_calendar_date_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_calendar_date_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_calendar_date_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_calendar_date_functions_test)
+
   add_executable(mylite_runtime_unix_timestamp_function_test
     tests/runtime_unix_timestamp_function_test.c
   )
@@ -3279,6 +3290,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.datediff_function
     COMMAND mylite_runtime_datediff_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.calendar_date_functions
+    COMMAND mylite_runtime_calendar_date_functions_test
   )
   add_test(
     NAME libmylite.runtime.unix_timestamp_function

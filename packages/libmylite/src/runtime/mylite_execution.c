@@ -12,6 +12,7 @@
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
 #include "mylite_string_case.h"
+#include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
 #include "mylite_string_replace.h"
 #include "mylite_string_search.h"
@@ -2473,6 +2474,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP = 30,
     PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE = 31,
     PLANNED_ROW_SCALAR_EXPRESSION_UNHEX = 32,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT = 33,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2492,6 +2494,12 @@ enum planned_string_case_function_kind {
     PLANNED_STRING_CASE_FUNCTION_NONE = 0,
     PLANNED_STRING_CASE_FUNCTION_LOWER = 1,
     PLANNED_STRING_CASE_FUNCTION_UPPER = 2,
+};
+
+enum planned_string_codepoint_function_kind {
+    PLANNED_STRING_CODEPOINT_FUNCTION_NONE = 0,
+    PLANNED_STRING_CODEPOINT_FUNCTION_ASCII = 1,
+    PLANNED_STRING_CODEPOINT_FUNCTION_ORD = 2,
 };
 
 enum planned_string_trim_function_kind {
@@ -2540,6 +2548,7 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_field_domain field_domain;
     enum planned_string_length_function_kind string_length_kind;
     enum planned_string_case_function_kind string_case_kind;
+    enum planned_string_codepoint_function_kind string_codepoint_kind;
     enum planned_string_trim_function_kind string_trim_kind;
     enum planned_string_slice_function_kind string_slice_kind;
     enum planned_string_search_function_kind string_search_kind;
@@ -11238,6 +11247,31 @@ static enum planned_string_length_function_kind string_length_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_string_length_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int string_codepoint_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_string_codepoint_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    bool *out_is_binary,
+    bool *out_is_null
+);
+static bool string_codepoint_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+);
+static enum planned_string_codepoint_function_kind string_codepoint_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static enum mylite_string_codepoint_kind string_codepoint_function_to_value_kind(
+    enum planned_string_codepoint_function_kind function_kind
+);
+static bool is_string_codepoint_function_kind(enum mylite_sql_ast_node_kind ast_kind);
 static int string_case_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17674,6 +17708,16 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_kind kind);
+static int plan_row_scalar_string_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_default_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -17710,6 +17754,50 @@ static int plan_row_scalar_string_length_column(
     struct planned_row_scalar_expression *out_expression
 );
 static bool string_length_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int plan_row_scalar_string_codepoint_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_codepoint_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_codepoint_identifier_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_codepoint_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_string_codepoint_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool string_codepoint_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
@@ -19581,6 +19669,14 @@ static int append_row_scalar_string_length_operand_sql(
 static bool row_scalar_string_length_argument_is_binary(
     const struct planned_row_scalar_expression *expression
 );
+static int append_row_scalar_string_codepoint_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_string_codepoint_sql_function(
+    enum planned_string_codepoint_function_kind function_kind
+);
 static int append_row_scalar_string_case_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -20549,6 +20645,11 @@ static int bind_row_scalar_date_format_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_string_length_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_string_codepoint_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -21902,6 +22003,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+    case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LOWER_FUNCTION:
     case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LCASE_FUNCTION:
@@ -37107,6 +37211,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CHAR_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+    case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LOWER_FUNCTION:
     case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LCASE_FUNCTION:
@@ -65496,6 +65603,12 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
         return string_length_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+        return string_codepoint_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ORD");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_LOWER_FUNCTION:
     case MYLITE_SQL_AST_LCASE_FUNCTION:
     case MYLITE_SQL_AST_UPPER_FUNCTION:
@@ -67897,6 +68010,224 @@ static enum planned_string_length_function_kind string_length_function_kind(
 
 static bool is_string_length_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return string_length_function_kind(ast_kind) != PLANNED_STRING_LENGTH_FUNCTION_NONE;
+}
+
+static int string_codepoint_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum planned_string_codepoint_function_kind function_kind =
+        PLANNED_STRING_CODEPOINT_FUNCTION_NONE;
+    struct session_scalar_cell argument_cell = {0};
+    char *owned_text = NULL;
+    const unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    uint64_t result = 0U;
+    bool is_binary = false;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_CODEPOINT_FUNCTION_NONE
+                                       : string_codepoint_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_CODEPOINT_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "string codepoint functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_string_codepoint_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &argument_cell,
+        &owned_text,
+        &bytes,
+        &byte_count,
+        &is_binary,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        free(owned_text);
+        session_scalar_cell_deinit(&argument_cell);
+        return rc;
+    }
+
+    rc = mylite_string_codepoint_value(
+        string_codepoint_function_to_value_kind(function_kind),
+        bytes,
+        byte_count,
+        is_binary,
+        &result
+    );
+    if (rc == MYLITE_OK) {
+        rc =
+            format_uint64(database, result, out_cell->integer_text, sizeof(out_cell->integer_text));
+    }
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->integer_text;
+    }
+
+    free(owned_text);
+    session_scalar_cell_deinit(&argument_cell);
+    return rc;
+}
+
+static int evaluate_string_codepoint_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    bool *out_is_binary,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_bytes == NULL ||
+        out_byte_count == NULL || out_is_binary == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_is_binary = false;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_codepoint_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string codepoint functions support only string, hex, integer, boolean, NULL, "
+            "session scalar, and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal_with_policy(
+                database,
+                expression,
+                "string codepoint functions support only string literals",
+                "string codepoint function literals are invalid",
+                true,
+                out_owned_text,
+                out_byte_count
+            );
+            if (rc == MYLITE_OK) {
+                *out_bytes = (const unsigned char *)*out_owned_text;
+            }
+            return rc;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+            rc = decode_binary_hex_literal(database, expression, out_owned_text, out_byte_count);
+            if (rc == MYLITE_OK) {
+                *out_bytes = (const unsigned char *)*out_owned_text;
+                *out_is_binary = true;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_bytes = (const unsigned char *)inout_cell->value;
+    if (inout_cell->has_value_size) {
+        *out_byte_count = inout_cell->value_size;
+    } else {
+        *out_byte_count = strlen(inout_cell->value);
+    }
+    return MYLITE_OK;
+}
+
+static bool string_codepoint_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
+        return false;
+    }
+    if (is_session_scalar_expression(expression)) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static enum planned_string_codepoint_function_kind string_codepoint_function_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+        return PLANNED_STRING_CODEPOINT_FUNCTION_ASCII;
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+        return PLANNED_STRING_CODEPOINT_FUNCTION_ORD;
+    default:
+        return PLANNED_STRING_CODEPOINT_FUNCTION_NONE;
+    }
+}
+
+static enum mylite_string_codepoint_kind string_codepoint_function_to_value_kind(
+    enum planned_string_codepoint_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_CODEPOINT_FUNCTION_ASCII:
+        return MYLITE_STRING_CODEPOINT_ASCII;
+    case PLANNED_STRING_CODEPOINT_FUNCTION_ORD:
+        return MYLITE_STRING_CODEPOINT_ORD;
+    case PLANNED_STRING_CODEPOINT_FUNCTION_NONE:
+        break;
+    }
+    return MYLITE_STRING_CODEPOINT_ASCII;
+}
+
+static bool is_string_codepoint_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
+    return string_codepoint_function_kind(ast_kind) != PLANNED_STRING_CODEPOINT_FUNCTION_NONE;
 }
 
 static int string_case_function_value(
@@ -83103,6 +83434,26 @@ static bool is_string_length_projection_expression(const struct mylite_sql_ast_n
     return string_length_scalar_argument_is_admitted(child_at(expression, 0U));
 }
 
+static bool is_string_codepoint_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    if (!is_string_codepoint_function_kind(expression->kind)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    return string_codepoint_scalar_argument_is_admitted(child_at(expression, 0U));
+}
+
 static bool is_string_case_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -83263,6 +83614,9 @@ static bool is_charset_collation_projection_expression(
 
 static bool is_string_metadata_projection_expression(const struct mylite_sql_ast_node *expression) {
     if (is_string_length_projection_expression(expression)) {
+        return true;
+    }
+    if (is_string_codepoint_projection_expression(expression)) {
         return true;
     }
     if (is_string_case_projection_expression(expression)) {
@@ -96696,93 +97050,14 @@ static int plan_row_scalar_expression(
         set_unsupported_error(database, "DATE_FORMAT() numeric comparison requires a literal");
         return MYLITE_ERROR;
     }
-    if (is_string_length_function_kind(expression->kind)) {
-        return plan_row_scalar_string_length_expression(
+    if (row_scalar_expression_is_string_function(expression->kind)) {
+        return plan_row_scalar_string_expression(
             database,
             expression,
             has_source,
             source_context,
             table_columns,
             table_column_count,
-            out_expression
-        );
-    }
-    if (is_string_case_function_kind(expression->kind)) {
-        return plan_row_scalar_string_case_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (is_string_trim_function_kind(expression->kind)) {
-        return plan_row_scalar_string_trim_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (is_string_slice_function_kind(expression->kind)) {
-        return plan_row_scalar_string_slice_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (is_string_search_function_kind(expression->kind)) {
-        return plan_row_scalar_string_search_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (expression->kind == MYLITE_SQL_AST_REPLACE_FUNCTION) {
-        return plan_row_scalar_string_replace_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (expression->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION) {
-        return plan_row_scalar_find_in_set_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            COLUMN_REFERENCE_FIELD,
-            out_expression
-        );
-    }
-    if (expression->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION) {
-        return plan_row_scalar_regexp_like_expression(
-            database,
-            expression,
-            has_source,
-            source_context,
-            table_columns,
-            table_column_count,
-            COLUMN_REFERENCE_FIELD,
             out_expression
         );
     }
@@ -96866,6 +97141,133 @@ static int plan_row_scalar_expression(
         table_columns,
         table_column_count,
         allow_scalar_subquery,
+        out_expression
+    );
+}
+
+static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_kind kind) {
+    if (is_string_length_function_kind(kind) || is_string_codepoint_function_kind(kind) ||
+        is_string_case_function_kind(kind) || is_string_trim_function_kind(kind) ||
+        is_string_slice_function_kind(kind) || is_string_search_function_kind(kind)) {
+        return true;
+    }
+
+    switch (kind) {
+    case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int plan_row_scalar_string_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    if (is_string_length_function_kind(expression->kind)) {
+        return plan_row_scalar_string_length_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_codepoint_function_kind(expression->kind)) {
+        return plan_row_scalar_string_codepoint_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_case_function_kind(expression->kind)) {
+        return plan_row_scalar_string_case_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_trim_function_kind(expression->kind)) {
+        return plan_row_scalar_string_trim_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_slice_function_kind(expression->kind)) {
+        return plan_row_scalar_string_slice_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_string_search_function_kind(expression->kind)) {
+        return plan_row_scalar_string_search_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_REPLACE_FUNCTION) {
+        return plan_row_scalar_string_replace_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION) {
+        return plan_row_scalar_find_in_set_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            out_expression
+        );
+    }
+    return plan_row_scalar_regexp_like_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_FIELD,
         out_expression
     );
 }
@@ -97249,6 +97651,250 @@ static bool string_length_column_descriptor_is_supported(
     set_unsupported_error(
         database,
         "string length functions support only integer, DECIMAL, string, binary string, BIT, "
+        "YEAR, and temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_string_codepoint_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_string_codepoint_function_kind function_kind =
+        PLANNED_STRING_CODEPOINT_FUNCTION_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    function_kind = expression == NULL ? PLANNED_STRING_CODEPOINT_FUNCTION_NONE
+                                       : string_codepoint_function_kind(expression->kind);
+    if (function_kind == PLANNED_STRING_CODEPOINT_FUNCTION_NONE ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "string codepoint functions support exactly one argument");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT;
+    out_expression->string_codepoint_kind = function_kind;
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_string_codepoint_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    return rc;
+}
+
+static int plan_row_scalar_string_codepoint_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "string codepoint functions support only string, hex, integer, boolean, NULL, "
+            "session scalar, system variable, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return plan_row_scalar_string_codepoint_identifier_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "string codepoint functions do not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_codepoint_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "string codepoint functions support only string, hex, integer, boolean, NULL, "
+            "session scalar, system variable, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_string_codepoint_literal_argument(
+            database,
+            expression,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_codepoint_identifier_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    if (!has_source) {
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
+        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    return plan_row_scalar_string_codepoint_column(
+        database,
+        expression,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_string_codepoint_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        char *text = NULL;
+        size_t text_length = 0U;
+        int rc = decode_sql_string_literal_with_policy(
+            database,
+            expression,
+            "string codepoint functions support only string literals",
+            "string codepoint function literals are invalid",
+            true,
+            &text,
+            &text_length
+        );
+
+        if (rc == MYLITE_OK) {
+            rc = assign_text_value(database, text, text_length, &out_expression->value);
+        }
+        return rc;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        char *bytes = NULL;
+        size_t byte_count = 0U;
+        int rc = decode_binary_hex_literal(database, expression, &bytes, &byte_count);
+
+        if (rc == MYLITE_OK) {
+            rc = assign_blob_value(database, bytes, byte_count, &out_expression->value);
+        }
+        return rc;
+    }
+    return plan_row_scalar_literal_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_string_codepoint_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT string codepoint functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!string_codepoint_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool string_codepoint_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(
+            database,
+            "string codepoint functions do not support approximate numeric columns"
+        );
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "string codepoint functions support only integer, DECIMAL, string, binary string, BIT, "
         "YEAR, and temporal columns"
     );
     return false;
@@ -101734,6 +102380,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -101873,9 +102520,9 @@ static int plan_row_scalar_non_concat_expression(
         database,
         "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), DATE_FORMAT(), "
         "descriptor columns, limited temporal extract, string length, string case, string trim, "
-        "string slice, string search, string replacement, control-flow functions, HEX(), "
-        "JSON_VALID(), CHARSET(), and COLLATION() functions, literals, DATABASE(), and system "
-        "variables"
+        "string codepoint, string slice, string search, string replacement, control-flow "
+        "functions, HEX(), JSON_VALID(), CHARSET(), and COLLATION() functions, literals, "
+        "DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
 }
@@ -103474,6 +104121,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION ||
             is_temporal_extract_function_kind(current->kind) ||
             is_string_length_function_kind(current->kind) ||
+            is_string_codepoint_function_kind(current->kind) ||
             is_string_case_function_kind(current->kind) ||
             is_string_trim_function_kind(current->kind) ||
             is_string_slice_function_kind(current->kind) ||
@@ -115886,6 +116534,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
@@ -116682,6 +117331,12 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_date_format_numeric_equal_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+        return append_row_scalar_string_codepoint_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
         return append_row_scalar_string_case_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
@@ -116773,6 +117428,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -117127,6 +117783,53 @@ static bool row_scalar_string_length_argument_is_binary(
     }
     return (column_descriptor_is_binary_string_family(&expression->column) ||
             column_descriptor_is_bit(&expression->column)) != 0;
+}
+
+static int append_row_scalar_string_codepoint_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    function_name = row_scalar_string_codepoint_sql_function(expression->string_codepoint_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *row_scalar_string_codepoint_sql_function(
+    enum planned_string_codepoint_function_kind function_kind
+) {
+    switch (function_kind) {
+    case PLANNED_STRING_CODEPOINT_FUNCTION_ASCII:
+        return "_mylite_ascii";
+    case PLANNED_STRING_CODEPOINT_FUNCTION_ORD:
+        return "_mylite_ord";
+    case PLANNED_STRING_CODEPOINT_FUNCTION_NONE:
+        break;
+    }
+    return NULL;
 }
 
 static int append_row_scalar_string_case_expression_sql(
@@ -117566,6 +118269,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -117743,6 +118447,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -117795,6 +118500,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -118180,6 +118886,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -118236,6 +118943,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -122905,6 +123613,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+        return bind_row_scalar_string_codepoint_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
         return bind_row_scalar_string_case_expression_parameters(
             statement,
@@ -123040,6 +123754,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -123128,6 +123843,21 @@ static int bind_row_scalar_date_format_expression_parameters(
 }
 
 static int bind_row_scalar_string_length_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+}
+
+static int bind_row_scalar_string_codepoint_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -123400,6 +124130,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -123562,6 +124293,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -123609,6 +124341,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:

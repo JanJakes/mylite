@@ -3472,6 +3472,14 @@ expression(A) ::= BIT_COUNT(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
 }
+expression(A) ::= ASCII(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ASCII_FUNCTION, B, R);
+}
+expression(A) ::= ORD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ORD_FUNCTION, B, R);
+}
 expression(A) ::= LENGTH(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LENGTH_FUNCTION, B, R);
@@ -4159,6 +4167,15 @@ expression(A) ::=
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CHARACTER_LENGTH_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= ORD(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ORD(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= LOCATE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -4885,6 +4902,12 @@ identifier(A) ::= GROUP_CONCAT(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= BIT_COUNT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ASCII(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ORD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LENGTH(T). {

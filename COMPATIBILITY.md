@@ -455,7 +455,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `ASCII()` | ❌ | Left-most character code. | [string functions](docs/compatibility/functions-string.md) |
+| `ASCII()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; returns the first byte value for admitted scalar and descriptor-backed values, `0` for empty non-`NULL` input, and `NULL` for `NULL`. | [string functions](docs/compatibility/functions-string.md), [baseline ASCII/ORD functions](docs/specs/baseline-ascii-ord-functions/specs.md) |
 | `BIT_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; byte length multiplied by 8 for admitted scalar and descriptor-backed values. | [string functions](docs/compatibility/functions-string.md) |
 | `CHAR()` | ❌ | Characters from integers. | [string functions](docs/compatibility/functions-string.md) |
 | `CHAR_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; UTF-8 character count for text values and byte count for binary string and `BIT` values. | [string functions](docs/compatibility/functions-string.md) |
@@ -483,7 +483,7 @@ tests.
 | `MAKE_SET()` | ❌ | Bitmask-selected set. | [string functions](docs/compatibility/functions-string.md) |
 | `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset. | [string functions](docs/compatibility/functions-string.md), [baseline SUBSTRING/SUBSTR/MID functions](docs/specs/baseline-substring-functions/specs.md) |
 | `OCTET_LENGTH()` | 🟡 | Limited `LENGTH()` synonym. | [string functions](docs/compatibility/functions-string.md) |
-| `ORD()` | ❌ | Leftmost character code. | [string functions](docs/compatibility/functions-string.md) |
+| `ORD()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection; returns MySQL-style byte-packed first-character code for nonbinary UTF-8 text and first-byte behavior for binary values. | [string functions](docs/compatibility/functions-string.md), [baseline ASCII/ORD functions](docs/specs/baseline-ascii-ord-functions/specs.md) |
 | `POSITION()` | 🟡 | Limited `POSITION(substr IN str)` synonym for the supported two-argument `LOCATE()` subset. | [string functions](docs/compatibility/functions-string.md) |
 | `QUOTE()` | ❌ | SQL string quoting. | [string functions](docs/compatibility/functions-string.md) |
 | `REGEXP_INSTR()` | ❌ | Regex match index. | [string functions](docs/compatibility/functions-string.md) |

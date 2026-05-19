@@ -4,7 +4,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 
 | Function or operator | Status | Notes |
 | --- | --- | --- |
-| `ASCII()` | ❌ | Return numeric value of left-most character |
+| `ASCII()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/hex/integer/boolean/`NULL` literals, supported session scalar values and system variables, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns the first byte value, returns `0` for empty non-`NULL` input, and returns `NULL` for `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `BIT_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns byte length multiplied by 8, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `CHAR()` | ❌ | Return character for each integer passed |
 | `CHAR_LENGTH()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/integer/boolean/`NULL` literals, supported session scalar values, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns UTF-8 character count for text values and byte count for binary string and `BIT` values, with `NULL` yielding `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
@@ -32,7 +32,7 @@ String, byte, collation, pattern, base encoding, and regular-expression helpers.
 | `MAKE_SET()` | ❌ | Bitmask-selected string set |
 | `MID()` | 🟡 | Synonym for the limited `SUBSTRING()` subset |
 | `OCTET_LENGTH()` | 🟡 | Synonym for the limited `LENGTH()` subset |
-| `ORD()` | ❌ | Return character code for leftmost character of the argument |
+| `ORD()` | 🟡 | Limited no-source, `DUAL`, `DO`, and single-table row-scalar `SELECT` projection support over admitted string/hex/integer/boolean/`NULL` literals, supported session scalar values and system variables, and descriptor-backed integer, exact `DECIMAL`, string, baseline `TEXT`, binary string, `BIT`, `YEAR`, and temporal columns; returns MySQL-style left-to-right byte-packed first-character code for nonbinary UTF-8 text, first-byte behavior for binary values, `0` for empty non-`NULL` input, and `NULL` for `NULL`. No predicates, DML assignments, ordering/grouping expressions, nested functions, subqueries, parameters, arbitrary expressions, or expression metadata |
 | `POSITION()` | 🟡 | Limited `POSITION(substr IN str)` synonym for the supported two-argument `LOCATE()` subset, with the same scalar, row-scalar, ASCII matching, and unsupported-expression limits |
 | `QUOTE()` | ❌ | Escape the argument for use in an SQL statement |
 | `REGEXP_INSTR()` | ❌ | Starting index of substring matching regular expression |

@@ -723,6 +723,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"OPTIONALLY", MYLITE_SQL_KEYWORD_RESERVED},
         {"OPTIONS", 0U},
         {"OR", MYLITE_SQL_KEYWORD_RESERVED},
+        {"ORD", 0U},
         {"ORDER", MYLITE_SQL_KEYWORD_RESERVED},
         {"ORDINALITY", 0U},
         {"ORGANIZATION", 0U},

@@ -1044,6 +1044,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "unhex_argument_count_error";
     case MYLITE_SQL_AST_DEFAULT_FUNCTION:
         return "default_function";
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+        return "ascii_function";
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+        return "ord_function";
+    case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
+        return "ord_argument_count_error";
     case MYLITE_SQL_AST_FORMAT_FUNCTION:
         return "format_function";
     case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:

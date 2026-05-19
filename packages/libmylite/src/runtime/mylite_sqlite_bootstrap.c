@@ -6,6 +6,7 @@
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_case.h"
+#include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
 #include "mylite_string_replace.h"
 #include "mylite_string_search.h"
@@ -211,6 +212,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_case_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_codepoint_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_concat_functions(sqlite);

@@ -20307,6 +20307,55 @@ static int test_delete_statement(void) {
     failures += expect_span_text(child_at(limit_clause, 0U), "0", "delete simple limit row count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k WHERE r.id IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 2U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_JOINED_DELETE_STATEMENT, "joined delete statement");
+    failures += expect_span_text(child_at(statement, 0U), "l", "joined delete target");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_JOIN, "joined delete join");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "joined delete where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE FROM app.lefts USING app.lefts LEFT JOIN app.rights ON lefts.k = rights.k "
+        "WHERE rights.id IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_DELETE_STATEMENT,
+        "using joined delete statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app.lefts", "using joined target");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(child_at(statement, 1U)) ==
+            MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "using joined delete left join kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k ORDER BY l.id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k LIMIT 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

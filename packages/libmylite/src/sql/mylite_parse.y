@@ -316,6 +316,9 @@ statement(A) ::= insert_set_statement(B). {
 statement(A) ::= delete_statement(B). {
     A = B;
 }
+statement(A) ::= joined_delete_statement(B). {
+    A = B;
+}
 statement(A) ::= update_statement(B). {
     A = B;
 }
@@ -1669,6 +1672,26 @@ insert_set_statement(A) ::=
 delete_statement(A) ::=
     DELETE(D) FROM table_name(T) where_clause_opt(W) order_clause_opt(O) delete_limit_clause_opt(L). {
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
+joined_delete_statement(A) ::=
+    DELETE(D) table_name(T) FROM(F) table_source(LT) join_operator(JO) table_source(RT)
+    join_condition_opt(J) where_clause_opt(W). {
+    A = mylite_sql_parser_make_joined_delete_statement(
+        state,
+        D,
+        T,
+        mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J),
+        W);
+}
+joined_delete_statement(A) ::=
+    DELETE(D) FROM table_name(T) USING(U) table_source(LT) join_operator(JO) table_source(RT)
+    join_condition_opt(J) where_clause_opt(W). {
+    A = mylite_sql_parser_make_joined_delete_statement(
+        state,
+        D,
+        T,
+        mylite_sql_parser_make_from_join(state, U, LT, JO, RT, J),
+        W);
 }
 
 update_statement(A) ::=

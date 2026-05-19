@@ -2784,10 +2784,16 @@ struct planned_show_create_table {
 struct planned_delete {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
+    struct planned_select_source *sources;
+    size_t source_count;
+    enum mylite_sql_ast_join_kind join_kind;
+    struct planned_select_join_condition join_condition;
+    size_t target_source_index;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
     const char *rowid_alias;
+    bool is_joined;
 };
 
 struct planned_update_assignment {
@@ -13704,6 +13710,34 @@ static int plan_delete(
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
 );
+static int plan_single_table_delete(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_delete *out_plan
+);
+static int plan_joined_delete(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_delete *out_plan
+);
+static int resolve_joined_delete_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    size_t *out_source_index
+);
+static int reject_reserved_joined_delete_target(
+    struct mylite_db *database,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+);
+static bool joined_delete_target_matches_source(
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const struct mylite_catalog_schema_descriptor *selected_schema,
+    const struct planned_select_source *source
+);
 static void planned_delete_deinit(struct planned_delete *plan);
 static int apply_parent_delete_actions(
     struct mylite_db *database,
@@ -13734,6 +13768,11 @@ static int append_parent_delete_target_sql(
     const struct planned_delete *plan,
     size_t *next_parameter,
     bool *out_has_condition
+);
+static int append_joined_parent_delete_target_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
 );
 static int append_parent_child_match_sql(
     struct dynamic_string *string,
@@ -20197,6 +20236,24 @@ static int append_delete_rowid_limited_sql(
     const struct planned_delete *plan,
     size_t *next_parameter
 );
+static int append_joined_delete_rowid_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
+);
+static int append_joined_delete_rowid_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
+);
+static int append_joined_delete_target_rowid_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan
+);
+static int append_joined_delete_from_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan
+);
 static int build_update_sql(const struct planned_update *plan, char **out_sql);
 static size_t update_assignment_parameter_count(const struct planned_update *plan);
 static int append_update_assignment_sql(
@@ -21027,6 +21084,10 @@ static void set_unknown_table_error(
     const char *schema_name,
     const char *table_name
 );
+static void set_unknown_multi_delete_table_error(
+    struct mylite_db *database,
+    const char *table_name
+);
 static int set_unknown_drop_tables_error(
     struct mylite_db *database,
     const struct planned_drop_table *plan
@@ -21654,6 +21715,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
         return execute_replace_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
         return execute_update_statement(database, statement, out_result);
@@ -36848,6 +36910,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
@@ -84477,6 +84540,17 @@ static int plan_delete(
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
 ) {
+    if (statement != NULL && statement->kind == MYLITE_SQL_AST_JOINED_DELETE_STATEMENT) {
+        return plan_joined_delete(database, statement, out_plan);
+    }
+    return plan_single_table_delete(database, statement, out_plan);
+}
+
+static int plan_single_table_delete(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_delete *out_plan
+) {
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -84557,11 +84631,234 @@ static int plan_delete(
     return rc;
 }
 
+static int plan_joined_delete(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_delete *out_plan
+) {
+    const struct mylite_sql_ast_node *target_node = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *join_condition = child_at(from_clause, 2U);
+    struct select_source_context source_context = {0};
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_delete){.is_joined = true};
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_JOIN) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    rc = reject_information_schema_write_target(database, target_node);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (where_clause != NULL && where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(
+            database,
+            "joined DELETE supports only WHERE after the joined source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
+    if (out_plan->sources == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->source_count = 2U;
+
+    rc = plan_joined_select_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_duplicate_select_source_reference(
+            database,
+            out_plan->sources,
+            out_plan->source_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_join_select_source_context(
+            out_plan->sources,
+            out_plan->source_count,
+            &source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_condition(
+            database,
+            join_condition,
+            out_plan->join_kind,
+            &source_context,
+            &out_plan->join_condition
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            &source_context,
+            NULL,
+            0U,
+            &out_plan->predicate
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_joined_delete_target(
+            database,
+            target_node,
+            out_plan->sources,
+            out_plan->source_count,
+            &out_plan->target_source_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        const struct planned_select_source *target_source =
+            &out_plan->sources[out_plan->target_source_index];
+
+        out_plan->target = target_source->source;
+        out_plan->table = target_source->table;
+        rc = choose_sqlite_rowid_alias(
+            database,
+            target_source->columns,
+            target_source->column_count,
+            "joined DELETE requires an unshadowed SQLite rowid alias",
+            &out_plan->rowid_alias
+        );
+    }
+
+    if (rc != MYLITE_OK) {
+        planned_delete_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int resolve_joined_delete_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    const struct planned_select_source *sources,
+    size_t source_count,
+    size_t *out_source_index
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char target_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    struct mylite_catalog_schema_descriptor selected_schema = {0};
+    size_t part_count = 0U;
+    size_t match_count = 0U;
+    size_t matching_source_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_source_index = 0U;
+    rc = collect_identifier_parts(
+        target_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc == MYLITE_OK) {
+        rc = reject_reserved_joined_delete_target(database, parts, part_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            target_name,
+            sizeof(target_name)
+        );
+    }
+    if (rc == MYLITE_OK && part_count == 1U) {
+        rc = resolve_selected_schema(database, &selected_schema);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    for (size_t source_index = 0U; source_index < source_count; ++source_index) {
+        if (!joined_delete_target_matches_source(
+                parts,
+                part_count,
+                part_count == 1U ? &selected_schema : NULL,
+                &sources[source_index]
+            )) {
+            continue;
+        }
+        if (match_count == 0U) {
+            matching_source_index = source_index;
+        }
+        ++match_count;
+    }
+
+    if (match_count == 0U) {
+        set_unknown_multi_delete_table_error(database, target_name);
+        return MYLITE_ERROR;
+    }
+    *out_source_index = matching_source_index;
+    return MYLITE_OK;
+}
+
+static int reject_reserved_joined_delete_target(
+    struct mylite_db *database,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+) {
+    if (part_count == 0U || part_count > table_name_part_capacity) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (part_count == 2U && mylite_catalog_name_is_reserved(parts[0])) {
+        set_reserved_name_error(database, "database", parts[0]);
+        return MYLITE_ERROR;
+    }
+    if (mylite_catalog_name_is_reserved(parts[part_count - 1U])) {
+        set_reserved_name_error(database, "table", parts[part_count - 1U]);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool joined_delete_target_matches_source(
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const struct mylite_catalog_schema_descriptor *selected_schema,
+    const struct planned_select_source *source
+) {
+    if (source == NULL || part_count == 0U || part_count > 2U) {
+        return false;
+    }
+    if (source->has_alias) {
+        return (part_count == 1U && text_equals_ascii_case_insensitive(parts[0], source->alias)) !=
+               0;
+    }
+    if (part_count == 1U) {
+        return (selected_schema != NULL &&
+                text_equals_ascii_case_insensitive(
+                    selected_schema->name,
+                    source->source.schema.name
+                ) &&
+                text_equals_ascii_case_insensitive(parts[0], source->source.table_name)) != 0;
+    }
+    return (text_equals_ascii_case_insensitive(parts[0], source->source.schema.name) &&
+            text_equals_ascii_case_insensitive(parts[1], source->source.table_name)) != 0;
+}
+
 static void planned_delete_deinit(struct planned_delete *plan) {
     if (plan == NULL) {
         return;
     }
 
+    for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
+        free(plan->sources[source_index].columns);
+    }
+    free(plan->sources);
     planned_select_predicate_deinit(&plan->predicate);
     *plan = (struct planned_delete){0};
 }
@@ -84895,6 +85192,11 @@ static int append_parent_delete_target_sql(
     int rc = MYLITE_OK;
 
     *out_has_condition = false;
+    if (plan->is_joined) {
+        rc = append_joined_parent_delete_target_sql(string, plan, next_parameter);
+        *out_has_condition = rc == MYLITE_OK;
+        return rc;
+    }
     if (plan->limit.has_limit) {
         rc = dynamic_string_append(string, " WHERE ");
         if (rc == MYLITE_OK) {
@@ -84931,6 +85233,29 @@ static int append_parent_delete_target_sql(
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
         *out_has_condition = rc == MYLITE_OK;
     }
+    return rc;
+}
+
+static int append_joined_parent_delete_target_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " WHERE ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_foreign_key_column_reference(string, "p", plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IN (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_delete_rowid_subquery_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
     return rc;
 }
 
@@ -120980,7 +121305,9 @@ static int build_delete_sql(const struct planned_delete *plan, char **out_sql) {
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = append_joined_delete_rowid_filter_sql(&string, plan, &next_parameter);
+    } else if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = append_delete_rowid_limited_sql(&string, plan, &next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
@@ -121030,6 +121357,106 @@ static int append_delete_rowid_limited_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_joined_delete_rowid_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " WHERE ");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IN (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_delete_rowid_subquery_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_joined_delete_rowid_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, "SELECT ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_joined_delete_target_rowid_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_delete_from_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_joined_delete_target_rowid_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan
+) {
+    int rc = append_select_source_alias(string, plan->target_source_index);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+
+    return rc;
+}
+
+static int append_joined_delete_from_sql(
+    struct dynamic_string *string,
+    const struct planned_delete *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->source_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append_quoted_identifier(string, plan->sources[0].table.physical_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 0U);
+    }
+    if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+        rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " JOIN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->sources[1].table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_join_condition_sql(string, &plan->join_condition);
     }
 
     return rc;
@@ -126264,6 +126691,25 @@ static void set_unknown_table_error(
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown_table,
+        "42S02",
+        message
+    );
+}
+
+static void set_unknown_multi_delete_table_error(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown table '%s' in MULTI DELETE", table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_table_in_schema,
         "42S02",
         message
     );

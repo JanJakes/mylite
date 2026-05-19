@@ -3420,6 +3420,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_joined_delete_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token delete_token,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_ast_node *from_join,
+    struct mylite_sql_ast_node *where_clause
+) {
+    struct mylite_sql_source_span span = span_from_token(&delete_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (target != NULL) {
+        span = span_join(span, target->span);
+    }
+    if (from_join != NULL) {
+        span = span_join(span, from_join->span);
+    }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_JOINED_DELETE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, target);
+    mylite_sql_ast_node_append_child(statement, from_join);
+    mylite_sql_ast_node_append_child(statement, where_clause);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token update_token,

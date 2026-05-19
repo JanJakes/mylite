@@ -894,9 +894,9 @@ static int test_delete_diagnostics(void) {
         database,
         "DELETE numbers FROM numbers JOIN other_numbers ON numbers.id = other_numbers.id",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.other_numbers' doesn't exist",
         }
     );
 

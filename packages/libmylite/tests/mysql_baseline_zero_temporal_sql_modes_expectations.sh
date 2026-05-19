@@ -249,6 +249,64 @@ wp_defaults	CREATE TABLE \`wp_defaults\` (
     "$DATABASE"
 
 expect_output \
+    "reported sql modes admit WP-style DATETIME NOT NULL zero default" \
+    "empty	0	0
+empty	insert	1	0	0000-00-00 00:00:00
+strict	0	0
+strict	insert	1	0	0000-00-00 00:00:00
+no_zero_date	0	1
+no_zero_date	insert	1	0	0000-00-00 00:00:00
+no_zero_in_date	0	0
+no_zero_in_date	insert	1	0	0000-00-00 00:00:00
+no_auto_value_on_zero	0	0
+no_auto_value_on_zero	insert	1	0	0000-00-00 00:00:00
+no_backslash_escapes	0	0
+no_backslash_escapes	insert	1	0	0000-00-00 00:00:00" \
+    "SET time_zone = '+00:00'; "\
+"SET sql_mode = ''; "\
+"DROP TABLE IF EXISTS wp_dt_empty; "\
+"CREATE TABLE wp_dt_empty (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'empty', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_empty () VALUES (); "\
+"SELECT 'empty', 'insert', ROW_COUNT(), @@warning_count, dt FROM wp_dt_empty; "\
+"SET sql_mode = 'STRICT_TRANS_TABLES'; "\
+"DROP TABLE IF EXISTS wp_dt_strict; "\
+"CREATE TABLE wp_dt_strict (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'strict', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_strict () VALUES (); "\
+"SELECT 'strict', 'insert', ROW_COUNT(), @@warning_count, dt FROM wp_dt_strict; "\
+"SET sql_mode = 'NO_ZERO_DATE'; "\
+"DROP TABLE IF EXISTS wp_dt_no_zero_date; "\
+"CREATE TABLE wp_dt_no_zero_date (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'no_zero_date', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_no_zero_date () VALUES (); "\
+"SELECT 'no_zero_date', 'insert', ROW_COUNT(), @@warning_count, dt FROM wp_dt_no_zero_date; "\
+"SET sql_mode = 'NO_ZERO_IN_DATE'; "\
+"DROP TABLE IF EXISTS wp_dt_no_zero_in_date; "\
+"CREATE TABLE wp_dt_no_zero_in_date (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'no_zero_in_date', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_no_zero_in_date () VALUES (); "\
+"SELECT 'no_zero_in_date', 'insert', ROW_COUNT(), @@warning_count, dt "\
+"FROM wp_dt_no_zero_in_date; "\
+"SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO'; "\
+"DROP TABLE IF EXISTS wp_dt_no_auto_value_on_zero; "\
+"CREATE TABLE wp_dt_no_auto_value_on_zero "\
+"(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'no_auto_value_on_zero', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_no_auto_value_on_zero () VALUES (); "\
+"SELECT 'no_auto_value_on_zero', 'insert', ROW_COUNT(), @@warning_count, dt "\
+"FROM wp_dt_no_auto_value_on_zero; "\
+"SET sql_mode = 'NO_BACKSLASH_ESCAPES'; "\
+"DROP TABLE IF EXISTS wp_dt_no_backslash_escapes; "\
+"CREATE TABLE wp_dt_no_backslash_escapes "\
+"(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00'); "\
+"SELECT 'no_backslash_escapes', ROW_COUNT(), @@warning_count; "\
+"INSERT INTO wp_dt_no_backslash_escapes () VALUES (); "\
+"SELECT 'no_backslash_escapes', 'insert', ROW_COUNT(), @@warning_count, dt "\
+"FROM wp_dt_no_backslash_escapes;" \
+    "$DATABASE"
+
+expect_output \
     "nonstrict NO_ZERO_IN_DATE adjusts partial-zero defaults" \
     "d	date	YES		0000-00-00	
 dt	datetime	YES		0000-00-00 00:00:00	" \

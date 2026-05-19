@@ -409,6 +409,7 @@ static int test_zero_temporal_defaults_predicates_and_persistence(void) {
         "0000-00-00 00:00:00",
     };
     static const char *const one_count_rows[] = {"1"};
+    static const char *const wp_datetime_default_rows[] = {"0000-00-00 00:00:00"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -480,6 +481,108 @@ static int test_zero_temporal_defaults_predicates_and_persistence(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "WP-style NOT NULL zero temporal inserted defaults",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_dt_empty (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_empty () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_empty",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "empty sql_mode WP DATETIME zero default",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_dt_strict (dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_strict () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_strict",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "strict sql_mode WP DATETIME zero default",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE'");
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_dt_no_zero_date "
+        "(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_no_zero_date () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_no_zero_date",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_ZERO_DATE WP DATETIME zero default",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_IN_DATE'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_dt_no_zero_in_date "
+        "(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_no_zero_in_date () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_no_zero_in_date",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_ZERO_IN_DATE WP DATETIME zero default",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_AUTO_VALUE_ON_ZERO'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_dt_no_auto_value_on_zero "
+        "(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_no_auto_value_on_zero () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_no_auto_value_on_zero",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_AUTO_VALUE_ON_ZERO WP DATETIME zero default",
+        }
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_BACKSLASH_ESCAPES'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE wp_dt_no_backslash_escapes "
+        "(dt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_dt_no_backslash_escapes () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT dt FROM wp_dt_no_backslash_escapes",
+            .values = wp_datetime_default_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NO_BACKSLASH_ESCAPES WP DATETIME zero default",
         }
     );
 

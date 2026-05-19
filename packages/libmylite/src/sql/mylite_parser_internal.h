@@ -337,10 +337,24 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_default_tar
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token default_token
 );
-struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_statement(
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *assignments
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_set_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_assignment(
+    struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *target,
+    struct mylite_sql_token operator_token,
     struct mylite_sql_ast_node *value
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_target(
@@ -351,6 +365,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_target(
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_default_value(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token default_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state,

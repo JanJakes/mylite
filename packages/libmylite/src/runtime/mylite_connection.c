@@ -256,6 +256,13 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.table_locks = NULL;
     database->session.table_lock_count = 0U;
     database->session.table_lock_capacity = 0U;
+    for (size_t index = 0U; index < database->session.user_variable_count; ++index) {
+        free(database->session.user_variables[index].value);
+    }
+    free(database->session.user_variables);
+    database->session.user_variables = NULL;
+    database->session.user_variable_count = 0U;
+    database->session.user_variable_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
@@ -354,6 +361,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->table_locks = NULL;
     session->table_lock_count = 0U;
     session->table_lock_capacity = 0U;
+    session->user_variables = NULL;
+    session->user_variable_count = 0U;
+    session->user_variable_capacity = 0U;
     session->has_timestamp_override = false;
     session->timestamp_override = 0;
     session->active_statement_time = 0;

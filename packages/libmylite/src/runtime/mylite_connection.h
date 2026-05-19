@@ -20,6 +20,12 @@ enum {
     MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY = 512,
     MYLITE_SESSION_TIME_ZONE_CAPACITY = 64,
     MYLITE_SESSION_CHARSET_NAME_CAPACITY = 64,
+    MYLITE_SESSION_USER_VARIABLE_NAME_MAX_CHARACTERS = 64,
+    MYLITE_SESSION_USER_VARIABLE_UTF8MB4_MAX_BYTES_PER_CHARACTER = 4,
+    MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES =
+        MYLITE_SESSION_USER_VARIABLE_NAME_MAX_CHARACTERS *
+        MYLITE_SESSION_USER_VARIABLE_UTF8MB4_MAX_BYTES_PER_CHARACTER,
+    MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY = MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES + 1,
 };
 
 #define MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT                                                       \
@@ -82,6 +88,13 @@ struct mylite_session_table_lock {
     enum mylite_session_table_lock_mode mode;
 };
 
+struct mylite_session_user_variable {
+    char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    char *value;
+    size_t value_size;
+    bool is_null;
+};
+
 enum mylite_transaction_isolation {
     MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ = 0,
     MYLITE_TRANSACTION_ISOLATION_READ_COMMITTED = 1,
@@ -111,6 +124,9 @@ struct mylite_session_state {
     struct mylite_session_table_lock *table_locks;
     size_t table_lock_count;
     size_t table_lock_capacity;
+    struct mylite_session_user_variable *user_variables;
+    size_t user_variable_count;
+    size_t user_variable_capacity;
     int64_t timestamp_override;
     int64_t active_statement_time;
     struct mylite_temporary_catalog temporary_catalog;

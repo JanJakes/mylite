@@ -7327,7 +7327,11 @@ static int test_diagnostics_count_system_variables(void) {
     failures += expect_span_text(third_expression, "@@`error_count`", "quoted error count span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT @warning_count;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT @warning_count;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_USER_VARIABLE, "user variable");
+    failures += expect_span_text(first_expression, "@warning_count", "user variable span");
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -20439,20 +20443,25 @@ static int test_delete_statement(void) {
 static int test_set_fixed_system_variable_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *assignment_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *value = NULL;
     int failures = 0;
 
     failures += parse_sql("SET autocommit = 1;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    target = child_at(statement, 0U);
-    value = child_at(statement, 1U);
-    failures += expect_node(
-        statement,
-        MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT,
-        "set system variable statement"
-    );
-    failures += expect_child_count(statement, 2U, "set system variable children");
+    assignment_list = child_at(statement, 0U);
+    assignment = child_at(assignment_list, 0U);
+    target = child_at(assignment, 0U);
+    value = child_at(assignment, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_STATEMENT, "set statement");
+    failures += expect_child_count(statement, 1U, "set statement children");
+    failures +=
+        expect_node(assignment_list, MYLITE_SQL_AST_SET_ASSIGNMENT_LIST, "set assignment list");
+    failures += expect_child_count(assignment_list, 1U, "set assignment count");
+    failures += expect_node(assignment, MYLITE_SQL_AST_SET_ASSIGNMENT, "set assignment");
+    failures += expect_child_count(assignment, 2U, "set assignment children");
     failures += expect_node(
         target,
         MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET,
@@ -20465,8 +20474,9 @@ static int test_set_fixed_system_variable_statement(void) {
 
     failures += parse_sql("SET SESSION `autocommit` = ON;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    target = child_at(statement, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    target = child_at(assignment, 0U);
+    value = child_at(assignment, 1U);
     failures += expect_child_count(target, 2U, "set target scoped child count");
     failures += expect_span_text(child_at(target, 0U), "SESSION", "set target session scope");
     failures += expect_span_text(child_at(target, 1U), "`autocommit`", "set quoted name");
@@ -20475,8 +20485,9 @@ static int test_set_fixed_system_variable_statement(void) {
 
     failures += parse_sql("SET LOCAL sql_warnings = OFF;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    target = child_at(statement, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    target = child_at(assignment, 0U);
+    value = child_at(assignment, 1U);
     failures += expect_span_text(child_at(target, 0U), "LOCAL", "set target local scope");
     failures += expect_span_text(child_at(target, 1U), "sql_warnings", "set local name");
     failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_FALSE, "set OFF fixed value");
@@ -20484,8 +20495,9 @@ static int test_set_fixed_system_variable_statement(void) {
 
     failures += parse_sql("SET @@session.sql_mode = DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    target = child_at(statement, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    target = child_at(assignment, 0U);
+    value = child_at(assignment, 1U);
     failures += expect_child_count(target, 1U, "set system variable target child count");
     failures += expect_node(
         child_at(target, 0U),
@@ -20504,8 +20516,9 @@ static int test_set_fixed_system_variable_statement(void) {
         &result
     );
     statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 0U), 0U);
     failures += expect_literal(
-        child_at(statement, 1U),
+        child_at(assignment, 1U),
         MYLITE_SQL_AST_LITERAL_STRING,
         "set sql_mode string value"
     );
@@ -20513,14 +20526,16 @@ static int test_set_fixed_system_variable_statement(void) {
 
     failures += parse_sql("SET time_zone = SYSTEM;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    value = child_at(assignment, 1U);
     failures += expect_node(value, MYLITE_SQL_AST_IDENTIFIER, "set time_zone SYSTEM value");
     failures += expect_span_text(value, "SYSTEM", "set time_zone SYSTEM span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SET time_zone = UTC;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    value = child_at(assignment, 1U);
     failures += expect_node(value, MYLITE_SQL_AST_IDENTIFIER, "set time_zone UTC value");
     failures += expect_span_text(value, "UTC", "set time_zone UTC span");
     mylite_sql_parse_result_deinit(&result);
@@ -20528,7 +20543,8 @@ static int test_set_fixed_system_variable_statement(void) {
     failures +=
         parse_sql("SET transaction_isolation = SERIALIZABLE;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    value = child_at(assignment, 1U);
     failures += expect_node(
         value,
         MYLITE_SQL_AST_IDENTIFIER,
@@ -20540,13 +20556,36 @@ static int test_set_fixed_system_variable_statement(void) {
 
     failures += parse_sql("SET time_zone = NULL;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    value = child_at(statement, 1U);
+    assignment = child_at(child_at(statement, 0U), 0U);
+    value = child_at(assignment, 1U);
     failures += expect_literal(value, MYLITE_SQL_AST_LITERAL_NULL, "set time_zone NULL value");
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SET autocommit = 1, sql_notes = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SET autocommit = 1, sql_notes = 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment_list = child_at(statement, 0U);
+    failures += expect_child_count(assignment_list, 2U, "set assignment list supports commas");
     mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET @name = 1, @other := @@sql_mode;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment_list = child_at(statement, 0U);
+    assignment = child_at(assignment_list, 0U);
+    failures += expect_child_count(assignment_list, 2U, "user variable assignment count");
+    failures += expect_node(child_at(assignment, 0U), MYLITE_SQL_AST_USER_VARIABLE, "user target");
+    failures += expect_span_text(child_at(assignment, 0U), "@name", "user target span");
+    failures +=
+        expect_literal(child_at(assignment, 1U), MYLITE_SQL_AST_LITERAL_INTEGER, "user value");
+    assignment = child_at(assignment_list, 1U);
+    failures +=
+        expect_node(child_at(assignment, 0U), MYLITE_SQL_AST_USER_VARIABLE, "second user target");
+    failures +=
+        expect_node(child_at(assignment, 1U), MYLITE_SQL_AST_SYSTEM_VARIABLE, "user system value");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET @d = DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SET app.autocommit = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

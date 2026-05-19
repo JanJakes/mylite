@@ -109,7 +109,7 @@ statement(A) ::= set_connection_charset_statement(B). {
 statement(A) ::= set_transaction_statement(B). {
     A = B;
 }
-statement(A) ::= set_system_variable_statement(B). {
+statement(A) ::= set_assignment_statement(B). {
     A = B;
 }
 statement(A) ::= create_table_statement(B). {
@@ -607,9 +607,25 @@ set_names_collate_opt(A) ::= COLLATE option_name(C). {
     A = C;
 }
 
-set_system_variable_statement(A) ::=
-    SET(S) set_system_variable_target(T) EQUAL set_system_variable_value(V). {
-    A = mylite_sql_parser_make_set_system_variable_statement(state, S, T, V);
+set_assignment_statement(A) ::= SET(S) set_assignment_list(L). {
+    A = mylite_sql_parser_make_set_statement(state, S, L);
+}
+
+set_assignment_list(A) ::= set_assignment(B). {
+    A = mylite_sql_parser_make_set_assignment_list(state, B);
+}
+set_assignment_list(A) ::= set_assignment_list(B) COMMA set_assignment(C). {
+    A = mylite_sql_parser_append_set_assignment(state, B, C);
+}
+
+set_assignment(A) ::= set_system_variable_target(T) EQUAL(E) set_system_variable_value(V). {
+    A = mylite_sql_parser_make_set_assignment(state, T, E, V);
+}
+set_assignment(A) ::= user_variable(T) EQUAL(E) user_variable_set_value(V). {
+    A = mylite_sql_parser_make_set_assignment(state, T, E, V);
+}
+set_assignment(A) ::= user_variable(T) ASSIGN(O) user_variable_set_value(V). {
+    A = mylite_sql_parser_make_set_assignment(state, T, O, V);
 }
 
 set_system_variable_target(A) ::= identifier(N). {
@@ -682,6 +698,57 @@ set_system_variable_value(A) ::= NULL(T). {
 }
 set_system_variable_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+set_system_variable_value(A) ::= user_variable(T). {
+    A = T;
+}
+set_system_variable_value(A) ::= LPAREN(L) set_system_variable_value(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+user_variable_set_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+user_variable_set_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+user_variable_set_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+user_variable_set_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+user_variable_set_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+user_variable_set_value(A) ::= ON(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+user_variable_set_value(A) ::= OFF(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+user_variable_set_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+user_variable_set_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+user_variable_set_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+user_variable_set_value(A) ::= user_variable(T). {
+    A = T;
+}
+user_variable_set_value(A) ::= LPAREN(L) user_variable_set_value(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+user_variable(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_user_variable(state, T);
 }
 
 create_table_statement(A) ::=
@@ -3016,6 +3083,9 @@ expression(A) ::= literal(B). {
 }
 expression(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_system_variable(state, T);
+}
+expression(A) ::= USER_VARIABLE(T). {
+    A = mylite_sql_parser_make_user_variable(state, T);
 }
 expression(A) ::= qualified_identifier(B). {
     A = B;

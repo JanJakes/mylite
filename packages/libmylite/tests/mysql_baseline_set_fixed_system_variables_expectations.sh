@@ -157,7 +157,7 @@ expect_output \
     "$DATABASE"
 
 expect_output \
-    "mysql assignment list deferred by mylite" \
+    "mysql fixed assignment list" \
     "1	1	0" \
     "SET autocommit = 1, sql_notes = 1; SELECT @@autocommit, @@sql_notes, ROW_COUNT();" \
     "$DATABASE"

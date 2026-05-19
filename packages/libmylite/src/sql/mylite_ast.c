@@ -1308,6 +1308,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "do_expression_list";
     case MYLITE_SQL_AST_DO_STATEMENT:
         return "do_statement";
+    case MYLITE_SQL_AST_SET_STATEMENT:
+        return "set_statement";
+    case MYLITE_SQL_AST_SET_ASSIGNMENT_LIST:
+        return "set_assignment_list";
+    case MYLITE_SQL_AST_SET_ASSIGNMENT:
+        return "set_assignment";
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
         return "set_system_variable_statement";
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:
@@ -1616,6 +1622,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_errors_statement";
     case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
         return "show_count_errors_statement";
+    case MYLITE_SQL_AST_USER_VARIABLE:
+        return "user_variable";
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return "system_variable";
     case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:

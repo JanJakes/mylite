@@ -453,7 +453,7 @@ static int test_nullif_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "SELECT NULLIF() supports only signed 64-bit integer",
         }
     );
     failures += execute_error(

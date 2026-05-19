@@ -324,7 +324,7 @@ static int test_do_statement_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '@x'",
+            .message_part = "near ':='",
         }
     );
     failures += execute_error(

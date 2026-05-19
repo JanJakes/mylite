@@ -137,6 +137,7 @@ enum {
     mysql_error_invalid_json_charset = 3144,
     mysql_error_invalid_json_data = 3146,
     mysql_error_json_null_member_name = 3158,
+    mysql_error_illegal_user_variable_name = 3061,
     mysql_error_json_unquote_incorrect_type = 3064,
     mysql_error_failed_read_auto_increment = 1467,
     mysql_error_cannot_update_table_while_creating = 1746,
@@ -6632,6 +6633,32 @@ struct resolved_set_system_variable_target {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct set_session_snapshot {
+    uint64_t sql_mode;
+    uint64_t auto_increment_increment;
+    uint64_t auto_increment_offset;
+    int64_t timestamp_override;
+    int time_zone_offset_minutes;
+    enum mylite_transaction_isolation session_transaction_isolation;
+    enum mylite_transaction_access_mode session_transaction_access_mode;
+    enum mylite_transaction_isolation next_transaction_isolation;
+    enum mylite_transaction_access_mode next_transaction_access_mode;
+    bool sql_mode_is_placeholder;
+    bool time_zone_is_placeholder;
+    bool system_variables_are_placeholder;
+    bool foreign_key_checks_enabled;
+    bool has_next_transaction_isolation;
+    bool has_next_transaction_access_mode;
+    bool next_transaction_isolation_from_system_variable;
+    bool next_transaction_access_mode_from_system_variable;
+    bool has_timestamp_override;
+    char time_zone[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
+    struct mylite_session_user_variable *user_variables;
+    size_t user_variable_count;
+    size_t user_variable_capacity;
+};
+
 static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"auto_increment_increment", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT, true, true},
     {"auto_increment_offset", SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET, true, true},
@@ -6827,7 +6854,7 @@ static int execute_set_character_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int execute_set_system_variable_statement(
+static int execute_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -6922,9 +6949,120 @@ static int set_session_connection_character_set(
     struct mylite_db *database,
     const char *collation_name
 );
-static int apply_set_system_variable_statement(
+static int apply_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
+);
+static int apply_set_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+);
+static int apply_set_user_variable_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+);
+static int evaluate_user_variable_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct session_scalar_cell *out_cell
+);
+static int set_session_user_variable(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct session_scalar_cell *value
+);
+static int session_user_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct session_scalar_cell *out_cell
+);
+static int copy_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size
+);
+static int copy_unquoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char *buffer,
+    size_t buffer_size
+);
+static int copy_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char quote,
+    char *buffer,
+    size_t buffer_size
+);
+static int copy_string_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char *buffer,
+    size_t buffer_size
+);
+static int copy_identifier_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char quote,
+    char *buffer,
+    size_t buffer_size
+);
+static int append_user_variable_name_byte(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    size_t *inout_length,
+    char byte
+);
+static int validate_user_variable_name(
+    struct mylite_db *database,
+    const char *name,
+    size_t name_length
+);
+static int set_illegal_user_variable_name_error(
+    struct mylite_db *database,
+    const char *name,
+    size_t name_length
+);
+static void fold_user_variable_name(char *text);
+static struct mylite_session_user_variable *find_session_user_variable(
+    struct mylite_session_state *session,
+    const char *name
+);
+static int ensure_session_user_variable_capacity(struct mylite_db *database);
+static int copy_set_session_snapshot(
+    struct mylite_db *database,
+    struct set_session_snapshot *out_snapshot
+);
+static int copy_session_user_variables(
+    struct mylite_db *database,
+    const struct mylite_session_state *source,
+    struct mylite_session_user_variable **out_variables
+);
+static void restore_set_session_snapshot(
+    struct mylite_db *database,
+    struct set_session_snapshot *snapshot
+);
+static void deinit_set_session_snapshot(struct set_session_snapshot *snapshot);
+static void free_session_user_variables(
+    struct mylite_session_user_variable *variables,
+    size_t count
+);
+static int apply_set_system_variable_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+);
+static int apply_set_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+);
+static int parse_set_boolean_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    bool *out_value
 );
 static int resolve_set_system_variable_target(
     struct mylite_db *database,
@@ -21698,8 +21836,9 @@ static int execute_parsed_statement(
         return execute_set_names_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
         return execute_set_character_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
-        return execute_set_system_variable_statement(database, statement, out_result);
+        return execute_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
         return execute_set_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
@@ -21907,6 +22046,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+    case MYLITE_SQL_AST_USER_VARIABLE:
+    case MYLITE_SQL_AST_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_SET_ASSIGNMENT:
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
@@ -22340,7 +22482,7 @@ static int execute_set_character_set_statement(
     return execute_set_connection_character_set_statement(database, statement, false, out_result);
 }
 
-static int execute_set_system_variable_statement(
+static int execute_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -22353,7 +22495,7 @@ static int execute_set_system_variable_statement(
         return rc;
     }
 
-    rc = apply_set_system_variable_statement(database, statement);
+    rc = apply_set_statement(database, statement);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -24071,25 +24213,108 @@ static int set_session_connection_character_set(
     return MYLITE_OK;
 }
 
-static int apply_set_system_variable_statement(
+static int apply_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 ) {
-    const struct mylite_sql_ast_node *target_node = NULL;
-    const struct mylite_sql_ast_node *value_node = NULL;
-    struct resolved_set_system_variable_target target = {0};
-    bool expected_boolean_value = false;
+    struct set_session_snapshot snapshot = {0};
+    const struct mylite_sql_ast_node *assignment_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
     int rc = MYLITE_OK;
 
-    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT) {
+    if (statement == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT) {
+        return apply_set_system_variable_assignment(database, statement);
+    }
+    if (statement->kind != MYLITE_SQL_AST_SET_STATEMENT) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    target_node = child_at(statement, 0U);
-    value_node = child_at(statement, 1U);
+    rc = copy_set_session_snapshot(database, &snapshot);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    assignment_list = child_at(statement, 0U);
+    if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_SET_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        restore_set_session_snapshot(database, &snapshot);
+        return MYLITE_ERROR;
+    }
+    assignment = child_at(assignment_list, 0U);
+    while (rc == MYLITE_OK && assignment != NULL) {
+        rc = apply_set_assignment(database, assignment);
+        assignment = assignment->next_sibling;
+    }
+    if (rc != MYLITE_OK) {
+        restore_set_session_snapshot(database, &snapshot);
+        return rc;
+    }
+
+    deinit_set_session_snapshot(&snapshot);
+    return MYLITE_OK;
+}
+
+static int apply_set_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_SET_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    target = child_at(assignment, 0U);
+    if (target != NULL && target->kind == MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET) {
+        return apply_set_system_variable_assignment(database, assignment);
+    }
+    if (target != NULL && target->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        return apply_set_user_variable_assignment(database, assignment);
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int apply_set_system_variable_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+) {
+    struct resolved_set_system_variable_target target = {0};
+    const struct mylite_sql_ast_node *target_node = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    bool expected_boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (assignment == NULL || (assignment->kind != MYLITE_SQL_AST_SET_ASSIGNMENT &&
+                               assignment->kind != MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    target_node = child_at(assignment, 0U);
+    value_node = child_at(assignment, 1U);
     rc = resolve_set_system_variable_target(database, target_node, &target);
     if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (unwrap_parenthesized_expression(value_node) != NULL &&
+        unwrap_parenthesized_expression(value_node)->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        struct session_scalar_cell value = {0};
+
+        rc = session_user_variable_value(
+            database,
+            unwrap_parenthesized_expression(value_node),
+            &value
+        );
+        if (rc == MYLITE_OK) {
+            rc = apply_set_system_variable_cell_value(database, &target, &value);
+        }
+        session_scalar_cell_deinit(&value);
         return rc;
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
@@ -24115,7 +24340,6 @@ static int apply_set_system_variable_statement(
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
     }
-
     if (set_system_variable_fixed_boolean_value(target.kind, &expected_boolean_value)) {
         return validate_set_fixed_boolean_value(database, value_node, expected_boolean_value);
     }
@@ -24130,6 +24354,698 @@ static int apply_set_system_variable_statement(
     }
 
     set_read_only_system_variable_error(database, target.name);
+    return MYLITE_ERROR;
+}
+
+static int apply_set_user_variable_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    struct session_scalar_cell value = {0};
+    int rc = MYLITE_OK;
+
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_SET_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    target = child_at(assignment, 0U);
+    value_node = child_at(assignment, 1U);
+    rc = evaluate_user_variable_assignment_value(database, value_node, &value);
+    if (rc == MYLITE_OK) {
+        rc = set_session_user_variable(database, target, &value);
+    }
+    session_scalar_cell_deinit(&value);
+    return rc;
+}
+
+static int evaluate_user_variable_assignment_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(value_node);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    size_t decoded_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (unwrapped == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(unwrapped);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                unwrapped,
+                "SET user variables support only string literals",
+                "SET user variable string values do not support NUL bytes",
+                &out_cell->owned_text,
+                &decoded_length
+            );
+            if (rc == MYLITE_OK) {
+                out_cell->value = out_cell->owned_text;
+                out_cell->value_size = decoded_length;
+                out_cell->has_value_size = true;
+            }
+            return rc;
+        }
+    }
+
+    switch (unwrapped->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_USER_VARIABLE:
+        return session_scalar_value(database, unwrapped, out_cell);
+    default:
+        set_unsupported_error(
+            database,
+            "SET user variables support only integer, string, boolean, NULL, and variable values"
+        );
+        return MYLITE_ERROR;
+    }
+}
+
+static int set_session_user_variable(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct session_scalar_cell *value
+) {
+    char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    struct mylite_session_user_variable *variable = NULL;
+    const char *source_value = value == NULL ? NULL : value->value;
+    size_t source_size = 0U;
+    char *owned_value = NULL;
+    int rc = copy_user_variable_name(database, target, name, sizeof(name));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    variable = find_session_user_variable(&database->session, name);
+    if (variable == NULL) {
+        rc = ensure_session_user_variable_capacity(database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        variable = &database->session.user_variables[database->session.user_variable_count];
+        *variable = (struct mylite_session_user_variable){0};
+        memcpy(variable->name, name, strlen(name) + 1U);
+        ++database->session.user_variable_count;
+    }
+
+    if (source_value != NULL) {
+        if (value->has_value_size) {
+            source_size = value->value_size;
+        } else {
+            source_size = strlen(source_value);
+        }
+        owned_value = (char *)malloc(source_size + 1U);
+        if (owned_value == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(owned_value, source_value, source_size);
+        owned_value[source_size] = '\0';
+    }
+
+    free(variable->value);
+    variable->value = owned_value;
+    variable->value_size = source_size;
+    variable->is_null = source_value == NULL;
+    return MYLITE_OK;
+}
+
+static int session_user_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct session_scalar_cell *out_cell
+) {
+    char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    struct mylite_session_user_variable *variable = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = copy_user_variable_name(database, node, name, sizeof(name));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    variable = find_session_user_variable(&database->session, name);
+    if (variable == NULL || variable->is_null) {
+        return MYLITE_OK;
+    }
+
+    out_cell->value = variable->value;
+    out_cell->value_size = variable->value_size;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
+}
+
+static int copy_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size
+) {
+    const struct mylite_sql_source_span *span = node == NULL ? NULL : &node->span;
+    char quote = '\0';
+    int rc = MYLITE_OK;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    buffer[0] = '\0';
+    if (node == NULL || node->kind != MYLITE_SQL_AST_USER_VARIABLE || span == NULL ||
+        span->text == NULL || span->length < 2U || span->text[0] != '@') {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    quote = span->text[1];
+    if (quote == '\'' || quote == '"' || quote == '`') {
+        rc = copy_quoted_user_variable_name(database, span, quote, buffer, buffer_size);
+    } else {
+        rc = copy_unquoted_user_variable_name(database, span, buffer, buffer_size);
+    }
+    if (rc == MYLITE_OK) {
+        fold_user_variable_name(buffer);
+    }
+    return rc;
+}
+
+static int copy_unquoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t name_length = span == NULL ? 0U : span->length - 1U;
+
+    if (span == NULL || span->text == NULL || name_length == 0U || name_length >= buffer_size) {
+        return set_illegal_user_variable_name_error(
+            database,
+            span == NULL || span->text == NULL ? "" : span->text + 1U,
+            name_length
+        );
+    }
+    memcpy(buffer, span->text + 1U, name_length);
+    buffer[name_length] = '\0';
+    return validate_user_variable_name(database, buffer, name_length);
+}
+
+static int copy_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char quote,
+    char *buffer,
+    size_t buffer_size
+) {
+    if (span == NULL || span->text == NULL || span->length < 3U) {
+        return set_illegal_user_variable_name_error(database, "", 0U);
+    }
+    if (quote == '\'' || quote == '"') {
+        return copy_string_quoted_user_variable_name(database, span, buffer, buffer_size);
+    }
+    return copy_identifier_quoted_user_variable_name(database, span, quote, buffer, buffer_size);
+}
+
+static int copy_string_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char *buffer,
+    size_t buffer_size
+) {
+    char *decoded = NULL;
+    size_t decoded_length = 0U;
+    struct mylite_sql_ast_node literal = {
+        .kind = MYLITE_SQL_AST_LITERAL,
+        .span = {.text = span->text + 1U, .length = span->length - 1U},
+        .payload = {.literal = {.kind = MYLITE_SQL_AST_LITERAL_STRING}},
+    };
+    int rc = decode_sql_string_literal(
+        database,
+        &literal,
+        "SET user variable names support only quoted variable names",
+        "SET user variable names do not support NUL bytes",
+        &decoded,
+        &decoded_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (decoded_length == 0U || decoded_length >= buffer_size) {
+        rc = set_illegal_user_variable_name_error(database, decoded, decoded_length);
+        free(decoded);
+        return rc;
+    }
+    memcpy(buffer, decoded, decoded_length);
+    buffer[decoded_length] = '\0';
+    rc = validate_user_variable_name(database, buffer, decoded_length);
+    free(decoded);
+    return rc;
+}
+
+static int copy_identifier_quoted_user_variable_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char quote,
+    char *buffer,
+    size_t buffer_size
+) {
+    size_t name_length = 0U;
+
+    for (size_t index = 2U; index < span->length; ++index) {
+        char byte = span->text[index];
+
+        if (byte == quote) {
+            if (index + 1U < span->length && span->text[index + 1U] == quote) {
+                int rc = append_user_variable_name_byte(
+                    database,
+                    buffer,
+                    buffer_size,
+                    &name_length,
+                    byte
+                );
+
+                if (rc != MYLITE_OK) {
+                    return rc;
+                }
+                ++index;
+                continue;
+            }
+            if (name_length == 0U || index + 1U != span->length) {
+                return set_illegal_user_variable_name_error(database, buffer, name_length);
+            }
+            buffer[name_length] = '\0';
+            return validate_user_variable_name(database, buffer, name_length);
+        }
+        {
+            int rc =
+                append_user_variable_name_byte(database, buffer, buffer_size, &name_length, byte);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+        }
+    }
+
+    return set_illegal_user_variable_name_error(database, buffer, name_length);
+}
+
+static int append_user_variable_name_byte(
+    struct mylite_db *database,
+    char *buffer,
+    size_t buffer_size,
+    size_t *inout_length,
+    char byte
+) {
+    if (buffer == NULL || inout_length == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    if (byte == '\0' || *inout_length + 1U >= buffer_size) {
+        return set_illegal_user_variable_name_error(database, buffer, *inout_length);
+    }
+
+    buffer[*inout_length] = byte;
+    ++*inout_length;
+    buffer[*inout_length] = '\0';
+    return MYLITE_OK;
+}
+
+static int validate_user_variable_name(
+    struct mylite_db *database,
+    const char *name,
+    size_t name_length
+) {
+    size_t character_count = 0U;
+
+    if (name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (name_length == 0U || name_length > MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES ||
+        validate_utf8_text(name, name_length, &character_count) != MYLITE_OK ||
+        character_count == 0U ||
+        character_count > MYLITE_SESSION_USER_VARIABLE_NAME_MAX_CHARACTERS) {
+        return set_illegal_user_variable_name_error(database, name, name_length);
+    }
+    return MYLITE_OK;
+}
+
+static int set_illegal_user_variable_name_error(
+    struct mylite_db *database,
+    const char *name,
+    size_t name_length
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int printable_length = name_length > INT_MAX ? INT_MAX : (int)name_length;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "User variable name '%.*s' is illegal",
+        printable_length,
+        name == NULL ? "" : name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_illegal_user_variable_name,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static void fold_user_variable_name(char *text) {
+    if (text == NULL) {
+        return;
+    }
+    for (size_t index = 0U; text[index] != '\0'; ++index) {
+        text[index] = ascii_lower((unsigned char)text[index]);
+    }
+}
+
+static struct mylite_session_user_variable *find_session_user_variable(
+    struct mylite_session_state *session,
+    const char *name
+) {
+    if (session == NULL || name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < session->user_variable_count; ++index) {
+        if (strcmp(session->user_variables[index].name, name) == 0) {
+            return &session->user_variables[index];
+        }
+    }
+    return NULL;
+}
+
+static int ensure_session_user_variable_capacity(struct mylite_db *database) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    struct mylite_session_user_variable *variables = NULL;
+    size_t new_capacity = 0U;
+
+    if (session == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (session->user_variable_count < session->user_variable_capacity) {
+        return MYLITE_OK;
+    }
+    new_capacity =
+        session->user_variable_capacity == 0U ? 4U : session->user_variable_capacity * 2U;
+    if (new_capacity < session->user_variable_capacity ||
+        new_capacity > SIZE_MAX / sizeof(*variables)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    variables = (struct mylite_session_user_variable *)
+        realloc(session->user_variables, new_capacity * sizeof(*variables));
+    if (variables == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memset(
+        variables + session->user_variable_capacity,
+        0,
+        (new_capacity - session->user_variable_capacity) * sizeof(*variables)
+    );
+    session->user_variables = variables;
+    session->user_variable_capacity = new_capacity;
+    return MYLITE_OK;
+}
+
+static int copy_set_session_snapshot(
+    struct mylite_db *database,
+    struct set_session_snapshot *out_snapshot
+) {
+    const struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    struct mylite_session_user_variable *variables = NULL;
+    int rc = MYLITE_OK;
+
+    if (session == NULL || out_snapshot == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_snapshot = (struct set_session_snapshot){0};
+    rc = copy_session_user_variables(database, session, &variables);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_snapshot->sql_mode = session->sql_mode;
+    out_snapshot->auto_increment_increment = session->auto_increment_increment;
+    out_snapshot->auto_increment_offset = session->auto_increment_offset;
+    out_snapshot->timestamp_override = session->timestamp_override;
+    out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
+    out_snapshot->session_transaction_isolation = session->session_transaction_isolation;
+    out_snapshot->session_transaction_access_mode = session->session_transaction_access_mode;
+    out_snapshot->next_transaction_isolation = session->next_transaction_isolation;
+    out_snapshot->next_transaction_access_mode = session->next_transaction_access_mode;
+    out_snapshot->sql_mode_is_placeholder = session->sql_mode_is_placeholder;
+    out_snapshot->time_zone_is_placeholder = session->time_zone_is_placeholder;
+    out_snapshot->system_variables_are_placeholder = session->system_variables_are_placeholder;
+    out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
+    out_snapshot->has_next_transaction_isolation = session->has_next_transaction_isolation;
+    out_snapshot->has_next_transaction_access_mode = session->has_next_transaction_access_mode;
+    out_snapshot->next_transaction_isolation_from_system_variable =
+        session->next_transaction_isolation_from_system_variable;
+    out_snapshot->next_transaction_access_mode_from_system_variable =
+        session->next_transaction_access_mode_from_system_variable;
+    out_snapshot->has_timestamp_override = session->has_timestamp_override;
+    memcpy(out_snapshot->time_zone, session->time_zone, sizeof(out_snapshot->time_zone));
+    memcpy(
+        out_snapshot->sql_mode_text,
+        session->sql_mode_text,
+        sizeof(out_snapshot->sql_mode_text)
+    );
+    out_snapshot->user_variables = variables;
+    out_snapshot->user_variable_count = session->user_variable_count;
+    out_snapshot->user_variable_capacity = session->user_variable_capacity;
+    return MYLITE_OK;
+}
+
+static int copy_session_user_variables(
+    struct mylite_db *database,
+    const struct mylite_session_state *source,
+    struct mylite_session_user_variable **out_variables
+) {
+    struct mylite_session_user_variable *copy = NULL;
+    const struct mylite_session_user_variable *variables = NULL;
+    size_t count = 0U;
+    size_t capacity = 0U;
+
+    if (source == NULL || out_variables == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_variables = NULL;
+    variables = source->user_variables;
+    count = source->user_variable_count;
+    capacity = source->user_variable_capacity;
+    if (capacity == 0U) {
+        return MYLITE_OK;
+    }
+    if (capacity > SIZE_MAX / sizeof(*copy)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    copy = (struct mylite_session_user_variable *)calloc(capacity, sizeof(*copy));
+    if (copy == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        copy[index] = variables[index];
+        copy[index].value = NULL;
+        if (!variables[index].is_null && variables[index].value != NULL) {
+            copy[index].value = (char *)malloc(variables[index].value_size + 1U);
+            if (copy[index].value == NULL) {
+                free_session_user_variables(copy, index);
+                set_nomem_error(database);
+                return MYLITE_NOMEM;
+            }
+            memcpy(copy[index].value, variables[index].value, variables[index].value_size);
+            copy[index].value[variables[index].value_size] = '\0';
+        }
+    }
+
+    *out_variables = copy;
+    return MYLITE_OK;
+}
+
+static void restore_set_session_snapshot(
+    struct mylite_db *database,
+    struct set_session_snapshot *snapshot
+) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+    struct mylite_session_user_variable *current_variables = NULL;
+    size_t current_variable_count = 0U;
+
+    if (session == NULL || snapshot == NULL) {
+        return;
+    }
+
+    current_variables = session->user_variables;
+    current_variable_count = session->user_variable_count;
+
+    session->sql_mode = snapshot->sql_mode;
+    session->auto_increment_increment = snapshot->auto_increment_increment;
+    session->auto_increment_offset = snapshot->auto_increment_offset;
+    session->timestamp_override = snapshot->timestamp_override;
+    session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
+    session->session_transaction_isolation = snapshot->session_transaction_isolation;
+    session->session_transaction_access_mode = snapshot->session_transaction_access_mode;
+    session->next_transaction_isolation = snapshot->next_transaction_isolation;
+    session->next_transaction_access_mode = snapshot->next_transaction_access_mode;
+    session->sql_mode_is_placeholder = snapshot->sql_mode_is_placeholder;
+    session->time_zone_is_placeholder = snapshot->time_zone_is_placeholder;
+    session->system_variables_are_placeholder = snapshot->system_variables_are_placeholder;
+    session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
+    session->has_next_transaction_isolation = snapshot->has_next_transaction_isolation;
+    session->has_next_transaction_access_mode = snapshot->has_next_transaction_access_mode;
+    session->next_transaction_isolation_from_system_variable =
+        snapshot->next_transaction_isolation_from_system_variable;
+    session->next_transaction_access_mode_from_system_variable =
+        snapshot->next_transaction_access_mode_from_system_variable;
+    session->has_timestamp_override = snapshot->has_timestamp_override;
+    memcpy(session->time_zone, snapshot->time_zone, sizeof(session->time_zone));
+    memcpy(session->sql_mode_text, snapshot->sql_mode_text, sizeof(session->sql_mode_text));
+    session->user_variables = snapshot->user_variables;
+    session->user_variable_count = snapshot->user_variable_count;
+    session->user_variable_capacity = snapshot->user_variable_capacity;
+
+    snapshot->user_variables = NULL;
+    snapshot->user_variable_count = 0U;
+    snapshot->user_variable_capacity = 0U;
+    free_session_user_variables(current_variables, current_variable_count);
+}
+
+static void deinit_set_session_snapshot(struct set_session_snapshot *snapshot) {
+    if (snapshot == NULL) {
+        return;
+    }
+    free_session_user_variables(snapshot->user_variables, snapshot->user_variable_count);
+    *snapshot = (struct set_session_snapshot){0};
+}
+
+static void free_session_user_variables(
+    struct mylite_session_user_variable *variables,
+    size_t count
+) {
+    if (variables == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < count; ++index) {
+        free(variables[index].value);
+    }
+    free(variables);
+}
+
+static int apply_set_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value
+) {
+    bool boolean_value = false;
+    uint64_t modes = 0U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_MODE) {
+        if (value->value == NULL) {
+            set_unsupported_error(
+                database,
+                "SET sql_mode from NULL user variables is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = parse_sql_mode_text(database, value->value, &modes);
+        if (rc == MYLITE_OK) {
+            rc = append_set_sql_mode_warnings(database, modes);
+        }
+        if (rc == MYLITE_OK) {
+            rc = set_session_sql_mode(database, modes);
+        }
+        return rc;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_TIME_ZONE) {
+        if (value->value == NULL) {
+            set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
+            return MYLITE_ERROR;
+        }
+        return set_session_time_zone(database, value->value);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
+        rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
+        if (rc == MYLITE_OK) {
+            database->session.foreign_key_checks_enabled = boolean_value;
+            database->session.system_variables_are_placeholder = false;
+        }
+        return rc;
+    }
+    if (set_system_variable_fixed_boolean_value(target->kind, &boolean_value)) {
+        bool actual = false;
+
+        rc = parse_set_boolean_cell_value(database, target->name, value, &actual);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (actual != boolean_value) {
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "SET system variable assignments from user variables are not supported for this variable"
+    );
+    return MYLITE_ERROR;
+}
+
+static int parse_set_boolean_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    bool *out_value
+) {
+    if (out_value == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = false;
+    if (value->value == NULL) {
+        set_system_variable_cant_be_set_value_error(database, variable_name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (strcmp(value->value, "1") == 0 || text_equals_ascii_case_insensitive(value->value, "ON") ||
+        text_equals_ascii_case_insensitive(value->value, "TRUE")) {
+        *out_value = true;
+        return MYLITE_OK;
+    }
+    if (strcmp(value->value, "0") == 0 || text_equals_ascii_case_insensitive(value->value, "OFF") ||
+        text_equals_ascii_case_insensitive(value->value, "FALSE")) {
+        *out_value = false;
+        return MYLITE_OK;
+    }
+
+    set_system_variable_cant_be_set_value_error(database, variable_name, value->value);
     return MYLITE_ERROR;
 }
 
@@ -37171,6 +38087,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_USE_STATEMENT:
     case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_SET_STATEMENT:
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
@@ -37256,6 +38173,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_FROM_DUAL:
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+    case MYLITE_SQL_AST_USER_VARIABLE:
+    case MYLITE_SQL_AST_SET_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_SET_ASSIGNMENT:
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
@@ -66529,6 +67449,8 @@ static int session_scalar_value(
         return case_expression_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
         return scalar_subquery_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_USER_VARIABLE:
+        return session_user_variable_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
@@ -80463,6 +81385,13 @@ static int evaluate_scalar_arithmetic_operand(
         set_scalar_arithmetic_operand_out_of_range_error(database);
         return MYLITE_ERROR;
     }
+    if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        rc = session_user_variable_value(database, expression, &cell);
+        if (rc == MYLITE_OK) {
+            rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
+        }
+        return rc;
+    }
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
@@ -82922,6 +83851,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION) {
         return true;
     }
+    if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        return true;
+    }
     if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return true;
     }
@@ -84546,6 +85478,9 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
         return false;
     }
     if (is_scalar_projection_literal_expression(expression)) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
         return true;
     }
     return is_scalar_function_expression(expression);

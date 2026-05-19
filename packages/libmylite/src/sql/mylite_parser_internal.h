@@ -370,6 +370,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token prepare_token,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *source
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token execute_token,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *using_list
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_using_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_execute_using_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *variable
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_deallocate_prepare_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_ast_node *name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,

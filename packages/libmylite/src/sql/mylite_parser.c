@@ -1058,6 +1058,109 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable(
     return make_node(state, MYLITE_SQL_AST_USER_VARIABLE, span_from_token(&token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token prepare_token,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *source
+) {
+    struct mylite_sql_source_span span = span_from_token(&prepare_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (source != NULL) {
+        span = span_join(span, source->span);
+    } else if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_PREPARE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    mylite_sql_ast_node_append_child(statement, source);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token execute_token,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *using_list
+) {
+    struct mylite_sql_source_span span = span_from_token(&execute_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (using_list != NULL) {
+        span = span_join(span, using_list->span);
+    } else if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_EXECUTE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    mylite_sql_ast_node_append_child(statement, using_list);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_using_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable
+) {
+    struct mylite_sql_source_span span =
+        variable == NULL ? (struct mylite_sql_source_span){0} : variable->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_EXECUTE_USING_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, variable);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_execute_using_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *variable
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, variable);
+    if (variable != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, variable->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_deallocate_prepare_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_ast_node *name
+) {
+    struct mylite_sql_source_span span = span_from_token(&first_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (name != NULL) {
+        span = span_join(span, name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -6714,7 +6817,10 @@ static bool map_keyword_token(
         {"DUPLICATE", MYLITE_SQL_PARSE_DUPLICATE},
         {"TO", MYLITE_SQL_PARSE_TO},
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
+        {"DEALLOCATE", MYLITE_SQL_PARSE_DEALLOCATE},
         {"DO", MYLITE_SQL_PARSE_DO},
+        {"EXECUTE", MYLITE_SQL_PARSE_EXECUTE},
+        {"PREPARE", MYLITE_SQL_PARSE_PREPARE},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"START", MYLITE_SQL_PARSE_START},
         {"TRANSACTION", MYLITE_SQL_PARSE_TRANSACTION},

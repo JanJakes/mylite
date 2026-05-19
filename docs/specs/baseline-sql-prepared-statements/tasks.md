@@ -5,17 +5,17 @@
   source values, marker counts, invalid `USING`, direct `?`, invalid marker
   placement, nested prepared commands, and multiple-statement source text.
 - [x] Write independently authored feature spec and MyLite grammar notes.
-- [ ] Add parser/AST support for `PREPARE`, `EXECUTE`, and
+- [x] Add parser/AST support for `PREPARE`, `EXECUTE`, and
   `DEALLOCATE PREPARE` / `DROP PREPARE`.
-- [ ] Add handle-local prepared statement storage with zero-init-safe cleanup.
-- [ ] Preserve enough user-variable value kind to render `EXECUTE ... USING`
+- [x] Add handle-local prepared statement storage with zero-init-safe cleanup.
+- [x] Preserve enough user-variable value kind to render `EXECUTE ... USING`
   parameters safely.
-- [ ] Add marker counting, prepare-time validation, and execute-time expansion
+- [x] Add marker counting, prepare-time validation, and execute-time expansion
   without admitting direct `?` SQL.
-- [ ] Route expanded execution through existing `mylite_execute()` semantics.
-- [ ] Add MySQL-runtime expectation script.
-- [ ] Add parser/runtime C tests and CMake registration.
-- [ ] Update compatibility docs for the exact supported subset.
-- [ ] Run focused parser/runtime tests, MySQL expectation script, and the full
+- [x] Route expanded execution through existing statement execution semantics.
+- [x] Add MySQL-runtime expectation script.
+- [x] Add parser/runtime C tests and CMake registration.
+- [x] Update compatibility docs for the exact supported subset.
+- [x] Run focused parser/runtime tests, MySQL expectation script, and the full
   check workflow.
-- [ ] Review, commit, and push.
+- [x] Review, commit, and push.

@@ -1314,6 +1314,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "set_assignment_list";
     case MYLITE_SQL_AST_SET_ASSIGNMENT:
         return "set_assignment";
+    case MYLITE_SQL_AST_PREPARE_STATEMENT:
+        return "prepare_statement";
+    case MYLITE_SQL_AST_EXECUTE_STATEMENT:
+        return "execute_statement";
+    case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
+        return "deallocate_prepare_statement";
+    case MYLITE_SQL_AST_EXECUTE_USING_LIST:
+        return "execute_using_list";
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
         return "set_system_variable_statement";
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_TARGET:

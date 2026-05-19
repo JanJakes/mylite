@@ -88,11 +88,25 @@ struct mylite_session_table_lock {
     enum mylite_session_table_lock_mode mode;
 };
 
+enum mylite_session_user_variable_value_kind {
+    MYLITE_SESSION_USER_VARIABLE_VALUE_NULL = 0,
+    MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER = 1,
+    MYLITE_SESSION_USER_VARIABLE_VALUE_STRING = 2,
+};
+
 struct mylite_session_user_variable {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
     char *value;
     size_t value_size;
+    enum mylite_session_user_variable_value_kind value_kind;
     bool is_null;
+};
+
+struct mylite_session_prepared_statement {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *sql;
+    size_t sql_size;
+    size_t parameter_count;
 };
 
 enum mylite_transaction_isolation {
@@ -127,6 +141,9 @@ struct mylite_session_state {
     struct mylite_session_user_variable *user_variables;
     size_t user_variable_count;
     size_t user_variable_capacity;
+    struct mylite_session_prepared_statement *prepared_statements;
+    size_t prepared_statement_count;
+    size_t prepared_statement_capacity;
     int64_t timestamp_override;
     int64_t active_statement_time;
     struct mylite_temporary_catalog temporary_catalog;

@@ -90,6 +90,7 @@ static int test_exp_log_power_functions(void);
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_set_fixed_system_variable_statement(void);
+static int test_sql_prepared_statement_lifecycle(void);
 static int test_set_transaction_statement(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
@@ -376,6 +377,7 @@ int main(void) {
     failures += test_case_operator();
     failures += test_do_statement();
     failures += test_set_fixed_system_variable_statement();
+    failures += test_sql_prepared_statement_lifecycle();
     failures += test_set_transaction_statement();
     failures += test_version_function();
     failures += test_connection_id_function();
@@ -20587,6 +20589,78 @@ static int test_set_fixed_system_variable_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SET app.autocommit = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_sql_prepared_statement_lifecycle(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *using_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql("PREPARE stmt FROM 'SELECT ?';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_PREPARE_STATEMENT, "prepare statement");
+    failures += expect_child_count(statement, 2U, "prepare child count");
+    failures += expect_span_text(child_at(statement, 0U), "stmt", "prepare name");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "prepare source");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("PREPARE `MiXeD` FROM @sql;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "`MiXeD`", "quoted prepare name");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_USER_VARIABLE, "prepare user source");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("EXECUTE stmt;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_EXECUTE_STATEMENT, "execute statement");
+    failures += expect_child_count(statement, 1U, "execute child count");
+    failures += expect_span_text(child_at(statement, 0U), "stmt", "execute name");
+    failures += expect_true(child_at(statement, 1U) == NULL, "execute without using list");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("EXECUTE stmt USING @a, @`b-c`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    using_list = child_at(statement, 1U);
+    failures += expect_node(using_list, MYLITE_SQL_AST_EXECUTE_USING_LIST, "execute using list");
+    failures += expect_child_count(using_list, 2U, "execute using count");
+    failures += expect_span_text(child_at(using_list, 0U), "@a", "execute first variable");
+    failures += expect_span_text(child_at(using_list, 1U), "@`b-c`", "execute second variable");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DEALLOCATE PREPARE stmt;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT,
+        "deallocate prepare statement"
+    );
+    failures += expect_child_count(statement, 1U, "deallocate child count");
+    failures += expect_span_text(child_at(statement, 0U), "stmt", "deallocate name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP PREPARE stmt;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT,
+        "drop prepare statement"
+    );
+    failures += expect_span_text(statement, "DROP PREPARE stmt", "drop prepare span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("PREPARE stmt FROM SELECT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("EXECUTE stmt USING 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("DEALLOCATE stmt;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

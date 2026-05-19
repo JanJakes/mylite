@@ -122,6 +122,19 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "backslash parameters" \
+    "615C62
+615C5C62" \
+    "PREPARE slash FROM 'SELECT HEX(?)';
+     SET @slash = 'a\\\\b';
+     EXECUTE slash USING @slash;
+     SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES';
+     SET @slash = 'a\\\\b';
+     EXECUTE slash USING @slash;
+     DEALLOCATE PREPARE slash;" \
+    "$DATABASE"
+
+expect_output \
     "replacement failure removes old handler" \
     "1" \
     "PREPARE repl FROM 'SELECT 1';

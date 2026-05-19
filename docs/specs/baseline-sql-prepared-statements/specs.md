@@ -99,11 +99,11 @@ text and do not count as parameter markers.
 `EXECUTE ... USING` binds only user variables. Uninitialized variables and
 `NULL` variables bind as SQL `NULL`. Integer and boolean user variables bind as
 decimal integer literals. String user variables bind as single-quoted string
-literals with MyLite-owned escaping. The bound SQL is then executed through the
-same `mylite_execute()` path as direct SQL text, so descriptor resolution,
-catalog authority, SQLite identifier quoting, parameter binding inside physical
-plans, result metadata, diagnostics, warning counts, and affected-row behavior
-remain owned by existing statement implementations.
+literals with MyLite-owned escaping. The bound SQL is then parsed and dispatched
+through the same internal statement execution path as direct SQL text, so
+descriptor resolution, catalog authority, SQLite identifier quoting, parameter
+binding inside physical plans, result metadata, diagnostics, warning counts,
+and affected-row behavior remain owned by existing statement implementations.
 
 This slice deliberately does not admit parameter markers outside prepared SQL,
 binary protocol markers, marker metadata, server-side parameter type inference,
@@ -155,8 +155,8 @@ prepared SQL string.
   through `mylite_execute()`.
 - Statement context: outer `PREPARE`, `EXECUTE`, and deallocation statements
   use normal statement-context diagnostics and row-count snapshots. `EXECUTE`
-  creates an inner `mylite_execute()` call for the expanded SQL and exposes the
-  inner result object.
+  creates an inner statement context for the expanded SQL and exposes the inner
+  result object without recursively entering the public API.
 - Lexer/parser/AST: parser adds lifecycle AST nodes but does not make `?`
   valid in direct SQL.
 - Runtime session state: owns a growable vector of prepared statement entries
@@ -164,8 +164,8 @@ prepared SQL string.
   Entries are zero-init safe and freed on close.
 - Analyzer/planner: no separate prepared-statement planner is introduced.
   Prepare-time validation parses a marker-normalized SQL string and stores the
-  original source plus marker count. Execute-time expansion re-enters the
-  existing analyzer/planner for the expanded SQL.
+  original source plus marker count. Execute-time expansion uses the existing
+  analyzer/planner for the expanded SQL.
 - Catalog/storage/VFS: no catalog rows, descriptor versions, generation
   counters, SQLite schema text, `.mylite` preamble, or shifted SQLite payload
   invariants change.

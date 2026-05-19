@@ -112,6 +112,15 @@ statement(A) ::= set_transaction_statement(B). {
 statement(A) ::= set_assignment_statement(B). {
     A = B;
 }
+statement(A) ::= prepare_statement(B). {
+    A = B;
+}
+statement(A) ::= execute_statement(B). {
+    A = B;
+}
+statement(A) ::= deallocate_prepare_statement(B). {
+    A = B;
+}
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
@@ -749,6 +758,42 @@ user_variable_set_value(A) ::= LPAREN(L) user_variable_set_value(B) RPAREN(R). {
 
 user_variable(A) ::= USER_VARIABLE(T). {
     A = mylite_sql_parser_make_user_variable(state, T);
+}
+
+prepare_statement(A) ::= PREPARE(P) identifier(N) FROM prepare_source(S). {
+    A = mylite_sql_parser_make_prepare_statement(state, P, N, S);
+}
+
+prepare_source(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+prepare_source(A) ::= user_variable(T). {
+    A = T;
+}
+
+execute_statement(A) ::= EXECUTE(E) identifier(N) execute_using_opt(U). {
+    A = mylite_sql_parser_make_execute_statement(state, E, N, U);
+}
+
+execute_using_opt(A) ::= . {
+    A = NULL;
+}
+execute_using_opt(A) ::= USING execute_using_list(L). {
+    A = L;
+}
+
+execute_using_list(A) ::= user_variable(V). {
+    A = mylite_sql_parser_make_execute_using_list(state, V);
+}
+execute_using_list(A) ::= execute_using_list(L) COMMA user_variable(V). {
+    A = mylite_sql_parser_append_execute_using_variable(state, L, V);
+}
+
+deallocate_prepare_statement(A) ::= DEALLOCATE(D) PREPARE identifier(N). {
+    A = mylite_sql_parser_make_deallocate_prepare_statement(state, D, N);
+}
+deallocate_prepare_statement(A) ::= DROP(D) PREPARE identifier(N). {
+    A = mylite_sql_parser_make_deallocate_prepare_statement(state, D, N);
 }
 
 create_table_statement(A) ::=

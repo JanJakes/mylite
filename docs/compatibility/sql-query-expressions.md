@@ -15,9 +15,10 @@ admitted descriptor and scalar value operands. It does not make those functions
 available in predicates, ordering/grouping expressions, or DML assignments.
 
 The limited user-variable surface exposes handle-local `@name` values in
-no-source/`DUAL` scalar `SELECT` lists and `DO` expressions. It does not make
-user variables available in descriptor predicates, ordering, grouping, DML
-assignment values, generated expressions, or prepared statements.
+no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, and SQL-level
+prepared statement source/`USING` positions. It does not make user variables
+available directly in descriptor predicates, ordering, grouping, DML assignment
+values, generated expressions, or arbitrary parameters.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

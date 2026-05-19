@@ -110,6 +110,30 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const multi_no_key_rows[] = {"1", "10", "20"};
     static const char *const unique_rows[] = {"1", "10", "200"};
     static const char *const unique_multi_rows[] = {"1", "10", "200", "300"};
+    static const char *const composite_primary_rows[] = {
+        "1",
+        "2",
+        "30",
+        "1",
+        "1",
+        "40",
+        "2",
+        "2",
+        "50",
+    };
+    static const char *const composite_unique_rows[] = {
+        "NULL",
+        "1",
+        "11",
+        "1",
+        "1",
+        "20",
+        "NULL",
+        "1",
+        "99",
+    };
+    static const char *const composite_multi_rows[] = {"1", "1", "20", "40"};
+    static const char *const composite_prefix_rows[] = {"abcdef", "xyzz", "2"};
     static const char *const default_rows[] = {"1", "7", NULL};
     static const char *const multi_default_rows[] = {"1", "7", NULL};
     static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
@@ -298,6 +322,117 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "unique duplicate multiple row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_pk(a INT NOT NULL, b INT NOT NULL, v INT, PRIMARY KEY(a,b))"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO composite_pk VALUES (1, 1, 10)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_pk VALUES (1, 1, 20) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_pk VALUES (1, 1, 20) ON DUPLICATE KEY UPDATE v = 20",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_pk VALUES (1, 2, 30), (1, 1, 40), (2, 2, 50) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 4, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM composite_pk ORDER BY v",
+            .values = composite_primary_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite primary duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_unique(a INT, b INT, v INT, UNIQUE KEY u_ab(a,b))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO composite_unique VALUES (1, 1, 10), (NULL, 1, 11)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_unique VALUES (1, 1, 20) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_unique VALUES (NULL, 1, 99) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IFNULL(a, 'NULL'), b, v FROM composite_unique "
+                   "ORDER BY v",
+            .values = composite_unique_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite unique duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_multi(a INT, b INT, v INT, n INT, UNIQUE KEY u_ab(a,b))"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO composite_multi VALUES (1, 1, 10, 30)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_multi VALUES (1, 1, 20, 50) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v), n = 40",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v, n FROM composite_multi",
+            .values = composite_multi_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "composite unique multiple duplicate assignments",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_prefix(a VARCHAR(20), b VARCHAR(20), n INT, "
+        "UNIQUE KEY u_ab(a(3), b(2)))"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO composite_prefix VALUES ('abcdef', 'xyzz', 1)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_prefix VALUES ('abcuvw', 'xyqq', 2) "
+        "ON DUPLICATE KEY UPDATE n = VALUES(n)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, n FROM composite_prefix",
+            .values = composite_prefix_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "composite prefix duplicate row",
         }
     );
 
@@ -671,15 +806,16 @@ static int test_duplicate_update_diagnostics(void) {
     );
     failures += expect_statement_ok(
         database,
-        "CREATE TABLE composite_key(a INT, b INT, v INT, UNIQUE KEY u_ab (a,b))"
+        "CREATE TABLE composite_key(a INT NOT NULL, b INT NOT NULL, v INT, PRIMARY KEY(a,b))"
     );
+    failures += expect_statement_ok(database, "INSERT INTO composite_key VALUES (1, 2, 1)");
     failures += execute_error(
         database,
-        "INSERT INTO composite_key VALUES (1, 2, 1) ON DUPLICATE KEY UPDATE v = 2",
+        "INSERT INTO composite_key VALUES (1, 2, 3) ON DUPLICATE KEY UPDATE a = 3",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports only single-column keys",
+            .message_part = "does not support key-column assignments",
         }
     );
 

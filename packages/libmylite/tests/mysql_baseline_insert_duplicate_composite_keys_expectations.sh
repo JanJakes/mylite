@@ -121,6 +121,18 @@ expect_output \
     "$DATABASE"
 run_mysql "DROP TABLE cma;" "$DATABASE" >/dev/null
 
+expect_output \
+    "composite prefix unique duplicate update" \
+    "2	1	0
+abcdef	xyzz	2" \
+    "CREATE TABLE cpu(a VARCHAR(20), b VARCHAR(20), n INT, UNIQUE KEY u_ab(a(3),b(2))); "\
+"INSERT INTO cpu VALUES ('abcdef','xyzz',1); "\
+"INSERT INTO cpu VALUES ('abcuvw','xyqq',2) ON DUPLICATE KEY UPDATE n=VALUES(n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT a,b,n FROM cpu;" \
+    "$DATABASE"
+run_mysql "DROP TABLE cpu;" "$DATABASE" >/dev/null
+
 expect_upstream_accepts \
     "mysql accepts duplicate updates on tables with multiple enforced keys" \
     "CREATE TABLE multiple_keys(a INT UNIQUE, b INT UNIQUE, v INT); "\

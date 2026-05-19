@@ -21398,6 +21398,11 @@ static int build_insert_duplicate_update_sql(
     const struct planned_value *assignment_values,
     char **out_sql
 );
+static int append_insert_duplicate_key_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index
+);
 static int append_insert_duplicate_assignments_sql(
     struct dynamic_string *string,
     const struct planned_insert *plan
@@ -57016,10 +57021,10 @@ static int plan_insert_duplicate_update_key(
             continue;
         }
         ++unique_key_count;
-        if (candidate->part_count != 1U) {
+        if (candidate->part_count == 0U) {
             set_unsupported_error(
                 database,
-                "INSERT ... ON DUPLICATE KEY UPDATE supports only single-column keys"
+                "INSERT ... ON DUPLICATE KEY UPDATE supports only descriptor key parts"
             );
             return MYLITE_ERROR;
         }
@@ -129750,11 +129755,17 @@ static int build_insert_duplicate_update_sql(
     char **out_sql
 ) {
     struct dynamic_string string;
-    size_t next_parameter = plan->duplicate_update.assignment_count + 2U;
+    size_t next_parameter = 0U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
     dynamic_string_init(&string);
+
+    if (conflicting_index == NULL || conflicting_index->part_count == 0U) {
+        dynamic_string_deinit(&string);
+        return MYLITE_ERROR;
+    }
+    next_parameter = plan->duplicate_update.assignment_count + conflicting_index->part_count + 1U;
 
     rc = dynamic_string_append(&string, "UPDATE ");
     if (rc == MYLITE_OK) {
@@ -129770,17 +129781,7 @@ static int build_insert_duplicate_update_sql(
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_sql(&string, &conflicting_index->parts[0], NULL);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " = ");
-    }
-    if (rc == MYLITE_OK) {
-        rc = append_loaded_key_part_parameter_sql(
-            &string,
-            &conflicting_index->parts[0],
-            plan->duplicate_update.assignment_count + 1U
-        );
+        rc = append_insert_duplicate_key_predicate_sql(&string, plan, conflicting_index);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " AND ");
@@ -129801,6 +129802,39 @@ static int build_insert_duplicate_update_sql(
     }
 
     dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_insert_duplicate_key_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index
+) {
+    int rc = MYLITE_OK;
+
+    if (conflicting_index == NULL || conflicting_index->part_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < conflicting_index->part_count;
+         ++part_index) {
+        if (part_index != 0U) {
+            rc = dynamic_string_append(string, " AND ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_sql(string, &conflicting_index->parts[part_index], NULL);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_loaded_key_part_parameter_sql(
+                string,
+                &conflicting_index->parts[part_index],
+                plan->duplicate_update.assignment_count + part_index + 1U
+            );
+        }
+    }
+
     return rc;
 }
 
@@ -129913,7 +129947,6 @@ static int bind_insert_duplicate_update_parameters(
     const struct loaded_index_info *conflicting_index,
     const struct planned_value *assignment_values
 ) {
-    size_t key_column_index = conflicting_index->parts[0].column_index;
     int parameter_index = 1;
     int rc = bind_insert_duplicate_assignment_parameters(
         statement,
@@ -129922,15 +129955,23 @@ static int bind_insert_duplicate_update_parameters(
         assignment_values
     );
 
-    if (rc == MYLITE_OK) {
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < conflicting_index->part_count;
+         ++part_index) {
+        size_t key_column_index = conflicting_index->parts[part_index].column_index;
+
+        if (key_column_index >= plan->column_count) {
+            return MYLITE_ERROR;
+        }
         rc = bind_planned_value_parameter(
             statement,
             parameter_index,
             &plan->rows[row_index].values[key_column_index]
         );
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
     }
     if (rc == MYLITE_OK) {
-        ++parameter_index;
         rc = bind_insert_duplicate_changed_condition_parameters(
             statement,
             &parameter_index,

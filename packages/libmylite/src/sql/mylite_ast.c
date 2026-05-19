@@ -1428,6 +1428,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "joined_delete_statement";
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
         return "update_statement";
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT:
+        return "joined_update_statement";
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
         return "start_transaction_statement";
     case MYLITE_SQL_AST_SET_TRANSACTION_STATEMENT:

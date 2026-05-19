@@ -3492,6 +3492,47 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_joined_update_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token update_token,
+    struct mylite_sql_ast_node *from_join,
+    struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
+    struct mylite_sql_source_span span = span_from_token(&update_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (from_join != NULL) {
+        span = span_join(span, from_join->span);
+    }
+    if (assignments != NULL) {
+        span = span_join(span, assignments->span);
+    }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
+    if (order_clause != NULL) {
+        span = span_join(span, order_clause->span);
+    }
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, from_join);
+    mylite_sql_ast_node_append_child(statement, assignments);
+    mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, order_clause);
+    mylite_sql_ast_node_append_child(statement, limit_clause);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *assignment

@@ -2805,6 +2805,11 @@ struct planned_update_assignment {
 struct planned_update {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
+    struct planned_select_source *sources;
+    size_t source_count;
+    enum mylite_sql_ast_join_kind join_kind;
+    struct planned_select_join_condition join_condition;
+    size_t target_source_index;
     struct mylite_catalog_column_descriptor assignment_column;
     struct planned_update_assignment *assignments;
     size_t assignment_count;
@@ -2829,6 +2834,7 @@ struct planned_update {
     bool has_primary_key;
     size_t primary_key_column_index;
     int64_t primary_key_column_id;
+    bool is_joined;
 };
 
 struct update_unique_key_conflict_bind_request {
@@ -13790,6 +13796,16 @@ static int plan_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 );
+static int plan_single_table_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+);
+static int plan_joined_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+);
 static void planned_update_deinit(struct planned_update *plan);
 static bool planned_update_has_multiple_assignments(const struct planned_update *plan);
 static int copy_update_assignments_for_execution(
@@ -13839,6 +13855,11 @@ static int append_parent_update_target_sql(
     const struct planned_update *plan,
     size_t *next_parameter,
     bool *out_has_condition
+);
+static int append_joined_parent_update_target_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
 );
 static int bind_parent_update_cascade_parameters(
     sqlite3_stmt *statement,
@@ -17551,6 +17572,28 @@ static int plan_update_assignment(
     size_t table_column_count,
     struct planned_update *out_plan
 );
+static int plan_joined_update_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan
+);
+static int reject_information_schema_joined_update_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list
+);
+static int finish_joined_update_target_plan(
+    struct mylite_db *database,
+    struct planned_update *out_plan
+);
+static int reject_information_schema_joined_update_target(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
+static void set_joined_update_wrong_usage_error(
+    struct mylite_db *database,
+    const char *clause_name
+);
 static int plan_update_multiple_assignments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list,
@@ -20275,10 +20318,39 @@ static bool planned_update_column_has_auto_update(
 );
 static size_t planned_update_auto_update_column_count(const struct planned_update *plan);
 static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
+static int append_joined_update_matched_target_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static bool planned_update_has_row_filter(const struct planned_update *plan);
+static int append_update_row_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
 static int append_update_rowid_limited_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
     size_t *next_parameter
+);
+static int append_joined_update_rowid_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_joined_update_rowid_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_joined_update_target_rowid_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+);
+static int append_joined_update_from_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
 );
 static int append_update_changed_condition_sql(
     struct dynamic_string *string,
@@ -21088,6 +21160,7 @@ static void set_unknown_multi_delete_table_error(
     struct mylite_db *database,
     const char *table_name
 );
+static void set_wrong_usage_error(struct mylite_db *database, const char *left, const char *right);
 static int set_unknown_drop_tables_error(
     struct mylite_db *database,
     const struct planned_drop_table *plan
@@ -21718,6 +21791,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT:
         return execute_update_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DO_STATEMENT:
         return execute_do_statement(database, statement, out_result);
@@ -36912,6 +36986,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_JOINED_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
@@ -56926,6 +57001,17 @@ static int plan_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 ) {
+    if (statement != NULL && statement->kind == MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT) {
+        return plan_joined_update(database, statement, out_plan);
+    }
+    return plan_single_table_update(database, statement, out_plan);
+}
+
+static int plan_single_table_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+) {
     const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
@@ -57058,11 +57144,307 @@ static int plan_update(
     return rc;
 }
 
+static int plan_joined_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    const struct mylite_sql_ast_node *join_condition = NULL;
+    struct select_source_context source_context = {0};
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_update){.is_joined = true};
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_JOIN) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    optional_clause = child_at(statement, 2U);
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "joined UPDATE supports only SET and WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    if (order_clause != NULL) {
+        set_joined_update_wrong_usage_error(database, "ORDER BY");
+        return MYLITE_ERROR;
+    }
+    if (limit_clause != NULL) {
+        set_joined_update_wrong_usage_error(database, "LIMIT");
+        return MYLITE_ERROR;
+    }
+
+    join_condition = child_at(from_clause, 2U);
+    out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    rc = reject_information_schema_joined_update_assignment_target(database, assignment_list);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
+    if (out_plan->sources == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->source_count = 2U;
+
+    rc = plan_joined_select_source(database, child_at(from_clause, 0U), &out_plan->sources[0]);
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_source(database, child_at(from_clause, 1U), &out_plan->sources[1]);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_duplicate_select_source_reference(
+            database,
+            out_plan->sources,
+            out_plan->source_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_join_select_source_context(
+            out_plan->sources,
+            out_plan->source_count,
+            &source_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_select_condition(
+            database,
+            join_condition,
+            out_plan->join_kind,
+            &source_context,
+            &out_plan->join_condition
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            &source_context,
+            NULL,
+            0U,
+            &out_plan->predicate
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_joined_update_assignment(database, assignment_list, &source_context, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_joined_update_target_plan(database, out_plan);
+    }
+
+    if (rc != MYLITE_OK) {
+        planned_update_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int reject_information_schema_joined_update_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *assignment = child_at(assignment_list, 0U);
+    const struct mylite_sql_ast_node *target = NULL;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        return MYLITE_OK;
+    }
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    rc = collect_identifier_parts(target, parts, table_name_part_capacity, &part_count, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 3U && schema_name_is_information_schema(parts[0])) {
+        set_database_access_denied_error(database, parts[0]);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_joined_update_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct select_source_context *source_context,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *assignment = child_at(assignment_list, 0U);
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *value_node = NULL;
+    int rc = MYLITE_OK;
+
+    if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        set_update_multiple_assignment_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    value_node = child_at(assignment, 1U);
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        target,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "joined UPDATE supports only descriptor assignment columns",
+        NULL,
+        0U,
+        &out_plan->assignment_column,
+        &out_plan->target_source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!update_assignment_value_is_multi_constant_supported(value_node)) {
+        set_unsupported_error(database, "joined UPDATE supports only constant assignment values");
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignment_value_node = value_node;
+    return MYLITE_OK;
+}
+
+static int finish_joined_update_target_plan(
+    struct mylite_db *database,
+    struct planned_update *out_plan
+) {
+    struct primary_key_info primary_key = primary_key_info_init();
+    struct planned_select_source *target_source = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_plan->target_source_index >= out_plan->source_count) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target_source = &out_plan->sources[out_plan->target_source_index];
+    out_plan->target = target_source->source;
+    out_plan->table = target_source->table;
+
+    rc = reject_information_schema_joined_update_target(database, out_plan);
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &out_plan->columns,
+            &out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_primary_key_info(
+            database,
+            out_plan->table.table_id,
+            out_plan->columns,
+            out_plan->column_count,
+            &primary_key
+        );
+    }
+    if (rc == MYLITE_OK && primary_key.has_primary_key) {
+        out_plan->has_primary_key = true;
+        if (primary_key.part_count == 1U) {
+            out_plan->primary_key_column_index = primary_key.parts[0].column_index;
+            out_plan->primary_key_column_id = primary_key.parts[0].index_column.column_id;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            out_plan->table.table_id,
+            out_plan->columns,
+            out_plan->column_count,
+            &out_plan->indexes,
+            &out_plan->index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_update_default_function_sources(
+            database,
+            out_plan,
+            out_plan->columns,
+            out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = choose_sqlite_rowid_alias(
+            database,
+            out_plan->columns,
+            out_plan->column_count,
+            "joined UPDATE requires an unshadowed SQLite rowid alias",
+            &out_plan->rowid_alias
+        );
+    }
+
+    primary_key_info_deinit(&primary_key);
+    return rc;
+}
+
+static int reject_information_schema_joined_update_target(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (text_equals_ascii_case_insensitive(plan->target.schema.name, "information_schema")) {
+        set_database_access_denied_error(database, plan->target.schema.name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static void set_joined_update_wrong_usage_error(
+    struct mylite_db *database,
+    const char *clause_name
+) {
+    set_wrong_usage_error(database, "UPDATE", clause_name);
+}
+
 static void planned_update_deinit(struct planned_update *plan) {
     if (plan == NULL) {
         return;
     }
 
+    for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {
+        free(plan->sources[source_index].columns);
+    }
+    free(plan->sources);
     planned_select_predicate_deinit(&plan->predicate);
     planned_select_deinit(&plan->assignment_subquery);
     planned_value_deinit(&plan->assignment_value);
@@ -57539,6 +57921,10 @@ static int append_parent_update_target_sql(
     int rc = MYLITE_OK;
 
     *out_has_condition = true;
+    if (plan->is_joined) {
+        rc = append_joined_parent_update_target_sql(string, plan, next_parameter);
+        return rc;
+    }
     if (plan->limit.has_limit) {
         rc = append_update_rowid_limited_sql(string, plan, next_parameter);
     } else if (planned_select_predicate_has_expression(&plan->predicate)) {
@@ -57553,6 +57939,32 @@ static int append_parent_update_target_sql(
     if (rc == MYLITE_OK) {
         rc = append_update_changed_condition_sql(string, plan, next_parameter);
     }
+    return rc;
+}
+
+static int append_joined_parent_update_target_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " WHERE ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_foreign_key_column_reference(string, "p", plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IN (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_rowid_subquery_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, ") AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_changed_condition_sql(string, plan, next_parameter);
+    }
+
     return rc;
 }
 
@@ -57988,15 +58400,10 @@ static int build_update_arithmetic_condition_sql(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
-    } else if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " WHERE ");
+    if (rc == MYLITE_OK) {
+        rc = append_update_row_filter_sql(&string, plan, &next_parameter);
     }
-    if (rc == MYLITE_OK &&
-        (plan->limit.has_limit || planned_select_predicate_has_expression(&plan->predicate))) {
+    if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
         rc = dynamic_string_append(&string, " AND ");
     }
     if (rc == MYLITE_OK) {
@@ -121483,15 +121890,10 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     if (rc == MYLITE_OK) {
         rc = append_update_auto_update_columns_sql(&string, plan, &next_parameter);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
-    } else if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, " WHERE ");
+    if (rc == MYLITE_OK) {
+        rc = append_update_row_filter_sql(&string, plan, &next_parameter);
     }
-    if (rc == MYLITE_OK &&
-        (plan->limit.has_limit || planned_select_predicate_has_expression(&plan->predicate))) {
+    if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
         rc = dynamic_string_append(&string, " AND ");
     }
     if (rc == MYLITE_OK) {
@@ -121648,9 +122050,15 @@ static int build_update_matched_sql(const struct planned_update *plan, char **ou
 
     rc = dynamic_string_append(&string, "SELECT 1 FROM ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+        if (plan->is_joined) {
+            rc = append_joined_update_from_sql(&string, plan);
+        } else {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+        }
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->is_joined) {
+        rc = append_joined_update_matched_target_filter_sql(&string, plan, &next_parameter);
+    } else if (rc == MYLITE_OK) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
@@ -121666,6 +122074,55 @@ static int build_update_matched_sql(const struct planned_update *plan, char **ou
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_joined_update_matched_target_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+
+    if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
+        rc = dynamic_string_append(string, " AND ");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_target_rowid_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NOT NULL");
+    }
+
+    return rc;
+}
+
+static bool planned_update_has_row_filter(const struct planned_update *plan) {
+    if (plan->is_joined || plan->limit.has_limit) {
+        return true;
+    }
+    if (planned_select_predicate_has_expression(&plan->predicate)) {
+        return true;
+    }
+    return false;
+}
+
+static int append_update_row_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    if (plan->is_joined) {
+        return append_joined_update_rowid_filter_sql(string, plan, next_parameter);
+    }
+    if (plan->limit.has_limit) {
+        return append_update_rowid_limited_sql(string, plan, next_parameter);
+    }
+    if (planned_select_predicate_has_expression(&plan->predicate)) {
+        return append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+    return dynamic_string_append(string, " WHERE ");
 }
 
 static int append_update_rowid_limited_sql(
@@ -121701,6 +122158,106 @@ static int append_update_rowid_limited_sql(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_joined_update_rowid_filter_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " WHERE ");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IN (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_rowid_subquery_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_joined_update_rowid_subquery_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, "SELECT ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_target_rowid_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_from_sql(string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_joined_update_target_rowid_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = append_select_source_alias(string, plan->target_source_index);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '.');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+
+    return rc;
+}
+
+static int append_joined_update_from_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->source_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append_quoted_identifier(string, plan->sources[0].table.physical_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 0U);
+    }
+    if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+        rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " JOIN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->sources[1].table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AS ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_source_alias(string, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_join_condition_sql(string, &plan->join_condition);
     }
 
     return rc;
@@ -123439,13 +123996,16 @@ static int append_update_unique_key_conflict_target_filter(
 ) {
     int rc = MYLITE_OK;
 
-    if (plan->limit.has_limit) {
+    if (plan->is_joined) {
+        rc = append_joined_update_rowid_filter_sql(string, plan, next_parameter);
+    } else if (plan->limit.has_limit) {
         rc = append_update_rowid_limited_sql(string, plan, next_parameter);
     } else {
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
     }
     if (rc == MYLITE_OK) {
-        if (plan->limit.has_limit || planned_select_predicate_has_expression(&plan->predicate)) {
+        if (plan->is_joined || plan->limit.has_limit ||
+            planned_select_predicate_has_expression(&plan->predicate)) {
             rc = dynamic_string_append(string, " AND ");
         } else {
             rc = dynamic_string_append(string, " WHERE ");
@@ -126711,6 +127271,21 @@ static void set_unknown_multi_delete_table_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown_table_in_schema,
         "42S02",
+        message
+    );
+}
+
+static void set_wrong_usage_error(struct mylite_db *database, const char *left, const char *right) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Incorrect usage of %s and %s", left, right);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_wrong_usage,
+        "HY000",
         message
     );
 }

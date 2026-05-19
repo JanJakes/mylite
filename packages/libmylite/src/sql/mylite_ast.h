@@ -456,6 +456,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_ORD_FUNCTION = 447,
     MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR = 448,
     MYLITE_SQL_AST_JOINED_DELETE_STATEMENT = 449,
+    MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT = 450,
 };
 
 enum mylite_sql_ast_literal_kind {

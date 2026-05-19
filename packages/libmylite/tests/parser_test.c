@@ -20232,6 +20232,8 @@ static int test_insert_on_duplicate_key_update_statement(void) {
 static int test_delete_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *assignment_list = NULL;
+    const struct mylite_sql_ast_node *assignment = NULL;
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
@@ -20351,6 +20353,81 @@ static int test_delete_statement(void) {
 
     failures += parse_sql(
         "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k LIMIT 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE lefts AS l JOIN rights AS r ON l.k = r.k SET l.v = 7 "
+        "WHERE r.id IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment_list = child_at(statement, 1U);
+    assignment = child_at(assignment_list, 0U);
+    where_clause = child_at(statement, 2U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT, "joined update statement");
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_FROM_JOIN, "joined update join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(child_at(statement, 0U)) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "joined update join kind"
+    );
+    failures += expect_node(
+        child_at(assignment, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "joined update qualified assignment target"
+    );
+    failures += expect_span_text(child_at(assignment, 0U), "l.v", "joined update assignment");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "joined update where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE app.lefts AS l LEFT JOIN app.rights AS r ON l.k = r.k "
+        "SET r.w = NULL ORDER BY r.id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(child_at(statement, 0U)) ==
+            MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
+        "joined update left join kind"
+    );
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "joined update NULL assignment"
+    );
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "joined update order");
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "joined update limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE lefts JOIN rights SET lefts.v = 1 WHERE rights.id = 9;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_JOINED_UPDATE_STATEMENT,
+        "joined update without ON statement"
+    );
+    failures += expect_true(
+        child_at(child_at(statement, 0U), 2U) == NULL,
+        "joined update without ON has no join predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE lefts l JOIN rights r ON l.k = r.k SET l.v = 1;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -883,9 +883,9 @@ static int test_update_diagnostics(void) {
         database,
         "UPDATE numbers JOIN other_numbers SET i = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.other_numbers' doesn't exist",
         }
     );
     failures += execute_error(

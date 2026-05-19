@@ -1013,6 +1013,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_joined_update_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token update_token,
+    struct mylite_sql_ast_node *from_join,
+    struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *assignment

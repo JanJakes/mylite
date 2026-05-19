@@ -124,6 +124,7 @@ struct mylite_session_state {
     bool time_zone_is_placeholder;
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    bool foreign_key_checks_enabled;
     bool user_transaction_active;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;

@@ -195,7 +195,7 @@ Performance Schema variable tables remain unsupported.
 | `external_user` | ❌ | Value, scope, SET, diagnostics |
 | `flush` | ❌ | Value, scope, SET, diagnostics |
 | `flush_time` | ❌ | Value, scope, SET, diagnostics |
-| `foreign_key_checks` | 🟡 | Limited scalar `SELECT @@foreign_key_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; limited fixed no-op `SET` forms may preserve `1`; no mutable global/session state, disabled-enforcement mode, broader dependency toggling, or Performance Schema variable tables |
+| `foreign_key_checks` | 🟡 | Limited scalar `SELECT @@foreign_key_checks` with no scope, `session`, `local`, or `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using boolean `0`/`1`, `OFF`/`ON`, `FALSE`/`TRUE`, `+0`/`+1`, and `DEFAULT` values. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `1`. Disabled checks affect MyLite descriptor-owned FK DML only; referenced-parent `DROP TABLE`, required-index drops, and malformed FK definitions remain rejected. No mutable global state, privileges, startup/persisted values, `SET_VAR` hints, Performance Schema variable tables, or broader dependency toggling |
 | `ft_boolean_syntax` | ❌ | Value, scope, SET, diagnostics |
 | `ft_max_word_len` | ❌ | Value, scope, SET, diagnostics |
 | `ft_min_word_len` | ❌ | Value, scope, SET, diagnostics |

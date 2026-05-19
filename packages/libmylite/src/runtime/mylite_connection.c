@@ -327,6 +327,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     );
     session->character_set_state_is_placeholder = true;
     session->system_variables_are_placeholder = true;
+    session->foreign_key_checks_enabled = true;
     mylite_temporary_catalog_init(&session->temporary_catalog);
     session->connection_id = allocate_session_connection_id();
     session->previous_row_count = -1;

@@ -22,8 +22,13 @@ enum {
     foreign_key_diagnostics_column_count = 4,
     foreign_key_selected_column_count = 2,
     foreign_key_independent_column_count = 3,
+    foreign_key_mutation_column_count = 4,
+    show_variable_column_count = 2,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_variable_cant_be_set = 1231,
+    mysql_error_row_is_referenced = 1451,
+    mysql_error_no_referenced_row = 1452,
 };
 
 struct expected_sql_error {
@@ -40,6 +45,8 @@ struct expected_result {
 };
 
 static int test_foreign_key_checks_values_and_persistence(void);
+static int test_mutable_foreign_key_checks_set_values(void);
+static int test_disabled_foreign_key_checks_dml(void);
 static int test_foreign_key_checks_qualifiers_and_errors(void);
 static int test_independent_foreign_key_checks_handles(void);
 static int expect_result(const mylite_result *result, struct expected_result expected);
@@ -54,6 +61,7 @@ static int expect_show_count_warnings(
     const char *context
 );
 static int expect_show_count_errors(mylite_db *database, const char *expected, const char *context);
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -78,6 +86,8 @@ int main(void) {
     int failures = 0;
 
     failures += test_foreign_key_checks_values_and_persistence();
+    failures += test_mutable_foreign_key_checks_set_values();
+    failures += test_disabled_foreign_key_checks_dml();
     failures += test_foreign_key_checks_qualifiers_and_errors();
     failures += test_independent_foreign_key_checks_handles();
 
@@ -294,6 +304,7 @@ static int test_foreign_key_checks_values_and_persistence(void) {
             .context = "foreign key checks table DDL independence",
         }
     );
+    failures += expect_dml_ok(database, "SET foreign_key_checks = 0", 0);
 
     mylite_close(database);
     database = NULL;
@@ -317,6 +328,261 @@ static int test_foreign_key_checks_values_and_persistence(void) {
             .values = table_values,
             .count = sizeof(table_columns) / sizeof(table_columns[0]),
             .context = "reopened foreign key checks table row",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_mutable_foreign_key_checks_set_values(void) {
+    static const char *const mutation_columns[] = {
+        "@@foreign_key_checks",
+        "@@global.foreign_key_checks",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const show_columns[] = {"Variable_name", "Value"};
+    static const char *const on_values[] = {"1", "1", "0", "0"};
+    static const char *const off_values[] = {"0", "1", "0", "0"};
+    static const char *const show_off_values[] = {"foreign_key_checks", "OFF"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open mutable FK memory");
+
+    failures += expect_dml_ok(database, "SET foreign_key_checks = 0", 0);
+    failures += expect_query_result(
+        database,
+        "SELECT @@foreign_key_checks, @@global.foreign_key_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = mutation_columns,
+            .values = off_values,
+            .count = foreign_key_mutation_column_count,
+            .context = "SET foreign_key_checks zero",
+        }
+    );
+    failures += expect_dml_ok(database, "SET SESSION foreign_key_checks = 1", 0);
+    failures += expect_query_result(
+        database,
+        "SELECT @@foreign_key_checks, @@global.foreign_key_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = mutation_columns,
+            .values = on_values,
+            .count = foreign_key_mutation_column_count,
+            .context = "SET SESSION foreign_key_checks one",
+        }
+    );
+    failures += expect_dml_ok(database, "SET @@SESSION.foreign_key_checks = 0", 0);
+    failures += expect_query_result(
+        database,
+        "SELECT @@foreign_key_checks, @@global.foreign_key_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = mutation_columns,
+            .values = off_values,
+            .count = foreign_key_mutation_column_count,
+            .context = "SET @@session foreign_key_checks zero",
+        }
+    );
+    failures += expect_dml_ok(database, "SET @@LOCAL.`foreign_key_checks` = 1", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = OFF", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = ON", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = FALSE", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = TRUE", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = +0", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = +1", 0);
+    failures += expect_dml_ok(database, "SET foreign_key_checks = DEFAULT", 0);
+    failures += expect_query_result(
+        database,
+        "SELECT @@foreign_key_checks, @@global.foreign_key_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = mutation_columns,
+            .values = off_values,
+            .count = foreign_key_mutation_column_count,
+            .context = "SET foreign_key_checks default",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES WHERE Variable_name = 'foreign_key_checks'",
+        (struct expected_result){
+            .columns = show_columns,
+            .values = show_off_values,
+            .count = show_variable_column_count,
+            .context = "SHOW VARIABLES foreign_key_checks off",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SET GLOBAL foreign_key_checks = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL foreign_key_checks assignment is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET foreign_key_checks = -1",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "Variable 'foreign_key_checks' can't be set to the value of '-1'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET foreign_key_checks = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "Variable 'foreign_key_checks' can't be set to the value of '2'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET foreign_key_checks = '0'",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "Variable 'foreign_key_checks' can't be set to the value of '0'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET foreign_key_checks = NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_variable_cant_be_set,
+            .sqlstate = "42000",
+            .message_part = "Variable 'foreign_key_checks' can't be set to the value of 'NULL'",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_disabled_foreign_key_checks_dml(void) {
+    static const char *const child_columns[] = {"id", "parent_id"};
+    static const char *const orphan_values[] = {"30", "99"};
+    static const char *const deleted_parent_child_values[] = {"10", "1"};
+    static const char *const updated_parent_child_values[] = {"20", "2"};
+    static const char *const ignored_insert_values[] = {"40", "100"};
+    static const char *const updated_child_values[] = {"30", "777"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += make_test_path(path, sizeof(path), "disabled_checks");
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open disabled FK file");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_child_parent FOREIGN KEY (parent_id) REFERENCES parent (id) "
+        "ON DELETE CASCADE ON UPDATE CASCADE)"
+    );
+
+    failures += expect_dml_ok(database, "SET foreign_key_checks = 0", 0);
+    failures += expect_dml_ok(database, "INSERT INTO parent VALUES (1), (2), (3)", 3);
+    failures += expect_dml_ok(database, "INSERT INTO child VALUES (10,1), (20,2), (30,99)", 3);
+    failures += expect_query_result(
+        database,
+        "SELECT id, parent_id FROM child WHERE id = 30",
+        (struct expected_result){
+            .columns = child_columns,
+            .values = orphan_values,
+            .count = 2U,
+            .context = "disabled checks allow orphan insert",
+        }
+    );
+
+    failures += expect_dml_ok(database, "DELETE FROM parent WHERE id = 1", 1);
+    failures += expect_query_result(
+        database,
+        "SELECT id, parent_id FROM child WHERE id = 10",
+        (struct expected_result){
+            .columns = child_columns,
+            .values = deleted_parent_child_values,
+            .count = 2U,
+            .context = "disabled checks skip delete cascade",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE parent SET id = 22 WHERE id = 2", 1);
+    failures += expect_query_result(
+        database,
+        "SELECT id, parent_id FROM child WHERE id = 20",
+        (struct expected_result){
+            .columns = child_columns,
+            .values = updated_parent_child_values,
+            .count = 2U,
+            .context = "disabled checks skip update cascade",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT IGNORE INTO child VALUES (40,100)", 1);
+    failures += expect_query_result(
+        database,
+        "SELECT id, parent_id FROM child WHERE id = 40",
+        (struct expected_result){
+            .columns = child_columns,
+            .values = ignored_insert_values,
+            .count = 2U,
+            .context = "disabled checks insert ignore keeps orphan row",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE child SET parent_id = 777 WHERE id = 30", 1);
+    failures += expect_query_result(
+        database,
+        "SELECT id, parent_id FROM child WHERE id = 30",
+        (struct expected_result){
+            .columns = child_columns,
+            .values = updated_child_values,
+            .count = 2U,
+            .context = "disabled checks allow orphan update",
+        }
+    );
+
+    failures += expect_dml_ok(database, "SET foreign_key_checks = 1", 0);
+    failures += execute_error(
+        database,
+        "INSERT INTO child VALUES (50,200)",
+        (struct expected_sql_error){
+            .code = mysql_error_no_referenced_row,
+            .sqlstate = "23000",
+            .message_part = "child row",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE child SET parent_id = 888 WHERE id = 30",
+        (struct expected_sql_error){
+            .code = mysql_error_no_referenced_row,
+            .sqlstate = "23000",
+            .message_part = "child row",
+        }
+    );
+    failures += expect_dml_ok(database, "SET foreign_key_checks = 0", 0);
+    failures += execute_error(
+        database,
+        "DROP INDEX fk_child_parent ON child",
+        (struct expected_sql_error){
+            .code = mysql_error_row_is_referenced,
+            .sqlstate = "23000",
+            .message_part = "parent row",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE parent",
+        (struct expected_sql_error){
+            .code = mysql_error_row_is_referenced,
+            .sqlstate = "23000",
+            .message_part = "parent row",
         }
     );
 
@@ -416,6 +682,8 @@ static int test_independent_foreign_key_checks_handles(void) {
     };
     static const char *const first_values[] = {"1", "1", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
+    static const char *const first_disabled_values[] = {"0", "0", "0"};
+    static const char *const second_still_enabled_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     mylite_result *result = NULL;
@@ -449,6 +717,35 @@ static int test_independent_foreign_key_checks_handles(void) {
             .values = second_values,
             .count = foreign_key_independent_column_count,
             .context = "second handle foreign key checks variables",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_dml_ok(first, "SET foreign_key_checks = 0", 0);
+    failures +=
+        execute_ok(first, "SELECT @@foreign_key_checks, @@warning_count, @@error_count", &result);
+    failures += expect_result(
+        result,
+        (struct expected_result){
+            .columns = columns,
+            .values = first_disabled_values,
+            .count = foreign_key_independent_column_count,
+            .context = "first handle disabled foreign key checks variables",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(second, "SELECT @@foreign_key_checks, @@warning_count, @@error_count", &result);
+    failures += expect_result(
+        result,
+        (struct expected_result){
+            .columns = columns,
+            .values = second_still_enabled_values,
+            .count = foreign_key_independent_column_count,
+            .context = "second handle remains enabled foreign key checks variables",
         }
     );
     mylite_result_free(result);
@@ -526,6 +823,20 @@ static int expect_show_count_errors(
     failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), expected, context);
     failures += expect_size(mylite_result_warning_count(result), 0U, context);
 
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, sql);
+        failures += expect_size(mylite_result_row_count(result), 0U, sql);
+        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+        failures += expect_size(mylite_result_warning_count(result), 0U, sql);
+    }
     mylite_result_free(result);
     return failures;
 }

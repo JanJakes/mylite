@@ -6942,6 +6942,25 @@ static int resolve_set_system_variable_system_target(
     const struct mylite_sql_ast_node *name_node,
     struct resolved_set_system_variable_target *out_target
 );
+static int apply_set_foreign_key_checks_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int parse_set_foreign_key_checks_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_value
+);
+static const struct mylite_sql_ast_node *unwrap_foreign_key_checks_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+);
+static void copy_foreign_key_checks_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
+);
 static bool set_system_variable_fixed_boolean_value(
     enum session_system_variable_kind kind,
     bool *out_value
@@ -7058,6 +7077,18 @@ static bool session_sql_mode_has(const struct mylite_session_state *session, uin
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static bool system_variable_expression_has_global_scope(
     const struct mylite_sql_ast_node *expression
+);
+static bool foreign_key_checks_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static uint64_t foreign_key_checks_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static const char *foreign_key_checks_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
 );
 static void set_session_read_only_system_variable_error(
     struct mylite_db *database,
@@ -24077,6 +24108,9 @@ static int apply_set_system_variable_statement(
         target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
         return apply_set_auto_increment_step_value(database, &target, value_node);
     }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
+        return apply_set_foreign_key_checks_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -24259,7 +24293,6 @@ static bool set_system_variable_fixed_boolean_value(
     switch (kind) {
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
@@ -24335,6 +24368,143 @@ static int validate_set_fixed_boolean_value(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int apply_set_foreign_key_checks_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    bool value = true;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid foreign_key_checks system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL foreign_key_checks assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_foreign_key_checks_value(database, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.foreign_key_checks_enabled = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_foreign_key_checks_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid foreign_key_checks output");
+        return MYLITE_ERROR;
+    }
+    *out_value = true;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        *out_value = false;
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_foreign_key_checks_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        copy_foreign_key_checks_value_text(value_node, value_text, sizeof(value_text));
+        set_system_variable_cant_be_set_value_error(database, "foreign_key_checks", value_text);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_value = false;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER && !negative &&
+        parse_unsigned_integer_literal(&literal_node->span, &magnitude) == MYLITE_OK &&
+        magnitude <= 1U) {
+        *out_value = magnitude == 1U;
+        return MYLITE_OK;
+    }
+
+    copy_foreign_key_checks_value_text(value_node, value_text, sizeof(value_text));
+    set_system_variable_cant_be_set_value_error(database, "foreign_key_checks", value_text);
+    return MYLITE_ERROR;
+}
+
+static const struct mylite_sql_ast_node *unwrap_foreign_key_checks_value_literal(
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_negative
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+
+    if (out_negative != NULL) {
+        *out_negative = false;
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return literal_node;
+    }
+
+    switch (mylite_sql_ast_node_operator(literal_node)) {
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        if (out_negative != NULL) {
+            *out_negative = true;
+        }
+        break;
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+        break;
+    default:
+        return NULL;
+    }
+
+    return unwrap_parenthesized_expression(child_at(literal_node, 0U));
+}
+
+static void copy_foreign_key_checks_value_text(
+    const struct mylite_sql_ast_node *value_node,
+    char *buffer,
+    size_t buffer_size
+) {
+    const struct mylite_sql_source_span *span = value_node == NULL ? NULL : &value_node->span;
+    size_t source_offset = 0U;
+    size_t source_length = 0U;
+    size_t copied = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return;
+    }
+    if (span != NULL && span->text != NULL) {
+        source_length = span->length;
+        if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING &&
+            source_length >= 2U) {
+            source_offset = 1U;
+            source_length -= 2U;
+        }
+        copied = source_length < buffer_size ? source_length : buffer_size - 1U;
+        memcpy(buffer, &span->text[source_offset], copied);
+    }
+    buffer[copied] = '\0';
 }
 
 static int apply_set_max_allowed_packet_value(
@@ -54289,6 +54459,9 @@ static int validate_insert_ignore_row_foreign_keys(
     int rc = MYLITE_OK;
 
     *out_skip_row = false;
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->foreign_key_count; ++index) {
         bool violates = false;
 
@@ -57574,13 +57747,17 @@ static int validate_parent_update_action_child_foreign_keys(
 ) {
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t foreign_key_count = 0U;
-    int rc = load_parent_foreign_key_infos(
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    rc = load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
         &foreign_key_count
     );
-
     for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
         const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
         size_t updated_part_index = 0U;
@@ -57607,13 +57784,17 @@ static int apply_parent_update_actions(
 ) {
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t foreign_key_count = 0U;
-    int rc = load_parent_foreign_key_infos(
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    rc = load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
         &foreign_key_count
     );
-
     for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
         const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
         size_t updated_part_index = 0U;
@@ -75032,9 +75213,14 @@ static int hex_numeric_system_variable_value(
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+        out_value->integer = foreign_key_checks_system_variable_uint64_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
@@ -81853,9 +82039,17 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+        return format_session_scalar_uint64_value(
+            database,
+            foreign_key_checks_system_variable_uint64_value(
+                database,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
@@ -82098,6 +82292,36 @@ static bool system_variable_expression_has_global_scope(
 
     scope_length = offset - scope_start;
     return sql_mode_token_matches(&span->text[scope_start], scope_length, "global");
+}
+
+static bool foreign_key_checks_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return true;
+    }
+    return database->session.foreign_key_checks_enabled;
+}
+
+static uint64_t foreign_key_checks_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (foreign_key_checks_system_variable_value(database, global_scope)) {
+        return 1U;
+    }
+    return 0U;
+}
+
+static const char *foreign_key_checks_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (foreign_key_checks_system_variable_value(database, global_scope)) {
+        return "ON";
+    }
+    return "OFF";
 }
 
 static const char *default_sql_mode_value(void) {
@@ -82387,9 +82611,11 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+        *out_value = foreign_key_checks_system_variable_show_value(database, global_scope);
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
@@ -85341,13 +85567,17 @@ static int apply_parent_delete_actions(
 ) {
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t foreign_key_count = 0U;
-    int rc = load_parent_foreign_key_infos(
+    int rc = MYLITE_OK;
+
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
+    rc = load_parent_foreign_key_infos(
         database,
         plan->table.table_id,
         &foreign_keys,
         &foreign_key_count
     );
-
     for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
         const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
 
@@ -123258,6 +123488,9 @@ static int validate_child_foreign_keys_after_write(
     if (child_table_id <= 0) {
         return MYLITE_OK;
     }
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
 
     rc = load_table_columns(database, child_table_id, &columns, &column_count);
 
@@ -123291,6 +123524,9 @@ static int validate_parent_foreign_keys_after_write(
     int rc = MYLITE_OK;
 
     if (parent_table_id <= 0) {
+        return MYLITE_OK;
+    }
+    if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
     }
 

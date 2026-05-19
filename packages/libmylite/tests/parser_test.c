@@ -14426,8 +14426,19 @@ static int test_create_table_primary_key_statements(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_secondary_using (id INT, KEY k USING BTREE (id));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    items = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(
+        child_at(child_at(items, 1U), 1U),
+        MYLITE_SQL_AST_INDEX_TYPE_OPTION,
+        "secondary index type option"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(items, 1U), 1U), 0U),
+        "BTREE",
+        "secondary index type option name"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -14870,11 +14881,23 @@ static int test_create_index_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "CREATE INDEX k_v USING BTREE ON create_idx (v);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("CREATE INDEX k_v USING BTREE ON create_idx (v);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_child_count(statement, 4U, "create index type child count");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_INDEX_TYPE_OPTION,
+        "create index type option"
     );
+    failures += expect_span_text(
+        child_at(child_at(statement, 1U), 0U),
+        "BTREE",
+        "create index type option name"
+    );
+    key_parts = child_at(statement, 3U);
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "v", "create index type part");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -15183,8 +15206,19 @@ static int test_alter_table_add_index_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE add_idx ADD INDEX k_v USING BTREE (v);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    secondary_index = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(
+        child_at(secondary_index, 1U),
+        MYLITE_SQL_AST_INDEX_TYPE_OPTION,
+        "alter add index type option"
+    );
+    failures += expect_span_text(
+        child_at(child_at(secondary_index, 1U), 0U),
+        "BTREE",
+        "alter add index type option name"
     );
     mylite_sql_parse_result_deinit(&result);
 

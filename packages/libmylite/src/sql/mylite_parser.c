@@ -1329,17 +1329,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_token create_token,
     bool is_unique,
     struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *part_list
+    struct mylite_sql_ast_node *part_list,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
     enum mylite_sql_ast_node_kind statement_kind = MYLITE_SQL_AST_CREATE_INDEX_STATEMENT;
 
-    if (part_list != NULL) {
+    if (index_options != NULL) {
+        span = span_join(span, index_options->span);
+    } else if (part_list != NULL) {
         span = span_join(span, part_list->span);
     } else if (table_name != NULL) {
         span = span_join(span, table_name->span);
+    } else if (index_type != NULL) {
+        span = span_join(span, index_type->span);
     } else if (index_name != NULL) {
         span = span_join(span, index_name->span);
     }
@@ -1353,8 +1359,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, index_name);
+    if (index_type != NULL) {
+        mylite_sql_ast_node_append_child(statement, index_type);
+    }
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, part_list);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, index_options);
+    }
     return statement;
 }
 
@@ -1363,12 +1375,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_fulltext_index_stateme
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *part_list
+    struct mylite_sql_ast_node *part_list,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (part_list != NULL) {
+    if (index_options != NULL) {
+        span = span_join(span, index_options->span);
+    } else if (part_list != NULL) {
         span = span_join(span, part_list->span);
     } else if (table_name != NULL) {
         span = span_join(span, table_name->span);
@@ -1384,6 +1399,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_fulltext_index_stateme
     mylite_sql_ast_node_append_child(statement, index_name);
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, part_list);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, index_options);
+    }
     return statement;
 }
 
@@ -1556,6 +1574,92 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
     }
 
     mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *option
+) {
+    struct mylite_sql_source_span span =
+        option == NULL ? (struct mylite_sql_source_span){0} : option->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INDEX_OPTION_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, option);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_index_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
+    (void)state;
+    mylite_sql_ast_node_append_child(list, option);
+    if (option != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, option->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_type_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token using_token,
+    struct mylite_sql_ast_node *type_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&using_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (type_name != NULL) {
+        span = span_join(span, type_name->span);
+    }
+    option = make_node(state, MYLITE_SQL_AST_INDEX_TYPE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, type_name);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_comment_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&comment_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+    option = make_node(state, MYLITE_SQL_AST_INDEX_COMMENT_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_visibility_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_column_visibility visibility
+) {
+    struct mylite_sql_ast_node *option = make_node(
+        state,
+        MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION,
+        span_from_token(&visibility_token)
+    );
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_visibility(option, visibility);
     return option;
 }
 
@@ -5293,8 +5397,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token index_token,
     struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&index_token), span_from_token(&right_paren));
@@ -5307,7 +5413,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index_definition(
     if (index_name != NULL) {
         mylite_sql_ast_node_append_child(secondary_index, index_name);
     }
+    if (index_type != NULL) {
+        mylite_sql_ast_node_append_child(secondary_index, index_type);
+    }
     mylite_sql_ast_node_append_child(secondary_index, key_parts);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(secondary_index, index_options);
+        mylite_sql_ast_node_set_span(
+            secondary_index,
+            span_join(secondary_index->span, index_options->span)
+        );
+    }
     return secondary_index;
 }
 
@@ -5315,8 +5431,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token unique_token,
     struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&unique_token), span_from_token(&right_paren));
@@ -5329,7 +5447,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index_definition(
     if (index_name != NULL) {
         mylite_sql_ast_node_append_child(unique_index, index_name);
     }
+    if (index_type != NULL) {
+        mylite_sql_ast_node_append_child(unique_index, index_type);
+    }
     mylite_sql_ast_node_append_child(unique_index, key_parts);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(unique_index, index_options);
+        mylite_sql_ast_node_set_span(
+            unique_index,
+            span_join(unique_index->span, index_options->span)
+        );
+    }
     return unique_index;
 }
 
@@ -5338,7 +5466,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
     struct mylite_sql_token fulltext_token,
     struct mylite_sql_ast_node *index_name,
     struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&fulltext_token), span_from_token(&right_paren));
@@ -5352,6 +5481,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
         mylite_sql_ast_node_append_child(fulltext_index, index_name);
     }
     mylite_sql_ast_node_append_child(fulltext_index, key_parts);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(fulltext_index, index_options);
+        mylite_sql_ast_node_set_span(
+            fulltext_index,
+            span_join(fulltext_index->span, index_options->span)
+        );
+    }
     return fulltext_index;
 }
 

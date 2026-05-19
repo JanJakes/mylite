@@ -188,7 +188,7 @@ unique_index_definition ::=
 
 fulltext_index_definition ::=
     FULLTEXT fulltext_index_keyword_opt index_name_opt
-    LPAREN secondary_index_part_list RPAREN fulltext_index_option_list_opt.
+    LPAREN secondary_index_part_list RPAREN secondary_index_option_list_opt.
 
 create_index_statement ::=
     CREATE INDEX identifier index_type_opt ON table_name
@@ -216,18 +216,13 @@ secondary_index_option ::= COMMENT STRING.
 secondary_index_option ::= VISIBLE.
 secondary_index_option ::= INVISIBLE.
 
-fulltext_index_option_list_opt ::= .
-fulltext_index_option_list_opt ::= fulltext_index_option_list.
-fulltext_index_option_list ::= fulltext_index_option.
-fulltext_index_option_list ::= fulltext_index_option_list fulltext_index_option.
-fulltext_index_option ::= COMMENT STRING.
-fulltext_index_option ::= VISIBLE.
-fulltext_index_option ::= INVISIBLE.
 ```
 
-The parser must not admit `USING` in fulltext index definitions for this slice.
-Unsupported option keywords outside the admitted lists remain syntax errors or
-existing deterministic unsupported diagnostics.
+The runtime planner rejects any `index_type_option` under a fulltext definition
+as a MySQL-shaped syntax error before catalog mutation. User-visible fulltext
+support remains limited to `COMMENT`, `VISIBLE`, and `INVISIBLE`. Unsupported
+option keywords outside the admitted lists remain syntax errors or existing
+deterministic unsupported diagnostics.
 
 ## Planning Semantics
 
@@ -355,4 +350,3 @@ MySQL 8.4.9 expectation script. Cover:
 - physical `.mylite` preamble preservation;
 - existing index lifecycle, fulltext, visibility, parser, catalog, and file
   format tests still passing.
-

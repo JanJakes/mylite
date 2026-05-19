@@ -99,6 +99,7 @@ enum {
     mysql_error_incorrect_argument_type = 1232,
     mysql_error_session_variable_read_only = 1621,
     mysql_error_table_comment_too_long = 1628,
+    mysql_error_index_comment_too_long = 1688,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_not_supported_yet = 1235,
@@ -118,6 +119,7 @@ enum {
     mysql_warning_information_schema_processlist_deprecated = 1287,
     mysql_warning_sql_calc_found_rows_deprecated = 1287,
     mysql_warning_sql_no_cache_deprecated = 1681,
+    mysql_warning_hash_index_unsupported = 3502,
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
@@ -1569,6 +1571,12 @@ enum temporal_text_kind {
     TEMPORAL_TEXT_DEFERRED = 5,
 };
 
+enum planned_index_type_option {
+    PLANNED_INDEX_TYPE_DEFAULT = 0,
+    PLANNED_INDEX_TYPE_BTREE = 1,
+    PLANNED_INDEX_TYPE_HASH = 2,
+};
+
 struct planned_column {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char logical_type_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
@@ -1608,6 +1616,9 @@ struct planned_secondary_index {
     enum mylite_catalog_index_kind kind;
     bool is_unique;
     bool is_visible;
+    char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+    bool show_create_explicit_btree;
+    bool uses_hash_index_type;
 };
 
 struct secondary_index_part_nodes {
@@ -1828,6 +1839,10 @@ struct planned_alter_table_add_index {
     const char *rowid_alias;
     enum mylite_catalog_index_kind kind;
     bool is_unique;
+    bool is_visible;
+    char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+    bool show_create_explicit_btree;
+    bool uses_hash_index_type;
 };
 
 struct planned_alter_table_add_foreign_key {
@@ -1888,8 +1903,14 @@ struct planned_rename_index {
     char new_index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct index_option_nodes {
+    const struct mylite_sql_ast_node *index_type_node;
+    const struct mylite_sql_ast_node *option_list_node;
+};
+
 struct alter_table_add_index_nodes {
     const struct mylite_sql_ast_node *index_name_node;
+    struct index_option_nodes options;
     const struct mylite_sql_ast_node *part_list;
     enum mylite_catalog_index_kind kind;
     bool is_unique;
@@ -1898,8 +1919,21 @@ struct alter_table_add_index_nodes {
 struct create_index_nodes {
     const struct mylite_sql_ast_node *index_name_node;
     const struct mylite_sql_ast_node *table_name_node;
+    struct index_option_nodes options;
     const struct mylite_sql_ast_node *part_list_node;
     enum mylite_catalog_index_kind kind;
+};
+
+struct planned_index_options {
+    enum planned_index_type_option type;
+    bool is_visible;
+    char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+};
+
+struct create_table_secondary_index_definition_nodes {
+    const struct mylite_sql_ast_node *index_name_node;
+    struct index_option_nodes options;
+    const struct mylite_sql_ast_node *part_list;
 };
 
 struct foreign_key_definition_nodes {
@@ -9394,6 +9428,71 @@ static int plan_create_index(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_index *out_plan
 );
+static int apply_index_options_to_alter_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_alter_table_add_index *plan
+);
+static int apply_index_options_to_secondary_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_secondary_index *index
+);
+static int collect_index_options(
+    struct mylite_db *database,
+    const char *index_name,
+    struct index_option_nodes nodes,
+    struct planned_index_options *out_options
+);
+static int apply_single_index_option(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+);
+static int apply_index_type_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+);
+static int apply_index_comment_option(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+);
+static int apply_index_visibility_option(
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+);
+static int decode_index_comment_literal(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *literal,
+    char *destination,
+    size_t destination_size
+);
+static int validate_hash_index_key_part_order(
+    struct mylite_db *database,
+    bool uses_hash_index_type,
+    const struct mylite_sql_ast_node *part_list
+);
+static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part);
+static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list);
+static size_t planned_create_table_hash_index_warning_count(
+    const struct planned_create_table *plan
+);
+static int reserve_hash_index_warnings(struct mylite_db *database, size_t additional_count);
+static int append_hash_index_warnings(struct mylite_db *database, size_t warning_count);
+static int reserve_hash_index_warning_if_needed(
+    struct mylite_db *database,
+    bool uses_hash_index_type
+);
+static int append_hash_index_warning_if_needed(
+    struct mylite_db *database,
+    bool uses_hash_index_type
+);
+static int reserve_additional_warning_capacity(struct mylite_db *database, size_t additional_count);
 static int resolve_add_index_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
@@ -9423,6 +9522,11 @@ static int extract_create_index_nodes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct create_index_nodes *out_nodes
+);
+static int extract_create_table_secondary_index_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *secondary_index,
+    struct create_table_secondary_index_definition_nodes *out_nodes
 );
 static int add_secondary_index_from_plan(
     struct mylite_db *database,
@@ -14065,6 +14169,15 @@ static int append_show_create_table_index(
     struct dynamic_string *string,
     const struct loaded_index_info *index,
     bool is_last_index
+);
+static int append_show_create_table_index_header(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct loaded_index_info *index
+);
+static int append_show_create_table_index_options(
+    struct dynamic_string *string,
+    const struct loaded_index_info *index
 );
 static int append_show_create_table_index_part(
     struct dynamic_string *string,
@@ -22003,6 +22116,7 @@ static void set_key_part_length_cannot_be_zero_error(
 );
 static void set_key_too_long_error(struct mylite_db *database, uint64_t maximum_key_length_bytes);
 static void set_table_comment_too_long_error(struct mylite_db *database, const char *table_name);
+static void set_index_comment_too_long_error(struct mylite_db *database, const char *index_name);
 static void set_non_ascii_string_key_error(struct mylite_db *database);
 static void set_duplicate_key_error(
     struct mylite_db *database,
@@ -22832,6 +22946,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+    case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
+    case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:
+    case MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION:
     case MYLITE_SQL_AST_ORDER_BY_ITEM_LIST:
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
@@ -33055,7 +33173,7 @@ static int append_information_schema_statistics_base_index_row(
             nullable,
             index_type,
             "",
-            "",
+            index->index.comment,
             index_visibility_text(index->index.is_visible),
             NULL,
         };
@@ -38834,32 +38952,7 @@ static int append_show_create_table_index(
         return MYLITE_ERROR;
     }
 
-    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
-        rc = dynamic_string_append(string, "  PRIMARY KEY (");
-    } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
-        if (index->index.is_unique) {
-            rc = dynamic_string_append(string, "  UNIQUE KEY ");
-        } else {
-            rc = dynamic_string_append(string, "  KEY ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, " (");
-        }
-    } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
-        rc = dynamic_string_append(string, "  FULLTEXT KEY ");
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, " (");
-        }
-    } else {
-        set_runtime_error(database, "invalid index descriptor");
-        return MYLITE_ERROR;
-    }
+    rc = append_show_create_table_index_header(database, string, index);
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         rc = append_show_create_table_index_part(
             string,
@@ -38870,15 +38963,72 @@ static int append_show_create_table_index(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && index->index.kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY &&
-        !index->index.is_visible) {
-        rc = dynamic_string_append(string, " /*!80000 INVISIBLE */");
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_index_options(string, index);
     }
     if (rc == MYLITE_OK && !is_last_index) {
         rc = dynamic_string_append_char(string, ',');
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, '\n');
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_index_header(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct loaded_index_info *index
+) {
+    int rc = MYLITE_OK;
+
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        return dynamic_string_append(string, "  PRIMARY KEY (");
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        const char *prefix = "  KEY ";
+        if (index->index.is_unique) {
+            prefix = "  UNIQUE KEY ";
+        }
+        rc = dynamic_string_append(string, prefix);
+    } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        rc = dynamic_string_append(string, "  FULLTEXT KEY ");
+    } else {
+        set_runtime_error(database, "invalid index descriptor");
+        return MYLITE_ERROR;
+    }
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, index->index.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " (");
+    }
+
+    return rc;
+}
+
+static int append_show_create_table_index_options(
+    struct dynamic_string *string,
+    const struct loaded_index_info *index
+) {
+    int rc = MYLITE_OK;
+
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+        return MYLITE_OK;
+    }
+    if (index->index.show_create_explicit_btree) {
+        rc = dynamic_string_append(string, " USING BTREE");
+    }
+    if (rc == MYLITE_OK && index->index.comment[0] != '\0') {
+        rc = dynamic_string_append(string, " COMMENT ");
+        if (rc == MYLITE_OK) {
+            rc = append_mysql_quoted_text(string, index->index.comment);
+        }
+    }
+    if (rc == MYLITE_OK && !index->index.is_visible) {
+        rc = dynamic_string_append(string, " /*!80000 INVISIBLE */");
     }
 
     return rc;
@@ -39802,6 +39952,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_TABLE_COMMENT_OPTION:
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+    case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
+    case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:
+    case MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION:
     case MYLITE_SQL_AST_ORDER_BY_ITEM_LIST:
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
@@ -40592,9 +40746,7 @@ static int apply_create_table_secondary_index_definition(
     enum mylite_catalog_index_kind index_kind,
     bool is_unique
 ) {
-    const struct mylite_sql_ast_node *first_child = child_at(secondary_index, 0U);
-    const struct mylite_sql_ast_node *index_name_node = NULL;
-    const struct mylite_sql_ast_node *part_list = first_child;
+    struct create_table_secondary_index_definition_nodes nodes = {0};
     const struct mylite_sql_ast_node *first_part = NULL;
     const struct mylite_sql_ast_node *first_column = NULL;
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -40604,27 +40756,16 @@ static int apply_create_table_secondary_index_definition(
     size_t part_count = 0U;
     int rc = MYLITE_OK;
 
-    if (secondary_index == NULL ||
-        (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
-         secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
-         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION)) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
+    rc = extract_create_table_secondary_index_definition_nodes(database, secondary_index, &nodes);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if (first_child != NULL && first_child->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
-        index_name_node = first_child;
-        part_list = child_at(secondary_index, 1U);
-    }
-    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    part_count = mylite_sql_ast_node_child_count(part_list);
+    part_count = mylite_sql_ast_node_child_count(nodes.part_list);
     if (part_count == 0U) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    first_part = child_at(part_list, 0U);
+    first_part = child_at(nodes.part_list, 0U);
     first_column = secondary_index_part_column_node(first_part);
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
         planned_index.kind = index_kind;
@@ -40653,7 +40794,7 @@ static int apply_create_table_secondary_index_definition(
         rc = plan_secondary_index_name(
             database,
             plan,
-            index_name_node,
+            nodes.index_name_node,
             plan->columns[first_column_index].name,
             index_name,
             sizeof(index_name)
@@ -40665,12 +40806,27 @@ static int apply_create_table_secondary_index_definition(
         planned_index.is_visible = true;
         snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
     }
+    if (rc == MYLITE_OK && index_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        index_option_list_has_type_option(nodes.options.option_list_node)) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_index_options_to_secondary_plan(database, nodes.options, &planned_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_hash_index_key_part_order(
+            database,
+            planned_index.uses_hash_index_type,
+            nodes.part_list
+        );
+    }
     for (size_t index = 0U; rc == MYLITE_OK && index < part_count; ++index) {
         rc = append_planned_secondary_index_part(
             database,
             plan,
             &planned_index,
-            child_at(part_list, index)
+            child_at(nodes.part_list, index)
         );
     }
     if (rc == MYLITE_OK && is_unique) {
@@ -40690,6 +40846,59 @@ static int apply_create_table_secondary_index_definition(
     free(planned_index.parts);
 
     return rc;
+}
+
+static int extract_create_table_secondary_index_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *secondary_index,
+    struct create_table_secondary_index_definition_nodes *out_nodes
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (out_nodes == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_nodes = (struct create_table_secondary_index_definition_nodes){0};
+
+    if (secondary_index == NULL ||
+        (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    child = child_at(secondary_index, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER && out_nodes->index_name_node == NULL) {
+            out_nodes->index_name_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+            out_nodes->options.index_type_node == NULL
+        ) {
+            out_nodes->options.index_type_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST && out_nodes->part_list == NULL
+        ) {
+            out_nodes->part_list = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+            out_nodes->options.option_list_node == NULL
+        ) {
+            out_nodes->options.option_list_node = child;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        child = child->next_sibling;
+    }
+    if (out_nodes->part_list == NULL ||
+        out_nodes->part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int apply_create_table_foreign_key_definitions(
@@ -44022,6 +44231,13 @@ static int clone_create_table_like_indexes(
         target_index->kind = source_index->index.kind;
         target_index->is_unique = source_index->index.is_unique;
         target_index->is_visible = source_index->index.is_visible;
+        target_index->show_create_explicit_btree = source_index->index.show_create_explicit_btree;
+        snprintf(
+            target_index->comment,
+            sizeof(target_index->comment),
+            "%s",
+            source_index->index.comment
+        );
         rc =
             reserve_planned_secondary_index_parts(database, target_index, source_index->part_count);
         for (size_t part_index = 0U; rc == MYLITE_OK && part_index < source_index->part_count;
@@ -46029,6 +46245,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     bool existing_table_found = false;
     int64_t table_id = 0;
+    size_t hash_warning_count = planned_create_table_hash_index_warning_count(plan);
     int rc = MYLITE_OK;
 
     rc = mylite_catalog_try_read_table_by_name(
@@ -46048,7 +46265,10 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
         return MYLITE_ERROR;
     }
 
-    rc = mylite_catalog_begin_mutation(database, &mutation);
+    rc = reserve_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_begin_mutation(database, &mutation);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_allocate_table_id_in_mutation(database, &mutation, &table_id);
     }
@@ -46087,7 +46307,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
 
     ++database->session.sqlite_schema_generation;
 
-    return MYLITE_OK;
+    return append_hash_index_warnings(database, hash_warning_count);
 }
 
 static int create_temporary_table_from_plan(
@@ -46100,6 +46320,7 @@ static int create_temporary_table_from_plan(
     bool existing_table_found = false;
     bool physical_table_created = false;
     int64_t table_id = 0;
+    size_t hash_warning_count = planned_create_table_hash_index_warning_count(plan);
     int rc = MYLITE_OK;
 
     if (plan->foreign_key_count != 0U) {
@@ -46127,12 +46348,15 @@ static int create_temporary_table_from_plan(
         return MYLITE_ERROR;
     }
 
-    rc = mylite_temporary_catalog_allocate_table_identity(
-        &database->session.temporary_catalog,
-        &table_id,
-        physical_name,
-        sizeof(physical_name)
-    );
+    rc = reserve_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = mylite_temporary_catalog_allocate_table_identity(
+            &database->session.temporary_catalog,
+            &table_id,
+            physical_name,
+            sizeof(physical_name)
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = assign_create_temporary_table_index_ids(database, plan);
     }
@@ -46165,7 +46389,7 @@ static int create_temporary_table_from_plan(
     }
 
     ++database->session.sqlite_schema_generation;
-    return MYLITE_OK;
+    return append_hash_index_warnings(database, hash_warning_count);
 }
 
 static int assign_create_table_index_ids(
@@ -46450,6 +46674,8 @@ static int insert_create_table_index_catalog_rows(
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
             true,
+            "",
+            false,
             NULL
         );
     }
@@ -46492,6 +46718,8 @@ static int insert_create_table_index_catalog_rows(
             secondary->kind,
             secondary->is_unique,
             secondary->is_visible,
+            secondary->comment,
+            secondary->show_create_explicit_btree,
             NULL
         );
         for (size_t part_index = 0U; rc == MYLITE_OK && part_index < secondary->part_count;
@@ -46929,9 +47157,11 @@ static int append_temporary_secondary_index_descriptor(
         .kind = planned->kind,
         .is_unique = planned->is_unique,
         .is_visible = planned->is_visible,
+        .show_create_explicit_btree = planned->show_create_explicit_btree,
     };
     snprintf(index->name, sizeof(index->name), "%s", planned->name);
     snprintf(index->physical_name, sizeof(index->physical_name), "%s", planned->physical_name);
+    snprintf(index->comment, sizeof(index->comment), "%s", planned->comment);
 
     for (size_t part_index = 0U; part_index < planned->part_count; ++part_index) {
         const struct planned_secondary_index_part *planned_part = &planned->parts[part_index];
@@ -48158,6 +48388,8 @@ static int alter_table_add_primary_key_from_plan(
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
             true,
+            "",
+            false,
             NULL
         );
     }
@@ -48412,6 +48644,7 @@ static int plan_alter_table_add_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_index){0};
+    out_plan->is_visible = true;
     rc = extract_alter_table_add_index_nodes(database, statement, &nodes);
     if (rc == MYLITE_OK) {
         out_plan->kind = nodes.kind;
@@ -48453,6 +48686,21 @@ static int plan_alter_table_add_index(
             index_count,
             out_plan->index_name,
             sizeof(out_plan->index_name)
+        );
+    }
+    if (rc == MYLITE_OK && nodes.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        index_option_list_has_type_option(nodes.options.option_list_node)) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_index_options_to_alter_plan(database, nodes.options, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_hash_index_key_part_order(
+            database,
+            out_plan->uses_hash_index_type,
+            nodes.part_list
         );
     }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
@@ -48539,6 +48787,7 @@ static int plan_create_index(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_index){0};
+    out_plan->is_visible = true;
     if (statement != NULL && statement->kind == MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT) {
         out_plan->is_unique = true;
     }
@@ -48585,6 +48834,21 @@ static int plan_create_index(
             sizeof(out_plan->index_name)
         );
     }
+    if (rc == MYLITE_OK && nodes.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        index_option_list_has_type_option(nodes.options.option_list_node)) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_index_options_to_alter_plan(database, nodes.options, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_hash_index_key_part_order(
+            database,
+            out_plan->uses_hash_index_type,
+            nodes.part_list_node
+        );
+    }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < part_count; ++part_index) {
         rc = append_loaded_add_index_part(
             database,
@@ -48618,6 +48882,275 @@ static int plan_create_index(
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
+}
+
+static int apply_index_options_to_alter_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_alter_table_add_index *plan
+) {
+    struct planned_index_options options = {
+        .type = PLANNED_INDEX_TYPE_DEFAULT,
+        .is_visible = true,
+    };
+    int rc = collect_index_options(database, plan == NULL ? "" : plan->index_name, nodes, &options);
+
+    if (rc == MYLITE_OK && plan == NULL) {
+        set_runtime_error(database, "invalid index plan");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        plan->is_visible = options.is_visible;
+        memcpy(plan->comment, options.comment, strlen(options.comment) + 1U);
+        plan->show_create_explicit_btree = options.type == PLANNED_INDEX_TYPE_BTREE;
+        plan->uses_hash_index_type = options.type == PLANNED_INDEX_TYPE_HASH;
+    }
+
+    return rc;
+}
+
+static int apply_index_options_to_secondary_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_secondary_index *index
+) {
+    struct planned_index_options options = {
+        .type = PLANNED_INDEX_TYPE_DEFAULT,
+        .is_visible = true,
+    };
+    int rc = collect_index_options(database, index == NULL ? "" : index->name, nodes, &options);
+
+    if (rc == MYLITE_OK && index == NULL) {
+        set_runtime_error(database, "invalid index plan");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        index->is_visible = options.is_visible;
+        memcpy(index->comment, options.comment, strlen(options.comment) + 1U);
+        index->show_create_explicit_btree = options.type == PLANNED_INDEX_TYPE_BTREE;
+        index->uses_hash_index_type = options.type == PLANNED_INDEX_TYPE_HASH;
+    }
+
+    return rc;
+}
+
+static int collect_index_options(
+    struct mylite_db *database,
+    const char *index_name,
+    struct index_option_nodes nodes,
+    struct planned_index_options *out_options
+) {
+    const struct mylite_sql_ast_node *option = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_options == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_options->type = PLANNED_INDEX_TYPE_DEFAULT;
+    out_options->is_visible = true;
+    out_options->comment[0] = '\0';
+
+    if (nodes.index_type_node != NULL) {
+        rc = apply_single_index_option(database, index_name, nodes.index_type_node, out_options);
+    }
+    if (rc != MYLITE_OK || nodes.option_list_node == NULL) {
+        return rc;
+    }
+    if (nodes.option_list_node->kind != MYLITE_SQL_AST_INDEX_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    option = child_at(nodes.option_list_node, 0U);
+    while (rc == MYLITE_OK && option != NULL) {
+        rc = apply_single_index_option(database, index_name, option, out_options);
+        option = option->next_sibling;
+    }
+
+    return rc;
+}
+
+static int apply_single_index_option(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+) {
+    if (option == NULL || options == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (option->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION) {
+        return apply_index_type_option(database, option, options);
+    }
+    if (option->kind == MYLITE_SQL_AST_INDEX_COMMENT_OPTION) {
+        return apply_index_comment_option(database, index_name, option, options);
+    }
+    if (option->kind == MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION) {
+        return apply_index_visibility_option(option, options);
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int apply_index_type_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+) {
+    const struct mylite_sql_ast_node *type_node = child_at(option, 0U);
+    char type_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (type_node == NULL || type_node->kind != MYLITE_SQL_AST_IDENTIFIER || options == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(type_node, type_name, sizeof(type_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (text_equals_ascii_case_insensitive(type_name, "BTREE")) {
+        options->type = PLANNED_INDEX_TYPE_BTREE;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(type_name, "HASH")) {
+        options->type = PLANNED_INDEX_TYPE_HASH;
+        return MYLITE_OK;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int apply_index_comment_option(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+) {
+    if (option == NULL || options == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return decode_index_comment_literal(
+        database,
+        index_name,
+        child_at(option, 0U),
+        options->comment,
+        sizeof(options->comment)
+    );
+}
+
+static int apply_index_visibility_option(
+    const struct mylite_sql_ast_node *option,
+    struct planned_index_options *options
+) {
+    enum mylite_sql_ast_column_visibility visibility = MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
+
+    if (option == NULL || options == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    visibility = mylite_sql_ast_node_column_visibility(option);
+    options->is_visible = visibility != MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE;
+    return MYLITE_OK;
+}
+
+static int decode_index_comment_literal(
+    struct mylite_db *database,
+    const char *index_name,
+    const struct mylite_sql_ast_node *literal,
+    char *destination,
+    size_t destination_size
+) {
+    char *decoded = NULL;
+    size_t decoded_length = 0U;
+    size_t decoded_character_count = 0U;
+    int rc = decode_table_option_string_literal(
+        database,
+        literal,
+        &decoded,
+        (struct table_option_name_policy){
+            .identifier_kind = "index comment",
+            .nul_message = "index comments do not support NUL bytes",
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    decoded_length = strlen(decoded);
+    if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
+        free(decoded);
+        set_unsupported_error(database, "index comments support only valid UTF-8 text");
+        return MYLITE_ERROR;
+    }
+    if (decoded_character_count > MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS ||
+        decoded_length >= destination_size) {
+        free(decoded);
+        set_index_comment_too_long_error(database, index_name);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(destination, decoded, decoded_length + 1U);
+    free(decoded);
+    return MYLITE_OK;
+}
+
+static int validate_hash_index_key_part_order(
+    struct mylite_db *database,
+    bool uses_hash_index_type,
+    const struct mylite_sql_ast_node *part_list
+) {
+    if (!uses_hash_index_type) {
+        return MYLITE_OK;
+    }
+    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    for (size_t part_index = 0U; part_index < mylite_sql_ast_node_child_count(part_list);
+         ++part_index) {
+        if (secondary_index_part_has_explicit_direction(child_at(part_list, part_index))) {
+            set_fulltext_explicit_order_error(database);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part) {
+    return secondary_index_part_direction_node(part) != NULL;
+}
+
+static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list) {
+    const struct mylite_sql_ast_node *option = NULL;
+
+    if (option_list == NULL) {
+        return false;
+    }
+    if (option_list->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION) {
+        return true;
+    }
+    if (option_list->kind != MYLITE_SQL_AST_INDEX_OPTION_LIST) {
+        return false;
+    }
+
+    option = child_at(option_list, 0U);
+    while (option != NULL) {
+        if (option->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION) {
+            return true;
+        }
+        option = option->next_sibling;
+    }
+
+    return false;
 }
 
 static int resolve_add_index_target(
@@ -48708,8 +49241,7 @@ static int extract_alter_table_add_index_nodes(
     struct alter_table_add_index_nodes *out_nodes
 ) {
     const struct mylite_sql_ast_node *secondary_index = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *first_child = NULL;
-    const struct mylite_sql_ast_node *part_list = NULL;
+    const struct mylite_sql_ast_node *child = NULL;
 
     *out_nodes = (struct alter_table_add_index_nodes){0};
 
@@ -48725,17 +49257,34 @@ static int extract_alter_table_add_index_nodes(
                           : MYLITE_CATALOG_INDEX_KIND_SECONDARY;
     out_nodes->is_unique = secondary_index->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION;
 
-    first_child = child_at(secondary_index, 0U);
-    part_list = first_child;
-    if (first_child != NULL && first_child->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
-        out_nodes->index_name_node = first_child;
-        part_list = child_at(secondary_index, 1U);
+    child = child_at(secondary_index, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_IDENTIFIER && out_nodes->index_name_node == NULL) {
+            out_nodes->index_name_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+            out_nodes->options.index_type_node == NULL
+        ) {
+            out_nodes->options.index_type_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST && out_nodes->part_list == NULL
+        ) {
+            out_nodes->part_list = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+            out_nodes->options.option_list_node == NULL
+        ) {
+            out_nodes->options.option_list_node = child;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        child = child->next_sibling;
     }
-    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+    if (out_nodes->part_list == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    out_nodes->part_list = part_list;
 
     return MYLITE_OK;
 }
@@ -48745,7 +49294,7 @@ static int extract_create_index_nodes(
     const struct mylite_sql_ast_node *statement,
     struct create_index_nodes *out_nodes
 ) {
-    const struct mylite_sql_ast_node *part_list = NULL;
+    const struct mylite_sql_ast_node *child = NULL;
 
     *out_nodes = (struct create_index_nodes){0};
 
@@ -48755,20 +49304,39 @@ static int extract_create_index_nodes(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    part_list = child_at(statement, 2U);
-    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    out_nodes->index_name_node = child_at(statement, 0U);
-    out_nodes->table_name_node = child_at(statement, 1U);
-    out_nodes->part_list_node = part_list;
     out_nodes->kind = statement->kind == MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT
                           ? MYLITE_CATALOG_INDEX_KIND_FULLTEXT
                           : MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+
+    child = child_at(statement, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+            out_nodes->options.index_type_node == NULL) {
+            out_nodes->options.index_type_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
+            out_nodes->part_list_node == NULL
+        ) {
+            out_nodes->part_list_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+            out_nodes->options.option_list_node == NULL
+        ) {
+            out_nodes->options.option_list_node = child;
+        } else if (out_nodes->index_name_node == NULL && child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            out_nodes->index_name_node = child;
+        } else if (out_nodes->table_name_node == NULL) {
+            out_nodes->table_name_node = child;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        child = child->next_sibling;
+    }
+
     if (out_nodes->index_name_node == NULL ||
         out_nodes->index_name_node->kind != MYLITE_SQL_AST_IDENTIFIER ||
-        out_nodes->part_list_node == NULL) {
+        out_nodes->part_list_node == NULL || out_nodes->table_name_node == NULL) {
         set_unsupported_error(database, "CREATE INDEX supports only unqualified key columns");
         return MYLITE_ERROR;
     }
@@ -49280,6 +49848,9 @@ static int add_secondary_index_from_plan(
 
     rc = reserve_fulltext_add_warning_if_needed(database, plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_begin_mutation(database, &mutation);
     }
     if (rc == MYLITE_OK) {
@@ -49298,7 +49869,9 @@ static int add_secondary_index_from_plan(
             index_physical_name,
             plan->kind,
             plan->is_unique,
-            true,
+            plan->is_visible,
+            plan->comment,
+            plan->show_create_explicit_btree,
             NULL
         );
     }
@@ -49351,6 +49924,7 @@ static int add_secondary_index_from_plan(
         rc = append_fulltext_add_warning_if_needed(database, plan);
     } else {
         ++database->session.sqlite_schema_generation;
+        rc = append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
     }
 
     return rc;
@@ -49388,6 +49962,92 @@ static int append_fulltext_add_warning_if_needed(
         mysql_warning_innodb_rebuild_fulltext,
         "HY000",
         "InnoDB rebuilding table to add column FTS_DOC_ID"
+    );
+}
+
+static size_t planned_create_table_hash_index_warning_count(
+    const struct planned_create_table *plan
+) {
+    size_t warning_count = 0U;
+
+    if (plan == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        if (plan->secondary_indexes[index].uses_hash_index_type) {
+            ++warning_count;
+        }
+    }
+
+    return warning_count;
+}
+
+static int reserve_hash_index_warnings(struct mylite_db *database, size_t additional_count) {
+    return reserve_additional_warning_capacity(database, additional_count);
+}
+
+static int append_hash_index_warnings(struct mylite_db *database, size_t warning_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < warning_count; ++index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_hash_index_unsupported,
+            "HY000",
+            "This storage engine does not support the HASH index algorithm, storage engine "
+            "default was used instead."
+        );
+    }
+
+    return rc;
+}
+
+static int reserve_hash_index_warning_if_needed(
+    struct mylite_db *database,
+    bool uses_hash_index_type
+) {
+    size_t warning_count = 0U;
+
+    if (uses_hash_index_type) {
+        warning_count = 1U;
+    }
+
+    return reserve_hash_index_warnings(database, warning_count);
+}
+
+static int append_hash_index_warning_if_needed(
+    struct mylite_db *database,
+    bool uses_hash_index_type
+) {
+    size_t warning_count = 0U;
+
+    if (uses_hash_index_type) {
+        warning_count = 1U;
+    }
+
+    return append_hash_index_warnings(database, warning_count);
+}
+
+static int reserve_additional_warning_capacity(
+    struct mylite_db *database,
+    size_t additional_count
+) {
+    struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
+    size_t warning_count = 0U;
+
+    if (additional_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    warning_count = mylite_diagnostics_warning_count(diagnostics);
+    if (warning_count > SIZE_MAX - additional_count) {
+        mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+        return MYLITE_NOMEM;
+    }
+
+    return mylite_diagnostics_reserve_warning_capacity(
+        diagnostics,
+        warning_count + additional_count
     );
 }
 
@@ -49853,6 +50513,8 @@ static int alter_table_add_foreign_key_from_plan(
             MYLITE_CATALOG_INDEX_KIND_SECONDARY,
             false,
             true,
+            "",
+            false,
             NULL
         );
     }
@@ -51426,7 +52088,9 @@ static int copy_alter_table_check_secondary_index(
     target->kind = index->index.kind;
     target->is_unique = index->index.is_unique;
     target->is_visible = index->index.is_visible;
+    target->show_create_explicit_btree = index->index.show_create_explicit_btree;
     snprintf(target->name, sizeof(target->name), "%s", index->index.name);
+    snprintf(target->comment, sizeof(target->comment), "%s", index->index.comment);
     snprintf(
         target->physical_name,
         sizeof(target->physical_name),
@@ -119058,7 +119722,7 @@ static int append_show_index(
             nullable,
             index_type,
             "",
-            "",
+            index->index.comment,
             index_visibility_text(index->index.is_visible),
             NULL,
         };
@@ -134273,6 +134937,26 @@ static void set_table_comment_too_long_error(struct mylite_db *database, const c
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_table_comment_too_long,
+        "HY000",
+        message
+    );
+}
+
+static void set_index_comment_too_long_error(struct mylite_db *database, const char *index_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Comment for index '%s' is too long (max = 1024)",
+        index_name == NULL ? "" : index_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_index_comment_too_long,
         "HY000",
         message
     );

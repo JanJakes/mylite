@@ -34,6 +34,7 @@ enum {
     catalog_schema_version_v21 = 21U,
     catalog_schema_version_v22 = 22U,
     catalog_schema_version_v23 = 23U,
+    catalog_schema_version_v24 = 24U,
     sqlite_use_nul_terminated_string = -1,
 };
 
@@ -123,7 +124,9 @@ enum catalog_index_insert_bind_index {
     catalog_index_insert_is_unique_bind = 5,
     catalog_index_insert_is_visible_bind = 6,
     catalog_index_insert_physical_name_bind = 7,
-    catalog_index_insert_generation_bind = 8,
+    catalog_index_insert_comment_bind = 8,
+    catalog_index_insert_show_create_explicit_btree_bind = 9,
+    catalog_index_insert_generation_bind = 10,
 };
 
 enum catalog_index_column_insert_bind_index {
@@ -221,9 +224,11 @@ enum catalog_index_select_column_index {
     catalog_index_select_is_unique_column = 4,
     catalog_index_select_is_visible_column = 5,
     catalog_index_select_physical_name_column = 6,
-    catalog_index_select_descriptor_version_column = 7,
-    catalog_index_select_created_generation_column = 8,
-    catalog_index_select_updated_generation_column = 9,
+    catalog_index_select_comment_column = 7,
+    catalog_index_select_show_create_explicit_btree_column = 8,
+    catalog_index_select_descriptor_version_column = 9,
+    catalog_index_select_created_generation_column = 10,
+    catalog_index_select_updated_generation_column = 11,
 };
 
 enum catalog_index_column_select_column_index {
@@ -364,6 +369,7 @@ static int migrate_catalog_schema_v20_to_v21(sqlite3 *sqlite);
 static int migrate_catalog_schema_v21_to_v22(sqlite3 *sqlite);
 static int migrate_catalog_schema_v22_to_v23(sqlite3 *sqlite);
 static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite);
+static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -643,7 +649,8 @@ static int validate_insert_index_request(
     int64_t table_id,
     const char *name,
     const char *physical_name,
-    enum mylite_catalog_index_kind kind
+    enum mylite_catalog_index_kind kind,
+    const char *comment
 );
 static int insert_index_descriptor_row(
     sqlite3 *sqlite,
@@ -654,7 +661,9 @@ static int insert_index_descriptor_row(
     const char *physical_name,
     enum mylite_catalog_index_kind kind,
     bool is_unique,
-    bool is_visible
+    bool is_visible,
+    const char *comment,
+    bool show_create_explicit_btree
 );
 static int read_inserted_index_if_requested(
     sqlite3 *sqlite,
@@ -1193,6 +1202,8 @@ int mylite_catalog_insert_index_in_mutation(
     enum mylite_catalog_index_kind kind,
     bool is_unique,
     bool is_visible,
+    const char *comment,
+    bool show_create_explicit_btree,
     struct mylite_catalog_index_descriptor *out_index
 ) {
     int rc = MYLITE_OK;
@@ -1207,7 +1218,8 @@ int mylite_catalog_insert_index_in_mutation(
         table_id,
         name,
         physical_name,
-        kind
+        kind,
+        comment == NULL ? "" : comment
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -1222,7 +1234,9 @@ int mylite_catalog_insert_index_in_mutation(
         physical_name,
         kind,
         is_unique,
-        is_visible
+        is_visible,
+        comment == NULL ? "" : comment,
+        show_create_explicit_btree
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -1245,7 +1259,8 @@ static int validate_insert_index_request(
     int64_t table_id,
     const char *name,
     const char *physical_name,
-    enum mylite_catalog_index_kind kind
+    enum mylite_catalog_index_kind kind,
+    const char *comment
 ) {
     struct mylite_catalog_table_descriptor table = {0};
     int rc = validate_catalog_ready_database(database);
@@ -1277,6 +1292,10 @@ static int validate_insert_index_request(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = validate_optional_name(comment, MYLITE_CATALOG_INDEX_COMMENT_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     return read_table_by_id(database->sqlite, table_id, &table);
 }
@@ -1290,17 +1309,21 @@ static int insert_index_descriptor_row(
     const char *physical_name,
     enum mylite_catalog_index_kind kind,
     bool is_unique,
-    bool is_visible
+    bool is_visible,
+    const char *comment,
+    bool show_create_explicit_btree
 ) {
     sqlite3_stmt *statement = NULL;
     int64_t unique_value = catalog_bool_value(is_unique);
     int64_t visible_value = catalog_bool_value(is_visible);
+    int64_t explicit_btree_value = catalog_bool_value(show_create_explicit_btree);
     int rc = prepare_statement(
         sqlite,
         "INSERT INTO _mylite_catalog_indexes "
         "(index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
-        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?8)",
+        "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)",
         &statement
     );
 
@@ -1324,6 +1347,16 @@ static int insert_index_descriptor_row(
     }
     if (rc == MYLITE_OK) {
         rc = bind_text(statement, catalog_index_insert_physical_name_bind, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_index_insert_comment_bind, comment);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(
+            statement,
+            catalog_index_insert_show_create_explicit_btree_bind,
+            explicit_btree_value
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_u64(statement, catalog_index_insert_generation_bind, mutation->next_generation);
@@ -3915,7 +3948,8 @@ int mylite_catalog_for_each_index_in_table(
     rc = prepare_statement(
         database->sqlite,
         "SELECT index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
-        "descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
         "FROM _mylite_catalog_indexes WHERE table_id = ?1 ORDER BY index_id",
         &statement
     );
@@ -5315,6 +5349,10 @@ static int migrate_catalog_schema_one_step(sqlite3 *sqlite, uint32_t *schema_ver
         break;
     case catalog_schema_version_v23:
         rc = migrate_catalog_schema_v23_to_v24(sqlite);
+        next_schema_version = catalog_schema_version_v24;
+        break;
+    case catalog_schema_version_v24:
+        rc = migrate_catalog_schema_v24_to_v25(sqlite);
         next_schema_version = MYLITE_CATALOG_SCHEMA_VERSION;
         break;
     default:
@@ -6051,6 +6089,26 @@ static int migrate_catalog_schema_v23_to_v24(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
+static int migrate_catalog_schema_v24_to_v25(sqlite3 *sqlite) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "ALTER TABLE _mylite_catalog_indexes ADD COLUMN comment TEXT NOT NULL DEFAULT '';"
+        "ALTER TABLE _mylite_catalog_indexes "
+        "ADD COLUMN show_create_explicit_btree INTEGER NOT NULL DEFAULT 0 "
+        "CHECK(show_create_explicit_btree IN (0, 1));"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 25, minimum_reader_schema_version = 25;"
+        "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
     int rc = validate_select_shape(
         sqlite,
@@ -6084,7 +6142,8 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
+            "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
+            "updated_catalog_generation "
             "FROM _mylite_catalog_indexes WHERE 0"
         );
     }
@@ -6204,6 +6263,9 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "is_unique INTEGER NOT NULL CHECK(is_unique IN (0, 1)),"
         "is_visible INTEGER NOT NULL CHECK(is_visible IN (0, 1)),"
         "physical_name TEXT NOT NULL UNIQUE,"
+        "comment TEXT NOT NULL,"
+        "show_create_explicit_btree INTEGER NOT NULL "
+        "CHECK(show_create_explicit_btree IN (0, 1)),"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -7112,7 +7174,8 @@ static int try_read_primary_index_by_table_id(
     int rc = prepare_statement(
         sqlite,
         "SELECT index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
-        "descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
         "FROM _mylite_catalog_indexes WHERE table_id = ?1 AND kind = 1",
         &statement
     );
@@ -7647,6 +7710,7 @@ static int materialize_index(
     int64_t kind = 0;
     int64_t is_unique = 0;
     int64_t is_visible = 0;
+    int64_t show_create_explicit_btree = 0;
     int rc =
         checked_column_i64(statement, catalog_index_select_index_id_column, &out_index->index_id);
 
@@ -7695,6 +7759,25 @@ static int materialize_index(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_index_select_comment_column,
+            out_index->comment,
+            sizeof(out_index->comment)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_index_select_show_create_explicit_btree_column,
+            &show_create_explicit_btree
+        );
+    }
+    if (rc == MYLITE_OK && show_create_explicit_btree != 0 && show_create_explicit_btree != 1) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_index->show_create_explicit_btree = show_create_explicit_btree != 0;
         rc = checked_column_u64(
             statement,
             catalog_index_select_descriptor_version_column,

@@ -721,7 +721,8 @@ enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
     if (node->kind == MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT) {
         return node->payload.alter_table_options.visibility;
     }
-    if (node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT) {
+    if (node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT &&
+        node->kind != MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION) {
         return MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
     }
 
@@ -854,6 +855,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "last_day_function";
     case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
         return "last_day_argument_count_error";
+    case MYLITE_SQL_AST_INDEX_OPTION_LIST:
+        return "index_option_list";
+    case MYLITE_SQL_AST_INDEX_TYPE_OPTION:
+        return "index_type_option";
+    case MYLITE_SQL_AST_INDEX_COMMENT_OPTION:
+        return "index_comment_option";
+    case MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION:
+        return "index_visibility_option";
     case MYLITE_SQL_AST_HOUR_FUNCTION:
         return "hour_function";
     case MYLITE_SQL_AST_MINUTE_FUNCTION:

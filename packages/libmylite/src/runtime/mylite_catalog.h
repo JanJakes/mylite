@@ -9,8 +9,8 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 24
-#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 24
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 25
+#define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 25
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT                                          \
@@ -27,6 +27,10 @@ enum {
     MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER = 4,
     MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS = 2048,
     MYLITE_CATALOG_TABLE_COMMENT_CAPACITY = (MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS *
+                                             MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
+                                            1,
+    MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS = 1024,
+    MYLITE_CATALOG_INDEX_COMMENT_CAPACITY = (MYLITE_CATALOG_INDEX_COMMENT_MAX_CHARACTERS *
                                              MYLITE_CATALOG_UTF8MB4_MAX_BYTES_PER_CHARACTER) +
                                             1,
     MYLITE_CATALOG_CHECK_CLAUSE_CAPACITY = 4096,
@@ -134,6 +138,8 @@ struct mylite_catalog_index_descriptor {
     bool is_unique;
     bool is_visible;
     char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+    bool show_create_explicit_btree;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -323,6 +329,8 @@ int mylite_catalog_insert_index_in_mutation(
     enum mylite_catalog_index_kind kind,
     bool is_unique,
     bool is_visible,
+    const char *comment,
+    bool show_create_explicit_btree,
     struct mylite_catalog_index_descriptor *out_index
 );
 int mylite_catalog_insert_index_column_in_mutation(

@@ -836,18 +836,19 @@ create_temporary_table_select_statement(A) ::=
 }
 
 create_index_statement(A) ::=
-    CREATE(C) INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L) RPAREN. {
-    A = mylite_sql_parser_make_create_index_statement(state, C, false, N, T, L);
+    CREATE(C) INDEX identifier(N) index_type_opt(Y) ON table_name(T) LPAREN
+    secondary_index_part_list(L) RPAREN index_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_index_statement(state, C, false, N, Y, T, L, O);
 }
 create_index_statement(A) ::=
-    CREATE(C) UNIQUE INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
-    RPAREN. {
-    A = mylite_sql_parser_make_create_index_statement(state, C, true, N, T, L);
+    CREATE(C) UNIQUE INDEX identifier(N) index_type_opt(Y) ON table_name(T) LPAREN
+    secondary_index_part_list(L) RPAREN index_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_index_statement(state, C, true, N, Y, T, L, O);
 }
 create_index_statement(A) ::=
     CREATE(C) FULLTEXT INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
-    RPAREN. {
-    A = mylite_sql_parser_make_create_fulltext_index_statement(state, C, N, T, L);
+    RPAREN index_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_fulltext_index_statement(state, C, N, T, L, O);
 }
 
 drop_index_statement(A) ::= DROP(D) INDEX identifier(I) ON table_name(T). {
@@ -5683,21 +5684,27 @@ primary_key_part(A) ::= identifier(B) index_key_direction_opt(D). {
     A = mylite_sql_parser_make_secondary_index_part(state, B, NULL, D);
 }
 
-secondary_index_definition(A) ::= KEY(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, L, R);
+secondary_index_definition(A) ::=
+    KEY(K) index_name_opt(N) index_type_opt(Y) LPAREN secondary_index_part_list(L) RPAREN(R)
+    index_option_list_opt(O). {
+    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, Y, L, R, O);
 }
-secondary_index_definition(A) ::= INDEX(K) index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, L, R);
+secondary_index_definition(A) ::=
+    INDEX(K) index_name_opt(N) index_type_opt(Y) LPAREN secondary_index_part_list(L) RPAREN(R)
+    index_option_list_opt(O). {
+    A = mylite_sql_parser_make_secondary_index_definition(state, K, N, Y, L, R, O);
 }
 
-unique_index_definition(A) ::= UNIQUE(U) unique_index_keyword_opt index_name_opt(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+unique_index_definition(A) ::=
+    UNIQUE(U) unique_index_keyword_opt index_name_opt(N) index_type_opt(Y) LPAREN
+    secondary_index_part_list(L) RPAREN(R) index_option_list_opt(O). {
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, Y, L, R, O);
 }
 
 fulltext_index_definition(A) ::=
     FULLTEXT(F) fulltext_index_keyword_opt index_name_opt(N) LPAREN secondary_index_part_list(L)
-    RPAREN(R). {
-    A = mylite_sql_parser_make_fulltext_index_definition(state, F, N, L, R);
+    RPAREN(R) index_option_list_opt(O). {
+    A = mylite_sql_parser_make_fulltext_index_definition(state, F, N, L, R, O);
 }
 
 fulltext_index_keyword_opt ::= .
@@ -5707,21 +5714,73 @@ fulltext_index_keyword_opt ::= INDEX.
 named_unique_constraint_definition(A) ::=
     CONSTRAINT identifier(N) UNIQUE(U) unique_index_keyword_opt LPAREN
     secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, NULL, L, R, NULL);
 }
 named_unique_constraint_definition(A) ::=
     CONSTRAINT UNIQUE(U) unique_index_keyword_opt index_name_opt(N) LPAREN
     secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, NULL, L, R, NULL);
 }
 named_unique_constraint_definition(A) ::=
     CONSTRAINT identifier UNIQUE(U) unique_index_keyword_required identifier(N) LPAREN
     secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, NULL, L, R, NULL);
 }
 named_unique_constraint_definition(A) ::=
     CONSTRAINT identifier UNIQUE(U) identifier(N) LPAREN secondary_index_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_unique_index_definition(state, U, N, L, R);
+    A = mylite_sql_parser_make_unique_index_definition(state, U, N, NULL, L, R, NULL);
+}
+
+index_type_opt(A) ::= . {
+    A = NULL;
+}
+index_type_opt(A) ::= index_type_option(B). {
+    A = B;
+}
+
+index_type_option(A) ::= USING(U) identifier(T). {
+    A = mylite_sql_parser_make_index_type_option(state, U, T);
+}
+
+index_option_list_opt(A) ::= . {
+    A = NULL;
+}
+index_option_list_opt(A) ::= index_option_list(B). {
+    A = B;
+}
+index_option_list(A) ::= index_option(B). {
+    A = mylite_sql_parser_make_index_option_list(state, B);
+}
+index_option_list(A) ::= index_option_list(B) index_option(C). {
+    A = mylite_sql_parser_append_index_option(state, B, C);
+}
+index_option(A) ::= index_type_option(B). {
+    A = B;
+}
+index_option(A) ::= index_comment_option(B). {
+    A = B;
+}
+index_option(A) ::= index_visibility_option(B). {
+    A = B;
+}
+
+index_comment_option(A) ::= COMMENT(T) STRING(V). {
+    A = mylite_sql_parser_make_index_comment_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+index_visibility_option(A) ::= VISIBLE(T). {
+    A = mylite_sql_parser_make_index_visibility_option(
+        state,
+        T,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE);
+}
+index_visibility_option(A) ::= INVISIBLE(T). {
+    A = mylite_sql_parser_make_index_visibility_option(
+        state,
+        T,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE);
 }
 
 unique_index_keyword_opt ::= .

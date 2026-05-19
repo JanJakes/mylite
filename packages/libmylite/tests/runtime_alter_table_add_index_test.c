@@ -455,15 +455,7 @@ static int test_alter_add_index_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE diag ADD INDEX k_v2 USING BTREE (v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += expect_alter_index_ok(database, "ALTER TABLE diag ADD INDEX k_v2 USING BTREE (v)");
     failures += execute_error(
         database,
         "ALTER TABLE _mylite_private.diag ADD INDEX k_v (v)",

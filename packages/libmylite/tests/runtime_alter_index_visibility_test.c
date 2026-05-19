@@ -640,6 +640,11 @@ static int seed_visibility_schema(mylite_db *database) {
 static int make_catalog_look_like_v22(sqlite3 *sqlite) {
     int failures = 0;
 
+    failures += execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_indexes DROP COLUMN show_create_explicit_btree"
+    );
+    failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_indexes DROP COLUMN comment");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_indexes DROP COLUMN is_visible");
     failures += execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN comment");
     failures += execute_sql(

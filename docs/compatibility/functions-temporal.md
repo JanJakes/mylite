@@ -46,7 +46,7 @@ Date, time, timestamp, interval, time-zone, and calendar functions.
 | `SUBDATE()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` `SUBDATE(date_or_datetime_string, INTERVAL signed_integer_or_NULL SECOND)` alias of the current `DATE_SUB()` interval-second slice; no non-interval forms, other units, interval expressions, table-backed expressions, invalid-date warning semantics, or general temporal arithmetic |
 | `SUBTIME()` | ❌ | Subtract times |
 | `SYSDATE()` | ❌ | Return time at which the function executes |
-| `TIME()` | ❌ | Extract the time portion of the expression passed |
+| `TIME()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `TIME(value)` over `NULL`, canonical time/datetime string literals, and descriptor `DATE` / `TIME` / `DATETIME` / `TIMESTAMP` columns, returning time text or `NULL`; invalid literal inputs return `NULL` with warning 1292; no fractional seconds, numeric temporal coercion, date-only string coercion, string descriptor columns, predicates, DML assignments, defaults, generated columns, or general temporal expression evaluation |
 | `TIME_FORMAT()` | ❌ | Format as time |
 | `TIME_TO_SEC()` | ❌ | Return argument converted to seconds |
 | `TIMEDIFF()` | ❌ | Subtract time |

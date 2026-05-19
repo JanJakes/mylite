@@ -75,6 +75,13 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         "DATE('2008-01-02 13:29:17')",
         "DATE('2008-01-02')",
         "DATE(NULL)",
+        "TIME('2003-12-31 01:02:03')",
+        "TIME('13:29:17')",
+        "TIME('-13:29:17')",
+        "TIME(\"-13:29:17\")",
+        "TIME('-272:59:59')",
+        "TIME('272:59:59')",
+        "TIME(NULL)",
         "YEAR('2008-01-02 13:29:17')",
         "MONTH('2008-01-02 13:29:17')",
         "DAY('2008-01-02 13:29:17')",
@@ -98,12 +105,19 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         "HOUR('0000-00-00 01:02:03')",
     };
     static const char *const values_core[] = {
-        "2008-01-02", "2008-01-02", NULL, "2008", "1",  "2",  "2",   "13",
-        "29",         "17",         "13", "29",   "17", "13", "272", "0000-00-00",
-        "0000-01-02", "0",          "1",  "2",    "0",  "0",  "0",   "1",
+        "2008-01-02", "2008-01-02", NULL,         "01:02:03", "13:29:17", "-13:29:17", "-13:29:17",
+        "-272:59:59", "272:59:59",  NULL,         "2008",     "1",        "2",         "2",
+        "13",         "29",         "17",         "13",       "29",       "17",        "13",
+        "272",        "0000-00-00", "0000-01-02", "0",        "1",        "2",         "0",
+        "0",          "0",          "1",
     };
-    static const char *const columns_dual[] = {"DATE ('2008-01-02 13:29:17')", "yr", "hr"};
-    static const char *const values_dual[] = {"2008-01-02", "2008", "13"};
+    static const char *const columns_dual[] = {
+        "DATE ('2008-01-02 13:29:17')",
+        "tm",
+        "yr",
+        "hr",
+    };
+    static const char *const values_dual[] = {"2008-01-02", "13:29:17", "2008", "13"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -117,6 +131,9 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         database,
         (struct expected_query){
             .sql = "SELECT DATE('2008-01-02 13:29:17'), DATE('2008-01-02'), DATE(NULL), "
+                   "TIME('2003-12-31 01:02:03'), TIME('13:29:17'), "
+                   "TIME('-13:29:17'), TIME(\"-13:29:17\"), TIME('-272:59:59'), "
+                   "TIME('272:59:59'), TIME(NULL), "
                    "YEAR('2008-01-02 13:29:17'), MONTH('2008-01-02 13:29:17'), "
                    "DAY('2008-01-02 13:29:17'), DAYOFMONTH('2008-01-02 13:29:17'), "
                    "HOUR('2008-01-02 13:29:17'), MINUTE('2008-01-02 13:29:17'), "
@@ -136,8 +153,8 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT DATE ('2008-01-02 13:29:17'), YEAR ('2008-01-02') AS yr, "
-                   "HOUR ('13:29:17') AS hr FROM DUAL",
+            .sql = "SELECT DATE ('2008-01-02 13:29:17'), TIME ('13:29:17') AS tm, "
+                   "YEAR ('2008-01-02') AS yr, HOUR ('13:29:17') AS hr FROM DUAL",
             .columns = columns_dual,
             .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
             .values = values_dual,
@@ -157,8 +174,11 @@ static int test_no_source_dual_and_do_temporal_extract(void) {
         }
     );
 
-    failures +=
-        execute_ok(database, "DO DATE('2008-01-02'), YEAR(NULL), HOUR('13:29:17')", &result);
+    failures += execute_ok(
+        database,
+        "DO DATE('2008-01-02'), TIME('13:29:17'), YEAR(NULL), HOUR('13:29:17')",
+        &result
+    );
     if (failures == 0) {
         failures +=
             expect_size(mylite_result_column_count(result), 0U, "temporal extract do columns");
@@ -190,6 +210,10 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     static const char *const columns_table[] = {
         "id",
         "date_text",
+        "time_from_date",
+        "time_from_datetime",
+        "time_from_timestamp",
+        "time_from_time",
         "year_text",
         "month_text",
         "day_text",
@@ -204,10 +228,12 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
         "string_second",
     };
     static const char *const values_table[] = {
-        "1",  "2008-01-02", "2008", "1",  "2",  "2",  "2008", "13", "13", "29", "17",
-        "13", "29",         "17",   "2",  NULL, NULL, NULL,   NULL, NULL, NULL, NULL,
-        NULL, NULL,         NULL,   NULL, NULL, NULL, "3",    NULL, "0",  NULL, "0",
-        NULL, NULL,         NULL,   "13", "29", "17", NULL,   NULL, NULL,
+        "1",  "2008-01-02", "00:00:00", "13:29:17", "13:29:17", "13:29:17",  "2008", "1",  "2",
+        "2",  "2008",       "13",       "13",       "29",       "17",        "13",   "29", "17",
+        "2",  NULL,         NULL,       NULL,       NULL,       NULL,        NULL,   NULL, NULL,
+        NULL, NULL,         NULL,       NULL,       NULL,       NULL,        NULL,   NULL, NULL,
+        "3",  NULL,         "00:00:00", NULL,       NULL,       "-13:29:17", "0",    NULL, "0",
+        NULL, NULL,         NULL,       "13",       "29",       "17",        NULL,   NULL, NULL,
     };
     static const char *const columns_warnings[] = {"Level", "Code", "Message"};
     static const char *const values_warnings[] = {
@@ -223,10 +249,19 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     };
     static const char *const columns_warning_count[] = {"@@warning_count"};
     static const char *const values_warning_count[] = {"3"};
-    static const char *const columns_order_limit[] = {"id", "YEAR(d)", "HOUR(tm)"};
-    static const char *const values_order_limit[] = {"3", "0", "13", "2", NULL, NULL};
-    static const char *const columns_reopen[] = {"YEAR(d)", "HOUR(tm)"};
-    static const char *const values_reopen[] = {"2008", "13"};
+    static const char *const columns_order_limit[] = {"id", "TIME(tm)", "YEAR(d)", "HOUR(tm)"};
+    static const char *const values_order_limit[] = {
+        "3",
+        "-13:29:17",
+        "0",
+        "13",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const columns_reopen[] = {"YEAR(d)", "TIME(tm)", "HOUR(tm)"};
+    static const char *const values_reopen[] = {"2008", "13:29:17", "13"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -253,8 +288,10 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, DATE(dt) AS date_text, YEAR(d) AS year_text, "
-                   "MONTH(dt) AS month_text, DAY(d) AS day_text, "
+            .sql = "SELECT id, DATE(dt) AS date_text, "
+                   "TIME(d) AS time_from_date, TIME(dt) AS time_from_datetime, "
+                   "TIME(ts) AS time_from_timestamp, TIME(tm) AS time_from_time, "
+                   "YEAR(d) AS year_text, MONTH(dt) AS month_text, DAY(d) AS day_text, "
                    "DAYOFMONTH(dt) AS dayofmonth_text, YEAR(ts) AS timestamp_year, "
                    "HOUR(ts) AS timestamp_hour, HOUR(tm) AS hour_text, "
                    "MINUTE(tm) AS minute_text, SECOND(tm) AS second_text, HOUR(s) AS "
@@ -292,7 +329,8 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT id, YEAR(d), HOUR(tm) FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2",
+            .sql = "SELECT id, TIME(tm), YEAR(d), HOUR(tm) FROM t WHERE id >= 1 "
+                   "ORDER BY id DESC LIMIT 2",
             .columns = columns_order_limit,
             .column_count = sizeof(columns_order_limit) / sizeof(columns_order_limit[0]),
             .values = values_order_limit,
@@ -308,7 +346,7 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT YEAR(d), HOUR(tm) FROM t WHERE id = 1",
+            .sql = "SELECT YEAR(d), TIME(tm), HOUR(tm) FROM t WHERE id = 1",
             .columns = columns_reopen,
             .column_count = sizeof(columns_reopen) / sizeof(columns_reopen[0]),
             .values = values_reopen,
@@ -323,10 +361,11 @@ static int test_table_backed_temporal_extract_and_reopen(void) {
 }
 
 static int test_temporal_extract_diagnostics(void) {
-    enum { invalid_temporal_warning_count = 7 };
+    enum { invalid_temporal_warning_count = 8 };
 
     static const char *const columns_invalid[] = {
         "DATE('not-a-date')",
+        "TIME('not-a-date')",
         "YEAR('not-a-date')",
         "MONTH('not-a-date')",
         "DAY('not-a-date')",
@@ -334,16 +373,30 @@ static int test_temporal_extract_diagnostics(void) {
         "MINUTE('not-a-date')",
         "SECOND('not-a-date')",
     };
-    static const char *const values_invalid[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    static const char *const values_invalid[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
     static const char *const columns_warnings[] = {"Level", "Code", "Message"};
     static const char *const values_warnings[] = {
         "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
+        "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
         "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
         "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
         "Warning", "1292", "Incorrect datetime value: 'not-a-date'",
         "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
         "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
         "Warning", "1292", "Truncated incorrect time value: 'not-a-date'",
+    };
+    static const char *const columns_deferred_strings[] = {
+        "TIME('2008-01-02')",
+        "TIME('2008-01-02 13:29:17.999999')",
+    };
+    static const char *const values_deferred_strings[] = {NULL, NULL};
+    static const char *const values_deferred_warnings[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2008-01-02'",
+        "Warning",
+        "1292",
+        "Truncated incorrect time value: '2008-01-02 13:29:17.999999'",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -355,9 +408,31 @@ static int test_temporal_extract_diagnostics(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT DATE('not-a-date'), YEAR('not-a-date'), MONTH('not-a-date'), "
-                   "DAY('not-a-date'), HOUR('not-a-date'), MINUTE('not-a-date'), "
-                   "SECOND('not-a-date')",
+            .sql = "SELECT TIME('2008-01-02'), TIME('2008-01-02 13:29:17.999999')",
+            .columns = columns_deferred_strings,
+            .column_count = sizeof(columns_deferred_strings) / sizeof(columns_deferred_strings[0]),
+            .values = values_deferred_strings,
+            .row_count = 1U,
+            .context = "deferred time string coercion values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = columns_warnings,
+            .column_count = sizeof(columns_warnings) / sizeof(columns_warnings[0]),
+            .values = values_deferred_warnings,
+            .row_count = 2U,
+            .context = "deferred time string coercion warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATE('not-a-date'), TIME('not-a-date'), YEAR('not-a-date'), "
+                   "MONTH('not-a-date'), DAY('not-a-date'), HOUR('not-a-date'), "
+                   "MINUTE('not-a-date'), SECOND('not-a-date')",
             .columns = columns_invalid,
             .column_count = sizeof(columns_invalid) / sizeof(columns_invalid[0]),
             .values = values_invalid,
@@ -387,6 +462,15 @@ static int test_temporal_extract_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT TIME(20080102132917)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "temporal extract functions support only string temporal literals",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT YEAR('2008-01-02' + 0)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -403,6 +487,16 @@ static int test_temporal_extract_diagnostics(void) {
             .sqlstate = "42000",
             .message_part = "temporal extract functions support only DATE, TIME, DATETIME, "
                             "TIMESTAMP, string, and NULL values",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE unsupported_strings(s VARCHAR(32))", NULL);
+    failures += execute_error(
+        database,
+        "SELECT TIME(s) FROM unsupported_strings",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "TIME() does not yet support string descriptor columns",
         }
     );
 

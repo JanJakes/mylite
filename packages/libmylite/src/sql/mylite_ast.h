@@ -472,6 +472,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UTC_DATE_VALUE = 463,
     MYLITE_SQL_AST_UTC_TIME_VALUE = 464,
     MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE = 465,
+    MYLITE_SQL_AST_TIME_FUNCTION = 466,
 };
 
 enum mylite_sql_ast_literal_kind {

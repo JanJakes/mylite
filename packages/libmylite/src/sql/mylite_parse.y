@@ -3251,6 +3251,10 @@ expression(A) ::= DATE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FUNCTION, B, R);
 }
+expression(A) ::= TIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TIME_FUNCTION, B, R);
+}
 expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);

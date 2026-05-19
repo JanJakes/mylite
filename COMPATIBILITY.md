@@ -573,7 +573,7 @@ tests.
 | `SUBDATE()` | 🟡 | Limited no-source, `FROM DUAL`, and `DO` interval-second alias of the current `DATE_SUB()` subset; no non-interval forms, other interval units, interval expressions, table-backed expressions, or general temporal arithmetic. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `SUBTIME()` | ❌ | Subtract time. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `SYSDATE()` | ❌ | Execution-time timestamp. | [temporal functions](docs/compatibility/functions-temporal.md) |
-| `TIME()` | ❌ | Extract time part. | [temporal functions](docs/compatibility/functions-temporal.md) |
+| `TIME()` | 🟡 | Limited no-source, `FROM DUAL`, `DO`, and single-table row-scalar `TIME(value)` over `NULL`, canonical time/datetime string literals, and descriptor `DATE` / `TIME` / `DATETIME` / `TIMESTAMP` columns; invalid literal inputs return `NULL` with warning 1292; no fractional seconds, numeric temporal coercion, date-only string coercion, string descriptor columns, predicates, DML assignments, defaults, or general temporal expression evaluation. | [temporal functions](docs/compatibility/functions-temporal.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `TIME_FORMAT()` | ❌ | Format time. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `TIME_TO_SEC()` | ❌ | Time to seconds. | [temporal functions](docs/compatibility/functions-temporal.md) |
 | `TIMEDIFF()` | ❌ | Time difference. | [temporal functions](docs/compatibility/functions-temporal.md) |

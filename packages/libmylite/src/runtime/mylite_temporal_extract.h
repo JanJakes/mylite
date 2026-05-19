@@ -16,6 +16,7 @@ enum mylite_temporal_extract_kind {
     MYLITE_TEMPORAL_EXTRACT_HOUR = 4,
     MYLITE_TEMPORAL_EXTRACT_MINUTE = 5,
     MYLITE_TEMPORAL_EXTRACT_SECOND = 6,
+    MYLITE_TEMPORAL_EXTRACT_TIME = 7,
 };
 
 enum mylite_temporal_extract_input_kind {

@@ -22442,6 +22442,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -39370,6 +39371,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -68576,6 +68578,7 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "DAYOFMONTH");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -71653,6 +71656,8 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
     switch (ast_kind) {
     case MYLITE_SQL_AST_DATE_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_DATE;
+    case MYLITE_SQL_AST_TIME_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_TIME;
     case MYLITE_SQL_AST_YEAR_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_YEAR;
     case MYLITE_SQL_AST_MONTH_FUNCTION:
@@ -71674,6 +71679,7 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
 static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     switch (ast_kind) {
     case MYLITE_SQL_AST_DATE_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -107259,6 +107265,13 @@ static int plan_row_scalar_temporal_extract_column(
     } else if (column_descriptor_is_timestamp(&column)) {
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP;
     } else if (column_descriptor_is_string_family(&column)) {
+        if (extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME) {
+            set_unsupported_error(
+                database,
+                "TIME() does not yet support string descriptor columns"
+            );
+            return MYLITE_ERROR;
+        }
         *out_input_kind = MYLITE_TEMPORAL_EXTRACT_INPUT_STRING;
     } else {
         set_unsupported_error(

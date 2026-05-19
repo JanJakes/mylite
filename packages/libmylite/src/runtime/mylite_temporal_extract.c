@@ -52,6 +52,7 @@ struct temporal_date_parts {
 };
 
 struct temporal_time_parts {
+    bool negative;
     int hour;
     int minute;
     int second;
@@ -102,9 +103,18 @@ static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 );
+static int extract_time_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+);
 static int format_date_result(
     struct mylite_db *database,
     const struct temporal_date_parts *parts,
+    char **out_text
+);
+static int format_time_result(
+    struct mylite_db *database,
+    const struct temporal_time_parts *parts,
     char **out_text
 );
 static int format_integer_result(struct mylite_db *database, int value, char **out_text);
@@ -150,6 +160,8 @@ const char *mylite_temporal_extract_kind_name(enum mylite_temporal_extract_kind 
     switch (kind) {
     case MYLITE_TEMPORAL_EXTRACT_DATE:
         return "date";
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
+        return "time";
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
         return "year";
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
@@ -176,6 +188,7 @@ bool mylite_temporal_extract_kind_from_name(
         enum mylite_temporal_extract_kind kind;
     } names[] = {
         {"date", MYLITE_TEMPORAL_EXTRACT_DATE},
+        {"time", MYLITE_TEMPORAL_EXTRACT_TIME},
         {"year", MYLITE_TEMPORAL_EXTRACT_YEAR},
         {"month", MYLITE_TEMPORAL_EXTRACT_MONTH},
         {"day", MYLITE_TEMPORAL_EXTRACT_DAY},
@@ -205,6 +218,7 @@ bool mylite_temporal_extract_kind_is_date_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return true;
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
@@ -220,6 +234,7 @@ bool mylite_temporal_extract_kind_is_time_part(enum mylite_temporal_extract_kind
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
         return true;
     case MYLITE_TEMPORAL_EXTRACT_DATE:
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
@@ -457,7 +472,9 @@ static int temporal_extract_sqlite_result(
     }
     if (is_null) {
         sqlite3_result_null(context);
-    } else if (extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE) {
+    } else if (
+        extract_kind == MYLITE_TEMPORAL_EXTRACT_DATE || extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME
+    ) {
         sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
     } else {
         sqlite3_result_int64(context, (sqlite3_int64)strtoll(result, NULL, digit_radix));
@@ -519,6 +536,7 @@ static int extract_date_part_value(
         return format_integer_result(database, date.month, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         return format_integer_result(database, date.day, request->out_text);
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_HOUR:
     case MYLITE_TEMPORAL_EXTRACT_MINUTE:
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
@@ -531,9 +549,13 @@ static int extract_time_part_value(
     struct mylite_db *database,
     const struct temporal_extract_request *request
 ) {
-    struct temporal_time_parts time = {0};
+    struct temporal_time_parts time = {.negative = false};
     struct temporal_datetime_parts datetime = {0};
     int rc = MYLITE_OK;
+
+    if (request->extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME) {
+        return extract_time_value(database, request);
+    }
 
     if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
         request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
@@ -579,12 +601,73 @@ static int extract_time_part_value(
     case MYLITE_TEMPORAL_EXTRACT_SECOND:
         return format_integer_result(database, time.second, request->out_text);
     case MYLITE_TEMPORAL_EXTRACT_DATE:
+    case MYLITE_TEMPORAL_EXTRACT_TIME:
     case MYLITE_TEMPORAL_EXTRACT_YEAR:
     case MYLITE_TEMPORAL_EXTRACT_MONTH:
     case MYLITE_TEMPORAL_EXTRACT_DAY:
         break;
     }
     return MYLITE_ERROR;
+}
+
+static int extract_time_value(
+    struct mylite_db *database,
+    const struct temporal_extract_request *request
+) {
+    struct temporal_time_parts time = {.negative = false};
+    struct temporal_datetime_parts datetime = {0};
+    int rc = MYLITE_OK;
+
+    if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATETIME ||
+        request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIMESTAMP) {
+        if (parse_datetime_text(request->value, request->value_length, &datetime)) {
+            time = datetime.time;
+        } else {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+    } else if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_DATE) {
+        struct temporal_date_parts date = {0};
+
+        if (!parse_date_text(request->value, request->value_length, &date)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+    } else if (request->input_kind == MYLITE_TEMPORAL_EXTRACT_INPUT_TIME) {
+        if (!parse_time_text(request->value, request->value_length, &time)) {
+            rc = append_incorrect_temporal_warning(
+                database,
+                "Truncated incorrect time value",
+                request->value,
+                request->value_length
+            );
+            *request->out_is_null = true;
+            return rc;
+        }
+    } else if (!parse_string_time_value(request->value, request->value_length, &time)) {
+        rc = append_incorrect_temporal_warning(
+            database,
+            "Truncated incorrect time value",
+            request->value,
+            request->value_length
+        );
+        *request->out_is_null = true;
+        return rc;
+    }
+
+    return format_time_result(database, &time, request->out_text);
 }
 
 static int format_date_result(
@@ -620,6 +703,44 @@ static int format_date_result(
         *out_text = NULL;
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int format_time_result(
+    struct mylite_db *database,
+    const struct temporal_time_parts *parts,
+    char **out_text
+) {
+    char buffer[integer_result_buffer_capacity];
+    int written = 0;
+
+    if (out_text == NULL || parts == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    written = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%s%02d:%02d:%02d",
+        parts->negative ? "-" : "",
+        parts->hour,
+        parts->minute,
+        parts->second
+    );
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return MYLITE_ERROR;
+    }
+    *out_text = (char *)malloc((size_t)written + 1U);
+    if (*out_text == NULL) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory"
+        );
+        return MYLITE_NOMEM;
+    }
+    memcpy(*out_text, buffer, (size_t)written + 1U);
     return MYLITE_OK;
 }
 
@@ -727,7 +848,7 @@ static bool parse_time_text(
     size_t value_length,
     struct temporal_time_parts *out_parts
 ) {
-    struct temporal_time_parts parts = {0};
+    struct temporal_time_parts parts = {.negative = false};
     size_t offset = 0U;
     size_t hour_digits = 0U;
 
@@ -735,6 +856,7 @@ static bool parse_time_text(
         return false;
     }
     if (value_length > 0U && value[0] == '-') {
+        parts.negative = true;
         offset = 1U;
     }
     if (value_length < offset + time_text_min_length ||

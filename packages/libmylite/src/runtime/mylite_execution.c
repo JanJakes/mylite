@@ -15171,6 +15171,12 @@ static int text_family_prefix_key_bytes(
     uint64_t prefix,
     uint64_t *out_key_bytes
 );
+static int binary_string_prefix_key_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t prefix,
+    uint64_t *out_key_bytes
+);
 static int planned_index_part_key_bytes(
     struct mylite_db *database,
     const struct planned_column *column,
@@ -15686,6 +15692,7 @@ static bool planned_column_is_json(const struct planned_column *column);
 static bool planned_column_is_enum(const struct planned_column *column);
 static bool planned_column_is_set(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
+static bool planned_column_is_binary_blob_family(const struct planned_column *column);
 static bool planned_column_is_bit(const struct planned_column *column);
 static bool planned_column_is_year(const struct planned_column *column);
 static bool planned_column_is_decimal(const struct planned_column *column);
@@ -15720,6 +15727,9 @@ static bool column_descriptor_is_json(const struct mylite_catalog_column_descrip
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool column_descriptor_is_binary_blob_family(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_bit(const struct mylite_catalog_column_descriptor *column);
@@ -43136,6 +43146,14 @@ static int validate_planned_secondary_index_part(
             out_prefix_length
         );
         if (rc == MYLITE_OK && !is_fulltext) {
+            if (index->is_unique &&
+                planned_column_is_binary_string_family(&plan->columns[column_index])) {
+                set_unsupported_error(
+                    database,
+                    "Unique binary prefix indexes are not yet supported"
+                );
+                return MYLITE_ERROR;
+            }
             rc = validate_secondary_index_prefix_for_planned_column(
                 database,
                 &plan->columns[column_index],
@@ -43355,6 +43373,10 @@ static int validate_secondary_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_binary_blob_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
@@ -43471,6 +43493,13 @@ static int validate_secondary_index_prefix_for_planned_column(
         );
     } else if (planned_column_is_text_family(column)) {
         return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else if (planned_column_is_binary_string_family(column)) {
+        return binary_string_prefix_key_bytes(
+            database,
+            column->logical_type,
+            prefix,
+            out_key_bytes
+        );
     } else if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
@@ -43520,6 +43549,33 @@ static int text_family_prefix_key_bytes(
     }
 
     *out_key_bytes = key_bytes;
+    return MYLITE_OK;
+}
+
+static int binary_string_prefix_key_bytes(
+    struct mylite_db *database,
+    const char *logical_type,
+    uint64_t prefix,
+    uint64_t *out_key_bytes
+) {
+    struct binary_string_type_info storage = {0};
+    const struct binary_string_type_info *info =
+        binary_string_type_info_for_logical_type(logical_type, &storage);
+
+    if (info == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid binary prefix key part");
+        return MYLITE_ERROR;
+    }
+    if (prefix > info->maximum_length) {
+        if (info->blob_family) {
+            set_key_too_long_error(database, info->maximum_length);
+        } else {
+            set_incorrect_prefix_key_error(database);
+        }
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = prefix;
     return MYLITE_OK;
 }
 
@@ -49504,6 +49560,10 @@ static int validate_loaded_add_index_part_attributes(
         if (is_fulltext) {
             return validate_alter_table_add_fulltext_column(database, column);
         }
+        if (plan->is_unique && column_descriptor_is_binary_string_family(column)) {
+            set_unsupported_error(database, "Unique binary prefix indexes are not yet supported");
+            return MYLITE_ERROR;
+        }
 
         return validate_secondary_index_prefix_for_column_descriptor(
             database,
@@ -49607,6 +49667,13 @@ static int validate_secondary_index_prefix_for_column_descriptor(
         rc = varchar_length_for_column(database, column, &column_length);
     } else if (column_descriptor_is_text_family(column)) {
         return text_family_prefix_key_bytes(database, column->logical_type, prefix, out_key_bytes);
+    } else if (column_descriptor_is_binary_string_family(column)) {
+        return binary_string_prefix_key_bytes(
+            database,
+            column->logical_type,
+            prefix,
+            out_key_bytes
+        );
     } else if (column_descriptor_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
@@ -49660,6 +49727,10 @@ static int column_descriptor_index_part_key_bytes(
         return rc;
     }
     if (column_descriptor_is_text_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_binary_blob_family(column)) {
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -49741,6 +49812,15 @@ static int validate_loaded_unique_index_part_list(
     if (parts == NULL || part_count == 0U) {
         set_runtime_error(database, "invalid unique-index key parts");
         return MYLITE_ERROR;
+    }
+    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
+        const struct loaded_index_part *part = &parts[part_index];
+
+        if (part->index_column.has_prefix_length &&
+            column_descriptor_is_binary_string_family(&part->column)) {
+            set_unsupported_error(database, "Unique binary prefix indexes are not yet supported");
+            return MYLITE_ERROR;
+        }
     }
 
     return MYLITE_OK;
@@ -94337,6 +94417,23 @@ static bool planned_column_is_binary_string_family(const struct planned_column *
     return column_descriptor_is_binary_string_family(&descriptor);
 }
 
+static bool planned_column_is_binary_blob_family(const struct planned_column *column) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+
+    snprintf(descriptor.logical_type, sizeof(descriptor.logical_type), "%s", column->logical_type);
+    snprintf(
+        descriptor.physical_type,
+        sizeof(descriptor.physical_type),
+        "%s",
+        column->physical_type
+    );
+    return column_descriptor_is_binary_blob_family(&descriptor);
+}
+
 static bool planned_column_is_bit(const struct planned_column *column) {
     struct mylite_catalog_column_descriptor descriptor = {0};
 
@@ -94576,6 +94673,22 @@ static bool column_descriptor_is_binary_string_family(
         return false;
     }
     return binary_string_type_info_for_logical_type(column->logical_type, &storage) != NULL;
+}
+
+static bool column_descriptor_is_binary_blob_family(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct binary_string_type_info storage = {0};
+    const struct binary_string_type_info *info = NULL;
+
+    if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
+        return false;
+    }
+    if (strcmp(column->physical_type, "BLOB") != 0) {
+        return false;
+    }
+    info = binary_string_type_info_for_logical_type(column->logical_type, &storage);
+    return (info != NULL && info->blob_family) != 0;
 }
 
 static bool column_descriptor_is_bit(const struct mylite_catalog_column_descriptor *column) {
@@ -121328,7 +121441,7 @@ static int append_planned_secondary_key_part_sql(
     if (rc == MYLITE_OK && part->has_prefix_length) {
         rc = dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && part->has_prefix_length) {
+    if (rc == MYLITE_OK && part->has_prefix_length && planned_column_is_string_family(column)) {
         rc = append_string_key_collation_sql(string);
     }
     if (rc == MYLITE_OK && part->sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
@@ -121399,7 +121512,7 @@ static int append_loaded_prefix_key_part_sql(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && column_descriptor_is_string_family(&part->column)) {
         rc = append_string_key_collation_sql(string);
     }
 
@@ -121438,7 +121551,7 @@ static int append_loaded_key_part_parameter_sql(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && column_descriptor_is_string_family(&part->column)) {
         rc = append_string_key_collation_sql(string);
     }
 

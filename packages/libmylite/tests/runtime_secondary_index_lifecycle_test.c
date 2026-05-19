@@ -28,6 +28,13 @@ enum {
     prefix_index_row_column_count = 5,
     prefix_index_expanded_row_count = 8,
     prefix_index_expanded_physical_index_count = 6,
+    binary_prefix_column_row_count = 5,
+    binary_prefix_mutated_field_count = 5,
+    binary_prefix_index_row_count = 4,
+    binary_prefix_expanded_row_count = 6,
+    binary_prefix_expanded_physical_index_count = 6,
+    binary_prefix_mutated_row_count = 5,
+    binary_prefix_mutated_physical_index_count = 11,
     mysql_error_parse = 1064,
     mysql_error_duplicate_column = 1060,
     mysql_error_duplicate_key_name = 1061,
@@ -57,6 +64,7 @@ struct expected_query {
 static int test_secondary_index_metadata_dml_and_persistence(void);
 static int test_secondary_index_diagnostics(void);
 static int test_secondary_index_prefix_key_parts(void);
+static int test_secondary_index_binary_prefix_key_parts(void);
 static int test_secondary_index_independent_handles(void);
 static int create_secondary_index_schema(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -98,6 +106,7 @@ int main(void) {
 
     failures += test_secondary_index_metadata_dml_and_persistence();
     failures += test_secondary_index_prefix_key_parts();
+    failures += test_secondary_index_binary_prefix_key_parts();
     failures += test_secondary_index_diagnostics();
     failures += test_secondary_index_independent_handles();
 
@@ -626,6 +635,214 @@ static int test_secondary_index_prefix_key_parts(void) {
     return failures;
 }
 
+static int test_secondary_index_binary_prefix_key_parts(void) {
+    static const char *const show_columns_rows[] = {
+        "id", "int",           "YES", "",    NULL, "", "b",  "binary(4)", "YES", "MUL", NULL, "",
+        "vb", "varbinary(10)", "YES", "MUL", NULL, "", "bl", "blob",      "YES", "MUL", NULL, "",
+        "tb", "tinyblob",      "YES", "MUL", NULL, "",
+    };
+    static const char *const show_index_rows[] = {
+        "bin_prefix", "1", "k_b",  "1",   "b",   "A",          "0", "2",    NULL,  "YES",
+        "BTREE",      "",  "",     "YES", NULL,  "bin_prefix", "1", "k_vb", "1",   "vb",
+        "A",          "0", "3",    NULL,  "YES", "BTREE",      "",  "",     "YES", NULL,
+        "bin_prefix", "1", "k_bl", "1",   "bl",  "A",          "0", "4",    NULL,  "YES",
+        "BTREE",      "",  "",     "YES", NULL,  "bin_prefix", "1", "k_tb", "1",   "tb",
+        "A",          "0", "255",  NULL,  "YES", "BTREE",      "",  "",     "YES", NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "bin_prefix",
+        "CREATE TABLE `bin_prefix` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `b` binary(4) DEFAULT NULL,\n"
+        "  `vb` varbinary(10) DEFAULT NULL,\n"
+        "  `bl` blob,\n"
+        "  `tb` tinyblob,\n"
+        "  KEY `k_b` (`b`(2)),\n"
+        "  KEY `k_vb` (`vb`(3)),\n"
+        "  KEY `k_bl` (`bl`(4)),\n"
+        "  KEY `k_tb` (`tb`(255))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const statistics_rows[] = {
+        "k_b",
+        "1",
+        "b",
+        "2",
+        "k_bl",
+        "1",
+        "bl",
+        "4",
+        "k_tb",
+        "1",
+        "tb",
+        "255",
+        "k_vb",
+        "1",
+        "vb",
+        "3",
+    };
+    static const char *const expanded_statistics_rows[] = {
+        "k_alt",     "1", "vb", "5", "k_b",  "1", "b",  "2",   "k_bl", "1", "bl", "4",
+        "k_created", "1", "bl", "6", "k_tb", "1", "tb", "255", "k_vb", "1", "vb", "3",
+    };
+    static const char *const mutated_statistics_rows[] = {
+        "k_b", "1",    "b",           "2",  "YES", "k_bl", "1",    "bl", "4",
+        "YES", "k_tb", "1",           "tb", "255", "YES",  "k_vb", "1",  "vb",
+        "3",   "YES",  "renamed_alt", "1",  "vb",  "5",    "NO",
+    };
+    static const char *const clone_prefix_count_rows[] = {"6"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "binary_prefix") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary prefix file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE bin_prefix ("
+        "id INT, b BINARY(4), vb VARBINARY(10), bl BLOB, tb TINYBLOB, "
+        "KEY k_b (b(2)), KEY k_vb (vb(3)), KEY k_bl (bl(4)), KEY k_tb (tb(255)))"
+    );
+    failures += expect_physical_index_count(
+        database,
+        binary_prefix_index_row_count,
+        "physical indexes after CREATE TABLE binary prefix indexes"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM bin_prefix",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = binary_prefix_column_row_count,
+            .context = "SHOW COLUMNS binary prefix key parts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM bin_prefix",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = binary_prefix_index_row_count,
+            .context = "SHOW INDEX binary prefix key parts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE bin_prefix",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "SHOW CREATE binary prefix key parts",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'bin_prefix' ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = 4U,
+            .row_count = binary_prefix_index_row_count,
+            .context = "I_S STATISTICS binary prefix key parts",
+        }
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE bin_prefix ADD KEY k_alt (vb(5))");
+    failures += expect_statement_ok(database, "CREATE INDEX k_created ON bin_prefix (bl(6))");
+    failures += expect_physical_index_count(
+        database,
+        binary_prefix_expanded_physical_index_count,
+        "physical indexes after ALTER and CREATE binary prefix indexes"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'bin_prefix' ORDER BY INDEX_NAME",
+            .values = expanded_statistics_rows,
+            .column_count = 4U,
+            .row_count = binary_prefix_expanded_row_count,
+            .context = "I_S STATISTICS added binary prefix key parts",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone_binary_prefix LIKE bin_prefix");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone_binary_prefix' "
+                   "AND SUB_PART IS NOT NULL",
+            .values = clone_prefix_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE copies binary prefix metadata",
+        }
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE bin_prefix ALTER INDEX k_alt INVISIBLE");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE bin_prefix RENAME INDEX k_alt TO renamed_alt");
+    failures += expect_statement_ok(database, "DROP INDEX k_created ON bin_prefix");
+    failures += expect_physical_index_count(
+        database,
+        binary_prefix_mutated_physical_index_count,
+        "physical indexes after binary prefix visibility rename and drop"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, IS_VISIBLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'bin_prefix' ORDER BY INDEX_NAME",
+            .values = mutated_statistics_rows,
+            .column_count = binary_prefix_mutated_field_count,
+            .row_count = binary_prefix_mutated_row_count,
+            .context = "I_S STATISTICS mutated binary prefix key parts",
+        }
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after binary prefix index lifecycle"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary prefix file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, IS_VISIBLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'bin_prefix' ORDER BY INDEX_NAME",
+            .values = mutated_statistics_rows,
+            .column_count = binary_prefix_mutated_field_count,
+            .row_count = binary_prefix_mutated_row_count,
+            .context = "binary prefix key parts persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_secondary_index_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
@@ -736,6 +953,71 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "CREATE TABLE blob_key (body BLOB, KEY k (body))",
+        (struct expected_sql_error){
+            .code = mysql_error_blob_key_without_length,
+            .sqlstate = "42000",
+            .message_part =
+                "BLOB/TEXT column 'body' used in key specification without a key length",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_prefix_too_long (b BINARY(4), KEY k (b(5)))",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE varbinary_prefix_too_long (v VARBINARY(10), KEY k (v(11)))",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE tinyblob_prefix_too_long (body TINYBLOB, KEY k (body(256)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 255 bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE blob_prefix_too_long (body BLOB, KEY k (body(3073)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 3072 bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE composite_binary_prefix_too_long ("
+        "a BLOB, b BLOB, KEY k (a(2000), b(1073)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 3072 bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unique_binary_prefix (v VARBINARY(10), UNIQUE KEY u (v(3)))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Unique binary prefix indexes are not yet supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "CREATE TABLE duplicate_prefix_part (name VARCHAR(20), KEY k (name(3), name(5)))",
         (struct expected_sql_error){
             .code = mysql_error_duplicate_column,
@@ -774,6 +1056,8 @@ static int test_secondary_index_diagnostics(void) {
 static int test_secondary_index_independent_handles(void) {
     static const char *const first_values[] = {"10"};
     static const char *const second_values[] = {"20"};
+    static const char *const first_prefix[] = {"2"};
+    static const char *const second_prefix[] = {"3"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -795,6 +1079,10 @@ static int test_secondary_index_independent_handles(void) {
     failures += expect_statement_ok(second, "USE app");
     failures += expect_statement_ok(first, "CREATE TABLE t (id INT, v INT, KEY k_v (v))");
     failures += expect_statement_ok(second, "CREATE TABLE t (id INT, v INT, KEY k_v (v))");
+    failures +=
+        expect_statement_ok(first, "CREATE TABLE bin (payload BLOB, KEY k_payload(payload(2)))");
+    failures +=
+        expect_statement_ok(second, "CREATE TABLE bin (payload BLOB, KEY k_payload(payload(3)))");
     failures += expect_dml_ok(first, "INSERT INTO t VALUES (1, 10)", 1);
     failures += expect_dml_ok(second, "INSERT INTO t VALUES (1, 20)", 1);
     failures += expect_query_values(
@@ -815,6 +1103,28 @@ static int test_secondary_index_independent_handles(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "second independent secondary-index table state",
+        }
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT SUB_PART FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'bin'",
+            .values = first_prefix,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "first independent binary prefix metadata",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT SUB_PART FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'bin'",
+            .values = second_prefix,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "second independent binary prefix metadata",
         }
     );
 

@@ -9,11 +9,11 @@
 - [x] Write the independent feature spec with ownership boundaries, conversion
   rules, diagnostics, physical SQLite handling, performance notes, and tests.
 - [x] Add MySQL-runtime expectation script for the feature.
-- [ ] Update compatibility documentation for the exact supported subset.
-- [ ] Implement descriptor-owned decimal and approximate string prefix scanning
+- [x] Update compatibility documentation for the exact supported subset.
+- [x] Implement descriptor-owned decimal and approximate string prefix scanning
   and warning adjustment for row-value `INSERT`, `REPLACE`, admitted
   duplicate-key assignments, and matched single-table `UPDATE`.
-- [ ] Add fast C runtime coverage.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
+- [x] Add fast C runtime coverage.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
 - [ ] Review, commit, push `main`, and continue to the next baseline slice.

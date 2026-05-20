@@ -23,6 +23,7 @@ enum {
     mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_truncated_wrong_value = 1366,
     mysql_error_decimal_scale_too_big = 1425,
     mysql_error_decimal_precision_too_big = 1426,
     mysql_error_decimal_must_be_greater_or_equal_to_d = 1427,
@@ -396,9 +397,9 @@ static int test_decimal_diagnostics(void) {
         database,
         "INSERT INTO values_t VALUES (5, '1.20abc', 1, 1.1, 1.1)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DECIMAL values support only fixed decimal and integer literals",
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect decimal value: '1.20abc' for column 'd' at row 1",
         }
     );
     failures += execute_error(

@@ -3335,6 +3335,20 @@ struct dml_integer_decimal_exponent_scan {
     bool is_negative;
 };
 
+struct dml_numeric_token_scan {
+    size_t token_start;
+    size_t token_end;
+    size_t mantissa_start;
+    size_t mantissa_end;
+    size_t integer_digit_count;
+    size_t digit_count;
+    size_t first_nonzero_digit_index;
+    size_t last_nonzero_digit_index;
+    int64_t exponent;
+    bool has_nonzero_digits;
+    bool is_negative;
+};
+
 enum information_schema_predicate_eval_action {
     INFORMATION_SCHEMA_PREDICATE_VISIT = 0,
     INFORMATION_SCHEMA_PREDICATE_EVALUATE = 1,
@@ -14833,6 +14847,18 @@ static int append_update_integer_string_adjustment_diagnostic(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 );
+static int append_update_decimal_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static int append_update_approximate_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
 static int prepare_executable_update_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -17057,6 +17083,52 @@ static bool dml_integer_decimal_token_has_only_zero_digits(
 static bool dml_numeric_suffix_is_truncated(const char *text, size_t text_length, size_t token_end);
 static bool ascii_decimal_digit(unsigned char byte);
 static bool ascii_numeric_whitespace(unsigned char byte);
+static enum dml_numeric_string_parse_result scan_dml_numeric_string_text(
+    const char *text,
+    size_t text_length,
+    struct dml_numeric_token_scan *out_scan
+);
+static enum dml_numeric_string_parse_result scan_dml_numeric_token(
+    const char *text,
+    size_t text_length,
+    size_t token_start,
+    struct dml_numeric_token_scan *out_scan
+);
+static size_t scan_dml_numeric_optional_sign(
+    const char *text,
+    size_t index,
+    struct dml_numeric_token_scan *scan
+);
+static bool scan_dml_numeric_mantissa(
+    const char *text,
+    size_t text_length,
+    size_t *inout_index,
+    struct dml_numeric_token_scan *scan
+);
+static void scan_dml_numeric_mantissa_digit(
+    struct dml_numeric_token_scan *scan,
+    unsigned char byte,
+    bool saw_dot
+);
+static void scan_dml_numeric_exponent_suffix(
+    const char *text,
+    size_t text_length,
+    size_t index,
+    struct dml_numeric_token_scan *scan
+);
+static int64_t scan_dml_numeric_exponent(
+    const char *text,
+    size_t start,
+    size_t end,
+    bool is_negative
+);
+static bool dml_numeric_scan_has_nonzero_digits(const struct dml_numeric_token_scan *scan);
+static int copy_dml_numeric_scan_digits(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    char **out_digits
+);
 static enum dml_numeric_string_parse_result parse_signed_integer_text(
     const char *text,
     size_t text_length,
@@ -17220,6 +17292,43 @@ static int convert_decimal_string_literal(
     const struct decimal_type_info *info,
     struct planned_value *out_value
 );
+static int convert_decimal_scanned_string_literal(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    bool truncated,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool adjust_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+);
+static int build_decimal_text_from_numeric_scan(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info,
+    char **out_text,
+    bool *out_is_out_of_range
+);
+static int64_t dml_numeric_scan_decimal_position(const struct dml_numeric_token_scan *scan);
+static bool dml_numeric_scan_exceeds_decimal_range(
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info
+);
+static size_t dml_numeric_scan_decimal_text_size(
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info
+);
+static char dml_numeric_scan_virtual_digit(
+    const char *digits,
+    const struct dml_numeric_token_scan *scan,
+    int64_t digit_index
+);
+static bool dml_numeric_scan_has_nonzero_virtual_digit_at_or_after(
+    const struct dml_numeric_token_scan *scan,
+    int64_t digit_index
+);
 static int convert_approximate_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -17233,9 +17342,42 @@ static int convert_approximate_string_literal(
     const struct mylite_sql_ast_node *literal,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     const struct approximate_type_info *info,
     struct planned_value *out_value
 );
+static int convert_approximate_scanned_string_literal(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    bool truncated,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool adjust_errors,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+);
+static int parse_approximate_scanned_value(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    double *out_value,
+    bool *out_is_out_of_range
+);
+static int convert_adjusted_approximate_range_value(
+    struct mylite_db *database,
+    const struct approximate_type_info *info,
+    bool is_negative,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static bool approximate_value_is_out_of_range(
+    double value,
+    const struct approximate_type_info *info
+);
+static double approximate_storage_value(double value, const struct approximate_type_info *info);
+static double approximate_endpoint_value(const struct approximate_type_info *info, bool negative);
 static int convert_date_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -17905,14 +18047,6 @@ static int convert_integer_for_column_with_policy(
     bool ignore_errors,
     int64_t *out_value
 );
-static void split_numeric_string_sign(
-    const char *text,
-    size_t text_length,
-    size_t *out_numeric_start,
-    bool *out_is_negative
-);
-static bool numeric_string_has_ascii_whitespace(const char *text, size_t text_length);
-
 static int plan_select_columns(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
@@ -23012,6 +23146,12 @@ static void set_incorrect_integer_value_error(
     const char *column_name,
     size_t row_number
 );
+static void set_incorrect_decimal_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+);
 static void set_incorrect_date_literal_error(struct mylite_db *database, const char *value_text);
 static void set_incorrect_datetime_literal_error(
     struct mylite_db *database,
@@ -23036,6 +23176,12 @@ static int append_out_of_range_warning(
     size_t row_number
 );
 static int append_incorrect_integer_value_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+);
+static int append_incorrect_decimal_value_warning(
     struct mylite_db *database,
     const char *value_text,
     const char *column_name,
@@ -63722,6 +63868,22 @@ static int append_update_assignment_adjustment_warning(
                 row_number
             );
         }
+        if (column_descriptor_is_decimal(column)) {
+            return append_update_decimal_string_adjustment_diagnostic(
+                database,
+                value_node,
+                column,
+                row_number
+            );
+        }
+        if (column_descriptor_is_approximate(column)) {
+            return append_update_approximate_string_adjustment_diagnostic(
+                database,
+                value_node,
+                column,
+                row_number
+            );
+        }
         return append_update_string_truncation_diagnostic(database, value_node, column, row_number);
     }
     if (session_sql_mode_is_strict(database)) {
@@ -64457,6 +64619,89 @@ static int reject_unsupported_recursive_foreign_key_action(
         rc = MYLITE_ERROR;
     }
     loaded_foreign_key_infos_deinit(&child_parent_foreign_keys, &child_parent_foreign_key_count);
+    return rc;
+}
+
+static int append_update_decimal_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    struct decimal_type_info info = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (session_sql_mode_is_strict(database)) {
+        return MYLITE_OK;
+    }
+    rc = decimal_type_info_for_logical_type(column->logical_type, &info);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "DECIMAL values require baseline decimal descriptors");
+        return MYLITE_ERROR;
+    }
+    rc = convert_decimal_string_literal(
+        database,
+        value_node,
+        column,
+        row_number,
+        false,
+        &info,
+        &value
+    );
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int append_update_approximate_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    struct approximate_type_info info = {
+        .type_class = APPROXIMATE_TYPE_DOUBLE,
+        .is_unsigned = false,
+    };
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (session_sql_mode_is_strict(database)) {
+        return MYLITE_OK;
+    }
+    rc = approximate_type_info_for_logical_type(column->logical_type, &info);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "FLOAT and DOUBLE values require baseline descriptors");
+        return MYLITE_ERROR;
+    }
+    rc = convert_approximate_string_literal(
+        database,
+        value_node,
+        column,
+        row_number,
+        false,
+        &info,
+        &value
+    );
+    planned_value_deinit(&value);
     return rc;
 }
 
@@ -81400,6 +81645,10 @@ static int format_double_text(
         if (written < 0 || (size_t)written >= sizeof(candidate)) {
             set_double_format_error(database, function_name);
             return MYLITE_ERROR;
+        }
+        if (fabs(value) >= 1.0 && fabs(value) < double_scientific_integer_threshold &&
+            (strchr(candidate, 'e') != NULL || strchr(candidate, 'E') != NULL)) {
+            continue;
         }
         if (parse_c_locale_double(candidate, &end, &parsed) == MYLITE_OK && end != candidate &&
             end != NULL && *end == '\0' && parsed == value) {
@@ -102891,6 +103140,228 @@ static bool ascii_numeric_whitespace(unsigned char byte) {
     return (byte == ' ' || (byte >= '\t' && byte <= '\r')) != 0;
 }
 
+static enum dml_numeric_string_parse_result scan_dml_numeric_string_text(
+    const char *text,
+    size_t text_length,
+    struct dml_numeric_token_scan *out_scan
+) {
+    size_t token_start = 0U;
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+
+    if (text == NULL || out_scan == NULL || text_length == 0U) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+    while (token_start < text_length &&
+           ascii_numeric_whitespace((unsigned char)text[token_start])) {
+        ++token_start;
+    }
+    if (token_start == text_length) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+
+    parse_result = scan_dml_numeric_token(text, text_length, token_start, out_scan);
+    if (parse_result != DML_NUMERIC_STRING_PARSE_OK) {
+        return parse_result;
+    }
+    if (dml_numeric_suffix_is_truncated(text, text_length, out_scan->token_end)) {
+        return DML_NUMERIC_STRING_PARSE_TRUNCATED;
+    }
+    return DML_NUMERIC_STRING_PARSE_OK;
+}
+
+static enum dml_numeric_string_parse_result scan_dml_numeric_token(
+    const char *text,
+    size_t text_length,
+    size_t token_start,
+    struct dml_numeric_token_scan *out_scan
+) {
+    struct dml_numeric_token_scan scan = {0};
+    size_t index = token_start;
+
+    if (text == NULL || out_scan == NULL || token_start >= text_length) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+    scan.token_start = token_start;
+    index = scan_dml_numeric_optional_sign(text, index, &scan);
+    scan.mantissa_start = index;
+    if (!scan_dml_numeric_mantissa(text, text_length, &index, &scan)) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+    scan.mantissa_end = index;
+    scan.token_end = index;
+    scan_dml_numeric_exponent_suffix(text, text_length, index, &scan);
+
+    *out_scan = scan;
+    return DML_NUMERIC_STRING_PARSE_OK;
+}
+
+static size_t scan_dml_numeric_optional_sign(
+    const char *text,
+    size_t index,
+    struct dml_numeric_token_scan *scan
+) {
+    if (text[index] == '+' || text[index] == '-') {
+        scan->is_negative = text[index] == '-';
+        return index + 1U;
+    }
+    return index;
+}
+
+static bool scan_dml_numeric_mantissa(
+    const char *text,
+    size_t text_length,
+    size_t *inout_index,
+    struct dml_numeric_token_scan *scan
+) {
+    size_t index = inout_index == NULL ? 0U : *inout_index;
+    bool saw_dot = false;
+    bool saw_digit = false;
+
+    if (text == NULL || inout_index == NULL || scan == NULL) {
+        return false;
+    }
+    while (index < text_length) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (ascii_decimal_digit(byte)) {
+            scan_dml_numeric_mantissa_digit(scan, byte, saw_dot);
+            saw_digit = true;
+            ++index;
+        } else if (!saw_dot && byte == '.') {
+            saw_dot = true;
+            ++index;
+        } else {
+            break;
+        }
+    }
+    *inout_index = index;
+    return saw_digit;
+}
+
+static void scan_dml_numeric_mantissa_digit(
+    struct dml_numeric_token_scan *scan,
+    unsigned char byte,
+    bool saw_dot
+) {
+    if (scan == NULL) {
+        return;
+    }
+    if (!saw_dot) {
+        ++scan->integer_digit_count;
+    }
+    if (byte != '0') {
+        if (!scan->has_nonzero_digits) {
+            scan->first_nonzero_digit_index = scan->digit_count;
+        }
+        scan->last_nonzero_digit_index = scan->digit_count;
+        scan->has_nonzero_digits = true;
+    }
+    ++scan->digit_count;
+}
+
+static void scan_dml_numeric_exponent_suffix(
+    const char *text,
+    size_t text_length,
+    size_t index,
+    struct dml_numeric_token_scan *scan
+) {
+    size_t exponent_start = 0U;
+    bool exponent_is_negative = false;
+
+    if (text == NULL || scan == NULL || index >= text_length ||
+        (text[index] != 'e' && text[index] != 'E')) {
+        return;
+    }
+    ++index;
+    if (index < text_length && (text[index] == '+' || text[index] == '-')) {
+        exponent_is_negative = text[index] == '-';
+        ++index;
+    }
+    exponent_start = index;
+    while (index < text_length && ascii_decimal_digit((unsigned char)text[index])) {
+        ++index;
+    }
+    if (index > exponent_start) {
+        scan->exponent =
+            scan_dml_numeric_exponent(text, exponent_start, index, exponent_is_negative);
+        scan->token_end = index;
+    }
+}
+
+static int64_t scan_dml_numeric_exponent(
+    const char *text,
+    size_t start,
+    size_t end,
+    bool is_negative
+) {
+    int64_t exponent = 0;
+
+    if (text == NULL || end < start) {
+        return 0;
+    }
+    for (size_t index = start; index < end; ++index) {
+        int digit = text[index] - '0';
+
+        if (exponent > (dml_integer_decimal_shift_limit - digit) / decimal_base) {
+            if (is_negative) {
+                return -(int64_t)dml_integer_decimal_shift_limit;
+            }
+            return (int64_t)dml_integer_decimal_shift_limit;
+        }
+        exponent = (exponent * decimal_base) + digit;
+    }
+    if (is_negative) {
+        return -exponent;
+    }
+    return exponent;
+}
+
+static bool dml_numeric_scan_has_nonzero_digits(const struct dml_numeric_token_scan *scan) {
+    return (scan != NULL && scan->has_nonzero_digits) != 0;
+}
+
+static int copy_dml_numeric_scan_digits(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    char **out_digits
+) {
+    char *digits = NULL;
+    size_t digit_index = 0U;
+
+    if (text == NULL || scan == NULL || out_digits == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_digits = NULL;
+    if (scan->digit_count > SIZE_MAX - 1U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    digits = calloc(scan->digit_count + 1U, sizeof(*digits));
+    if (digits == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = scan->mantissa_start; index < scan->mantissa_end; ++index) {
+        if (ascii_decimal_digit((unsigned char)text[index])) {
+            if (digit_index >= scan->digit_count) {
+                free(digits);
+                set_runtime_error(database, "invalid numeric scan digit count");
+                return MYLITE_ERROR;
+            }
+            digits[digit_index] = text[index];
+            ++digit_index;
+        }
+    }
+    if (digit_index != scan->digit_count) {
+        free(digits);
+        set_runtime_error(database, "invalid numeric scan digit count");
+        return MYLITE_ERROR;
+    }
+    *out_digits = digits;
+    return MYLITE_OK;
+}
+
 static enum dml_numeric_string_parse_result parse_signed_integer_text(
     const char *text,
     size_t text_length,
@@ -104436,34 +104907,268 @@ static int convert_decimal_string_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    size_t numeric_start = 0U;
-    bool is_negative = false;
+    struct dml_numeric_token_scan scan = {0};
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
-        "DECIMAL values support only numeric, boolean, NULL, DEFAULT, and exact quoted fixed "
-        "decimal string values",
+        "DECIMAL values support only numeric, boolean, NULL, DEFAULT, and quoted numeric string "
+        "values",
         "invalid DECIMAL string literal",
         &text,
         &text_length
     );
 
-    if (rc == MYLITE_OK) {
-        split_numeric_string_sign(text, text_length, &numeric_start, &is_negative);
-        rc = canonicalize_decimal_text(
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    parse_result = scan_dml_numeric_string_text(text, text_length, &scan);
+    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+        if (!adjust_errors) {
+            set_incorrect_decimal_value_error(database, text, column->name, row_number);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = append_incorrect_decimal_value_warning(database, text, column->name, row_number);
+            if (rc == MYLITE_OK) {
+                rc = build_decimal_zero_value(database, info, out_value);
+            }
+        }
+    } else if (parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED && !adjust_errors) {
+        set_incorrect_decimal_value_error(database, text, column->name, row_number);
+        rc = MYLITE_ERROR;
+    } else {
+        rc = convert_decimal_scanned_string_literal(
             database,
-            text + numeric_start,
-            text_length - numeric_start,
-            is_negative,
-            info,
-            column->name,
+            text,
+            &scan,
+            parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED,
+            column,
             row_number,
-            ignore_errors,
+            adjust_errors,
+            info,
             out_value
         );
     }
     free(text);
     return rc;
+}
+
+static int convert_decimal_scanned_string_literal(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    bool truncated,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool adjust_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+) {
+    char *decimal_text = NULL;
+    bool is_out_of_range = false;
+    bool value_done = false;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || scan == NULL || column == NULL || info == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (truncated) {
+        rc = append_data_truncated_note(database, column->name, row_number);
+    }
+    if (rc == MYLITE_OK && !dml_numeric_scan_has_nonzero_digits(scan)) {
+        rc = build_decimal_zero_value(database, info, out_value);
+        value_done = rc == MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && !value_done) {
+        rc = build_decimal_text_from_numeric_scan(
+            database,
+            text,
+            scan,
+            info,
+            &decimal_text,
+            &is_out_of_range
+        );
+        if (rc == MYLITE_OK && is_out_of_range) {
+            rc = handle_decimal_out_of_range(
+                database,
+                info,
+                column->name,
+                row_number,
+                scan->is_negative,
+                adjust_errors,
+                out_value
+            );
+        } else if (rc == MYLITE_OK) {
+            rc = canonicalize_decimal_text(
+                database,
+                decimal_text,
+                strlen(decimal_text),
+                scan->is_negative,
+                info,
+                column->name,
+                row_number,
+                adjust_errors,
+                out_value
+            );
+        }
+    }
+    free(decimal_text);
+    return rc;
+}
+
+static int build_decimal_text_from_numeric_scan(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info,
+    char **out_text,
+    bool *out_is_out_of_range
+) {
+    int64_t decimal_position = 0;
+    int64_t fraction_start_digit = 0;
+    size_t output_size = 0U;
+    size_t write_index = 0U;
+    uint64_t fraction_digit_count = 0U;
+    char *digits = NULL;
+    char *output = NULL;
+
+    if (text == NULL || scan == NULL || info == NULL || out_text == NULL ||
+        out_is_out_of_range == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_out_of_range = false;
+    if (dml_numeric_scan_exceeds_decimal_range(scan, info)) {
+        *out_is_out_of_range = true;
+        return MYLITE_OK;
+    }
+
+    decimal_position = dml_numeric_scan_decimal_position(scan);
+    {
+        int rc = copy_dml_numeric_scan_digits(database, text, scan, &digits);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    output_size = dml_numeric_scan_decimal_text_size(scan, info);
+    output = calloc(output_size + 1U, sizeof(*output));
+    if (output == NULL) {
+        free(digits);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (decimal_position <= (int64_t)scan->first_nonzero_digit_index) {
+        output[write_index++] = '0';
+    } else {
+        for (int64_t digit_index = (int64_t)scan->first_nonzero_digit_index;
+             digit_index < decimal_position;
+             ++digit_index) {
+            output[write_index++] = dml_numeric_scan_virtual_digit(digits, scan, digit_index);
+        }
+    }
+
+    fraction_digit_count = info->scale + 1U;
+    if (fraction_digit_count > 0U) {
+        output[write_index++] = '.';
+    }
+    fraction_start_digit = decimal_position;
+    for (uint64_t index = 0U; index < fraction_digit_count; ++index) {
+        int64_t digit_index = fraction_start_digit + (int64_t)index;
+        char digit = dml_numeric_scan_virtual_digit(digits, scan, digit_index);
+
+        if (index == info->scale && digit == '0' &&
+            dml_numeric_scan_has_nonzero_virtual_digit_at_or_after(scan, digit_index + 1)) {
+            digit = '1';
+        }
+        output[write_index++] = digit;
+    }
+    output[write_index] = '\0';
+    free(digits);
+    *out_text = output;
+    return MYLITE_OK;
+}
+
+static int64_t dml_numeric_scan_decimal_position(const struct dml_numeric_token_scan *scan) {
+    int64_t integer_digits = 0;
+
+    if (scan == NULL) {
+        return 0;
+    }
+    integer_digits = scan->integer_digit_count > (size_t)dml_integer_decimal_shift_limit
+                         ? dml_integer_decimal_shift_limit
+                         : (int64_t)scan->integer_digit_count;
+    if (scan->exponent > dml_integer_decimal_shift_limit - integer_digits) {
+        return dml_integer_decimal_shift_limit;
+    }
+    if (scan->exponent < -dml_integer_decimal_shift_limit + integer_digits) {
+        return -dml_integer_decimal_shift_limit;
+    }
+    return integer_digits + scan->exponent;
+}
+
+static bool dml_numeric_scan_exceeds_decimal_range(
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info
+) {
+    int64_t decimal_position = dml_numeric_scan_decimal_position(scan);
+    int64_t integer_digit_count = 0;
+    uint64_t integer_capacity = info == NULL ? 0U : info->precision - info->scale;
+
+    if (scan == NULL || info == NULL || !scan->has_nonzero_digits) {
+        return false;
+    }
+    if (info->is_unsigned && scan->is_negative) {
+        return true;
+    }
+    if (decimal_position <= (int64_t)scan->first_nonzero_digit_index) {
+        return false;
+    }
+    integer_digit_count = decimal_position - (int64_t)scan->first_nonzero_digit_index;
+    return integer_digit_count > (int64_t)integer_capacity;
+}
+
+static size_t dml_numeric_scan_decimal_text_size(
+    const struct dml_numeric_token_scan *scan,
+    const struct decimal_type_info *info
+) {
+    int64_t decimal_position = dml_numeric_scan_decimal_position(scan);
+    size_t integer_output_digits =
+        scan == NULL || decimal_position <= (int64_t)scan->first_nonzero_digit_index
+            ? 1U
+            : (size_t)(decimal_position - (int64_t)scan->first_nonzero_digit_index);
+    size_t fraction_output_digits = info == NULL ? 0U : (size_t)info->scale + 1U;
+
+    return integer_output_digits + (fraction_output_digits == 0U ? 0U : 1U) +
+           fraction_output_digits;
+}
+
+static char dml_numeric_scan_virtual_digit(
+    const char *digits,
+    const struct dml_numeric_token_scan *scan,
+    int64_t digit_index
+) {
+    if (digit_index < 0 || digits == NULL || scan == NULL ||
+        (size_t)digit_index >= scan->digit_count) {
+        return '0';
+    }
+    return digits[digit_index];
+}
+
+static bool dml_numeric_scan_has_nonzero_virtual_digit_at_or_after(
+    const struct dml_numeric_token_scan *scan,
+    int64_t digit_index
+) {
+    if (scan == NULL || !scan->has_nonzero_digits) {
+        return false;
+    }
+    if (digit_index <= 0) {
+        return true;
+    }
+    return (uint64_t)digit_index <= scan->last_nonzero_digit_index;
 }
 
 static int convert_approximate_literal(
@@ -104487,7 +105192,6 @@ static int convert_approximate_literal(
     double value = 0.0;
     int rc = approximate_type_info_for_logical_type(column->logical_type, &info);
 
-    (void)ignore_errors;
     if (rc != MYLITE_OK) {
         set_unsupported_error(database, "FLOAT and DOUBLE values require baseline descriptors");
         return MYLITE_ERROR;
@@ -104546,6 +105250,7 @@ static int convert_approximate_literal(
             literal,
             column,
             row_number,
+            ignore_errors,
             &info,
             out_value
         );
@@ -104572,47 +105277,213 @@ static int convert_approximate_string_literal(
     const struct mylite_sql_ast_node *literal,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool ignore_errors,
     const struct approximate_type_info *info,
     struct planned_value *out_value
 ) {
     char *text = NULL;
     size_t text_length = 0U;
-    double value = 0.0;
+    struct dml_numeric_token_scan scan = {0};
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
     int rc = decode_sql_string_literal(
         database,
         literal,
-        "FLOAT and DOUBLE values support only numeric, boolean, NULL, DEFAULT, and exact quoted "
+        "FLOAT and DOUBLE values support only numeric, boolean, NULL, DEFAULT, and quoted "
         "numeric string values",
         "invalid FLOAT or DOUBLE string literal",
         &text,
         &text_length
     );
 
-    if (rc == MYLITE_OK && numeric_string_has_ascii_whitespace(text, text_length)) {
-        set_unsupported_error(
-            database,
-            "FLOAT and DOUBLE values support only exact quoted numeric strings without "
-            "whitespace"
-        );
-        rc = MYLITE_ERROR;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if (rc == MYLITE_OK) {
-        rc = parse_approximate_literal_value(
+
+    parse_result = scan_dml_numeric_string_text(text, text_length, &scan);
+    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+        if (!adjust_errors) {
+            set_data_truncated_error(database, column->name, row_number);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = append_data_truncated_warning(database, column->name, row_number);
+            if (rc == MYLITE_OK) {
+                rc = assign_approximate_value(0.0, out_value);
+            }
+        }
+    } else {
+        rc = convert_approximate_scanned_string_literal(
             database,
             text,
-            text_length,
-            false,
-            info,
-            column->name,
+            &scan,
+            parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED,
+            column,
             row_number,
-            &value
+            adjust_errors,
+            info,
+            out_value
         );
-    }
-    if (rc == MYLITE_OK) {
-        rc = assign_approximate_value(value, out_value);
     }
     free(text);
     return rc;
+}
+
+static int convert_approximate_scanned_string_literal(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    bool truncated,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool adjust_errors,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+) {
+    bool token_is_out_of_range = false;
+    bool value_is_out_of_range = false;
+    double value = 0.0;
+    int rc = parse_approximate_scanned_value(database, text, scan, &value, &token_is_out_of_range);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (token_is_out_of_range) {
+        if (!adjust_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return convert_adjusted_approximate_range_value(
+            database,
+            info,
+            scan->is_negative,
+            column->name,
+            row_number,
+            out_value
+        );
+    }
+
+    value_is_out_of_range = approximate_value_is_out_of_range(value, info);
+    if (truncated) {
+        if (!adjust_errors) {
+            set_data_truncated_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        rc = append_data_truncated_warning(database, column->name, row_number);
+    }
+    if (rc == MYLITE_OK && value_is_out_of_range) {
+        if (!adjust_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        rc = convert_adjusted_approximate_range_value(
+            database,
+            info,
+            value < 0.0,
+            column->name,
+            row_number,
+            out_value
+        );
+    } else if (rc == MYLITE_OK) {
+        rc = assign_approximate_value(approximate_storage_value(value, info), out_value);
+    }
+    return rc;
+}
+
+static int parse_approximate_scanned_value(
+    struct mylite_db *database,
+    const char *text,
+    const struct dml_numeric_token_scan *scan,
+    double *out_value,
+    bool *out_is_out_of_range
+) {
+    size_t token_length = 0U;
+    char *token = NULL;
+    char *end = NULL;
+    double parsed = 0.0;
+    int rc = MYLITE_OK;
+
+    if (text == NULL || scan == NULL || out_value == NULL || out_is_out_of_range == NULL ||
+        scan->token_end <= scan->token_start) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0.0;
+    *out_is_out_of_range = false;
+    token_length = scan->token_end - scan->token_start;
+    token = calloc(token_length + 1U, sizeof(*token));
+    if (token == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(token, text + scan->token_start, token_length);
+    token[token_length] = '\0';
+
+    rc = parse_c_locale_double(token, &end, &parsed);
+    if (rc == MYLITE_OK && (end == token || end == NULL || *end != '\0')) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !isfinite(parsed)) {
+        *out_is_out_of_range = true;
+    } else if (rc == MYLITE_OK) {
+        *out_value = parsed == 0.0 ? 0.0 : parsed;
+    }
+    free(token);
+    return rc;
+}
+
+static int convert_adjusted_approximate_range_value(
+    struct mylite_db *database,
+    const struct approximate_type_info *info,
+    bool is_negative,
+    const char *column_name,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    int rc = append_out_of_range_warning(database, column_name, row_number);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (info->is_unsigned && is_negative) {
+        return assign_approximate_value(0.0, out_value);
+    }
+    return assign_approximate_value(approximate_endpoint_value(info, is_negative), out_value);
+}
+
+static bool approximate_value_is_out_of_range(
+    double value,
+    const struct approximate_type_info *info
+) {
+    if (info == NULL || !isfinite(value)) {
+        return true;
+    }
+    if (info->is_unsigned && value < 0.0) {
+        return true;
+    }
+    if (info->type_class == APPROXIMATE_TYPE_FLOAT) {
+        float single = (float)value;
+
+        return isfinite(single) == 0;
+    }
+    return false;
+}
+
+static double approximate_storage_value(double value, const struct approximate_type_info *info) {
+    if (info != NULL && info->type_class == APPROXIMATE_TYPE_FLOAT) {
+        float single = (float)value;
+
+        return single == 0.0F ? 0.0 : (double)single;
+    }
+    return value == 0.0 ? 0.0 : value;
+}
+
+static double approximate_endpoint_value(const struct approximate_type_info *info, bool negative) {
+    double value =
+        info != NULL && info->type_class == APPROXIMATE_TYPE_FLOAT ? (double)FLT_MAX : DBL_MAX;
+
+    if (negative) {
+        return -value;
+    }
+    return value;
 }
 
 static int parse_approximate_literal_value(
@@ -104903,18 +105774,32 @@ static int build_decimal_digit_buffer(
     const struct decimal_literal_parts *parts,
     struct decimal_digit_buffer *out_buffer
 ) {
+    size_t digit_capacity = 0U;
     size_t digit_count = 0U;
+    size_t integer_digit_count = 0U;
+    size_t scale = 0U;
 
     if (text == NULL || info == NULL || parts == NULL || out_buffer == NULL) {
         return MYLITE_MISUSE;
     }
+    if (parts->integer_digit_start > parts->integer_end ||
+        parts->integer_end > parts->fraction_start || parts->fraction_start > parts->fraction_end ||
+        info->scale > (uint64_t)(SIZE_MAX - 2U)) {
+        set_runtime_error(database, "invalid DECIMAL digit buffer bounds");
+        return MYLITE_ERROR;
+    }
+    integer_digit_count = parts->integer_end - parts->integer_digit_start;
+    scale = (size_t)info->scale;
+    if (integer_digit_count > SIZE_MAX - scale - 2U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    digit_capacity = integer_digit_count + scale + 2U;
 
     *out_buffer = (struct decimal_digit_buffer){
-        .digits =
-            malloc((parts->fraction_end - parts->integer_digit_start) + (size_t)info->scale + 2U),
+        .digits = malloc(digit_capacity),
         .digit_count = 0U,
-        .digit_capacity =
-            (parts->fraction_end - parts->integer_digit_start) + (size_t)info->scale + 2U,
+        .digit_capacity = digit_capacity,
         .discarded_nonzero = false,
     };
     if (out_buffer->digits == NULL) {
@@ -104923,12 +105808,20 @@ static int build_decimal_digit_buffer(
     }
 
     for (size_t index = parts->integer_digit_start; index < parts->integer_end; ++index) {
+        if (digit_count >= out_buffer->digit_capacity) {
+            set_runtime_error(database, "DECIMAL digit buffer overflow");
+            return MYLITE_ERROR;
+        }
         out_buffer->digits[digit_count] = text[index];
         ++digit_count;
     }
-    for (uint64_t scale_index = 0U; scale_index < info->scale; ++scale_index) {
-        size_t fraction_index = parts->fraction_start + (size_t)scale_index;
+    for (size_t scale_index = 0U; scale_index < scale; ++scale_index) {
+        size_t fraction_index = parts->fraction_start + scale_index;
 
+        if (digit_count >= out_buffer->digit_capacity) {
+            set_runtime_error(database, "DECIMAL digit buffer overflow");
+            return MYLITE_ERROR;
+        }
         out_buffer->digits[digit_count] =
             fraction_index < parts->fraction_end ? text[fraction_index] : '0';
         ++digit_count;
@@ -106736,41 +107629,6 @@ static int convert_integer_for_column_with_policy(
     *out_value = (int64_t)magnitude;
 
     return MYLITE_OK;
-}
-
-static void split_numeric_string_sign(
-    const char *text,
-    size_t text_length,
-    size_t *out_numeric_start,
-    bool *out_is_negative
-) {
-    if (out_numeric_start != NULL) {
-        *out_numeric_start = 0U;
-    }
-    if (out_is_negative != NULL) {
-        *out_is_negative = false;
-    }
-    if (text == NULL || text_length == 0U || out_numeric_start == NULL || out_is_negative == NULL) {
-        return;
-    }
-    if (text[0] == '+' || text[0] == '-') {
-        *out_numeric_start = 1U;
-        *out_is_negative = text[0] == '-';
-    }
-}
-
-static bool numeric_string_has_ascii_whitespace(const char *text, size_t text_length) {
-    if (text == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < text_length; ++index) {
-        unsigned char byte = (unsigned char)text[index];
-
-        if (byte == ' ' || (byte >= '\t' && byte <= '\r')) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static int plan_row_scalar_select_items(
@@ -141861,6 +142719,33 @@ static void set_incorrect_integer_value_error(
     );
 }
 
+static void set_incorrect_decimal_value_error(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect decimal value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_truncated_wrong_value_for_field,
+        "HY000",
+        message
+    );
+}
+
 static int append_incorrect_integer_value_warning(
     struct mylite_db *database,
     const char *value_text,
@@ -141872,6 +142757,38 @@ static int append_incorrect_integer_value_warning(
         message,
         sizeof(message),
         "Incorrect integer value: '%s' for column '%s' at row %zu",
+        value_text,
+        column_name,
+        row_number
+    );
+    int rc = MYLITE_OK;
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_error_truncated_wrong_value_for_field,
+        "HY000",
+        message
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_incorrect_decimal_value_warning(
+    struct mylite_db *database,
+    const char *value_text,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect decimal value: '%s' for column '%s' at row %zu",
         value_text,
         column_name,
         row_number

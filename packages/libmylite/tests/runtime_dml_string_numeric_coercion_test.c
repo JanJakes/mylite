@@ -19,6 +19,8 @@ enum {
     numeric_update_column_count = 5,
     numeric_boundary_column_count = 4,
     numeric_boundary_row_count = 8,
+    numeric_decimal_approx_range_warning_count = 5,
+    numeric_decimal_approx_update_warning_count = 6,
     mysql_error_data_truncated = 1265,
     mysql_error_data_out_of_range = 1264,
     mysql_error_parse = 1064,
@@ -47,6 +49,7 @@ struct expected_query {
 static int test_strict_quoted_numeric_dml_and_persistence(void);
 static int test_insert_ignore_clipping_and_diagnostics(void);
 static int test_integer_string_prefix_scanning_and_adjustment(void);
+static int test_decimal_approx_string_prefix_scanning_and_adjustment(void);
 static int test_independent_handles(void);
 static int seed_schema(mylite_db *database);
 static int create_numeric_table(mylite_db *database);
@@ -95,6 +98,7 @@ int main(void) {
     failures += test_strict_quoted_numeric_dml_and_persistence();
     failures += test_insert_ignore_clipping_and_diagnostics();
     failures += test_integer_string_prefix_scanning_and_adjustment();
+    failures += test_decimal_approx_string_prefix_scanning_and_adjustment();
     failures += test_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -117,12 +121,12 @@ static int test_strict_quoted_numeric_dml_and_persistence(void) {
         "3.5",
     };
     static const char *const updated_row[] = {"1", "-10", "20", "10.00", "-25"};
-    static const char *const duplicate_row[] = {"1", "42", "3.46", "4e01"};
+    static const char *const duplicate_row[] = {"1", "42", "3.46", "40"};
     static const char *const replace_rows[] = {
         "1",
         "42",
         "3.46",
-        "4e01",
+        "40",
         "2",
         "5",
         "1.25",
@@ -132,7 +136,7 @@ static int test_strict_quoted_numeric_dml_and_persistence(void) {
         "1",
         "42",
         "3.46",
-        "4e01",
+        "40",
         "2",
         "5",
         "1.25",
@@ -158,7 +162,7 @@ static int test_strict_quoted_numeric_dml_and_persistence(void) {
         database,
         "INSERT INTO nums VALUES "
         "(1, '123', '4294967295', '-9223372036854775808', '9223372036854775807', "
-        "'12.345', '1.25e2', '3.5')",
+        "'1.2345e1', '1.25e2', '3.5')",
         (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
     failures += expect_query_values(
@@ -184,7 +188,7 @@ static int test_strict_quoted_numeric_dml_and_persistence(void) {
 
     failures += expect_dml_result(
         database,
-        "UPDATE nums SET i = '-10', u = '+20', d = '9.999', f = '-2.5e1' WHERE id = 1",
+        "UPDATE nums SET i = '-10', u = '+20', d = '9.999e0', f = '-2.5e1' WHERE id = 1",
         (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
     );
     failures += expect_query_values(
@@ -271,6 +275,7 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
         "1264",
         "Out of range value for column 'd' at row 1",
     };
+    static const char *const strict_approximate_whitespace_row[] = {"2", "1"};
     static const char *const clipped_row[] = {"3", "2147483647", "0", "999.99"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -297,13 +302,19 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
             .message_part = "Out of range value for column 'i' at row 1",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_result(
         database,
         "INSERT INTO nums(id, f) VALUES (2, ' 1')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "without whitespace",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, f FROM nums WHERE id = 2",
+            .values = strict_approximate_whitespace_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "strict approximate whitespace row",
         }
     );
 
@@ -332,6 +343,313 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
             .row_count = 1U,
             .context = "INSERT IGNORE clipped quoted numeric row",
         }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_decimal_approx_string_prefix_scanning_and_adjustment(void) {
+    static const char *const strict_rows[] = {
+        "50",
+        "12.30",
+        "100",
+        "-2.5",
+        "51",
+        "100.00",
+        "100",
+        "100",
+        "52",
+        "0.50",
+        "0.5",
+        "0.5",
+        "53",
+        "100.00",
+        "100",
+        "100",
+    };
+    static const char *const trailing_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'd' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'f' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'fl' at row 1",
+    };
+    static const char *const trailing_row[] = {"60", "12.30", "100", "3.5"};
+    static const char *const invalid_warnings[] = {
+        "Warning",
+        "1366",
+        "Incorrect decimal value: 'abc123' for column 'd' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'f' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'fl' at row 1",
+    };
+    static const char *const invalid_row[] = {"61", "0.00", "0", "0"};
+    static const char *const range_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'd' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'd' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'f' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'fl' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'fl' at row 1",
+    };
+    static const char *const range_row[] = {
+        "62",
+        "999.99",
+        "1.7976931348623157e308",
+        "3.40282e38",
+    };
+    static const char *const update_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'd' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'f' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'fl' at row 1",
+        "Note",
+        "1265",
+        "Data truncated for column 'd' at row 2",
+        "Warning",
+        "1265",
+        "Data truncated for column 'f' at row 2",
+        "Warning",
+        "1265",
+        "Data truncated for column 'fl' at row 2",
+    };
+    static const char *const updated_rows[] = {
+        "70",
+        "7.89",
+        "80",
+        "9.5",
+        "71",
+        "7.89",
+        "80",
+        "9.5",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open decimal prefix db");
+    failures += seed_schema(database);
+    failures += create_numeric_table(database);
+
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, d, f, fl) VALUES "
+        "(50, ' 12.30 ', ' 1e2 ', ' -2.5 '), "
+        "(51, '1e2', '1e2', '1e2'), "
+        "(52, '.5', '.5', '.5'), "
+        "(53, '1.e2', '1.e2', '1.e2')",
+        (struct expected_dml_result){.affected_rows = 4, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id BETWEEN 50 AND 53 ORDER BY id",
+            .values = strict_rows,
+            .column_count = 4U,
+            .row_count = 4U,
+            .context = "strict decimal approximate prefix rows",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, d) VALUES (54, '12.3abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect decimal value: '12.3abc' for column 'd' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, d) VALUES (54, '1e')",
+        (struct expected_sql_error){
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect decimal value: '1e' for column 'd' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, f) VALUES (54, '1e2abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'f' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, f) VALUES (54, 'abc123')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'f' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, f) VALUES (54, '1e309')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'f' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, fl) VALUES (54, '1e39')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'fl' at row 1",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nums(id, d, f, fl) VALUES "
+        "(60, '12.3abc', '1e2abc', '3.5abc')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = trailing_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "INSERT IGNORE decimal approximate trailing warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id = 60",
+            .values = trailing_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "INSERT IGNORE decimal approximate trailing row",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nums(id, d, f, fl) VALUES "
+        "(61, 'abc123', 'abc123', 'abc123')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = invalid_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "INSERT IGNORE decimal approximate invalid warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id = 61",
+            .values = invalid_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "INSERT IGNORE decimal approximate invalid row",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nums(id, d, f, fl) VALUES "
+        "(62, '9999.99abc', '1e309abc', '1e39abc')",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = numeric_decimal_approx_range_warning_count,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = range_warnings,
+            .column_count = 3U,
+            .row_count = numeric_decimal_approx_range_warning_count,
+            .context = "INSERT IGNORE decimal approximate range warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id = 62",
+            .values = range_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "INSERT IGNORE decimal approximate range row",
+        }
+    );
+
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, d, f, fl) VALUES (70, 0, 0, 0), (71, 0, 0, 0)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET d = '7.89abc', f = '8e1abc', fl = '9.5abc' "
+        "WHERE id IN (70, 71)",
+        (struct expected_dml_result){
+            .affected_rows = 2,
+            .warning_count = numeric_decimal_approx_update_warning_count,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = update_warnings,
+            .column_count = 3U,
+            .row_count = numeric_decimal_approx_update_warning_count,
+            .context = "non-strict UPDATE decimal approximate warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, f, fl FROM nums WHERE id IN (70, 71) ORDER BY id",
+            .values = updated_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "non-strict UPDATE decimal approximate rows",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET d = 'bad', f = 'bad', fl = 'bad' WHERE id = 999",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 0U}
     );
 
     mylite_close(database);

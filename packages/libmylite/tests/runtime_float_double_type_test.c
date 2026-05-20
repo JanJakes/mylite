@@ -550,6 +550,7 @@ static int test_float_double_success_persistence_and_introspection(void) {
 }
 
 static int test_float_double_diagnostics(void) {
+    static const char *const whitespace_string_row[] = {"4", "1.5"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -598,14 +599,22 @@ static int test_float_double_diagnostics(void) {
             .message_part = "Column 'nn' cannot be null",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_result(
         database,
         "INSERT INTO values_t (id, f) VALUES (4, ' 1.5')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "FLOAT and DOUBLE values support only exact quoted numeric strings "
-                            "without whitespace",
+        (struct expected_statement_result){
+            .affected_rows = 1,
+            .warning_count = 0U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, f FROM values_t WHERE id = 4",
+            .values = whitespace_string_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "strict approximate whitespace string",
         }
     );
     failures += execute_error(

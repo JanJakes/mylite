@@ -20,6 +20,7 @@ enum {
     decimal_information_schema_column_count = 10,
     decimal_information_schema_row_count = 6,
     mysql_error_parse = 1064,
+    mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
     mysql_error_decimal_scale_too_big = 1425,
@@ -393,12 +394,20 @@ static int test_decimal_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT INTO values_t VALUES (5, '1.20', 1, 1.1, 1.1)",
+        "INSERT INTO values_t VALUES (5, '1.20abc', 1, 1.1, 1.1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values",
+            .message_part = "DECIMAL values support only fixed decimal and integer literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE quoted_decimal_default (d DECIMAL(5,2) DEFAULT '1.20')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'd'",
         }
     );
     failures += execute_error(

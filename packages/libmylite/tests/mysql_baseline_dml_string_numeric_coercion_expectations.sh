@@ -159,24 +159,26 @@ expect_error \
     "$DATABASE"
 
 expect_output \
-    "nonstrict quoted numeric clipping" \
-    "nonstrict_insert	1	3	0
-nonstrict_row	3	2147483647	0	999.99" \
-    "SET sql_mode=''; "\
+    "insert ignore quoted numeric clipping" \
+    "ignore_insert	1	3	0
+ignore_row	3	2147483647	0	999.99" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
 "TRUNCATE nums; "\
-"INSERT INTO nums(id,i,u,d) VALUES (3,'999999999999999999999','-1','9999.99'); "\
-"SELECT 'nonstrict_insert', ROW_COUNT(), @@warning_count, @@error_count; "\
-"SELECT 'nonstrict_row', id, i, u, d FROM nums;" \
+"INSERT IGNORE INTO nums(id,i,u,d) "\
+"VALUES (3,'999999999999999999999','-1','9999.99'); "\
+"SELECT 'ignore_insert', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'ignore_row', id, i, u, d FROM nums;" \
     "$DATABASE"
 
 expect_output \
-    "nonstrict quoted numeric warning rows" \
+    "insert ignore quoted numeric warning rows" \
     "Warning	1264	Out of range value for column 'i' at row 1
 Warning	1264	Out of range value for column 'u' at row 1
 Warning	1264	Out of range value for column 'd' at row 1" \
-    "SET sql_mode=''; "\
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
 "TRUNCATE nums; "\
-"INSERT INTO nums(id,i,u,d) VALUES (3,'999999999999999999999','-1','9999.99'); "\
+"INSERT IGNORE INTO nums(id,i,u,d) "\
+"VALUES (3,'999999999999999999999','-1','9999.99'); "\
 "SHOW WARNINGS;" \
     "$DATABASE"
 

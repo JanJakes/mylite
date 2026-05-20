@@ -63,7 +63,7 @@ string-scanning rules.
   and verified against MySQL 8.4.9.
 
 The MySQL manual documents implicit string-to-number conversion, strict-mode
-handling of invalid data-changing values, and non-strict clipping for
+handling of invalid data-changing values, and warning demotion for ignored
 out-of-range numeric storage. Runtime probes against MySQL 8.4.9 define the
 exact user-visible behavior in this limited slice.
 
@@ -102,12 +102,13 @@ Runtime probes establish these expectations for this slice:
   `Incorrect decimal value: '<value>' for column '<column>' at row <n>`.
   This phase admits only strings accepted by MyLite's fixed decimal parser.
 - Strict out-of-range numeric storage fails with `1264 / 22003`.
-- Non-strict `INSERT` / `REPLACE` and `INSERT IGNORE` continue to clip
-  descriptor integer and decimal out-of-range values through the existing
-  warning-demotion paths once the quoted numeric text has been parsed.
-- Non-strict invalid text-to-number conversion is broader in MySQL than this
-  phase. MyLite still rejects unsupported string forms unless this spec
-  explicitly admits them.
+- `INSERT IGNORE` continues to clip descriptor integer and decimal out-of-range
+  values through the existing warning-demotion path once the quoted numeric
+  text has been parsed.
+- Non-strict invalid text-to-number and range conversion are broader in MySQL
+  than this phase. MyLite still rejects unsupported string forms and does not
+  add ordinary non-strict range clipping unless this spec explicitly admits the
+  behavior.
 - Successful supported `UPDATE` statements use MySQL changed-row affected-row
   behavior and do not return result rows.
 
@@ -227,8 +228,8 @@ authoritative:
   `9223372036854775807` remain outside this slice.
 
 Strict out-of-range values fail with the existing MySQL-compatible
-out-of-range diagnostic. Existing non-strict or `IGNORE` row-value paths may
-clip and warn where they already do for unquoted integer literals.
+out-of-range diagnostic. Existing `INSERT IGNORE` row-value paths may clip and
+warn where they already do for unquoted integer literals.
 
 ### DECIMAL Targets
 
@@ -240,8 +241,8 @@ are passed to the existing decimal canonicalizer:
 - discarded nonzero fractional digits round half away from zero and record note
   `1265`;
 - strict out-of-range values fail with `1264 / 22003`;
-- existing non-strict or `IGNORE` paths may clip and warn where they already do
-  for unquoted decimal literals.
+- existing `INSERT IGNORE` paths may clip and warn where they already do for
+  unquoted decimal literals.
 
 Scientific notation in quoted decimal strings is a known MySQL behavior but is
 outside this slice until MyLite has a broader numeric-string parser.
@@ -334,8 +335,8 @@ Fast C tests cover:
 - strict invalid integer strings with `1366`;
 - strict integer out-of-range strings with `1264`;
 - current deterministic rejection of unsupported string forms;
-- non-strict or `INSERT IGNORE` clipping where the existing unquoted paths
-  already support clipping;
+- `INSERT IGNORE` clipping where the existing unquoted paths already support
+  clipping;
 - affected rows, warning counts, absence of row result sets, persistence after
   close/reopen, and `.mylite` preamble preservation.
 

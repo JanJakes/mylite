@@ -25,6 +25,7 @@ enum {
     approx_information_schema_column_count = 10,
     approx_information_schema_row_count = 14,
     mysql_error_parse = 1064,
+    mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
     mysql_error_incorrect_column_specifier = 1063,
@@ -599,12 +600,30 @@ static int test_float_double_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT INTO values_t (id, f) VALUES (4, '1.5')",
+        "INSERT INTO values_t (id, f) VALUES (4, ' 1.5')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values",
+            .message_part = "FLOAT and DOUBLE values support only exact quoted numeric strings "
+                            "without whitespace",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE quoted_float_default (f FLOAT DEFAULT '1.5')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'f'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE quoted_double_default (d DOUBLE DEFAULT '2.5')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'd'",
         }
     );
     failures += execute_error(

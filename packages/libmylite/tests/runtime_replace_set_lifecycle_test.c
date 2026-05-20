@@ -30,6 +30,7 @@ enum {
     mysql_error_data_out_of_range = 1264,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_truncated_wrong_value = 1366,
 };
 
 struct expected_sql_error {
@@ -502,11 +503,11 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers SET id = '1', nn = 1",
+        "REPLACE INTO numbers SET id = 'abc', nn = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT supports only integer, boolean, NULL, and DEFAULT values",
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect integer value: 'abc' for column 'id' at row 1",
         }
     );
     failures += execute_error(

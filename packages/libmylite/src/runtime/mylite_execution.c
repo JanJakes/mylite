@@ -3288,6 +3288,12 @@ enum enum_string_trailing_space_policy {
     ENUM_STRING_TRIM_TRAILING_SPACES,
 };
 
+enum dml_numeric_string_parse_result {
+    DML_NUMERIC_STRING_PARSE_OK,
+    DML_NUMERIC_STRING_PARSE_INVALID,
+    DML_NUMERIC_STRING_PARSE_OVERFLOW,
+};
+
 enum information_schema_predicate_eval_action {
     INFORMATION_SCHEMA_PREDICATE_VISIT = 0,
     INFORMATION_SCHEMA_PREDICATE_EVALUATE = 1,
@@ -16762,6 +16768,20 @@ static int convert_integer_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
+static enum dml_numeric_string_parse_result parse_signed_integer_text(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+);
 static int convert_enum_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -16901,12 +16921,29 @@ static int convert_decimal_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int convert_decimal_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+);
 static int convert_approximate_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    struct planned_value *out_value
+);
+static int convert_approximate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    const struct approximate_type_info *info,
     struct planned_value *out_value
 );
 static int convert_date_literal(
@@ -17565,6 +17602,13 @@ static int convert_integer_for_column_with_policy(
     bool ignore_errors,
     int64_t *out_value
 );
+static void split_numeric_string_sign(
+    const char *text,
+    size_t text_length,
+    size_t *out_numeric_start,
+    bool *out_is_negative
+);
+static bool numeric_string_has_ascii_whitespace(const char *text, size_t text_length);
 
 static int plan_select_columns(
     struct mylite_db *database,
@@ -93482,6 +93526,7 @@ static int finalize_planned_column_decimal_default(
     struct mylite_db *database,
     struct planned_column *column
 ) {
+    const struct mylite_sql_ast_node *value_node = child_at(column->default_node, 0U);
     struct mylite_catalog_column_descriptor descriptor = {0};
     struct planned_value value = {
         .is_null = false,
@@ -93493,14 +93538,12 @@ static int finalize_planned_column_decimal_default(
     int rc = MYLITE_OK;
 
     planned_column_descriptor_for_default(column, &descriptor);
-    rc = convert_decimal_literal(
-        database,
-        child_at(column->default_node, 0U),
-        &descriptor,
-        1U,
-        false,
-        &value
-    );
+    if (value_node != NULL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = convert_decimal_literal(database, value_node, &descriptor, 1U, false, &value);
     if (rc == MYLITE_OK) {
         rc = copy_planned_default_text(database, column, &value);
     }
@@ -93516,6 +93559,7 @@ static int finalize_planned_column_approximate_default(
     struct mylite_db *database,
     struct planned_column *column
 ) {
+    const struct mylite_sql_ast_node *value_node = child_at(column->default_node, 0U);
     struct mylite_catalog_column_descriptor descriptor = {0};
     struct planned_value value = {
         .is_null = false,
@@ -93529,14 +93573,12 @@ static int finalize_planned_column_approximate_default(
     int rc = MYLITE_OK;
 
     planned_column_descriptor_for_default(column, &descriptor);
-    rc = convert_approximate_literal(
-        database,
-        child_at(column->default_node, 0U),
-        &descriptor,
-        1U,
-        false,
-        &value
-    );
+    if (value_node != NULL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = convert_approximate_literal(database, value_node, &descriptor, 1U, false, &value);
     if (rc == MYLITE_OK) {
         rc = copy_planned_default_approximate_text(database, column, &value);
     }
@@ -100723,12 +100765,23 @@ static int convert_integer_literal(
     }
     if (!boolean_literal_magnitude(literal, &magnitude)) {
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
             set_unsupported_error(
                 database,
                 "INSERT supports only integer, boolean, NULL, and DEFAULT values"
             );
             return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+            return convert_integer_string_literal(
+                database,
+                literal,
+                column,
+                row_number,
+                ignore_errors,
+                out_value
+            );
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
@@ -100763,6 +100816,115 @@ static int convert_integer_literal(
     }
 
     return MYLITE_OK;
+}
+
+static int convert_integer_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "Integer values support only integer, boolean, NULL, DEFAULT, and exact quoted strings",
+        "invalid integer string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    parse_result = parse_signed_integer_text(text, text_length, &magnitude, &is_negative);
+    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+        set_incorrect_integer_value_error(database, text, column->name, row_number);
+        rc = MYLITE_ERROR;
+    } else if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
+        if (!ignore_errors) {
+            set_out_of_range_error(database, column->name, row_number);
+            rc = MYLITE_ERROR;
+        } else {
+            out_value->is_null = false;
+            rc = clip_integer_for_column(
+                database,
+                is_negative,
+                column,
+                row_number,
+                &out_value->integer
+            );
+        }
+    } else {
+        out_value->is_null = false;
+        rc = convert_integer_for_column_with_policy(
+            database,
+            magnitude,
+            is_negative,
+            column,
+            row_number,
+            ignore_errors,
+            &out_value->integer
+        );
+    }
+
+    free(text);
+    return rc;
+}
+
+static enum dml_numeric_string_parse_result parse_signed_integer_text(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+) {
+    uint64_t magnitude = 0U;
+    size_t digit_start = 0U;
+    bool overflow = false;
+
+    if (text == NULL || out_magnitude == NULL || out_is_negative == NULL || text_length == 0U) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+
+    *out_magnitude = 0U;
+    *out_is_negative = false;
+    if (text[0] == '+' || text[0] == '-') {
+        *out_is_negative = text[0] == '-';
+        digit_start = 1U;
+    }
+    if (digit_start == text_length) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+
+    for (size_t index = digit_start; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            return DML_NUMERIC_STRING_PARSE_INVALID;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (magnitude > (UINT64_MAX - digit) / decimal_base) {
+            overflow = true;
+            continue;
+        }
+        if (!overflow) {
+            magnitude = (magnitude * decimal_base) + digit;
+        }
+    }
+
+    if (overflow) {
+        return DML_NUMERIC_STRING_PARSE_OVERFLOW;
+    }
+    *out_magnitude = magnitude;
+    return DML_NUMERIC_STRING_PARSE_OK;
 }
 
 static int convert_enum_literal(
@@ -102185,12 +102347,24 @@ static int convert_decimal_literal(
     }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
         (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
-         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL)) {
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
         set_unsupported_error(
             database,
             "DECIMAL values support only numeric, boolean, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_decimal_string_literal(
+            database,
+            literal,
+            column,
+            row_number,
+            ignore_errors,
+            &info,
+            out_value
+        );
     }
 
     return canonicalize_decimal_text(
@@ -102204,6 +102378,47 @@ static int convert_decimal_literal(
         ignore_errors,
         out_value
     );
+}
+
+static int convert_decimal_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    bool ignore_errors,
+    const struct decimal_type_info *info,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    size_t numeric_start = 0U;
+    bool is_negative = false;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "DECIMAL values support only numeric, boolean, NULL, DEFAULT, and exact quoted fixed "
+        "decimal string values",
+        "invalid DECIMAL string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc == MYLITE_OK) {
+        split_numeric_string_sign(text, text_length, &numeric_start, &is_negative);
+        rc = canonicalize_decimal_text(
+            database,
+            text + numeric_start,
+            text_length - numeric_start,
+            is_negative,
+            info,
+            column->name,
+            row_number,
+            ignore_errors,
+            out_value
+        );
+    }
+    free(text);
+    return rc;
 }
 
 static int convert_approximate_literal(
@@ -102272,12 +102487,23 @@ static int convert_approximate_literal(
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
         (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
          mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL &&
-         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT)) {
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_FLOAT &&
+         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
         set_unsupported_error(
             database,
             "FLOAT and DOUBLE values support only numeric, boolean, NULL, and DEFAULT values"
         );
         return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_approximate_string_literal(
+            database,
+            literal,
+            column,
+            row_number,
+            &info,
+            out_value
+        );
     }
 
     rc = parse_approximate_literal_value(
@@ -102293,6 +102519,54 @@ static int convert_approximate_literal(
     if (rc == MYLITE_OK) {
         rc = assign_approximate_value(value, out_value);
     }
+    return rc;
+}
+
+static int convert_approximate_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    const struct approximate_type_info *info,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    double value = 0.0;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "FLOAT and DOUBLE values support only numeric, boolean, NULL, DEFAULT, and exact quoted "
+        "numeric string values",
+        "invalid FLOAT or DOUBLE string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc == MYLITE_OK && numeric_string_has_ascii_whitespace(text, text_length)) {
+        set_unsupported_error(
+            database,
+            "FLOAT and DOUBLE values support only exact quoted numeric strings without "
+            "whitespace"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = parse_approximate_literal_value(
+            database,
+            text,
+            text_length,
+            false,
+            info,
+            column->name,
+            row_number,
+            &value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = assign_approximate_value(value, out_value);
+    }
+    free(text);
     return rc;
 }
 
@@ -104275,6 +104549,41 @@ static int convert_integer_for_column_with_policy(
     *out_value = (int64_t)magnitude;
 
     return MYLITE_OK;
+}
+
+static void split_numeric_string_sign(
+    const char *text,
+    size_t text_length,
+    size_t *out_numeric_start,
+    bool *out_is_negative
+) {
+    if (out_numeric_start != NULL) {
+        *out_numeric_start = 0U;
+    }
+    if (out_is_negative != NULL) {
+        *out_is_negative = false;
+    }
+    if (text == NULL || text_length == 0U || out_numeric_start == NULL || out_is_negative == NULL) {
+        return;
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        *out_numeric_start = 1U;
+        *out_is_negative = text[0] == '-';
+    }
+}
+
+static bool numeric_string_has_ascii_whitespace(const char *text, size_t text_length) {
+    if (text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char byte = (unsigned char)text[index];
+
+        if (byte == ' ' || (byte >= '\t' && byte <= '\r')) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int plan_row_scalar_select_items(
@@ -120075,12 +120384,16 @@ static int convert_update_integer_literal(
     }
     if (!boolean_literal_magnitude(literal, &magnitude)) {
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER &&
+             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING)) {
             set_unsupported_error(
                 database,
                 "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values"
             );
             return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+            return convert_integer_string_literal(database, literal, column, 1U, false, out_value);
         }
 
         rc = parse_unsigned_integer_literal(&literal->span, &magnitude);

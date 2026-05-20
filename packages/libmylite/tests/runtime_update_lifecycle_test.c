@@ -29,6 +29,7 @@ enum {
     mysql_error_table_does_not_exist = 1146,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_truncated_wrong_value = 1366,
 };
 
 struct expected_sql_error {
@@ -724,12 +725,11 @@ static int test_update_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "UPDATE numbers SET i = '1'",
+        "UPDATE numbers SET i = 'abc'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect integer value: 'abc' for column 'i' at row 1",
         }
     );
     failures += execute_error(

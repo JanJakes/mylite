@@ -994,7 +994,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *select,
     struct mylite_sql_ast_node *modifier,
-    struct mylite_sql_ast_node *ignore
+    struct mylite_sql_ast_node *ignore,
+    struct mylite_sql_ast_node *duplicate_update
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_low_priority_modifier(
     struct mylite_sql_parser_state *state,

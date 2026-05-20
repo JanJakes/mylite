@@ -353,6 +353,7 @@ static int test_insert_select_union_success_persistence_and_file_safety(void) {
 static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
     static const char *const zero_count[] = {"0"};
     static const char *const rollback_rows[] = {"9", "90"};
+    static const char *const odku_rows[] = {"1", "10", "a", "2", "20", "b"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -483,16 +484,23 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
             .message_part = "UNION branch LIMIT",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "INSERT INTO dst SELECT 1, 10, 'a' UNION SELECT 2, 20, 'b' "
         "ON DUPLICATE KEY UPDATE v = 'x'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'ON'",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, v FROM dst ORDER BY id",
+            .values = odku_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "union source duplicate tail rows",
         }
     );
+    failures += expect_dml_ok(database, "DELETE FROM dst", 2);
     failures += execute_error(
         database,
         "INSERT INTO dst SELECT src_a.id, src_a.n, src_a.v FROM src_a JOIN src_b",

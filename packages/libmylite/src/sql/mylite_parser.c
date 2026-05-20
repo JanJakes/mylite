@@ -3387,12 +3387,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *select,
     struct mylite_sql_ast_node *modifier,
-    struct mylite_sql_ast_node *ignore
+    struct mylite_sql_ast_node *ignore,
+    struct mylite_sql_ast_node *duplicate_update
 ) {
     struct mylite_sql_source_span span = span_from_token(&insert_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (select != NULL) {
+    if (duplicate_update != NULL) {
+        span = span_join(span, duplicate_update->span);
+    } else if (select != NULL) {
         span = span_join(span, select->span);
     } else if (columns != NULL) {
         span = span_join(span, columns->span);
@@ -3410,6 +3413,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
     mylite_sql_ast_node_append_child(statement, select);
     mylite_sql_ast_node_append_child(statement, modifier);
     mylite_sql_ast_node_append_child(statement, ignore);
+    mylite_sql_ast_node_append_child(statement, duplicate_update);
     return statement;
 }
 

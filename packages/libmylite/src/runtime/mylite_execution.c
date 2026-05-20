@@ -31140,6 +31140,9 @@ static int execute_planned_insert_select_statement(
 
     rc = plan_insert_select(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_update_warnings_if_needed(database, &plan.target);
+    }
+    if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, child_at(statement, 2U));
     }
     if (rc == MYLITE_OK) {
@@ -60328,6 +60331,17 @@ static int plan_insert_select(
             out_plan->target_indexes,
             out_plan->target_count
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_duplicate_update(database, statement, &out_plan->target);
+    }
+    if (rc == MYLITE_OK && out_plan->target.duplicate_update.has_clause &&
+        out_plan->target.has_auto_increment) {
+        set_unsupported_error(
+            database,
+            "INSERT ... SELECT ... ON DUPLICATE KEY UPDATE does not support AUTO_INCREMENT targets"
+        );
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR) {
         set_unsupported_error(

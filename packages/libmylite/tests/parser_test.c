@@ -20367,6 +20367,7 @@ static int test_select_item_alias_clause(void) {
 }
 
 static int test_insert_select_statement(void) {
+    enum { insert_select_duplicate_modifier_child_count = 6 };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
@@ -20458,6 +20459,106 @@ static int test_insert_select_statement(void) {
         child_at(statement, 2U),
         MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
         "insert select union source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT id, amount FROM app.source_lifecycle "
+        "ON DUPLICATE KEY UPDATE amount = VALUES(amount), id = DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select duplicate statement"
+    );
+    failures += expect_child_count(statement, 4U, "insert select duplicate child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "insert select duplicate clause"
+    );
+    failures += expect_child_count(
+        child_at(child_at(statement, 3U), 0U),
+        2U,
+        "insert select duplicate assignment count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT HIGH_PRIORITY IGNORE INTO app.simple_lifecycle (id) "
+        "SELECT id FROM app.source_lifecycle "
+        "ON DUPLICATE KEY UPDATE id = VALUES(id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select duplicate modifiers"
+    );
+    failures += expect_child_count(
+        statement,
+        insert_select_duplicate_modifier_child_count,
+        "insert select duplicate modifiers child count"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER),
+        MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER,
+        "insert select duplicate priority modifier"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER),
+        MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
+        "insert select duplicate ignore modifier"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE),
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "insert select duplicate modifier clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT 1, 2 FROM DUAL ON DUPLICATE KEY UPDATE amount = VALUES(amount);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "insert select duplicate dual source"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE),
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "insert select duplicate dual clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT id, amount FROM app.source_a UNION ALL SELECT id, amount FROM app.source_b "
+        "ON DUPLICATE KEY UPDATE amount = VALUES(amount);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
+        "insert select duplicate union source"
+    );
+    failures += expect_node(
+        first_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE),
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "insert select duplicate union clause"
     );
     mylite_sql_parse_result_deinit(&result);
 

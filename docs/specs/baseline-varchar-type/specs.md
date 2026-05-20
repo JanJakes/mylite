@@ -73,12 +73,14 @@ the runtime probes for this feature. Observed behavior that shapes this slice:
 - Assigning a nonspace-overlength value in strict mode fails with error `1406`,
   SQLSTATE `22001`, and `Data too long for column ...`.
 - Assigning only excess trailing spaces succeeds in MySQL with note `1265` and
-  truncates to fit. MyLite defers this warning-producing truncation in this
-  slice and admits only values already within the declared character length.
+  truncates to fit. This original `VARCHAR` slice admitted only values already
+  within the declared character length; the later baseline non-strict string
+  truncation slice adds limited DML trailing-space notes.
 - `INSERT IGNORE` converts string length and `NULL`/no-default failures to
-  warnings in MySQL. MyLite supports the no-default and `NULL` adjustments for
-  the admitted non-overlength string subset and defers overlength string warning
-  demotion.
+  warnings in MySQL. This original `VARCHAR` slice supports the no-default and
+  `NULL` adjustments for the admitted non-overlength string subset; the later
+  baseline non-strict string truncation slice adds limited DML overlength string
+  warning demotion.
 - MySQL accepts explicit string defaults such as `DEFAULT 'xy'`. MyLite defers
   string defaults to avoid expanding the durable catalog default schema before
   the first string-storage slice.
@@ -268,10 +270,10 @@ Values are not padded. Trailing spaces are preserved when the admitted value
 fits the declared length. Empty strings are distinct from `NULL`, and
 `VARCHAR(0)` admits only the empty string or `NULL`.
 
-Overlength values fail with MySQL error `1406`, SQLSTATE `22001`, and a message
-naming the target column and row number where that concept exists. MySQL's
-warning-producing truncation of excess trailing spaces is deliberately
-deferred, so trailing-space-overlength values are outside the supported subset.
+Overlength nonspace values fail with MySQL error `1406`, SQLSTATE `22001`, and
+a message naming the target column and row number where that concept exists.
+The later baseline non-strict string truncation slice adds limited DML
+trailing-space notes and non-strict warning demotion for `VARCHAR` literals.
 
 `NULL` into a nullable `VARCHAR` stores `NULL`. `NULL` into `VARCHAR NOT NULL`
 fails with the existing MySQL-compatible `1048` diagnostic unless the current

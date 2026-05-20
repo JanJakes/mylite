@@ -17,6 +17,7 @@ enum {
     nonstrict_update_two_row_three_column_warning_count = 6,
     mysql_error_bad_null = 1048,
     mysql_error_duplicate_key = 1062,
+    mysql_error_data_too_long = 1406,
     mysql_error_no_default = 1364,
 };
 
@@ -42,6 +43,7 @@ struct expected_query {
 static int test_nonstrict_insert_replace_defaults_and_persistence(void);
 static int test_nonstrict_update_null_and_default(void);
 static int test_nonstrict_insert_select_coercion(void);
+static int test_nonstrict_string_truncation(void);
 static int test_nonstrict_guardrails(void);
 static int seed_schema(mylite_db *database);
 static int create_coercion_table(mylite_db *database);
@@ -85,6 +87,7 @@ int main(void) {
     failures += test_nonstrict_insert_replace_defaults_and_persistence();
     failures += test_nonstrict_update_null_and_default();
     failures += test_nonstrict_insert_select_coercion();
+    failures += test_nonstrict_string_truncation();
     failures += test_nonstrict_guardrails();
 
     return failures == 0 ? 0 : 1;
@@ -881,9 +884,398 @@ static int test_nonstrict_insert_select_coercion(void) {
     return failures;
 }
 
+static int test_nonstrict_string_truncation(void) {
+    static const char *const count_zero[] = {"0"};
+    static const char *const strict_trailing_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+    };
+    static const char *const strict_trailing_row[] = {"1", "abc", "xyz"};
+    static const char *const insert_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 1",
+    };
+    static const char *const inserted_row[] = {"1", "abc", "wxy"};
+    static const char *const insert_set_row[] = {"3", "abc", "pqr"};
+    static const char *const replace_row[] = {"3", "zzz", "yyy"};
+    static const char *const insert_ignore_row[] = {"4", "mno", "qrs"};
+    static const char *const zero_length_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'vz' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'vz' at row 2",
+        "Warning",
+        "1265",
+        "Data truncated for column 'cz' at row 2",
+    };
+    static const char *const zero_length_rows[] = {"5", "", "", "6", "", ""};
+    static const char *const utf8_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+    };
+    static const char *const utf8_row[] = {
+        "7",
+        "\xC3\xA9\xC3\xA9"
+        "a"
+    };
+    static const char *const update_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 2",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 2",
+    };
+    static const char *const updated_rows[] = {"1", "abc", "pqr", "2", "abc", "pqr"};
+    static const char *const same_value_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 1",
+    };
+    static const char *const reopened_row[] = {"1", "abc", "pqr"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "string_truncation") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open string file");
+    failures += seed_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE strings("
+        "id INT NOT NULL PRIMARY KEY, "
+        "v VARCHAR(3), "
+        "c CHAR(3), "
+        "vz VARCHAR(0), "
+        "cz CHAR(0))",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create string truncation table"
+    );
+
+    failures += execute_error(
+        database,
+        "INSERT INTO strings VALUES (1, 'abcd', 'xyz', '', '')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM strings",
+            .values = count_zero,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "strict overlength insert rolled back",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO strings VALUES (1, 'abc ', 'xyz ', '', '')",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 1U},
+        "strict trailing-space truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = strict_trailing_warnings,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "strict varchar trailing-space note",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 1",
+            .values = strict_trailing_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "strict trailing-space stored row",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE strings SET v = 'abcd' WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){0, 0U},
+        "set nonstrict string sql mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE strings",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate before nonstrict strings"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO strings VALUES (1, 'abcd', 'wxyz', '', ''), (2, 'ab', 'pq', '', '')",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 2U},
+        "nonstrict insert string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = insert_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict insert string warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 1",
+            .values = inserted_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict inserted string row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO strings SET id = 3, v = 'abcdef', c = 'pqrs', vz = '', cz = ''",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 2U},
+        "nonstrict insert set string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 3",
+            .values = insert_set_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict insert set row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO strings SET id = 3, v = 'zzzz', c = 'yyyy', vz = '', cz = ''",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 2U},
+        "nonstrict replace set string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 3",
+            .values = replace_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict replace row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=DEFAULT",
+        (struct expected_statement){0, 0U},
+        "restore strict mode before insert ignore"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT IGNORE INTO strings VALUES (4, 'mnop', 'qrst', '', '')",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 2U},
+        "insert ignore string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 4",
+            .values = insert_ignore_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "insert ignore truncated row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){0, 0U},
+        "restore nonstrict before zero-length insert"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO strings VALUES (5, 'ok', 'ok', '   ', '   '), "
+        "(6, 'ok', 'ok', 'x', 'y')",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 3U},
+        "nonstrict zero-length string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = zero_length_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "zero-length string warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, vz, cz FROM strings WHERE id IN (5, 6) ORDER BY id",
+            .values = zero_length_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "zero-length string rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO strings VALUES (7, '\xC3\xA9\xC3\xA9"
+        "ab', 'ok', '', '')",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 1U},
+        "nonstrict UTF-8 string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = utf8_warnings,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "UTF-8 truncation warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM strings WHERE id = 7",
+            .values = utf8_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "UTF-8 truncates on character boundary",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "UPDATE strings SET v = 'abcdef', c = 'pqrs' WHERE id IN (1, 2) ORDER BY id",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 4U},
+        "nonstrict update string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = update_warnings,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "nonstrict update string warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id IN (1, 2) ORDER BY id",
+            .values = updated_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict updated string rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "UPDATE strings SET v = 'abcd', c = 'pqrs' WHERE id = 1",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 2U},
+        "nonstrict update truncates to current row"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = same_value_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict update same string warnings",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "UPDATE strings SET v = 'abcd' WHERE id = 999",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "nonstrict update string no match"
+    );
+    failures += expect_statement_ok(
+        database,
+        "UPDATE strings SET v = 'abcd' LIMIT 0",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "nonstrict update string limit zero"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "string truncation preserves preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen string file");
+    failures += expect_statement_ok(
+        database,
+        "USE app",
+        (struct expected_statement){0, 0U},
+        "use reopened string schema"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, c FROM strings WHERE id = 1",
+            .values = reopened_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "reopened truncated string row",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_nonstrict_guardrails(void) {
     static const char *const no_engine_row[] = {"0", "9"};
     static const char *const auto_rows[] = {"0", "20", "1", "30"};
+    static const char *const duplicate_string_rows[] = {"1", "abc"};
     static const char *const failed_update_warnings[] = {
         "Warning",
         "1048",
@@ -1031,6 +1423,39 @@ static int test_nonstrict_guardrails(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "nonstrict auto increment rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE duplicate_string_t(id INT NOT NULL PRIMARY KEY, v VARCHAR(3))",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create duplicate string guardrail table"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO duplicate_string_t VALUES (1, 'abc')",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "seed duplicate string guardrail table"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO duplicate_string_t VALUES (1, 'ok') "
+        "ON DUPLICATE KEY UPDATE v = 'abcd'",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM duplicate_string_t",
+            .values = duplicate_string_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "duplicate string guardrail preserves row",
         }
     );
 

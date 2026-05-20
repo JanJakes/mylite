@@ -86,9 +86,10 @@ runtime probes for this feature. Observed behavior that shapes this slice:
 - `CHAR(0)` nullable columns store and read back either `NULL` or the empty
   string; assigning a nonspace character to `CHAR(0)` fails in strict mode.
 - `INSERT IGNORE` demotes nonspace-overlength and `NULL` into `NOT NULL`
-  failures to warnings and stores adjusted values. MyLite defers overlength
-  warning demotion in this slice, matching the current `VARCHAR` and `TEXT`
-  policy, but supports existing `NULL` and no-default string adjustments.
+  failures to warnings and stores adjusted values. This original `CHAR` slice
+  supports existing `NULL` and no-default string adjustments; the later
+  baseline non-strict string truncation slice adds limited DML overlength
+  warning demotion.
 - Single-table `UPDATE` reports changed-row affected counts after default
   `CHAR` trimming. Reassigning `'y '` to a `CHAR(1)` column that already reads
   back as `'y'` reports zero affected rows.

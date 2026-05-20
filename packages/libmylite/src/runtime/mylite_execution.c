@@ -2184,6 +2184,12 @@ struct char_text_conversion {
     size_t row_number;
 };
 
+struct utf8_prefix_request {
+    const char *text;
+    size_t text_length;
+    size_t character_limit;
+};
+
 struct text_family_type_info {
     const char *logical_type;
     const char *display_type;
@@ -14750,7 +14756,14 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
 static int append_update_assignment_adjustment_warning(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static int append_update_string_truncation_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
 );
 static int prepare_executable_update_plan(
     struct mylite_db *database,
@@ -16800,12 +16813,17 @@ static bool dml_allows_missing_default_adjustment(
     const struct mylite_db *database,
     bool ignore_errors
 );
+static bool dml_allows_string_truncation_adjustment(
+    const struct mylite_db *database,
+    bool ignore_errors
+);
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
 static int convert_statement_time_value_for_column(
@@ -16822,6 +16840,7 @@ static int convert_insert_value_for_plan(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
 static int convert_insert_value_by_descriptor(
@@ -16830,6 +16849,7 @@ static int convert_insert_value_by_descriptor(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 );
 static int convert_auto_increment_insert_value(
@@ -17031,6 +17051,7 @@ static int convert_varchar_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
     struct planned_value *out_value
 );
 static int convert_char_literal(
@@ -17038,6 +17059,7 @@ static int convert_char_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
     struct planned_value *out_value
 );
 static int convert_text_family_literal(
@@ -17609,10 +17631,17 @@ static int validate_varchar_text(
     const struct mylite_catalog_column_descriptor *column,
     struct varchar_text_validation validation
 );
+static int convert_varchar_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation
+);
 static int convert_char_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
-    struct char_text_conversion *conversion
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation
 );
 static int validate_canonical_char_text(
     struct mylite_db *database,
@@ -17632,6 +17661,12 @@ static int validate_canonical_decimal_text(
     size_t row_number
 );
 static int validate_utf8_text(const char *text, size_t text_length, size_t *out_character_count);
+static int utf8_prefix_byte_length_for_character_count(
+    struct utf8_prefix_request request,
+    size_t *out_prefix_length,
+    size_t *out_character_count
+);
+static bool text_is_ascii_spaces(const char *text, size_t text_length);
 static int utf8_sequence_width(
     const char *text,
     size_t text_length,
@@ -22873,6 +22908,11 @@ static int append_incorrect_integer_value_warning(
     size_t row_number
 );
 static int append_data_truncated_warning(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
+static int append_data_truncated_note(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -63064,6 +63104,13 @@ static int execute_update_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = read_update_matched_row_count(database, plan, &matched_row_count);
+        if (rc == MYLITE_OK && plan->limit.has_limit && plan->limit.row_count >= 0) {
+            uint64_t limit_row_count = (uint64_t)plan->limit.row_count;
+
+            if (matched_row_count > limit_row_count) {
+                matched_row_count = limit_row_count;
+            }
+        }
         matches_any_row = matched_row_count > 0U;
     }
     if (rc == MYLITE_OK) {
@@ -63222,7 +63269,7 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
 ) {
     int rc = MYLITE_OK;
 
-    if (matched_row_count <= 1U || session_sql_mode_is_strict(database)) {
+    if (matched_row_count <= 1U) {
         return MYLITE_OK;
     }
     for (uint64_t row_index = 1U; rc == MYLITE_OK && row_index < matched_row_count; ++row_index) {
@@ -63231,14 +63278,16 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
                 rc = append_update_assignment_adjustment_warning(
                     database,
                     plan->assignments[index].value_node,
-                    &plan->assignments[index].column
+                    &plan->assignments[index].column,
+                    (size_t)row_index + 1U
                 );
             }
         } else {
             rc = append_update_assignment_adjustment_warning(
                 database,
                 plan->assignment_value_node,
-                &plan->assignment_column
+                &plan->assignment_column,
+                (size_t)row_index + 1U
             );
         }
     }
@@ -63249,10 +63298,18 @@ static int append_remaining_nonstrict_update_adjustment_warnings(
 static int append_update_assignment_adjustment_warning(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
 ) {
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL || column == NULL) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return append_update_string_truncation_diagnostic(database, value_node, column, row_number);
+    }
+    if (session_sql_mode_is_strict(database)) {
         return MYLITE_OK;
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
@@ -63280,6 +63337,47 @@ static int append_update_assignment_adjustment_warning(
     }
 
     return MYLITE_OK;
+}
+
+static int append_update_string_truncation_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (!column_descriptor_is_char(column) && !column_descriptor_is_varchar(column)) {
+        return MYLITE_OK;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "String values support only string literals",
+        "String values do not support NUL bytes",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK) {
+        struct char_text_conversion conversion = {
+            .text = text,
+            .text_length = text_length,
+            .row_number = row_number,
+        };
+        bool allow_nonspace_truncation = dml_allows_string_truncation_adjustment(database, false);
+
+        if (column_descriptor_is_char(column)) {
+            rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
+        } else {
+            rc = convert_varchar_text(database, column, &conversion, allow_nonspace_truncation);
+        }
+    }
+
+    free(text);
+    return rc;
 }
 
 static int validate_parent_update_action_child_foreign_keys(
@@ -94366,6 +94464,7 @@ static int finalize_planned_column_string_default(
             child_at(column->default_node, 0U),
             &descriptor,
             1U,
+            false,
             &value
         );
     } else {
@@ -94374,6 +94473,7 @@ static int finalize_planned_column_string_default(
             child_at(column->default_node, 0U),
             &descriptor,
             1U,
+            false,
             &value
         );
     }
@@ -100793,6 +100893,7 @@ static int plan_insert_row(
             &plan->columns[column_index],
             row_number,
             plan->ignore_errors,
+            dml_allows_string_truncation_adjustment(database, plan->ignore_errors),
             &out_row->values[column_index]
         );
 
@@ -100886,6 +100987,7 @@ static int plan_insert_set_row(
             &plan->columns[column_index],
             1U,
             plan->ignore_errors,
+            dml_allows_string_truncation_adjustment(database, plan->ignore_errors),
             &plan->rows[0].values[column_index]
         );
         assignment = assignment->next_sibling;
@@ -101047,12 +101149,20 @@ static bool dml_allows_missing_default_adjustment(
     return (ignore_errors || !session_sql_mode_is_strict(database)) != 0;
 }
 
+static bool dml_allows_string_truncation_adjustment(
+    const struct mylite_db *database,
+    bool ignore_errors
+) {
+    return dml_allows_missing_default_adjustment(database, ignore_errors);
+}
+
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 ) {
     bool handled = false;
@@ -101098,6 +101208,7 @@ static int convert_insert_value(
         column,
         row_number,
         ignore_errors,
+        allow_string_truncation_adjustment,
         out_value
     );
 }
@@ -101109,6 +101220,7 @@ static int convert_insert_value_for_plan(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 ) {
     struct select_source_context source_context = {0};
@@ -101125,12 +101237,14 @@ static int convert_insert_value_for_plan(
             column,
             row_number,
             ignore_errors,
+            allow_string_truncation_adjustment,
             out_value
         );
     }
 
     (void)row_number;
     (void)ignore_errors;
+    (void)allow_string_truncation_adjustment;
     source_context.source = &plan->target;
     return convert_default_function_value_for_target(
         database,
@@ -101150,13 +101264,28 @@ static int convert_insert_value_by_descriptor(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
     bool ignore_errors,
+    bool allow_string_truncation_adjustment,
     struct planned_value *out_value
 ) {
     if (column_descriptor_is_char(column)) {
-        return convert_char_literal(database, value_node, column, row_number, out_value);
+        return convert_char_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            out_value
+        );
     }
     if (column_descriptor_is_varchar(column)) {
-        return convert_varchar_literal(database, value_node, column, row_number, out_value);
+        return convert_varchar_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            out_value
+        );
     }
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, row_number, out_value);
@@ -102504,6 +102633,7 @@ static int convert_char_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
     struct planned_value *out_value
 ) {
     char *text = NULL;
@@ -102534,7 +102664,7 @@ static int convert_char_literal(
             .row_number = row_number,
         };
 
-        rc = convert_char_text(database, column, &conversion);
+        rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
         text_length = conversion.text_length;
     }
     if (rc != MYLITE_OK) {
@@ -102555,6 +102685,7 @@ static int convert_varchar_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
     struct planned_value *out_value
 ) {
     char *text = NULL;
@@ -102579,15 +102710,14 @@ static int convert_varchar_literal(
         &text_length
     );
     if (rc == MYLITE_OK) {
-        rc = validate_varchar_text(
-            database,
-            column,
-            (struct varchar_text_validation){
-                .text = text,
-                .text_length = text_length,
-                .row_number = row_number,
-            }
-        );
+        struct char_text_conversion conversion = {
+            .text = text,
+            .text_length = text_length,
+            .row_number = row_number,
+        };
+
+        rc = convert_varchar_text(database, column, &conversion, allow_nonspace_truncation);
+        text_length = conversion.text_length;
     }
     if (rc != MYLITE_OK) {
         free(text);
@@ -104816,13 +104946,83 @@ static int validate_varchar_text(
     return MYLITE_OK;
 }
 
-static int convert_char_text(
+static int convert_varchar_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
-    struct char_text_conversion *conversion
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation
 ) {
     size_t declared_length = 0U;
     size_t character_count = 0U;
+    size_t truncated_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (conversion == NULL || conversion->text == NULL) {
+        set_runtime_error(database, "invalid VARCHAR value");
+        return MYLITE_ERROR;
+    }
+    if (conversion->text_length > (size_t)INT_MAX) {
+        set_unsupported_error(database, "VARCHAR values are too large for this build");
+        return MYLITE_ERROR;
+    }
+    if (memchr(conversion->text, '\0', conversion->text_length) != NULL) {
+        set_unsupported_error(database, "VARCHAR values do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    if (column == NULL || !column_descriptor_is_varchar(column)) {
+        set_unsupported_error(database, "statement supports only baseline VARCHAR descriptors");
+        return MYLITE_ERROR;
+    }
+
+    rc = varchar_length_for_column(database, column, &declared_length);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = utf8_prefix_byte_length_for_character_count(
+        (struct utf8_prefix_request){
+            .text = conversion->text,
+            .text_length = conversion->text_length,
+            .character_limit = declared_length,
+        },
+        &truncated_length,
+        &character_count
+    );
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "VARCHAR values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+    if (character_count <= declared_length) {
+        return MYLITE_OK;
+    }
+    if (text_is_ascii_spaces(
+            conversion->text + truncated_length,
+            conversion->text_length - truncated_length
+        )) {
+        rc = append_data_truncated_note(database, column->name, conversion->row_number);
+    } else if (allow_nonspace_truncation) {
+        rc = append_data_truncated_warning(database, column->name, conversion->row_number);
+    } else {
+        set_data_too_long_error(database, column->name, conversion->row_number);
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    conversion->text[truncated_length] = '\0';
+    conversion->text_length = truncated_length;
+    return MYLITE_OK;
+}
+
+static int convert_char_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation
+) {
+    size_t declared_length = 0U;
+    size_t character_count = 0U;
+    size_t truncated_length = 0U;
     size_t trimmed_length = 0U;
     size_t trailing_space_count = 0U;
     int rc = MYLITE_OK;
@@ -104861,8 +105061,31 @@ static int convert_char_text(
     }
     if (trailing_space_count > character_count ||
         character_count - trailing_space_count > declared_length) {
-        set_data_too_long_error(database, column->name, conversion->row_number);
-        return MYLITE_ERROR;
+        if (!allow_nonspace_truncation) {
+            set_data_too_long_error(database, column->name, conversion->row_number);
+            return MYLITE_ERROR;
+        }
+        rc = append_data_truncated_warning(database, column->name, conversion->row_number);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = utf8_prefix_byte_length_for_character_count(
+            (struct utf8_prefix_request){
+                .text = conversion->text,
+                .text_length = conversion->text_length,
+                .character_limit = declared_length,
+            },
+            &truncated_length,
+            &character_count
+        );
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, "CHAR values must be valid UTF-8");
+            return MYLITE_ERROR;
+        }
+        conversion->text[truncated_length] = '\0';
+        conversion->text_length = truncated_length;
+        trim_trailing_ascii_spaces(conversion->text, &conversion->text_length);
+        return MYLITE_OK;
     }
 
     conversion->text[trimmed_length] = '\0';
@@ -105049,6 +105272,55 @@ static int validate_utf8_text(const char *text, size_t text_length, size_t *out_
 
     *out_character_count = character_count;
     return MYLITE_OK;
+}
+
+static int utf8_prefix_byte_length_for_character_count(
+    struct utf8_prefix_request request,
+    size_t *out_prefix_length,
+    size_t *out_character_count
+) {
+    size_t index = 0U;
+    size_t character_count = 0U;
+    size_t prefix_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (request.text == NULL || out_prefix_length == NULL || out_character_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    while (index < request.text_length) {
+        size_t width = 0U;
+
+        rc = utf8_sequence_width(request.text, request.text_length, index, &width);
+        if (rc != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+        if (character_count < request.character_limit) {
+            prefix_length = index + width;
+        }
+
+        index += width;
+        ++character_count;
+    }
+
+    if (character_count <= request.character_limit) {
+        prefix_length = request.text_length;
+    }
+    *out_prefix_length = prefix_length;
+    *out_character_count = character_count;
+    return MYLITE_OK;
+}
+
+static bool text_is_ascii_spaces(const char *text, size_t text_length) {
+    if (text == NULL && text_length != 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (text[index] != ' ') {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int utf8_sequence_width(
@@ -121271,10 +121543,24 @@ static int convert_update_column_value(
     struct planned_value *out_value
 ) {
     if (column_descriptor_is_char(column)) {
-        return convert_char_literal(database, value_node, column, 1U, out_value);
+        return convert_char_literal(
+            database,
+            value_node,
+            column,
+            1U,
+            dml_allows_string_truncation_adjustment(database, false),
+            out_value
+        );
     }
     if (column_descriptor_is_varchar(column)) {
-        return convert_varchar_literal(database, value_node, column, 1U, out_value);
+        return convert_varchar_literal(
+            database,
+            value_node,
+            column,
+            1U,
+            dml_allows_string_truncation_adjustment(database, false),
+            out_value
+        );
     }
     if (column_descriptor_is_text_family(column)) {
         return convert_text_family_literal(database, value_node, column, 1U, out_value);
@@ -133673,6 +133959,7 @@ static int convert_insert_duplicate_update_value(
         &plan->columns[duplicate_assignment->assignment_column_index],
         row_index + 1U,
         false,
+        false,
         out_value
     );
 }
@@ -140714,7 +141001,7 @@ static int append_data_too_long_warning(
     return rc;
 }
 
-static int append_decimal_truncated_note(
+static int append_data_truncated_note(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
@@ -140742,6 +141029,14 @@ static int append_decimal_truncated_note(
         set_nomem_error(database);
     }
     return rc;
+}
+
+static int append_decimal_truncated_note(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    return append_data_truncated_note(database, column_name, row_number);
 }
 
 static void set_display_width_out_of_range_error(

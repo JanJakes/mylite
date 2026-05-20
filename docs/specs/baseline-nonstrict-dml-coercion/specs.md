@@ -132,7 +132,7 @@ This feature does not add:
   ordinary-DML slice; the later baseline insert-select non-strict coercion
   spec covers its limited selected-row extension;
 - string-to-number, string-to-temporal, or arbitrary expression conversion;
-- overlength nonspace text truncation, full decimal/float warning parity, or
+- TEXT-family overlength truncation, full decimal/float warning parity, or
   complete MySQL non-strict conversion coverage;
 - SQLite default execution, SQLite conflict algorithms as the compatibility
   authority, or SQLite fork patches.

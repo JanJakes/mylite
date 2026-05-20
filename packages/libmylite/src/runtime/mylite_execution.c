@@ -3311,6 +3311,7 @@ enum enum_string_trailing_space_policy {
 enum dml_numeric_string_parse_result {
     DML_NUMERIC_STRING_PARSE_OK,
     DML_NUMERIC_STRING_PARSE_INVALID,
+    DML_NUMERIC_STRING_PARSE_TRUNCATED,
     DML_NUMERIC_STRING_PARSE_OVERFLOW,
 };
 
@@ -14806,6 +14807,12 @@ static int append_update_string_truncation_diagnostic(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 );
+static int append_update_integer_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
 static int prepare_executable_update_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -16971,11 +16978,36 @@ static int convert_integer_string_literal(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static enum dml_numeric_string_parse_result parse_dml_integer_string_text(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+);
+static enum dml_numeric_string_parse_result parse_dml_integer_float_token(
+    double value,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+);
+static bool dml_integer_prefix_contains_float_marker(
+    const char *text,
+    size_t token_start,
+    size_t token_end
+);
+static bool dml_numeric_suffix_is_truncated(const char *text, size_t text_length, size_t token_end);
+static bool ascii_numeric_whitespace(unsigned char byte);
 static enum dml_numeric_string_parse_result parse_signed_integer_text(
     const char *text,
     size_t text_length,
     uint64_t *out_magnitude,
     bool *out_is_negative
+);
+static int dml_integer_value_exceeds_column_range(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    bool *out_exceeds_range
 );
 static int convert_enum_literal(
     struct mylite_db *database,
@@ -63621,6 +63653,14 @@ static int append_update_assignment_adjustment_warning(
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+            return append_update_integer_string_adjustment_diagnostic(
+                database,
+                value_node,
+                column,
+                row_number
+            );
+        }
         return append_update_string_truncation_diagnostic(database, value_node, column, row_number);
     }
     if (session_sql_mode_is_strict(database)) {
@@ -63651,6 +63691,60 @@ static int append_update_assignment_adjustment_warning(
     }
 
     return MYLITE_OK;
+}
+
+static int append_update_integer_string_adjustment_diagnostic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    bool is_negative = false;
+    bool exceeds_range = false;
+    uint64_t magnitude = 0U;
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+    int rc = MYLITE_OK;
+
+    if (session_sql_mode_is_strict(database)) {
+        return MYLITE_OK;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "Integer values support only integer, boolean, NULL, DEFAULT, and exact quoted strings",
+        "invalid integer string literal",
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    parse_result = parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
+    if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
+        rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
+    } else if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
+        rc = append_out_of_range_warning(database, column->name, row_number);
+    } else {
+        rc = dml_integer_value_exceeds_column_range(
+            database,
+            magnitude,
+            is_negative,
+            column,
+            &exceeds_range
+        );
+        if (rc == MYLITE_OK && exceeds_range) {
+            rc = append_out_of_range_warning(database, column->name, row_number);
+        } else if (rc == MYLITE_OK && parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED) {
+            rc = append_data_truncated_warning(database, column->name, row_number);
+        }
+    }
+
+    free(text);
+    return rc;
 }
 
 static int append_update_string_truncation_diagnostic(
@@ -102244,6 +102338,7 @@ static int convert_integer_string_literal(
     char *text = NULL;
     size_t text_length = 0U;
     bool is_negative = false;
+    bool adjust_errors = dml_allows_missing_default_adjustment(database, ignore_errors);
     uint64_t magnitude = 0U;
     enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
     int rc = decode_sql_string_literal(
@@ -102259,12 +102354,23 @@ static int convert_integer_string_literal(
         return rc;
     }
 
-    parse_result = parse_signed_integer_text(text, text_length, &magnitude, &is_negative);
+    parse_result = parse_dml_integer_string_text(text, text_length, &magnitude, &is_negative);
     if (parse_result == DML_NUMERIC_STRING_PARSE_INVALID) {
-        set_incorrect_integer_value_error(database, text, column->name, row_number);
-        rc = MYLITE_ERROR;
+        if (!adjust_errors) {
+            set_incorrect_integer_value_error(database, text, column->name, row_number);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = append_incorrect_integer_value_warning(database, text, column->name, row_number);
+            if (rc == MYLITE_OK) {
+                *out_value = (struct planned_value){
+                    .is_null = false,
+                    .is_text = false,
+                    .integer = 0,
+                };
+            }
+        }
     } else if (parse_result == DML_NUMERIC_STRING_PARSE_OVERFLOW) {
-        if (!ignore_errors) {
+        if (!adjust_errors) {
             set_out_of_range_error(database, column->name, row_number);
             rc = MYLITE_ERROR;
         } else {
@@ -102278,20 +102384,159 @@ static int convert_integer_string_literal(
             );
         }
     } else {
-        out_value->is_null = false;
-        rc = convert_integer_for_column_with_policy(
+        bool exceeds_range = false;
+
+        rc = dml_integer_value_exceeds_column_range(
             database,
             magnitude,
             is_negative,
             column,
-            row_number,
-            ignore_errors,
-            &out_value->integer
+            &exceeds_range
         );
+        if (rc == MYLITE_OK && parse_result == DML_NUMERIC_STRING_PARSE_TRUNCATED &&
+            !exceeds_range) {
+            if (!adjust_errors) {
+                set_data_truncated_error(database, column->name, row_number);
+                rc = MYLITE_ERROR;
+            } else {
+                rc = append_data_truncated_warning(database, column->name, row_number);
+            }
+        }
+        if (rc == MYLITE_OK) {
+            out_value->is_null = false;
+            rc = convert_integer_for_column_with_policy(
+                database,
+                magnitude,
+                is_negative,
+                column,
+                row_number,
+                adjust_errors,
+                &out_value->integer
+            );
+        }
     }
 
     free(text);
     return rc;
+}
+
+static enum dml_numeric_string_parse_result parse_dml_integer_string_text(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+) {
+    char *end = NULL;
+    double parsed = 0.0;
+    size_t token_start = 0U;
+    size_t token_end = 0U;
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+
+    if (text == NULL || out_magnitude == NULL || out_is_negative == NULL || text_length == 0U) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+
+    *out_magnitude = 0U;
+    *out_is_negative = false;
+    while (token_start < text_length &&
+           ascii_numeric_whitespace((unsigned char)text[token_start])) {
+        ++token_start;
+    }
+    if (token_start == text_length ||
+        parse_c_locale_double(&text[token_start], &end, &parsed) != MYLITE_OK || end == NULL ||
+        end == &text[token_start]) {
+        return DML_NUMERIC_STRING_PARSE_INVALID;
+    }
+
+    token_end = (size_t)(end - text);
+    if (dml_integer_prefix_contains_float_marker(text, token_start, token_end)) {
+        parse_result = parse_dml_integer_float_token(parsed, out_magnitude, out_is_negative);
+    } else {
+        parse_result = parse_signed_integer_text(
+            &text[token_start],
+            token_end - token_start,
+            out_magnitude,
+            out_is_negative
+        );
+    }
+    if (parse_result != DML_NUMERIC_STRING_PARSE_OK) {
+        return parse_result;
+    }
+    if (dml_numeric_suffix_is_truncated(text, text_length, token_end)) {
+        return DML_NUMERIC_STRING_PARSE_TRUNCATED;
+    }
+    return DML_NUMERIC_STRING_PARSE_OK;
+}
+
+static enum dml_numeric_string_parse_result parse_dml_integer_float_token(
+    double value,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+) {
+    const double integer_abs_max = 9223372036854775808.0;
+    const double rounding_half = 0.5;
+    double rounded = 0.0;
+    double magnitude = 0.0;
+
+    if (out_magnitude == NULL || out_is_negative == NULL || !isfinite(value)) {
+        return DML_NUMERIC_STRING_PARSE_OVERFLOW;
+    }
+
+    rounded = value < 0.0 ? ceil(value - rounding_half) : floor(value + rounding_half);
+    if (!isfinite(rounded) || rounded > integer_abs_max || rounded < -integer_abs_max) {
+        return DML_NUMERIC_STRING_PARSE_OVERFLOW;
+    }
+
+    *out_is_negative = rounded < 0.0;
+    if (*out_is_negative) {
+        magnitude = -rounded;
+    } else {
+        magnitude = rounded;
+    }
+    if (magnitude > integer_abs_max) {
+        return DML_NUMERIC_STRING_PARSE_OVERFLOW;
+    }
+    *out_magnitude = (uint64_t)magnitude;
+    if (*out_magnitude == 0U) {
+        *out_is_negative = false;
+    }
+    return DML_NUMERIC_STRING_PARSE_OK;
+}
+
+static bool dml_integer_prefix_contains_float_marker(
+    const char *text,
+    size_t token_start,
+    size_t token_end
+) {
+    if (text == NULL || token_start > token_end) {
+        return false;
+    }
+    for (size_t index = token_start; index < token_end; ++index) {
+        if (text[index] == '.' || text[index] == 'e' || text[index] == 'E') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool dml_numeric_suffix_is_truncated(
+    const char *text,
+    size_t text_length,
+    size_t token_end
+) {
+    if (text == NULL || token_end > text_length) {
+        return false;
+    }
+    for (size_t index = token_end; index < text_length; ++index) {
+        if (!ascii_numeric_whitespace((unsigned char)text[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ascii_numeric_whitespace(unsigned char byte) {
+    return (byte == ' ' || (byte >= '\t' && byte <= '\r')) != 0;
 }
 
 static enum dml_numeric_string_parse_result parse_signed_integer_text(
@@ -102340,6 +102585,38 @@ static enum dml_numeric_string_parse_result parse_signed_integer_text(
     }
     *out_magnitude = magnitude;
     return DML_NUMERIC_STRING_PARSE_OK;
+}
+
+static int dml_integer_value_exceeds_column_range(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    bool *out_exceeds_range
+) {
+    struct integer_column_range range = {0};
+    int rc = MYLITE_OK;
+
+    if (out_exceeds_range == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_exceeds_range = false;
+    rc = integer_range_for_column(
+        database,
+        column,
+        "DML integer string conversion supports only baseline integer columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_negative) {
+        *out_exceeds_range = ((range.negative_abs_max == 0U && magnitude != 0U) ||
+                              magnitude > range.negative_abs_max) != 0;
+    } else {
+        *out_exceeds_range = magnitude > range.positive_max;
+    }
+    return MYLITE_OK;
 }
 
 static int convert_enum_literal(

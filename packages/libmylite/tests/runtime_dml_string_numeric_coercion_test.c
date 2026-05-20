@@ -17,6 +17,7 @@ enum {
     test_path_capacity = 1024,
     numeric_full_column_count = 8,
     numeric_update_column_count = 5,
+    mysql_error_data_truncated = 1265,
     mysql_error_data_out_of_range = 1264,
     mysql_error_parse = 1064,
     mysql_error_truncated_wrong_value = 1366,
@@ -43,6 +44,7 @@ struct expected_query {
 
 static int test_strict_quoted_numeric_dml_and_persistence(void);
 static int test_insert_ignore_clipping_and_diagnostics(void);
+static int test_integer_string_prefix_scanning_and_adjustment(void);
 static int test_independent_handles(void);
 static int seed_schema(mylite_db *database);
 static int create_numeric_table(mylite_db *database);
@@ -90,6 +92,7 @@ int main(void) {
 
     failures += test_strict_quoted_numeric_dml_and_persistence();
     failures += test_insert_ignore_clipping_and_diagnostics();
+    failures += test_integer_string_prefix_scanning_and_adjustment();
     failures += test_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -333,6 +336,287 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
     return failures;
 }
 
+static int test_integer_string_prefix_scanning_and_adjustment(void) {
+    static const char *const strict_inserted_row[] = {"10", "123", "12", "-3", "100"};
+    static const char *const rounded_update_row[] = {"10", "2"};
+    static const char *const duplicate_update_row[] = {"10", "3"};
+    static const char *const nonstrict_insert_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'i' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'u' at row 1",
+        "Warning",
+        "1366",
+        "Incorrect integer value: 'abc123' for column 'bi' at row 1",
+    };
+    static const char *const nonstrict_insert_rows[] = {
+        "20",
+        "123",
+        "0",
+        "0",
+        "21",
+        "2",
+        NULL,
+        "-3",
+    };
+    static const char *const ignore_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'i' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'u' at row 1",
+        "Warning",
+        "1366",
+        "Incorrect integer value: 'abc123' for column 'bi' at row 1",
+    };
+    static const char *const adjusted_rows[] = {
+        "22",
+        "123",
+        "0",
+        "0",
+        "40",
+        "123",
+        NULL,
+        NULL,
+    };
+    static const char *const odku_warnings[] = {
+        "Warning",
+        "1366",
+        "Incorrect integer value: 'abc123' for column 'i' at row 1",
+    };
+    static const char *const odku_row[] = {"10", "0"};
+    static const char *const update_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'i' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'i' at row 2",
+    };
+    static const char *const updated_rows[] = {"30", "123", "31", "123"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open prefix db");
+    failures += seed_schema(database);
+    failures += create_numeric_table(database);
+
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i, u, bi, bu) VALUES "
+        "(10, ' 123 ', '\\t12\\n', '-2.5', '1e2')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, u, bi, bu FROM nums WHERE id = 10",
+            .values = strict_inserted_row,
+            .column_count = numeric_update_column_count,
+            .row_count = 1U,
+            .context = "strict integer string prefix row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET i = '1.5' WHERE id = 10",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i FROM nums WHERE id = 10",
+            .values = rounded_update_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "strict rounded update row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i) VALUES (10, 0) ON DUPLICATE KEY UPDATE i = '2.5'",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i FROM nums WHERE id = 10",
+            .values = duplicate_update_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "duplicate update rounded integer string row",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '123abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '+ 1')",
+        (struct expected_sql_error){
+            .code = mysql_error_truncated_wrong_value,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect integer value: '+ 1' for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '9223372036854775808x')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, u) VALUES (11, '-1')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'u' at row 1",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nums(id, i, u, bi) VALUES (22, '123abc', '-1', 'abc123')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = ignore_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "INSERT IGNORE integer string warnings",
+        }
+    );
+
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i, u, bi) VALUES (20, '123abc', '-1', 'abc123')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = nonstrict_insert_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "non-strict integer string warnings",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i, bi) VALUES (21, '1.5', '-2.5')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, u, bi FROM nums WHERE id IN (20, 21) ORDER BY id",
+            .values = nonstrict_insert_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "non-strict integer string rows",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "REPLACE INTO nums(id, i) VALUES (40, '123abc')",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, u, bi FROM nums WHERE id IN (22, 40) ORDER BY id",
+            .values = adjusted_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "adjusted INSERT IGNORE and REPLACE integer string rows",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i) VALUES (10, 0) ON DUPLICATE KEY UPDATE i = 'abc123'",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = odku_warnings,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "non-strict ODKU integer string warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i FROM nums WHERE id = 10",
+            .values = odku_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "non-strict ODKU adjusted integer string row",
+        }
+    );
+
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i) VALUES (30, 1), (31, 2)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET i = '123abc' WHERE id IN (30, 31)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = update_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "non-strict UPDATE integer string warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i FROM nums WHERE id IN (30, 31) ORDER BY id",
+            .values = updated_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "non-strict UPDATE adjusted integer string rows",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE nums SET i = 'abc123' WHERE id = 999",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 0U}
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_independent_handles(void) {
     static const char *const first_rows[] = {"5"};
     static const char *const second_rows[] = {"2"};
@@ -469,11 +753,14 @@ static int expect_statement_result(
 ) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
+    size_t warning_count = mylite_result_warning_count(result);
 
     failures += expect_size(mylite_result_column_count(result), 0U, "statement column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "statement row count");
-    failures +=
-        expect_size(mylite_result_warning_count(result), expected.warning_count, "DML warnings");
+    failures += expect_size(warning_count, expected.warning_count, "DML warnings");
+    if (warning_count != expected.warning_count) {
+        fprintf(stderr, "statement SQL: %s\n", sql);
+    }
     mylite_result_free(result);
 
     (void)expected.affected_rows;
@@ -487,13 +774,16 @@ static int expect_dml_result(
 ) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
+    int64_t affected_rows = mylite_result_affected_rows(result);
+    size_t warning_count = mylite_result_warning_count(result);
 
     failures += expect_size(mylite_result_column_count(result), 0U, "DML column count");
     failures += expect_size(mylite_result_row_count(result), 0U, "DML row count");
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), expected.affected_rows, "DML affected");
-    failures +=
-        expect_size(mylite_result_warning_count(result), expected.warning_count, "DML warnings");
+    failures += expect_int64(affected_rows, expected.affected_rows, "DML affected");
+    failures += expect_size(warning_count, expected.warning_count, "DML warnings");
+    if (affected_rows != expected.affected_rows || warning_count != expected.warning_count) {
+        fprintf(stderr, "DML SQL: %s\n", sql);
+    }
     mylite_result_free(result);
 
     return failures;

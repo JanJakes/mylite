@@ -31,6 +31,19 @@ enum {
     wp_posts_comments_create_warning_count = 5,
     wp_postmeta_column_row_count = 4,
     wp_postmeta_index_row_count = 3,
+    wp_meta_create_warning_count = 2,
+    wp_terms_create_warning_count = 2,
+    wp_term_taxonomy_create_warning_count = 4,
+    wp_term_relationships_create_warning_count = 3,
+    wp_links_create_warning_count = 3,
+    wp_remaining_meta_projection_column_count = 4,
+    wp_terms_projection_column_count = 4,
+    wp_term_taxonomy_projection_column_count = 6,
+    wp_term_relationships_projection_column_count = 3,
+    wp_links_projection_column_count = 7,
+    wp_term_relationships_index_row_count = 3,
+    wp_term_taxonomy_index_row_count = 4,
+    wp_links_index_row_count = 2,
 };
 
 struct expected_query {
@@ -153,6 +166,28 @@ static int test_wordpress_core_fixture_setup_persistence_and_preamble(void) {
         "omitted",
         "default",
     };
+    static const char *const wp_commentmeta_rows[] = {"1", "1", "k", "v"};
+    static const char *const wp_usermeta_rows[] = {"1", "2", "u", "uv"};
+    static const char *const wp_termmeta_rows[] = {"1", "3", "t", "tv"};
+    static const char *const wp_terms_rows[] = {"1", "", "", "0"};
+    static const char *const wp_term_taxonomy_rows[] = {
+        "1",
+        "1",
+        "category",
+        "desc",
+        "0",
+        "0",
+    };
+    static const char *const wp_term_relationships_rows[] = {"10", "1", "0"};
+    static const char *const wp_links_rows[] = {
+        "1",
+        "",
+        "Y",
+        "1",
+        "0",
+        "0000-00-00 00:00:00",
+        "notes",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -252,6 +287,108 @@ static int test_wordpress_core_fixture_setup_persistence_and_preamble(void) {
             .column_count = 4U,
             .row_count = 3U,
             .context = "wp_postmeta inserted rows",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_commentmeta (comment_id, meta_key, meta_value) "
+        "VALUES (1, 'k', 'v')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT meta_id, comment_id, meta_key, meta_value FROM wp_commentmeta",
+            .values = wp_commentmeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_commentmeta inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES (2, 'u', 'uv')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT umeta_id, user_id, meta_key, meta_value FROM wp_usermeta",
+            .values = wp_usermeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_usermeta inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_termmeta (term_id, meta_key, meta_value) VALUES (3, 't', 'tv')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT meta_id, term_id, meta_key, meta_value FROM wp_termmeta",
+            .values = wp_termmeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_termmeta inserted row",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_terms () VALUES ()", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_id, name, slug, term_group FROM wp_terms",
+            .values = wp_terms_rows,
+            .column_count = wp_terms_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_terms inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_term_taxonomy (term_id, taxonomy, description) "
+        "VALUES (1, 'category', 'desc')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent, "
+                   "count FROM wp_term_taxonomy",
+            .values = wp_term_taxonomy_rows,
+            .column_count = wp_term_taxonomy_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_term_taxonomy inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_term_relationships (object_id, term_taxonomy_id) VALUES (10, 1)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT object_id, term_taxonomy_id, term_order "
+                   "FROM wp_term_relationships",
+            .values = wp_term_relationships_rows,
+            .column_count = wp_term_relationships_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_term_relationships inserted row",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO wp_links (link_notes) VALUES ('notes')", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT link_id, link_url, link_visible, link_owner, link_rating, "
+                   "link_updated, link_notes FROM wp_links",
+            .values = wp_links_rows,
+            .column_count = wp_links_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_links inserted row",
         }
     );
 
@@ -464,6 +601,126 @@ static int create_wordpress_fixture_tables(mylite_db *database) {
         "KEY meta_key (meta_key(191))"
         ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
         (struct expected_dml_result){.affected_rows = 1, .warning_count = 2U}
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_commentmeta ("
+        "meta_id bigint(20) unsigned NOT NULL auto_increment, "
+        "comment_id bigint(20) unsigned NOT NULL default '0', "
+        "meta_key varchar(255) default NULL, "
+        "meta_value longtext, "
+        "PRIMARY KEY (meta_id), "
+        "KEY comment_id (comment_id), "
+        "KEY meta_key (meta_key(191))"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_meta_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_usermeta ("
+        "umeta_id bigint(20) unsigned NOT NULL auto_increment, "
+        "user_id bigint(20) unsigned NOT NULL default '0', "
+        "meta_key varchar(255) default NULL, "
+        "meta_value longtext, "
+        "PRIMARY KEY (umeta_id), "
+        "KEY user_id (user_id), "
+        "KEY meta_key (meta_key(191))"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_meta_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_termmeta ("
+        "meta_id bigint(20) unsigned NOT NULL auto_increment, "
+        "term_id bigint(20) unsigned NOT NULL default '0', "
+        "meta_key varchar(255) default NULL, "
+        "meta_value longtext, "
+        "PRIMARY KEY (meta_id), "
+        "KEY term_id (term_id), "
+        "KEY meta_key (meta_key(191))"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_meta_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_terms ("
+        "term_id bigint(20) unsigned NOT NULL auto_increment, "
+        "name varchar(200) NOT NULL default '', "
+        "slug varchar(200) NOT NULL default '', "
+        "term_group bigint(10) NOT NULL default 0, "
+        "PRIMARY KEY (term_id), "
+        "KEY slug (slug(191)), "
+        "KEY name (name(191))"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_terms_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_term_taxonomy ("
+        "term_taxonomy_id bigint(20) unsigned NOT NULL auto_increment, "
+        "term_id bigint(20) unsigned NOT NULL default 0, "
+        "taxonomy varchar(32) NOT NULL default '', "
+        "description longtext NOT NULL, "
+        "parent bigint(20) unsigned NOT NULL default 0, "
+        "count bigint(20) NOT NULL default 0, "
+        "PRIMARY KEY (term_taxonomy_id), "
+        "UNIQUE KEY term_id_taxonomy (term_id, taxonomy), "
+        "KEY taxonomy (taxonomy)"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_term_taxonomy_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_term_relationships ("
+        "object_id bigint(20) unsigned NOT NULL default 0, "
+        "term_taxonomy_id bigint(20) unsigned NOT NULL default 0, "
+        "term_order int(11) NOT NULL default 0, "
+        "PRIMARY KEY (object_id, term_taxonomy_id), "
+        "KEY term_taxonomy_id (term_taxonomy_id)"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_term_relationships_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_links ("
+        "link_id bigint(20) unsigned NOT NULL auto_increment, "
+        "link_url varchar(255) NOT NULL default '', "
+        "link_name varchar(255) NOT NULL default '', "
+        "link_image varchar(255) NOT NULL default '', "
+        "link_target varchar(25) NOT NULL default '', "
+        "link_description varchar(255) NOT NULL default '', "
+        "link_visible varchar(20) NOT NULL default 'Y', "
+        "link_owner bigint(20) unsigned NOT NULL default '1', "
+        "link_rating int(11) NOT NULL default '0', "
+        "link_updated datetime NOT NULL default '0000-00-00 00:00:00', "
+        "link_rel varchar(255) NOT NULL default '', "
+        "link_notes mediumtext NOT NULL, "
+        "link_rss varchar(255) NOT NULL default '', "
+        "PRIMARY KEY (link_id), "
+        "KEY link_visible (link_visible)"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_links_create_warning_count,
+        }
     );
 
     return failures;
@@ -878,6 +1135,76 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "  KEY `meta_key` (`meta_key`(191))\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
     };
+    static const char *const wp_commentmeta_show_create[] = {
+        "wp_commentmeta",
+        "CREATE TABLE `wp_commentmeta` (\n"
+        "  `meta_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `comment_id` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,\n"
+        "  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,\n"
+        "  PRIMARY KEY (`meta_id`),\n"
+        "  KEY `comment_id` (`comment_id`),\n"
+        "  KEY `meta_key` (`meta_key`(191))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
+    static const char *const wp_terms_show_create[] = {
+        "wp_terms",
+        "CREATE TABLE `wp_terms` (\n"
+        "  `term_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `name` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `slug` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `term_group` bigint NOT NULL DEFAULT '0',\n"
+        "  PRIMARY KEY (`term_id`),\n"
+        "  KEY `slug` (`slug`(191)),\n"
+        "  KEY `name` (`name`(191))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
+    static const char *const wp_term_taxonomy_show_create[] = {
+        "wp_term_taxonomy",
+        "CREATE TABLE `wp_term_taxonomy` (\n"
+        "  `term_taxonomy_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `term_id` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `taxonomy` varchar(32) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `description` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `parent` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `count` bigint NOT NULL DEFAULT '0',\n"
+        "  PRIMARY KEY (`term_taxonomy_id`),\n"
+        "  UNIQUE KEY `term_id_taxonomy` (`term_id`,`taxonomy`),\n"
+        "  KEY `taxonomy` (`taxonomy`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
+    static const char *const wp_term_relationships_show_create[] = {
+        "wp_term_relationships",
+        "CREATE TABLE `wp_term_relationships` (\n"
+        "  `object_id` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `term_taxonomy_id` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `term_order` int NOT NULL DEFAULT '0',\n"
+        "  PRIMARY KEY (`object_id`,`term_taxonomy_id`),\n"
+        "  KEY `term_taxonomy_id` (`term_taxonomy_id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
+    static const char *const wp_links_show_create[] = {
+        "wp_links",
+        "CREATE TABLE `wp_links` (\n"
+        "  `link_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `link_url` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `link_name` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `link_image` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `link_target` varchar(25) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `link_description` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL "
+        "DEFAULT '',\n"
+        "  `link_visible` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'Y',\n"
+        "  `link_owner` bigint unsigned NOT NULL DEFAULT '1',\n"
+        "  `link_rating` int NOT NULL DEFAULT '0',\n"
+        "  `link_updated` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `link_rel` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `link_notes` mediumtext COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `link_rss` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  PRIMARY KEY (`link_id`),\n"
+        "  KEY `link_visible` (`link_visible`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
     static const char *const wp_postmeta_show_index[] = {
         "wp_postmeta", "0", "PRIMARY",  "1",   "meta_id",
         "A",           "0", NULL,       NULL,  "",
@@ -1037,6 +1364,179 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "",
         "YES",
         NULL,
+    };
+    static const char *const wp_commentmeta_show_index[] = {
+        "wp_commentmeta",
+        "0",
+        "PRIMARY",
+        "1",
+        "meta_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_commentmeta",
+        "1",
+        "comment_id",
+        "1",
+        "comment_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_commentmeta",
+        "1",
+        "meta_key",
+        "1",
+        "meta_key",
+        "A",
+        "0",
+        "191",
+        NULL,
+        "YES",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const wp_term_taxonomy_show_index[] = {
+        "wp_term_taxonomy",
+        "0",
+        "PRIMARY",
+        "1",
+        "term_taxonomy_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_term_taxonomy",
+        "0",
+        "term_id_taxonomy",
+        "1",
+        "term_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_term_taxonomy",
+        "0",
+        "term_id_taxonomy",
+        "2",
+        "taxonomy",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_term_taxonomy",
+        "1",
+        "taxonomy",
+        "1",
+        "taxonomy",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const wp_term_relationships_show_index[] = {
+        "wp_term_relationships",
+        "0",
+        "PRIMARY",
+        "1",
+        "object_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_term_relationships",
+        "0",
+        "PRIMARY",
+        "2",
+        "term_taxonomy_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_term_relationships",
+        "1",
+        "term_taxonomy_id",
+        "1",
+        "term_taxonomy_id",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    static const char *const wp_links_show_index[] = {
+        "wp_links", "0",
+        "PRIMARY",  "1",
+        "link_id",  "A",
+        "0",        NULL,
+        NULL,       "",
+        "BTREE",    "",
+        "",         "YES",
+        NULL,       "wp_links",
+        "1",        "link_visible",
+        "1",        "link_visible",
+        "A",        "0",
+        NULL,       NULL,
+        "",         "BTREE",
+        "",         "",
+        "YES",      NULL,
     };
     static const char *const wp_postmeta_information_schema_columns[] = {
         "meta_id",
@@ -1200,6 +1700,56 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
                 .context = "wp_postmeta show create",
             }
         );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_commentmeta",
+                .values = wp_commentmeta_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_commentmeta show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_terms",
+                .values = wp_terms_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_terms show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_term_taxonomy",
+                .values = wp_term_taxonomy_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_term_taxonomy show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_term_relationships",
+                .values = wp_term_relationships_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_term_relationships show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_links",
+                .values = wp_links_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_links show create",
+            }
+        );
     }
     failures += expect_query_values(
         database,
@@ -1229,6 +1779,46 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
             .column_count = show_index_column_count,
             .row_count = wp_comments_index_row_count,
             .context = "wp_comments SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_commentmeta",
+            .values = wp_commentmeta_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_postmeta_index_row_count,
+            .context = "wp_commentmeta SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_term_taxonomy",
+            .values = wp_term_taxonomy_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_term_taxonomy_index_row_count,
+            .context = "wp_term_taxonomy SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_term_relationships",
+            .values = wp_term_relationships_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_term_relationships_index_row_count,
+            .context = "wp_term_relationships SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_links",
+            .values = wp_links_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_links_index_row_count,
+            .context = "wp_links SHOW INDEX",
         }
     );
     failures += expect_query_values(
@@ -1383,6 +1973,28 @@ static int verify_fixture_rows(mylite_db *database, const char *context) {
         "omitted",
         "default",
     };
+    static const char *const wp_commentmeta_rows[] = {"1", "1", "k", "v"};
+    static const char *const wp_usermeta_rows[] = {"1", "2", "u", "uv"};
+    static const char *const wp_termmeta_rows[] = {"1", "3", "t", "tv"};
+    static const char *const wp_terms_rows[] = {"1", "", "", "0"};
+    static const char *const wp_term_taxonomy_rows[] = {
+        "1",
+        "1",
+        "category",
+        "desc",
+        "0",
+        "0",
+    };
+    static const char *const wp_term_relationships_rows[] = {"10", "1", "0"};
+    static const char *const wp_links_rows[] = {
+        "1",
+        "",
+        "Y",
+        "1",
+        "0",
+        "0000-00-00 00:00:00",
+        "notes",
+    };
     int failures = expect_query_values(
         database,
         (struct expected_query){
@@ -1437,6 +2049,79 @@ static int verify_fixture_rows(mylite_db *database, const char *context) {
             .values = wp_postmeta_rows,
             .column_count = 4U,
             .row_count = 3U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT meta_id, comment_id, meta_key, meta_value FROM wp_commentmeta",
+            .values = wp_commentmeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT umeta_id, user_id, meta_key, meta_value FROM wp_usermeta",
+            .values = wp_usermeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT meta_id, term_id, meta_key, meta_value FROM wp_termmeta",
+            .values = wp_termmeta_rows,
+            .column_count = wp_remaining_meta_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_id, name, slug, term_group FROM wp_terms",
+            .values = wp_terms_rows,
+            .column_count = wp_terms_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT term_taxonomy_id, term_id, taxonomy, description, parent, "
+                   "count FROM wp_term_taxonomy",
+            .values = wp_term_taxonomy_rows,
+            .column_count = wp_term_taxonomy_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT object_id, term_taxonomy_id, term_order "
+                   "FROM wp_term_relationships",
+            .values = wp_term_relationships_rows,
+            .column_count = wp_term_relationships_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT link_id, link_url, link_visible, link_owner, link_rating, "
+                   "link_updated, link_notes FROM wp_links",
+            .values = wp_links_rows,
+            .column_count = wp_links_projection_column_count,
+            .row_count = 1U,
             .context = context,
         }
     );

@@ -228,6 +228,17 @@ void mylite_sql_ast_node_set_binary_string_type(
     node->payload.binary_string_type = payload;
 }
 
+void mylite_sql_ast_node_set_spatial_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_spatial_type spatial_type
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.spatial_type.kind = spatial_type;
+}
+
 void mylite_sql_ast_node_set_bit_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_bit_type_payload payload
@@ -546,6 +557,16 @@ enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
     }
 
     return node->payload.binary_string_type.kind;
+}
+
+enum mylite_sql_ast_spatial_type mylite_sql_ast_node_spatial_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SPATIAL_TYPE) {
+        return MYLITE_SQL_AST_SPATIAL_TYPE_NONE;
+    }
+
+    return node->payload.spatial_type.kind;
 }
 
 int mylite_sql_ast_node_binary_string_type_has_length(const struct mylite_sql_ast_node *node) {
@@ -919,6 +940,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "text_type";
     case MYLITE_SQL_AST_JSON_TYPE:
         return "json_type";
+    case MYLITE_SQL_AST_SPATIAL_TYPE:
+        return "spatial_type";
     case MYLITE_SQL_AST_ENUM_TYPE:
         return "enum_type";
     case MYLITE_SQL_AST_ENUM_LABEL_LIST:
@@ -995,6 +1018,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "unique_index_definition";
     case MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION:
         return "fulltext_index_definition";
+    case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+        return "spatial_index_definition";
     case MYLITE_SQL_AST_INLINE_UNIQUE_KEY:
         return "inline_unique_key";
     case MYLITE_SQL_AST_INLINE_PRIMARY_KEY:
@@ -1019,6 +1044,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "create_unique_index_statement";
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
         return "create_fulltext_index_statement";
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
+        return "create_spatial_index_statement";
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return "drop_index_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_AUTO_INCREMENT_STATEMENT:
@@ -1910,6 +1937,31 @@ const char *mylite_sql_ast_binary_string_type_name(
         return "mediumblob";
     case MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB:
         return "longblob";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_spatial_type_name(enum mylite_sql_ast_spatial_type spatial_type) {
+    switch (spatial_type) {
+    case MYLITE_SQL_AST_SPATIAL_TYPE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRY:
+        return "geometry";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_POINT:
+        return "point";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_LINESTRING:
+        return "linestring";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_POLYGON:
+        return "polygon";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOINT:
+        return "multipoint";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_MULTILINESTRING:
+        return "multilinestring";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOLYGON:
+        return "multipolygon";
+    case MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRYCOLLECTION:
+        return "geomcollection";
     }
 
     return "unknown";

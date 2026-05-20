@@ -497,6 +497,9 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION = 488,
     MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE = 489,
     MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT = 490,
+    MYLITE_SQL_AST_SPATIAL_TYPE = 491,
+    MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION = 492,
+    MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT = 493,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -582,6 +585,18 @@ enum mylite_sql_ast_binary_string_type {
     MYLITE_SQL_AST_BINARY_STRING_TYPE_BLOB = 4,
     MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB = 5,
     MYLITE_SQL_AST_BINARY_STRING_TYPE_LONGBLOB = 6,
+};
+
+enum mylite_sql_ast_spatial_type {
+    MYLITE_SQL_AST_SPATIAL_TYPE_NONE = 0,
+    MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRY = 1,
+    MYLITE_SQL_AST_SPATIAL_TYPE_POINT = 2,
+    MYLITE_SQL_AST_SPATIAL_TYPE_LINESTRING = 3,
+    MYLITE_SQL_AST_SPATIAL_TYPE_POLYGON = 4,
+    MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOINT = 5,
+    MYLITE_SQL_AST_SPATIAL_TYPE_MULTILINESTRING = 6,
+    MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOLYGON = 7,
+    MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRYCOLLECTION = 8,
 };
 
 enum mylite_sql_ast_decimal_type {
@@ -719,6 +734,10 @@ struct mylite_sql_ast_binary_string_type_payload {
     struct mylite_sql_source_span length_span;
 };
 
+struct mylite_sql_ast_spatial_type_payload {
+    enum mylite_sql_ast_spatial_type kind;
+};
+
 struct mylite_sql_ast_bit_type_payload {
     int has_length;
     struct mylite_sql_source_span length_span;
@@ -778,6 +797,7 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_char_type_payload char_type;
     struct mylite_sql_ast_text_type_payload text_type;
     struct mylite_sql_ast_binary_string_type_payload binary_string_type;
+    struct mylite_sql_ast_spatial_type_payload spatial_type;
     struct mylite_sql_ast_bit_type_payload bit_type;
     struct mylite_sql_ast_year_type_payload year_type;
     struct mylite_sql_ast_decimal_type_payload decimal_type;
@@ -870,6 +890,10 @@ void mylite_sql_ast_node_set_binary_string_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_binary_string_type_payload payload
 );
+void mylite_sql_ast_node_set_spatial_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_spatial_type spatial_type
+);
 void mylite_sql_ast_node_set_bit_type(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_ast_bit_type_payload payload
@@ -945,6 +969,9 @@ enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_
 enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_spatial_type mylite_sql_ast_node_spatial_type(
+    const struct mylite_sql_ast_node *node
+);
 int mylite_sql_ast_node_binary_string_type_has_length(const struct mylite_sql_ast_node *node);
 struct mylite_sql_source_span mylite_sql_ast_node_binary_string_type_length_span(
     const struct mylite_sql_ast_node *node
@@ -1001,6 +1028,7 @@ const char *mylite_sql_ast_text_type_name(enum mylite_sql_ast_text_type text_typ
 const char *mylite_sql_ast_binary_string_type_name(
     enum mylite_sql_ast_binary_string_type binary_string_type
 );
+const char *mylite_sql_ast_spatial_type_name(enum mylite_sql_ast_spatial_type spatial_type);
 const char *mylite_sql_ast_decimal_type_name(enum mylite_sql_ast_decimal_type decimal_type);
 const char *mylite_sql_ast_approximate_type_name(
     enum mylite_sql_ast_approximate_type approximate_type

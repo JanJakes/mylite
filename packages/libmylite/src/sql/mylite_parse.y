@@ -853,6 +853,11 @@ create_index_statement(A) ::=
     RPAREN index_option_list_opt(O). {
     A = mylite_sql_parser_make_create_fulltext_index_statement(state, C, N, T, L, O);
 }
+create_index_statement(A) ::=
+    CREATE(C) SPATIAL INDEX identifier(N) ON table_name(T) LPAREN secondary_index_part_list(L)
+    RPAREN index_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_spatial_index_statement(state, C, N, T, L, O);
+}
 
 drop_index_statement(A) ::= DROP(D) INDEX identifier(I) ON table_name(T). {
     A = mylite_sql_parser_make_drop_index_statement(state, D, I, T);
@@ -1405,6 +1410,11 @@ alter_table_add_index_statement(A) ::=
 
 alter_table_add_index_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ADD fulltext_index_definition(I) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
+}
+
+alter_table_add_index_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD spatial_index_definition(I) alter_table_option_tail_opt(O). {
     A = mylite_sql_parser_make_alter_table_add_index_statement(state, A1, T, I, O);
 }
 
@@ -5454,6 +5464,30 @@ identifier(A) ::= LONG(T). {
 identifier(A) ::= JSON(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= GEOMETRY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= GEOMETRYCOLLECTION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LINESTRING(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MULTILINESTRING(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MULTIPOINT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MULTIPOLYGON(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= POINT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= POLYGON(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= FIXED(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -5675,6 +5709,9 @@ create_table_item(A) ::= unique_index_definition(B). {
 create_table_item(A) ::= fulltext_index_definition(B). {
     A = B;
 }
+create_table_item(A) ::= spatial_index_definition(B). {
+    A = B;
+}
 create_table_item(A) ::= named_unique_constraint_definition(B). {
     A = B;
 }
@@ -5726,6 +5763,16 @@ fulltext_index_definition(A) ::=
 fulltext_index_keyword_opt ::= .
 fulltext_index_keyword_opt ::= KEY.
 fulltext_index_keyword_opt ::= INDEX.
+
+spatial_index_definition(A) ::=
+    SPATIAL(S) spatial_index_keyword_opt index_name_opt(N) LPAREN secondary_index_part_list(L)
+    RPAREN(R) index_option_list_opt(O). {
+    A = mylite_sql_parser_make_spatial_index_definition(state, S, N, L, R, O);
+}
+
+spatial_index_keyword_opt ::= .
+spatial_index_keyword_opt ::= KEY.
+spatial_index_keyword_opt ::= INDEX.
 
 named_unique_constraint_definition(A) ::=
     CONSTRAINT identifier(N) UNIQUE(U) unique_index_keyword_opt LPAREN
@@ -6061,6 +6108,9 @@ column_type(A) ::= text_type(T). {
 column_type(A) ::= json_type(T). {
     A = T;
 }
+column_type(A) ::= spatial_type(T). {
+    A = T;
+}
 column_type(A) ::= enum_type(T). {
     A = T;
 }
@@ -6354,6 +6404,71 @@ text_type_name(A) ::= LONG(T) VARCHAR(V). {
 
 json_type(A) ::= JSON(T). {
     A = mylite_sql_parser_make_json_type(state, T);
+}
+
+spatial_type(A) ::= GEOMETRY(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRY,
+        });
+}
+spatial_type(A) ::= POINT(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_POINT,
+        });
+}
+spatial_type(A) ::= LINESTRING(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_LINESTRING,
+        });
+}
+spatial_type(A) ::= POLYGON(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_POLYGON,
+        });
+}
+spatial_type(A) ::= MULTIPOINT(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOINT,
+        });
+}
+spatial_type(A) ::= MULTILINESTRING(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_MULTILINESTRING,
+        });
+}
+spatial_type(A) ::= MULTIPOLYGON(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_MULTIPOLYGON,
+        });
+}
+spatial_type(A) ::= GEOMETRYCOLLECTION(T). {
+    A = mylite_sql_parser_make_spatial_type(
+        state,
+        (struct mylite_sql_spatial_type_tokens){
+            .type_token = T,
+            .spatial_type = MYLITE_SQL_AST_SPATIAL_TYPE_GEOMETRYCOLLECTION,
+        });
 }
 
 enum_type(A) ::= ENUM(T) LPAREN enum_label_list(L) RPAREN(R). {

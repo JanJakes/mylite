@@ -59,6 +59,7 @@ enum {
     mysql_error_duplicate_key_name = 1061,
     mysql_error_duplicate_key = 1062,
     mysql_error_multiple_primary_key = 1068,
+    mysql_error_too_many_key_parts = 1070,
     mysql_error_column_length_too_big = 1074,
     mysql_error_key_column_does_not_exist = 1072,
     mysql_error_cant_remove_all_fields = 1090,
@@ -85,6 +86,7 @@ enum {
     mysql_error_blob_key_without_length = 1170,
     mysql_error_incorrect_arguments = 1210,
     mysql_error_wrong_usage = 1221,
+    mysql_error_spatial_must_be_not_null = 1252,
     mysql_error_fulltext_column = 1283,
     mysql_error_json_used_as_key = 3152,
     mysql_error_primary_key_part_null = 1171,
@@ -101,6 +103,7 @@ enum {
     mysql_error_table_comment_too_long = 1628,
     mysql_error_column_comment_too_long = 1629,
     mysql_error_index_comment_too_long = 1688,
+    mysql_error_spatial_index_non_geometric = 1687,
     mysql_error_collation_not_valid_for_character_set = 1253,
     mysql_error_savepoint_does_not_exist = 1305,
     mysql_error_not_supported_yet = 1235,
@@ -127,6 +130,9 @@ enum {
     mysql_error_default_val_generated = 3773,
     mysql_error_database_does_not_exist = 3503,
     mysql_error_primary_key_index_invisible = 3522,
+    mysql_error_spatial_column_cannot_be_null = 3673,
+    mysql_warning_spatial_index_no_srid = 3674,
+    mysql_error_spatial_unique = 3728,
     mysql_error_data_too_long = 1406,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
@@ -1725,6 +1731,7 @@ struct planned_create_table {
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char default_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
+    bool suppress_spatial_index_warnings;
 };
 
 struct schema_default_option_validation {
@@ -1938,6 +1945,11 @@ struct create_table_secondary_index_definition_nodes {
     const struct mylite_sql_ast_node *index_name_node;
     struct index_option_nodes options;
     const struct mylite_sql_ast_node *part_list;
+};
+
+struct create_table_secondary_index_first_part {
+    size_t column_index;
+    size_t part_count;
 };
 
 struct foreign_key_definition_nodes {
@@ -9291,6 +9303,8 @@ static int append_temporary_secondary_index_descriptor(
     struct temporary_index_descriptor_positions *positions
 );
 static bool planned_create_table_has_fulltext_index(const struct planned_create_table *plan);
+static bool planned_create_table_has_spatial_index(const struct planned_create_table *plan);
+static bool planned_create_table_has_spatial_column(const struct planned_create_table *plan);
 static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
@@ -9525,6 +9539,18 @@ static int append_hash_index_warning_if_needed(
     struct mylite_db *database,
     bool uses_hash_index_type
 );
+static size_t planned_create_table_spatial_index_warning_count(
+    const struct planned_create_table *plan
+);
+static int reserve_spatial_index_warnings(struct mylite_db *database, size_t warning_count);
+static int append_spatial_index_warnings(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+);
+static int append_spatial_index_no_srid_warning(
+    struct mylite_db *database,
+    const char *column_name
+);
 static int reserve_additional_warning_capacity(struct mylite_db *database, size_t additional_count);
 static int resolve_add_index_target(
     struct mylite_db *database,
@@ -9545,6 +9571,7 @@ static int resolve_persistent_add_index_target(
     struct planned_alter_table_add_index *plan
 );
 static bool planned_add_index_is_fulltext(const struct planned_alter_table_add_index *plan);
+static bool planned_add_index_is_spatial(const struct planned_alter_table_add_index *plan);
 static void planned_alter_table_add_index_deinit(struct planned_alter_table_add_index *plan);
 static int extract_alter_table_add_index_nodes(
     struct mylite_db *database,
@@ -9561,6 +9588,22 @@ static int extract_create_table_secondary_index_definition_nodes(
     const struct mylite_sql_ast_node *secondary_index,
     struct create_table_secondary_index_definition_nodes *out_nodes
 );
+static int resolve_create_table_secondary_index_first_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct create_table_secondary_index_definition_nodes *nodes,
+    enum mylite_catalog_index_kind index_kind,
+    bool is_unique,
+    struct create_table_secondary_index_first_part *out_first_part
+);
+static int validate_create_table_secondary_index_kind(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    enum mylite_catalog_index_kind index_kind,
+    bool is_unique,
+    struct create_table_secondary_index_first_part first_part,
+    enum mylite_catalog_index_kind *out_effective_index_kind
+);
 static int add_secondary_index_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
@@ -9570,6 +9613,14 @@ static int reserve_fulltext_add_warning_if_needed(
     const struct planned_alter_table_add_index *plan
 );
 static int append_fulltext_add_warning_if_needed(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
+static int reserve_spatial_add_warning_if_needed(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+);
+static int append_spatial_add_warning_if_needed(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
 );
@@ -9724,6 +9775,19 @@ static int plan_alter_table_add_index_name_from_parts(
     char *destination,
     size_t destination_size
 );
+static int apply_loaded_add_index_spatial_kind_from_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *part_list,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_add_index *plan
+);
+static int validate_loaded_add_index_kind_options(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan,
+    size_t part_count,
+    const struct mylite_sql_ast_node *option_list
+);
 static int generate_alter_table_add_index_name(
     struct mylite_db *database,
     const struct loaded_index_info *indexes,
@@ -9745,6 +9809,10 @@ static int validate_alter_table_add_fulltext_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int validate_alter_table_add_spatial_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int append_loaded_add_index_part(
     struct mylite_db *database,
     struct planned_alter_table_add_index *plan,
@@ -9752,7 +9820,7 @@ static int append_loaded_add_index_part(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count
 );
-static const char *add_index_unqualified_column_error(bool is_fulltext);
+static const char *add_index_unqualified_column_error(enum mylite_catalog_index_kind kind);
 static int resolve_loaded_add_index_part_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -10277,6 +10345,10 @@ static int validate_alter_table_modify_primary_index(
     const struct loaded_index_info *index
 );
 static int validate_alter_table_modify_fulltext_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
+);
+static int validate_alter_table_modify_spatial_index(
     struct mylite_db *database,
     const struct loaded_index_info *index
 );
@@ -14273,6 +14345,10 @@ static int show_descriptor_numeric_type_text(
     const char **out_type_text,
     bool *out_matched
 );
+static bool show_descriptor_temporal_type_text(
+    const char *logical_type,
+    const char **out_type_text
+);
 static int format_decimal_descriptor_type_text(
     struct mylite_db *database,
     char *buffer,
@@ -15216,11 +15292,16 @@ static int validate_fulltext_index_column(
     struct mylite_db *database,
     const struct planned_column *column
 );
+static int validate_spatial_index_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+);
 static int validate_fulltext_string_key_column(
     struct mylite_db *database,
     const struct planned_column *column
 );
 static bool planned_secondary_index_is_fulltext(const struct planned_secondary_index *index);
+static bool planned_secondary_index_is_spatial(const struct planned_secondary_index *index);
 static const char *planned_secondary_index_unqualified_column_message(
     const struct planned_secondary_index *index
 );
@@ -15635,6 +15716,11 @@ static int map_text_family_type(
     struct planned_column *out_column
 );
 static int map_json_type(struct planned_column *out_column);
+static int map_spatial_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+);
 static int map_enum_type(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
@@ -15787,6 +15873,7 @@ static bool planned_column_is_char_or_varchar(const struct planned_column *colum
 static bool planned_column_is_text_family(const struct planned_column *column);
 static bool planned_column_is_string_family(const struct planned_column *column);
 static bool planned_column_is_json(const struct planned_column *column);
+static bool planned_column_is_spatial(const struct planned_column *column);
 static bool planned_column_is_enum(const struct planned_column *column);
 static bool planned_column_is_set(const struct planned_column *column);
 static bool planned_column_is_binary_string_family(const struct planned_column *column);
@@ -15822,6 +15909,8 @@ static bool column_descriptor_is_string_family(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool column_descriptor_is_json(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_is_spatial(const struct mylite_catalog_column_descriptor *column);
+static bool spatial_logical_type_display_text(const char *logical_type, const char **out_type_text);
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
@@ -16172,6 +16261,7 @@ static bool column_has_first_fulltext_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
+static bool column_has_spatial_index(struct loaded_index_info_span indexes, int64_t column_id);
 static bool column_is_first_not_null_unique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
@@ -19848,6 +19938,11 @@ static int populate_json_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
     bool *out_matched
 );
+static int populate_spatial_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+);
 static int populate_binary_result_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -20149,6 +20244,20 @@ static int append_show_index(
     const struct loaded_index_info *index,
     const struct mylite_sql_ast_node *where_clause
 );
+static const char *show_index_part_nullable_text(const struct loaded_index_part *part);
+static const char *show_index_part_collation_text(
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part
+);
+static int show_index_part_prefix_value(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part,
+    char *prefix_text,
+    size_t prefix_text_size,
+    const char **out_prefix_value
+);
+static const char *show_index_index_type_text(const struct loaded_index_info *index);
 static int show_column_type_text(
     struct mylite_db *database,
     const char *logical_type,
@@ -22263,6 +22372,10 @@ static void set_storage_engine_cant_index_column_error(
     const char *column_name
 );
 static void set_fulltext_column_error(struct mylite_db *database, const char *column_name);
+static void set_spatial_index_non_geometric_error(struct mylite_db *database);
+static void set_spatial_index_must_be_not_null_error(struct mylite_db *database);
+static void set_spatial_unique_error(struct mylite_db *database);
+static void set_spatial_too_many_key_parts_error(struct mylite_db *database);
 static void set_fulltext_explicit_order_error(struct mylite_db *database);
 static void set_temporary_fulltext_index_error(struct mylite_db *database);
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name);
@@ -22370,6 +22483,7 @@ static void set_unknown_column_in_table_error(
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
 static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
 static void set_bad_null_error(struct mylite_db *database, const char *column_name);
+static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name);
 static void set_data_truncated_error(
     struct mylite_db *database,
     const char *column_name,
@@ -22720,9 +22834,16 @@ static int execute_parsed_statement(
         return execute_execute_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
         return execute_deallocate_prepare_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
+        return execute_non_prepared_statement(database, context, statement, out_result);
+    case MYLITE_SQL_AST_SPATIAL_TYPE:
+    case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+        break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
     }
+
+    return execute_non_prepared_statement(database, context, statement, out_result);
 }
 
 static int execute_non_prepared_statement(
@@ -22784,7 +22905,11 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
         return execute_create_index_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SPATIAL_TYPE:
+    case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+        break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
@@ -24858,6 +24983,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
@@ -28214,6 +28340,14 @@ static int execute_create_temporary_table_statement(
         set_temporary_fulltext_index_error(database);
         rc = MYLITE_ERROR;
     }
+    if (rc == MYLITE_OK && planned_create_table_has_spatial_index(&plan)) {
+        set_unsupported_error(database, "Temporary SPATIAL indexes are not yet supported");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && planned_create_table_has_spatial_column(&plan)) {
+        set_unsupported_error(database, "Temporary SPATIAL columns are not yet supported");
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc =
             maybe_finish_create_temporary_if_not_exists_noop(database, statement, &plan, &finished);
@@ -28301,6 +28435,14 @@ static int execute_create_temporary_table_like_statement(
     rc = plan_create_table_like(database, statement, &plan);
     if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan.create_table)) {
         set_temporary_fulltext_index_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && planned_create_table_has_spatial_index(&plan.create_table)) {
+        set_unsupported_error(database, "Temporary SPATIAL indexes are not yet supported");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && planned_create_table_has_spatial_column(&plan.create_table)) {
+        set_unsupported_error(database, "Temporary SPATIAL columns are not yet supported");
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
@@ -33523,6 +33665,7 @@ static int append_information_schema_statistics_base_index_row(
         char prefix_text[integer_text_capacity];
         const char *nullable = "";
         const bool is_fulltext = index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
+        const bool is_spatial = index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL;
         const char *collation =
             part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
                                                                                           : "A";
@@ -33536,7 +33679,12 @@ static int append_information_schema_statistics_base_index_row(
             collation = NULL;
             index_type = "FULLTEXT";
         }
-        if (!is_fulltext && part->index_column.has_prefix_length) {
+        if (is_spatial) {
+            collation = "A";
+            prefix_value = "32";
+            index_type = "SPATIAL";
+        }
+        if (!is_fulltext && !is_spatial && part->index_column.has_prefix_length) {
             rc = information_schema_format_i64(
                 database,
                 part->index_column.prefix_length,
@@ -35259,6 +35407,7 @@ static const char *information_schema_data_type_for_descriptor(
     const struct mylite_catalog_column_descriptor *column
 ) {
     const char *logical_type = column->logical_type;
+    const char *spatial_type = NULL;
 
     if (column_descriptor_is_char(column)) {
         return "char";
@@ -35277,6 +35426,9 @@ static const char *information_schema_data_type_for_descriptor(
     }
     if (column_descriptor_is_json(column)) {
         return "json";
+    }
+    if (spatial_logical_type_display_text(logical_type, &spatial_type)) {
+        return spatial_type;
     }
     if (column_descriptor_is_bit(column)) {
         return "bit";
@@ -35383,9 +35535,10 @@ static const char *information_schema_numeric_precision_for_descriptor(
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
         column_descriptor_is_json(column) || column_descriptor_is_binary_string_family(column) ||
-        column_descriptor_is_decimal(column) || column_descriptor_is_date(column) ||
-        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
-        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        column_descriptor_is_spatial(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
         return NULL;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -35428,10 +35581,10 @@ static const char *information_schema_numeric_scale_for_descriptor(
     if (column_descriptor_is_bit(column) || column_descriptor_is_string_family(column) ||
         column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
         column_descriptor_is_json(column) || column_descriptor_is_binary_string_family(column) ||
-        column_descriptor_is_decimal(column) || column_descriptor_is_approximate(column) ||
-        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
-        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
-        column_descriptor_is_year(column)) {
+        column_descriptor_is_spatial(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_approximate(column) || column_descriptor_is_date(column) ||
+        column_descriptor_is_time(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
         return NULL;
     }
     return "0";
@@ -39417,6 +39570,8 @@ static int append_show_create_table_index_header(
         rc = dynamic_string_append(string, prefix);
     } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
         rc = dynamic_string_append(string, "  FULLTEXT KEY ");
+    } else if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        rc = dynamic_string_append(string, "  SPATIAL KEY ");
     } else {
         set_runtime_error(database, "invalid index descriptor");
         return MYLITE_ERROR;
@@ -39624,6 +39779,9 @@ static int index_display_group(const struct loaded_index_info *index) {
     if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
         return index_display_group_fulltext;
     }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        return index_display_group_fulltext;
+    }
 
     return index_display_group_unknown;
 }
@@ -39690,6 +39848,9 @@ static int show_descriptor_type_text(
         *out_type_text = "json";
         return MYLITE_OK;
     }
+    if (spatial_logical_type_display_text(logical_type, out_type_text)) {
+        return MYLITE_OK;
+    }
     if (strncmp(logical_type, "ENUM(", enum_logical_prefix_length) == 0) {
         return format_enum_descriptor_type_text(
             database,
@@ -39748,24 +39909,7 @@ static int show_descriptor_type_text(
     if (rc != MYLITE_OK || matched) {
         return rc;
     }
-    if (strcmp(logical_type, "DATE") == 0) {
-        *out_type_text = "date";
-        return MYLITE_OK;
-    }
-    if (strcmp(logical_type, "TIME") == 0) {
-        *out_type_text = "time";
-        return MYLITE_OK;
-    }
-    if (strcmp(logical_type, "DATETIME") == 0) {
-        *out_type_text = "datetime";
-        return MYLITE_OK;
-    }
-    if (strcmp(logical_type, "TIMESTAMP") == 0) {
-        *out_type_text = "timestamp";
-        return MYLITE_OK;
-    }
-    if (strcmp(logical_type, "YEAR") == 0) {
-        *out_type_text = "year";
+    if (show_descriptor_temporal_type_text(logical_type, out_type_text)) {
         return MYLITE_OK;
     }
 
@@ -39777,6 +39921,61 @@ static int show_descriptor_type_text(
 
     set_unsupported_error(database, unsupported_message);
     return MYLITE_ERROR;
+}
+
+static bool show_descriptor_temporal_type_text(
+    const char *logical_type,
+    const char **out_type_text
+) {
+    static const struct {
+        const char *logical_type;
+        const char *display_type;
+    } temporal_types[] = {
+        {"DATE", "date"},
+        {"TIME", "time"},
+        {"DATETIME", "datetime"},
+        {"TIMESTAMP", "timestamp"},
+        {"YEAR", "year"},
+    };
+
+    for (size_t index = 0U; index < sizeof(temporal_types) / sizeof(temporal_types[0]); ++index) {
+        if (strcmp(logical_type, temporal_types[index].logical_type) == 0) {
+            *out_type_text = temporal_types[index].display_type;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool spatial_logical_type_display_text(
+    const char *logical_type,
+    const char **out_type_text
+) {
+    static const struct {
+        const char *logical_type;
+        const char *display_type;
+    } spatial_types[] = {
+        {"geometry", "geometry"},
+        {"point", "point"},
+        {"linestring", "linestring"},
+        {"polygon", "polygon"},
+        {"multipoint", "multipoint"},
+        {"multilinestring", "multilinestring"},
+        {"multipolygon", "multipolygon"},
+        {"geomcollection", "geomcollection"},
+    };
+
+    if (logical_type == NULL || out_type_text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(spatial_types) / sizeof(spatial_types[0]); ++index) {
+        if (strcmp(logical_type, spatial_types[index].logical_type) == 0) {
+            *out_type_text = spatial_types[index].display_type;
+            return true;
+        }
+    }
+    return false;
 }
 
 static int show_descriptor_numeric_type_text(
@@ -40155,6 +40354,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TEMPORARY_TABLE_STATEMENT:
@@ -40179,6 +40379,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
     case MYLITE_SQL_AST_DO_STATEMENT:
         return 0;
+    case MYLITE_SQL_AST_SPATIAL_TYPE:
+    case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+        break;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -40849,6 +41052,7 @@ static int plan_create_table_item(
     if (item->kind == MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION ||
+        item->kind == MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION ||
         item->kind == MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION ||
         item->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
         return MYLITE_OK;
@@ -40954,6 +41158,7 @@ static int validate_create_table_item_list(
             item->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION &&
+            item->kind != MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION &&
             item->kind != MYLITE_SQL_AST_FOREIGN_KEY_DEFINITION &&
             item->kind != MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
             set_parse_error(database, NULL);
@@ -41036,6 +41241,10 @@ static int apply_create_table_primary_key_definition(
         }
         if (planned_primary_key_contains_column(plan, column_index)) {
             set_duplicate_column_error(database, plan->columns[column_index].name);
+            return MYLITE_ERROR;
+        }
+        if (planned_column_is_spatial(&plan->columns[column_index])) {
+            set_spatial_unique_error(database);
             return MYLITE_ERROR;
         }
         if (plan->columns[column_index].nullability == MYLITE_SQL_AST_NULLABILITY_NULL ||
@@ -41157,6 +41366,14 @@ static int apply_create_table_secondary_index_definitions(
                 MYLITE_CATALOG_INDEX_KIND_FULLTEXT,
                 false
             );
+        } else if (item->kind == MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION) {
+            rc = apply_create_table_secondary_index_definition(
+                database,
+                plan,
+                item,
+                MYLITE_CATALOG_INDEX_KIND_SPATIAL,
+                false
+            );
         }
         item = item->next_sibling;
     }
@@ -41172,66 +41389,53 @@ static int apply_create_table_secondary_index_definition(
     bool is_unique
 ) {
     struct create_table_secondary_index_definition_nodes nodes = {0};
-    const struct mylite_sql_ast_node *first_part = NULL;
-    const struct mylite_sql_ast_node *first_column = NULL;
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char index_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct planned_secondary_index planned_index = {0};
-    size_t first_column_index = 0U;
-    size_t part_count = 0U;
+    enum mylite_catalog_index_kind effective_index_kind = index_kind;
+    struct create_table_secondary_index_first_part first_part = {0};
     int rc = MYLITE_OK;
 
     rc = extract_create_table_secondary_index_definition_nodes(database, secondary_index, &nodes);
     if (rc != MYLITE_OK) {
         return rc;
     }
-    part_count = mylite_sql_ast_node_child_count(nodes.part_list);
-    if (part_count == 0U) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    first_part = child_at(nodes.part_list, 0U);
-    first_column = secondary_index_part_column_node(first_part);
-    if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        planned_index.kind = index_kind;
-        planned_index.is_unique = is_unique;
-        set_unsupported_error(
-            database,
-            planned_secondary_index_unqualified_column_message(&planned_index)
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = copy_identifier_text(first_column, column_name, sizeof(column_name), database);
+    rc = resolve_create_table_secondary_index_first_column(
+        database,
+        plan,
+        &nodes,
+        index_kind,
+        is_unique,
+        &first_part
+    );
     if (rc == MYLITE_OK) {
-        rc = find_planned_column_index(
-            plan->columns,
-            plan->column_count,
-            column_name,
-            &first_column_index
+        rc = validate_create_table_secondary_index_kind(
+            database,
+            plan,
+            index_kind,
+            is_unique,
+            first_part,
+            &effective_index_kind
         );
-    }
-    if (rc != MYLITE_OK) {
-        set_key_column_missing_error(database, column_name);
-        return MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = plan_secondary_index_name(
             database,
             plan,
             nodes.index_name_node,
-            plan->columns[first_column_index].name,
+            plan->columns[first_part.column_index].name,
             index_name,
             sizeof(index_name)
         );
     }
     if (rc == MYLITE_OK) {
-        planned_index.kind = index_kind;
+        planned_index.kind = effective_index_kind;
         planned_index.is_unique = is_unique;
         planned_index.is_visible = true;
         snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
     }
-    if (rc == MYLITE_OK && index_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+    if (rc == MYLITE_OK &&
+        (effective_index_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+         effective_index_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) &&
         index_option_list_has_type_option(nodes.options.option_list_node)) {
         set_parse_error(database, NULL);
         rc = MYLITE_ERROR;
@@ -41246,7 +41450,7 @@ static int apply_create_table_secondary_index_definition(
             nodes.part_list
         );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < part_count; ++index) {
+    for (size_t index = 0U; rc == MYLITE_OK && index < first_part.part_count; ++index) {
         rc = append_planned_secondary_index_part(
             database,
             plan,
@@ -41257,7 +41461,8 @@ static int apply_create_table_secondary_index_definition(
     if (rc == MYLITE_OK && is_unique) {
         rc = validate_planned_unique_index_part_list(database, &planned_index);
     }
-    if (rc == MYLITE_OK && !planned_secondary_index_is_fulltext(&planned_index)) {
+    if (rc == MYLITE_OK && !planned_secondary_index_is_fulltext(&planned_index) &&
+        !planned_secondary_index_is_spatial(&planned_index)) {
         rc = validate_planned_secondary_index_key_length(database, plan, &planned_index);
     }
     if (rc == MYLITE_OK) {
@@ -41271,6 +41476,82 @@ static int apply_create_table_secondary_index_definition(
     free(planned_index.parts);
 
     return rc;
+}
+
+static int resolve_create_table_secondary_index_first_column(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    const struct create_table_secondary_index_definition_nodes *nodes,
+    enum mylite_catalog_index_kind index_kind,
+    bool is_unique,
+    struct create_table_secondary_index_first_part *out_first_part
+) {
+    const struct mylite_sql_ast_node *first_part = NULL;
+    const struct mylite_sql_ast_node *first_column = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct planned_secondary_index message_index = {0};
+    int rc = MYLITE_OK;
+
+    *out_first_part = (struct create_table_secondary_index_first_part){0};
+    out_first_part->part_count = mylite_sql_ast_node_child_count(nodes->part_list);
+    if (out_first_part->part_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    first_part = child_at(nodes->part_list, 0U);
+    first_column = secondary_index_part_column_node(first_part);
+    if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        message_index.kind = index_kind;
+        message_index.is_unique = is_unique;
+        set_unsupported_error(
+            database,
+            planned_secondary_index_unqualified_column_message(&message_index)
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(first_column, column_name, sizeof(column_name), database);
+    if (rc == MYLITE_OK) {
+        rc = find_planned_column_index(
+            plan->columns,
+            plan->column_count,
+            column_name,
+            &out_first_part->column_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        set_key_column_missing_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_create_table_secondary_index_kind(
+    struct mylite_db *database,
+    const struct planned_create_table *plan,
+    enum mylite_catalog_index_kind index_kind,
+    bool is_unique,
+    struct create_table_secondary_index_first_part first_part,
+    enum mylite_catalog_index_kind *out_effective_index_kind
+) {
+    *out_effective_index_kind = index_kind;
+    if (is_unique && planned_column_is_spatial(&plan->columns[first_part.column_index])) {
+        set_spatial_unique_error(database);
+        return MYLITE_ERROR;
+    }
+    if (!is_unique && index_kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+        planned_column_is_spatial(&plan->columns[first_part.column_index])) {
+        *out_effective_index_kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    }
+    if (*out_effective_index_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL &&
+        first_part.part_count > 1U) {
+        set_spatial_too_many_key_parts_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int extract_create_table_secondary_index_definition_nodes(
@@ -41288,7 +41569,8 @@ static int extract_create_table_secondary_index_definition_nodes(
     if (secondary_index == NULL ||
         (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
          secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
-         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION)) {
+         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -43443,6 +43725,7 @@ static int append_planned_secondary_index_part(
     const struct mylite_sql_ast_node *direction_node = secondary_index_part_direction_node(part);
     enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
     bool is_fulltext = planned_secondary_index_is_fulltext(index);
+    bool is_spatial = planned_secondary_index_is_spatial(index);
     bool has_prefix_length = false;
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int64_t prefix_length = 0;
@@ -43494,7 +43777,7 @@ static int append_planned_secondary_index_part(
         enum mylite_catalog_index_sort_direction stored_sort_direction = sort_direction;
         int64_t stored_prefix_length = prefix_length;
 
-        if (is_fulltext) {
+        if (is_fulltext || is_spatial) {
             stored_sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
             stored_prefix_length = 0;
         } else if (prefix_node != NULL) {
@@ -43518,6 +43801,9 @@ static const char *planned_secondary_index_unqualified_column_message(
     if (planned_secondary_index_is_fulltext(index)) {
         return "FULLTEXT indexes support only unqualified key columns";
     }
+    if (planned_secondary_index_is_spatial(index)) {
+        return "SPATIAL indexes support only unqualified key columns";
+    }
     if (index != NULL && index->is_unique) {
         return "Unique indexes support only unqualified key columns";
     }
@@ -43535,6 +43821,7 @@ static int validate_planned_secondary_index_part(
     int64_t *out_prefix_length
 ) {
     bool is_fulltext = planned_secondary_index_is_fulltext(index);
+    bool is_spatial = planned_secondary_index_is_spatial(index);
     int rc = MYLITE_OK;
 
     if (plan == NULL || index == NULL || column_index >= plan->column_count ||
@@ -43542,7 +43829,7 @@ static int validate_planned_secondary_index_part(
         set_runtime_error(database, "invalid secondary-index key part");
         return MYLITE_ERROR;
     }
-    if (is_fulltext && nodes.direction_node != NULL) {
+    if ((is_fulltext || is_spatial) && nodes.direction_node != NULL) {
         set_fulltext_explicit_order_error(database);
         return MYLITE_ERROR;
     }
@@ -43555,7 +43842,10 @@ static int validate_planned_secondary_index_part(
             column_name,
             out_prefix_length
         );
-        if (rc == MYLITE_OK && !is_fulltext) {
+        if (rc == MYLITE_OK && is_spatial) {
+            set_incorrect_prefix_key_error(database);
+            rc = MYLITE_ERROR;
+        } else if (rc == MYLITE_OK && !is_fulltext) {
             rc = validate_secondary_index_prefix_for_planned_column(
                 database,
                 &plan->columns[column_index],
@@ -43569,6 +43859,9 @@ static int validate_planned_secondary_index_part(
     }
     if (is_fulltext) {
         return validate_fulltext_index_column(database, &plan->columns[column_index]);
+    }
+    if (is_spatial) {
+        return validate_spatial_index_column(database, &plan->columns[column_index]);
     }
     if (nodes.prefix_node != NULL) {
         return MYLITE_OK;
@@ -43818,6 +44111,26 @@ static int validate_fulltext_index_column(
     return MYLITE_ERROR;
 }
 
+static int validate_spatial_index_column(
+    struct mylite_db *database,
+    const struct planned_column *column
+) {
+    if (column == NULL) {
+        set_runtime_error(database, "invalid SPATIAL index column");
+        return MYLITE_ERROR;
+    }
+    if (!planned_column_is_spatial(column)) {
+        set_spatial_index_non_geometric_error(database);
+        return MYLITE_ERROR;
+    }
+    if (column->is_nullable) {
+        set_spatial_index_must_be_not_null_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_fulltext_string_key_column(
     struct mylite_db *database,
     const struct planned_column *column
@@ -43857,6 +44170,17 @@ static bool planned_secondary_index_is_fulltext(const struct planned_secondary_i
         return false;
     }
     if (index->kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool planned_secondary_index_is_spatial(const struct planned_secondary_index *index) {
+    if (index == NULL) {
+        return false;
+    }
+    if (index->kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
         return true;
     }
 
@@ -44078,6 +44402,10 @@ static int validate_unique_index_column(
 ) {
     if (column == NULL) {
         set_runtime_error(database, "invalid unique-index column");
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_spatial(column)) {
+        set_spatial_unique_error(database);
         return MYLITE_ERROR;
     }
     if (planned_column_is_text_family(column)) {
@@ -44350,6 +44678,10 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         set_runtime_error(database, "invalid primary-key column");
         return MYLITE_ERROR;
     }
+    if (planned_column_is_spatial(column)) {
+        set_spatial_unique_error(database);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_char_or_varchar(column)) {
         int rc = validate_planned_string_key_column(database, column);
 
@@ -44499,6 +44831,7 @@ static int plan_create_table_like(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_create_table_like){0};
+    out_plan->create_table.suppress_spatial_index_warnings = true;
     rc = reject_information_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
         rc = resolve_visible_table_reference(
@@ -44659,7 +44992,8 @@ static int validate_create_table_like_source_columns(
             column_descriptor_is_date(&columns[column_index]) ||
             column_descriptor_is_time(&columns[column_index]) ||
             column_descriptor_is_datetime(&columns[column_index]) ||
-            column_descriptor_is_timestamp(&columns[column_index])) {
+            column_descriptor_is_timestamp(&columns[column_index]) ||
+            column_descriptor_is_spatial(&columns[column_index])) {
             continue;
         }
         if (columns[column_index].physical_type[0] == '\0' ||
@@ -44667,7 +45001,8 @@ static int validate_create_table_like_source_columns(
             set_unsupported_error(
                 database,
                 "CREATE TABLE LIKE supports only integer, BIT, string, binary string, decimal, "
-                "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns"
+                "approximate numeric, YEAR, DATE, TIME, DATETIME, TIMESTAMP, and spatial "
+                "descriptor columns"
             );
             return MYLITE_ERROR;
         }
@@ -44675,7 +45010,8 @@ static int validate_create_table_like_source_columns(
             database,
             &columns[column_index],
             "CREATE TABLE LIKE supports only integer, BIT, string, binary string, decimal, "
-            "approximate numeric, YEAR, DATE, TIME, DATETIME, and TIMESTAMP descriptor columns",
+            "approximate numeric, YEAR, DATE, TIME, DATETIME, TIMESTAMP, and spatial descriptor "
+            "columns",
             &range
         );
 
@@ -44710,7 +45046,8 @@ static int clone_create_table_like_indexes(
         struct planned_secondary_index *target_index = NULL;
 
         if (source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-            source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+            source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+            source_index->index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
             continue;
         }
         rc = reserve_planned_secondary_indexes(
@@ -46772,6 +47109,7 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
     bool existing_table_found = false;
     int64_t table_id = 0;
     size_t hash_warning_count = planned_create_table_hash_index_warning_count(plan);
+    size_t spatial_warning_count = planned_create_table_spatial_index_warning_count(plan);
     int rc = MYLITE_OK;
 
     rc = mylite_catalog_try_read_table_by_name(
@@ -46792,6 +47130,9 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
     }
 
     rc = reserve_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = reserve_spatial_index_warnings(database, spatial_warning_count);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_begin_mutation(database, &mutation);
     }
@@ -46833,7 +47174,11 @@ static int create_table_from_plan(struct mylite_db *database, struct planned_cre
 
     ++database->session.sqlite_schema_generation;
 
-    return append_hash_index_warnings(database, hash_warning_count);
+    rc = append_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = append_spatial_index_warnings(database, plan);
+    }
+    return rc;
 }
 
 static int create_temporary_table_from_plan(
@@ -46847,6 +47192,7 @@ static int create_temporary_table_from_plan(
     bool physical_table_created = false;
     int64_t table_id = 0;
     size_t hash_warning_count = planned_create_table_hash_index_warning_count(plan);
+    size_t spatial_warning_count = planned_create_table_spatial_index_warning_count(plan);
     int rc = MYLITE_OK;
 
     if (plan->foreign_key_count != 0U) {
@@ -46875,6 +47221,9 @@ static int create_temporary_table_from_plan(
     }
 
     rc = reserve_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = reserve_spatial_index_warnings(database, spatial_warning_count);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_temporary_catalog_allocate_table_identity(
             &database->session.temporary_catalog,
@@ -46915,7 +47264,11 @@ static int create_temporary_table_from_plan(
     }
 
     ++database->session.sqlite_schema_generation;
-    return append_hash_index_warnings(database, hash_warning_count);
+    rc = append_hash_index_warnings(database, hash_warning_count);
+    if (rc == MYLITE_OK) {
+        rc = append_spatial_index_warnings(database, plan);
+    }
+    return rc;
 }
 
 static int assign_create_table_index_ids(
@@ -47737,6 +48090,30 @@ static bool planned_create_table_has_fulltext_index(const struct planned_create_
     return false;
 }
 
+static bool planned_create_table_has_spatial_index(const struct planned_create_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        if (plan->secondary_indexes[index].kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool planned_create_table_has_spatial_column(const struct planned_create_table *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (planned_column_is_spatial(&plan->columns[column_index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int execute_physical_create_table(
     struct mylite_db *database,
     const struct planned_create_table *plan,
@@ -48274,6 +48651,13 @@ static int plan_alter_table_add_column(
     }
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK && planned_column_is_spatial(&out_plan->column)) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ADD COLUMN does not yet support spatial columns"
+        );
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = reject_inline_primary_key_column_definition(
@@ -49219,10 +49603,22 @@ static int plan_alter_table_add_index(
             sizeof(out_plan->index_name)
         );
     }
-    if (rc == MYLITE_OK && nodes.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
-        index_option_list_has_type_option(nodes.options.option_list_node)) {
-        set_parse_error(database, NULL);
-        rc = MYLITE_ERROR;
+    if (rc == MYLITE_OK) {
+        rc = apply_loaded_add_index_spatial_kind_from_parts(
+            database,
+            nodes.part_list,
+            columns,
+            column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_loaded_add_index_kind_options(
+            database,
+            out_plan,
+            part_count,
+            nodes.options.option_list_node
+        );
     }
     if (rc == MYLITE_OK) {
         rc = apply_index_options_to_alter_plan(database, nodes.options, out_plan);
@@ -49243,7 +49639,8 @@ static int plan_alter_table_add_index(
             column_count
         );
     }
-    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(out_plan)) {
+    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(out_plan) &&
+        !planned_add_index_is_spatial(out_plan)) {
         rc = validate_loaded_index_part_list(
             database,
             out_plan->parts,
@@ -49279,12 +49676,11 @@ static int plan_alter_table_add_index_name_from_parts(
 ) {
     const struct mylite_sql_ast_node *first_part = child_at(nodes->part_list, 0U);
     const struct mylite_sql_ast_node *first_column = secondary_index_part_column_node(first_part);
-    bool is_fulltext = nodes->kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, add_index_unqualified_column_error(is_fulltext));
+        set_unsupported_error(database, add_index_unqualified_column_error(nodes->kind));
         return MYLITE_ERROR;
     }
 
@@ -49365,10 +49761,22 @@ static int plan_create_index(
             sizeof(out_plan->index_name)
         );
     }
-    if (rc == MYLITE_OK && nodes.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
-        index_option_list_has_type_option(nodes.options.option_list_node)) {
-        set_parse_error(database, NULL);
-        rc = MYLITE_ERROR;
+    if (rc == MYLITE_OK) {
+        rc = apply_loaded_add_index_spatial_kind_from_parts(
+            database,
+            nodes.part_list_node,
+            columns,
+            column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_loaded_add_index_kind_options(
+            database,
+            out_plan,
+            part_count,
+            nodes.options.option_list_node
+        );
     }
     if (rc == MYLITE_OK) {
         rc = apply_index_options_to_alter_plan(database, nodes.options, out_plan);
@@ -49389,7 +49797,8 @@ static int plan_create_index(
             column_count
         );
     }
-    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(out_plan)) {
+    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(out_plan) &&
+        !planned_add_index_is_spatial(out_plan)) {
         rc = validate_loaded_index_part_list(
             database,
             out_plan->parts,
@@ -49413,6 +49822,64 @@ static int plan_create_index(
     loaded_index_infos_deinit(&indexes, &index_count);
     free(columns);
     return rc;
+}
+
+static int apply_loaded_add_index_spatial_kind_from_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *part_list,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_add_index *plan
+) {
+    const struct mylite_sql_ast_node *first_part = child_at(part_list, 0U);
+    const struct mylite_sql_ast_node *first_column = secondary_index_part_column_node(first_part);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t first_column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = resolve_loaded_add_index_part_column(
+        database,
+        first_column,
+        columns,
+        column_count,
+        column_name,
+        sizeof(column_name),
+        &first_column_index
+    );
+    if (rc == MYLITE_OK && plan->is_unique &&
+        column_descriptor_is_spatial(&columns[first_column_index])) {
+        set_spatial_unique_error(database);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && plan->kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY && !plan->is_unique &&
+        column_descriptor_is_spatial(&columns[first_column_index])) {
+        plan->kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    }
+
+    return rc;
+}
+
+static int validate_loaded_add_index_kind_options(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan,
+    size_t part_count,
+    const struct mylite_sql_ast_node *option_list
+) {
+    if (planned_add_index_is_spatial(plan) && part_count > 1U) {
+        set_spatial_too_many_key_parts_error(database);
+        return MYLITE_ERROR;
+    }
+    if ((planned_add_index_is_fulltext(plan) || planned_add_index_is_spatial(plan)) &&
+        index_option_list_has_type_option(option_list)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int apply_index_options_to_alter_plan(
@@ -49766,6 +50233,17 @@ static bool planned_add_index_is_fulltext(const struct planned_alter_table_add_i
     return false;
 }
 
+static bool planned_add_index_is_spatial(const struct planned_alter_table_add_index *plan) {
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        return true;
+    }
+
+    return false;
+}
+
 static int extract_alter_table_add_index_nodes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -49779,13 +50257,18 @@ static int extract_alter_table_add_index_nodes(
     if (secondary_index == NULL ||
         (secondary_index->kind != MYLITE_SQL_AST_SECONDARY_INDEX_DEFINITION &&
          secondary_index->kind != MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION &&
-         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION)) {
+         secondary_index->kind != MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION &&
+         secondary_index->kind != MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    out_nodes->kind = secondary_index->kind == MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION
-                          ? MYLITE_CATALOG_INDEX_KIND_FULLTEXT
-                          : MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+    if (secondary_index->kind == MYLITE_SQL_AST_FULLTEXT_INDEX_DEFINITION) {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
+    } else if (secondary_index->kind == MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION) {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    } else {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+    }
     out_nodes->is_unique = secondary_index->kind == MYLITE_SQL_AST_UNIQUE_INDEX_DEFINITION;
 
     child = child_at(secondary_index, 0U);
@@ -49831,13 +50314,18 @@ static int extract_create_index_nodes(
 
     if (statement == NULL || (statement->kind != MYLITE_SQL_AST_CREATE_INDEX_STATEMENT &&
                               statement->kind != MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT &&
-                              statement->kind != MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT)) {
+                              statement->kind != MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT &&
+                              statement->kind != MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    out_nodes->kind = statement->kind == MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT
-                          ? MYLITE_CATALOG_INDEX_KIND_FULLTEXT
-                          : MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+    if (statement->kind == MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT) {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
+    } else if (statement->kind == MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT) {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    } else {
+        out_nodes->kind = MYLITE_CATALOG_INDEX_KIND_SECONDARY;
+    }
 
     child = child_at(statement, 0U);
     while (child != NULL) {
@@ -49892,14 +50380,13 @@ static int append_loaded_add_index_part(
     size_t column_count
 ) {
     const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
-    bool is_fulltext = planned_add_index_is_fulltext(plan);
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int64_t prefix_length = 0;
     size_t column_index = 0U;
     int rc = MYLITE_OK;
 
     if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, add_index_unqualified_column_error(is_fulltext));
+        set_unsupported_error(database, add_index_unqualified_column_error(plan->kind));
         return MYLITE_ERROR;
     }
 
@@ -49950,9 +50437,12 @@ static int append_loaded_add_index_part(
     return rc;
 }
 
-static const char *add_index_unqualified_column_error(bool is_fulltext) {
-    if (is_fulltext) {
+static const char *add_index_unqualified_column_error(enum mylite_catalog_index_kind kind) {
+    if (kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
         return "FULLTEXT indexes support only unqualified key columns";
+    }
+    if (kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        return "SPATIAL indexes support only unqualified key columns";
     }
 
     return "Secondary indexes support only unqualified key columns";
@@ -50009,11 +50499,12 @@ static int validate_loaded_add_index_part_attributes(
     const struct mylite_sql_ast_node *prefix_node = secondary_index_part_prefix_node(part);
     const struct mylite_sql_ast_node *direction_node = secondary_index_part_direction_node(part);
     bool is_fulltext = planned_add_index_is_fulltext(plan);
+    bool is_spatial = planned_add_index_is_spatial(plan);
     uint64_t key_bytes = 0U;
     int rc = MYLITE_OK;
 
     *out_prefix_length = 0;
-    if (is_fulltext && direction_node != NULL) {
+    if ((is_fulltext || is_spatial) && direction_node != NULL) {
         set_fulltext_explicit_order_error(database);
         return MYLITE_ERROR;
     }
@@ -50027,6 +50518,10 @@ static int validate_loaded_add_index_part_attributes(
         if (rc != MYLITE_OK) {
             return rc;
         }
+        if (is_spatial) {
+            set_incorrect_prefix_key_error(database);
+            return MYLITE_ERROR;
+        }
         if (is_fulltext) {
             return validate_alter_table_add_fulltext_column(database, column);
         }
@@ -50039,6 +50534,9 @@ static int validate_loaded_add_index_part_attributes(
     }
     if (is_fulltext) {
         return validate_alter_table_add_fulltext_column(database, column);
+    }
+    if (is_spatial) {
+        return validate_alter_table_add_spatial_column(database, column);
     }
 
     return validate_alter_table_add_index_column(database, column);
@@ -50060,7 +50558,7 @@ static struct mylite_catalog_index_column_descriptor make_loaded_add_index_colum
     if (secondary_index_part_prefix_node(part) != NULL) {
         descriptor.has_prefix_length = true;
     }
-    if (planned_add_index_is_fulltext(plan)) {
+    if (planned_add_index_is_fulltext(plan) || planned_add_index_is_spatial(plan)) {
         descriptor.has_prefix_length = false;
         descriptor.prefix_length = 0;
         descriptor.sort_direction = MYLITE_CATALOG_INDEX_SORT_DIRECTION_ASC;
@@ -50433,6 +50931,9 @@ static int add_secondary_index_from_plan(
 
     rc = reserve_fulltext_add_warning_if_needed(database, plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_spatial_add_warning_if_needed(database, plan);
+    }
+    if (rc == MYLITE_OK) {
         rc = reserve_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
     }
     if (rc == MYLITE_OK) {
@@ -50483,7 +50984,8 @@ static int add_secondary_index_from_plan(
             NULL
         );
     }
-    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(plan)) {
+    if (rc == MYLITE_OK && !planned_add_index_is_fulltext(plan) &&
+        !planned_add_index_is_spatial(plan)) {
         rc = execute_physical_add_index(database, plan, index_physical_name);
     }
     if (rc == MYLITE_OK) {
@@ -50507,6 +51009,8 @@ static int add_secondary_index_from_plan(
 
     if (planned_add_index_is_fulltext(plan)) {
         rc = append_fulltext_add_warning_if_needed(database, plan);
+    } else if (planned_add_index_is_spatial(plan)) {
+        rc = append_spatial_add_warning_if_needed(database, plan);
     } else {
         ++database->session.sqlite_schema_generation;
         rc = append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
@@ -50550,6 +51054,26 @@ static int append_fulltext_add_warning_if_needed(
     );
 }
 
+static size_t planned_create_table_spatial_index_warning_count(
+    const struct planned_create_table *plan
+) {
+    size_t warning_count = 0U;
+
+    if (plan == NULL) {
+        return 0U;
+    }
+    if (plan->suppress_spatial_index_warnings) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
+        if (plan->secondary_indexes[index].kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+            ++warning_count;
+        }
+    }
+
+    return warning_count;
+}
+
 static size_t planned_create_table_hash_index_warning_count(
     const struct planned_create_table *plan
 ) {
@@ -50565,6 +51089,64 @@ static size_t planned_create_table_hash_index_warning_count(
     }
 
     return warning_count;
+}
+
+static int reserve_spatial_index_warnings(struct mylite_db *database, size_t warning_count) {
+    return reserve_additional_warning_capacity(database, warning_count);
+}
+
+static int append_spatial_index_warnings(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_OK;
+    }
+    if (plan->suppress_spatial_index_warnings) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->secondary_index_count; ++index) {
+        const struct planned_secondary_index *secondary = &plan->secondary_indexes[index];
+
+        if (secondary->kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL || secondary->part_count == 0U ||
+            secondary->parts[0].column_index >= plan->column_count) {
+            continue;
+        }
+        rc = append_spatial_index_no_srid_warning(
+            database,
+            plan->columns[secondary->parts[0].column_index].name
+        );
+    }
+
+    return rc;
+}
+
+static int append_spatial_index_no_srid_warning(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "The spatial index on column '%s' will not be used by the query optimizer since the "
+        "column does not have an SRID attribute. Consider adding an SRID attribute to the column.",
+        column_name == NULL ? "" : column_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format SPATIAL index warning");
+        return MYLITE_ERROR;
+    }
+
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_spatial_index_no_srid,
+        "HY000",
+        message
+    );
 }
 
 static int reserve_hash_index_warnings(struct mylite_db *database, size_t additional_count) {
@@ -50611,6 +51193,34 @@ static int append_hash_index_warning_if_needed(
     }
 
     return append_hash_index_warnings(database, warning_count);
+}
+
+static int reserve_spatial_add_warning_if_needed(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    size_t warning_count = 0U;
+
+    if (planned_add_index_is_spatial(plan)) {
+        warning_count = 1U;
+    }
+
+    return reserve_spatial_index_warnings(database, warning_count);
+}
+
+static int append_spatial_add_warning_if_needed(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_index *plan
+) {
+    if (!planned_add_index_is_spatial(plan)) {
+        return MYLITE_OK;
+    }
+    if (plan == NULL || plan->part_count == 0U) {
+        set_runtime_error(database, "invalid SPATIAL index plan");
+        return MYLITE_ERROR;
+    }
+
+    return append_spatial_index_no_srid_warning(database, plan->parts[0].column.name);
 }
 
 static int reserve_additional_warning_capacity(
@@ -51833,6 +52443,26 @@ static int validate_alter_table_add_fulltext_column(
     return validate_fulltext_index_column(database, &planned);
 }
 
+static int validate_alter_table_add_spatial_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        set_runtime_error(database, "invalid SPATIAL index column");
+        return MYLITE_ERROR;
+    }
+    if (!column_descriptor_is_spatial(column)) {
+        set_spatial_index_non_geometric_error(database);
+        return MYLITE_ERROR;
+    }
+    if (column->is_nullable) {
+        set_spatial_index_must_be_not_null_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_create_unique_index_existing_rows(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
@@ -52147,7 +52777,8 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
             plan->index.index.index_id
         );
     }
-    if (rc == MYLITE_OK && plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+    if (rc == MYLITE_OK && plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
         rc = execute_physical_drop_index(database, plan);
     }
     if (rc == MYLITE_OK) {
@@ -52169,7 +52800,8 @@ static int drop_index_from_plan(struct mylite_db *database, const struct planned
         return rc;
     }
 
-    if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+    if (plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+        plan->index.index.kind != MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
         ++database->session.sqlite_schema_generation;
     }
 
@@ -52301,6 +52933,9 @@ static bool loaded_index_kind_is_secondary_or_fulltext(enum mylite_catalog_index
         return true;
     }
     if (kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return true;
+    }
+    if (kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
         return true;
     }
 
@@ -52618,7 +53253,8 @@ static int copy_alter_table_check_indexes(
             rc = copy_alter_table_check_primary_index(database, &indexes[index], out_plan);
         } else if (
             indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY ||
-            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT
+            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+            indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL
         ) {
             rc = copy_alter_table_check_secondary_index(database, &indexes[index], out_plan);
         }
@@ -54181,7 +54817,8 @@ static int execute_physical_drop_column_prepare_indexes(
         const struct planned_drop_column_index_update *update = &plan->index_updates[index];
         char *sql = NULL;
 
-        if (update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        if (update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+            update->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
             continue;
         }
         rc = build_drop_index_sql(update->index.physical_name, &sql);
@@ -54203,7 +54840,8 @@ static int execute_physical_drop_column_recreate_indexes(
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_update_count; ++index) {
         const struct planned_drop_column_index_update *update = &plan->index_updates[index];
 
-        if (update->drops_index || update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        if (update->drops_index || update->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+            update->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
             continue;
         }
         rc = execute_physical_drop_column_create_index(database, plan, update);
@@ -55758,6 +56396,8 @@ static int validate_alter_table_modify_indexes(
             );
         } else if (key->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
             rc = validate_alter_table_modify_fulltext_index(database, key);
+        } else if (key->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+            rc = validate_alter_table_modify_spatial_index(database, key);
         }
     }
 
@@ -55838,6 +56478,18 @@ static int validate_alter_table_modify_fulltext_index(
     return MYLITE_OK;
 }
 
+static int validate_alter_table_modify_spatial_index(
+    struct mylite_db *database,
+    const struct loaded_index_info *index
+) {
+    if (index == NULL || index->part_count != 1U) {
+        set_runtime_error(database, "invalid SPATIAL index descriptor");
+        return MYLITE_ERROR;
+    }
+
+    return validate_alter_table_add_spatial_column(database, &index->parts[0].column);
+}
+
 static int resolve_alter_table_modify_column_position(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
@@ -55912,6 +56564,7 @@ static int complete_alter_table_modify_column_plan(
          column_descriptor_is_year(&out_plan->original_column) ||
          column_descriptor_is_enum(&out_plan->original_column) ||
          column_descriptor_is_set(&out_plan->original_column) ||
+         column_descriptor_is_spatial(&out_plan->original_column) ||
          planned_column_is_string_family(&out_plan->column) ||
          planned_column_is_binary_string_family(&out_plan->column) ||
          planned_column_is_json(&out_plan->column) || planned_column_is_bit(&out_plan->column) ||
@@ -55921,7 +56574,8 @@ static int complete_alter_table_modify_column_plan(
          planned_column_is_date(&out_plan->column) || planned_column_is_time(&out_plan->column) ||
          planned_column_is_datetime(&out_plan->column) ||
          planned_column_is_timestamp(&out_plan->column) ||
-         planned_column_is_year(&out_plan->column))) {
+         planned_column_is_year(&out_plan->column) ||
+         planned_column_is_spatial(&out_plan->column))) {
         set_unsupported_error(database, out_plan->integer_support_message);
         return MYLITE_ERROR;
     }
@@ -60319,6 +60973,10 @@ static int validate_insert_select_value(
     }
     if (sqlite_type == SQLITE_NULL) {
         if (!target_column->is_nullable) {
+            if (column_descriptor_is_spatial(target_column)) {
+                set_spatial_bad_null_error(database, target_column->name);
+                return MYLITE_ERROR;
+            }
             set_bad_null_error(database, target_column->name);
             return MYLITE_ERROR;
         }
@@ -92535,6 +93193,10 @@ static int validate_column_default_value(
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_spatial(column)) {
+        set_json_cant_have_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_json(column)) {
         if (column_default_value_is_parenthesized_expression(default_node)) {
             set_unsupported_error(database, "JSON expression defaults are not yet supported");
@@ -92615,7 +93277,7 @@ static int finalize_planned_column_default(
         }
         if (planned_column_is_bit(column) || planned_column_is_year(column) ||
             planned_column_is_enum(column) || planned_column_is_set(column) ||
-            planned_column_is_json(column)) {
+            planned_column_is_json(column) || planned_column_is_spatial(column)) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
@@ -93926,6 +94588,10 @@ static int map_column_type(
         (void)column_name;
         return map_json_type(out_column);
     }
+    if (type_node->kind == MYLITE_SQL_AST_SPATIAL_TYPE) {
+        (void)column_name;
+        return map_spatial_type(database, type_node, out_column);
+    }
     if (type_node->kind == MYLITE_SQL_AST_ENUM_TYPE) {
         return map_enum_type(database, type_node, column_name, out_column);
     }
@@ -94177,6 +94843,35 @@ static int map_json_type(struct planned_column *out_column) {
         sizeof(out_column->physical_type_storage),
         "%s",
         "TEXT"
+    );
+    out_column->logical_type = out_column->logical_type_storage;
+    out_column->physical_type = out_column->physical_type_storage;
+    return MYLITE_OK;
+}
+
+static int map_spatial_type(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    struct planned_column *out_column
+) {
+    const char *logical_type =
+        mylite_sql_ast_spatial_type_name(mylite_sql_ast_node_spatial_type(type_node));
+
+    if (strcmp(logical_type, "none") == 0 || strcmp(logical_type, "unknown") == 0) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    snprintf(
+        out_column->logical_type_storage,
+        sizeof(out_column->logical_type_storage),
+        "%s",
+        logical_type
+    );
+    snprintf(
+        out_column->physical_type_storage,
+        sizeof(out_column->physical_type_storage),
+        "%s",
+        "BLOB"
     );
     out_column->logical_type = out_column->logical_type_storage;
     out_column->physical_type = out_column->physical_type_storage;
@@ -95249,6 +95944,22 @@ static bool planned_column_is_json(const struct planned_column *column) {
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
+static bool planned_column_is_spatial(const struct planned_column *column) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+
+    if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
+        return false;
+    }
+    snprintf(descriptor.logical_type, sizeof(descriptor.logical_type), "%s", column->logical_type);
+    snprintf(
+        descriptor.physical_type,
+        sizeof(descriptor.physical_type),
+        "%s",
+        column->physical_type
+    );
+    return column_descriptor_is_spatial(&descriptor);
+}
+
 static bool planned_column_is_enum(const struct planned_column *column) {
     if (column == NULL || column->logical_type == NULL || column->physical_type == NULL) {
         return false;
@@ -95508,6 +96219,29 @@ static bool column_descriptor_is_json(const struct mylite_catalog_column_descrip
     }
     return (strcmp(column->logical_type, "JSON") == 0 &&
             strcmp(column->physical_type, "TEXT") == 0) != 0;
+}
+
+static bool column_descriptor_is_spatial(const struct mylite_catalog_column_descriptor *column) {
+    static const char *const spatial_types[] = {
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multipoint",
+        "multilinestring",
+        "multipolygon",
+        "geomcollection",
+    };
+
+    if (column == NULL || strcmp(column->physical_type, "BLOB") != 0) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(spatial_types) / sizeof(spatial_types[0]); ++index) {
+        if (strcmp(column->logical_type, spatial_types[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column) {
@@ -96496,7 +97230,12 @@ static int row_size_for_column_descriptor(
     }
     if (strcmp(physical_type, "BLOB") == 0) {
         uint64_t bit_width = 0U;
+        const char *spatial_type = NULL;
 
+        if (spatial_logical_type_display_text(logical_type, &spatial_type)) {
+            *out_size = blob_family_row_size_contribution;
+            return MYLITE_OK;
+        }
         if (bit_width_for_logical_type(logical_type, &bit_width) == MYLITE_OK) {
             *out_size = (uint64_t)bit_byte_width(bit_width);
             return MYLITE_OK;
@@ -97894,6 +98633,9 @@ static const char *column_key_text(
     if (column_has_first_fulltext_index(indexes, column->column_id)) {
         return "MUL";
     }
+    if (column_has_spatial_index(indexes, column->column_id)) {
+        return "MUL";
+    }
 
     return "";
 }
@@ -97977,6 +98719,18 @@ static bool column_has_first_fulltext_index(
 ) {
     for (size_t index = 0U; index < indexes.count; ++index) {
         if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT &&
+            indexes.indexes[index].part_count > 0U &&
+            indexes.indexes[index].parts[0].index_column.column_id == column_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool column_has_spatial_index(struct loaded_index_info_span indexes, int64_t column_id) {
+    for (size_t index = 0U; index < indexes.count; ++index) {
+        if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL &&
             indexes.indexes[index].part_count > 0U &&
             indexes.indexes[index].parts[0].index_column.column_id == column_id) {
             return true;
@@ -99496,6 +100250,12 @@ static int convert_insert_value_by_descriptor(
             out_value
         );
     }
+    if (column_descriptor_is_spatial(column)) {
+        (void)row_number;
+        (void)ignore_errors;
+        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
+        return MYLITE_ERROR;
+    }
 
     return convert_integer_literal(
         database,
@@ -99548,6 +100308,10 @@ static int convert_null_insert_value(
         return MYLITE_OK;
     }
     if (!ignore_errors) {
+        if (column_descriptor_is_spatial(column)) {
+            set_spatial_bad_null_error(database, column->name);
+            return MYLITE_ERROR;
+        }
         set_bad_null_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -112592,6 +113356,9 @@ static int populate_select_result_column_descriptor(
         rc = populate_json_result_column_descriptor(column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
+        rc = populate_spatial_result_column_descriptor(column, descriptor, &matched);
+    }
+    if (rc == MYLITE_OK && !matched) {
         rc = populate_binary_result_column_descriptor(database, column, descriptor, &matched);
     }
     if (rc == MYLITE_OK && !matched) {
@@ -112870,6 +113637,25 @@ static int populate_json_result_column_descriptor(
     descriptor->charset_id = mysql_collation_binary_id;
     descriptor->collation_id = mysql_collation_binary_id;
     descriptor->display_length = longtext_max_length;
+    descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    *out_matched = true;
+    return MYLITE_OK;
+}
+
+static int populate_spatial_result_column_descriptor(
+    const struct mylite_catalog_column_descriptor *column,
+    struct mylite_result_column_descriptor *descriptor,
+    bool *out_matched
+) {
+    *out_matched = false;
+    if (!column_descriptor_is_spatial(column)) {
+        return MYLITE_OK;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = UINT32_MAX;
     descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY;
     *out_matched = true;
     return MYLITE_OK;
@@ -118725,6 +119511,10 @@ static int convert_update_value_for_column(
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
             if (!adjust_missing_default) {
+                if (column_descriptor_is_spatial(column)) {
+                    set_spatial_bad_null_error(database, column->name);
+                    return MYLITE_ERROR;
+                }
                 set_bad_null_error(database, column->name);
                 return MYLITE_ERROR;
             }
@@ -118856,6 +119646,10 @@ static int convert_update_column_value(
     if (column_descriptor_is_timestamp(column)) {
         return convert_timestamp_literal(database, value_node, column, 1U, false, out_value);
     }
+    if (column_descriptor_is_spatial(column)) {
+        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
+        return MYLITE_ERROR;
+    }
 
     return convert_update_integer_literal(database, value_node, column, out_value);
 }
@@ -118935,6 +119729,10 @@ static int step_update_scalar_subquery_value(
 
     if (sqlite_rc == SQLITE_DONE) {
         if (!plan->assignment_column.is_nullable) {
+            if (column_descriptor_is_spatial(&plan->assignment_column)) {
+                set_spatial_bad_null_error(database, plan->assignment_column.name);
+                return MYLITE_ERROR;
+            }
             set_bad_null_error(database, plan->assignment_column.name);
             return MYLITE_ERROR;
         }
@@ -118975,6 +119773,10 @@ static int materialize_update_scalar_subquery_sqlite_value(
 
     if (sqlite_type == SQLITE_NULL) {
         if (!target_column->is_nullable) {
+            if (column_descriptor_is_spatial(target_column)) {
+                set_spatial_bad_null_error(database, target_column->name);
+                return MYLITE_ERROR;
+            }
             set_bad_null_error(database, target_column->name);
             return MYLITE_ERROR;
         }
@@ -120708,70 +121510,125 @@ static int append_show_index(
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         const struct loaded_index_part *part = &index->parts[part_index];
         char prefix_text[integer_text_capacity];
-        const char *nullable = "";
-        const bool is_fulltext = index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT;
-        const char *collation =
-            part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC ? "D"
-                                                                                          : "A";
+        const char *nullable = show_index_part_nullable_text(part);
+        const char *collation = show_index_part_collation_text(index, part);
         const char *prefix_value = NULL;
-        const char *index_type = "BTREE";
+        const char *index_type = show_index_index_type_text(index);
         bool where_matches = true;
 
-        if (part->column.is_nullable) {
-            nullable = "YES";
-        }
-        if (is_fulltext) {
-            collation = NULL;
-            index_type = "FULLTEXT";
-        }
-        if (!is_fulltext && part->index_column.has_prefix_length) {
+        rc = show_index_part_prefix_value(
+            database,
+            index,
+            part,
+            prefix_text,
+            sizeof(prefix_text),
+            &prefix_value
+        );
+        if (rc == MYLITE_OK) {
             rc = information_schema_format_i64(
                 database,
-                part->index_column.prefix_length,
-                prefix_text,
-                sizeof(prefix_text)
+                part->index_column.ordinal_position,
+                sequence,
+                sizeof(sequence)
             );
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            prefix_value = prefix_text;
-        }
-        const char *values[show_index_result_column_count] = {
-            target->table_name,
-            non_unique_text,
-            index->index.name,
-            sequence,
-            part->column.name,
-            collation,
-            cardinality,
-            prefix_value,
-            NULL,
-            nullable,
-            index_type,
-            "",
-            index->index.comment,
-            index_visibility_text(index->index.is_visible),
-            NULL,
-        };
-
-        rc = information_schema_format_i64(
-            database,
-            part->index_column.ordinal_position,
-            sequence,
-            sizeof(sequence)
-        );
-        if (rc == MYLITE_OK && where_clause != NULL) {
-            rc = show_index_where_clause_matches(database, where_clause, values, &where_matches);
-        }
-        if (rc == MYLITE_OK && !where_matches) {
-            continue;
         }
         if (rc == MYLITE_OK) {
-            rc = mylite_result_append_text_row(result, values);
+            const char *values[show_index_result_column_count] = {
+                target->table_name,
+                non_unique_text,
+                index->index.name,
+                sequence,
+                part->column.name,
+                collation,
+                cardinality,
+                prefix_value,
+                NULL,
+                nullable,
+                index_type,
+                "",
+                index->index.comment,
+                index_visibility_text(index->index.is_visible),
+                NULL,
+            };
+
+            if (where_clause != NULL) {
+                rc =
+                    show_index_where_clause_matches(database, where_clause, values, &where_matches);
+            }
+            if (rc == MYLITE_OK && where_matches) {
+                rc = mylite_result_append_text_row(result, values);
+            }
         }
     }
 
     return rc;
+}
+
+static const char *show_index_part_nullable_text(const struct loaded_index_part *part) {
+    if (part->column.is_nullable) {
+        return "YES";
+    }
+
+    return "";
+}
+
+static const char *show_index_part_collation_text(
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part
+) {
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return NULL;
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        return "A";
+    }
+    if (part->index_column.sort_direction == MYLITE_CATALOG_INDEX_SORT_DIRECTION_DESC) {
+        return "D";
+    }
+
+    return "A";
+}
+
+static int show_index_part_prefix_value(
+    struct mylite_db *database,
+    const struct loaded_index_info *index,
+    const struct loaded_index_part *part,
+    char *prefix_text,
+    size_t prefix_text_size,
+    const char **out_prefix_value
+) {
+    *out_prefix_value = NULL;
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        *out_prefix_value = "32";
+        return MYLITE_OK;
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+        !part->index_column.has_prefix_length) {
+        return MYLITE_OK;
+    }
+
+    int rc = information_schema_format_i64(
+        database,
+        part->index_column.prefix_length,
+        prefix_text,
+        prefix_text_size
+    );
+
+    if (rc == MYLITE_OK) {
+        *out_prefix_value = prefix_text;
+    }
+    return rc;
+}
+
+static const char *show_index_index_type_text(const struct loaded_index_info *index) {
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT) {
+        return "FULLTEXT";
+    }
+    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) {
+        return "SPATIAL";
+    }
+
+    return "BTREE";
 }
 
 static int validate_show_index_where_clause(
@@ -122242,7 +123099,8 @@ static int append_create_table_secondary_indexes_sql(
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->secondary_index_count; ++index) {
         const struct planned_secondary_index *secondary = &plan->secondary_indexes[index];
 
-        if (planned_secondary_index_is_fulltext(secondary)) {
+        if (planned_secondary_index_is_fulltext(secondary) ||
+            planned_secondary_index_is_spatial(secondary)) {
             continue;
         }
         rc = append_create_table_index_sql(
@@ -136081,6 +136939,42 @@ static void set_temporary_fulltext_index_error(struct mylite_db *database) {
     );
 }
 
+static void set_spatial_index_non_geometric_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_spatial_index_non_geometric,
+        "42000",
+        "A SPATIAL index may only contain a geometrical type column"
+    );
+}
+
+static void set_spatial_index_must_be_not_null_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_spatial_must_be_not_null,
+        "42000",
+        "All parts of a SPATIAL index must be NOT NULL"
+    );
+}
+
+static void set_spatial_unique_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_spatial_unique,
+        "HY000",
+        "Spatial indexes can't be primary or unique indexes."
+    );
+}
+
+static void set_spatial_too_many_key_parts_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_too_many_key_parts,
+        "42000",
+        "Too many key parts specified; max 1 parts allowed"
+    );
+}
+
 static void set_blob_key_without_length_error(struct mylite_db *database, const char *column_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(
@@ -137041,6 +137935,21 @@ static void set_bad_null_error(struct mylite_db *database, const char *column_na
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_bad_null,
+        "23000",
+        message
+    );
+}
+
+static void set_spatial_bad_null_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_spatial_column_cannot_be_null,
         "23000",
         message
     );

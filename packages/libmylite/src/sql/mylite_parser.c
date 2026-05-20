@@ -1406,6 +1406,41 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_fulltext_index_stateme
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_spatial_index_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *part_list,
+    struct mylite_sql_ast_node *index_options
+) {
+    struct mylite_sql_source_span span = span_from_token(&create_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (index_options != NULL) {
+        span = span_join(span, index_options->span);
+    } else if (part_list != NULL) {
+        span = span_join(span, part_list->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    } else if (index_name != NULL) {
+        span = span_join(span, index_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, index_name);
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, part_list);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, index_options);
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
@@ -5519,6 +5554,36 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
     return fulltext_index;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_spatial_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token spatial_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&spatial_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *spatial_index =
+        make_node(state, MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION, span);
+    if (spatial_index == NULL) {
+        return NULL;
+    }
+
+    if (index_name != NULL) {
+        mylite_sql_ast_node_append_child(spatial_index, index_name);
+    }
+    mylite_sql_ast_node_append_child(spatial_index, key_parts);
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(spatial_index, index_options);
+        mylite_sql_ast_node_set_span(
+            spatial_index,
+            span_join(spatial_index->span, index_options->span)
+        );
+    }
+    return spatial_index;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,
@@ -6303,6 +6368,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_json_type(
     return make_node(state, MYLITE_SQL_AST_JSON_TYPE, span_from_token(&type_token));
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_spatial_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_spatial_type_tokens tokens
+) {
+    struct mylite_sql_ast_node *type =
+        make_node(state, MYLITE_SQL_AST_SPATIAL_TYPE, span_from_token(&tokens.type_token));
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_spatial_type(type, tokens.spatial_type);
+    return type;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,
@@ -7003,6 +7082,15 @@ static bool map_keyword_token(
         {"RESTRICT", MYLITE_SQL_PARSE_RESTRICT},
         {"UNIQUE", MYLITE_SQL_PARSE_UNIQUE},
         {"FULLTEXT", MYLITE_SQL_PARSE_FULLTEXT},
+        {"SPATIAL", MYLITE_SQL_PARSE_SPATIAL},
+        {"GEOMETRY", MYLITE_SQL_PARSE_GEOMETRY},
+        {"GEOMETRYCOLLECTION", MYLITE_SQL_PARSE_GEOMETRYCOLLECTION},
+        {"LINESTRING", MYLITE_SQL_PARSE_LINESTRING},
+        {"MULTILINESTRING", MYLITE_SQL_PARSE_MULTILINESTRING},
+        {"MULTIPOINT", MYLITE_SQL_PARSE_MULTIPOINT},
+        {"MULTIPOLYGON", MYLITE_SQL_PARSE_MULTIPOLYGON},
+        {"POINT", MYLITE_SQL_PARSE_POINT},
+        {"POLYGON", MYLITE_SQL_PARSE_POLYGON},
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},

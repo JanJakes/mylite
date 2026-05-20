@@ -57,6 +57,11 @@ struct mylite_sql_binary_string_type_tokens {
     int has_length;
 };
 
+struct mylite_sql_spatial_type_tokens {
+    struct mylite_sql_token type_token;
+    enum mylite_sql_ast_spatial_type spatial_type;
+};
+
 struct mylite_sql_bit_type_tokens {
     struct mylite_sql_token type_token;
     struct mylite_sql_token length_token;
@@ -455,6 +460,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_ast_node *index_options
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_fulltext_index_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *part_list,
+    struct mylite_sql_ast_node *index_options
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_spatial_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *index_name,
@@ -1606,6 +1619,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_fulltext_index_definition(
     struct mylite_sql_token right_paren,
     struct mylite_sql_ast_node *index_options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_spatial_index_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token spatial_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_foreign_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *constraint_name,
@@ -1766,6 +1787,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
 struct mylite_sql_ast_node *mylite_sql_parser_make_json_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_spatial_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_spatial_type_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
     struct mylite_sql_parser_state *state,

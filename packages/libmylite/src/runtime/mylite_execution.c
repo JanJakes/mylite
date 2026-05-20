@@ -2301,6 +2301,11 @@ struct planned_insert_duplicate_update {
     bool has_key;
 };
 
+struct insert_duplicate_projected_row_inputs {
+    const struct planned_value *current_values;
+    const struct planned_value *assignment_values;
+};
+
 struct planned_insert {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -16529,8 +16534,16 @@ static int plan_insert_duplicate_update_key(
     struct mylite_db *database,
     struct planned_insert *plan
 );
+static int reject_insert_duplicate_parent_foreign_key_assignments(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+);
 static bool insert_duplicate_assignment_targets_key(const struct planned_insert *plan);
 static bool insert_duplicate_assignment_targets_auto_increment(const struct planned_insert *plan);
+static bool insert_duplicate_assignment_targets_column_id(
+    const struct planned_insert *plan,
+    int64_t column_id
+);
 static int validate_update_string_key_value(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -21731,6 +21744,68 @@ static int apply_insert_duplicate_key_update(
     size_t row_index,
     const struct loaded_index_info *conflicting_index,
     struct insert_execution_counters *counters
+);
+static int validate_insert_duplicate_key_assignment_conflicts(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_values
+);
+static int fetch_insert_duplicate_current_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    struct planned_value **out_values
+);
+static int build_insert_duplicate_current_row_select_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+);
+static int project_insert_duplicate_updated_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    struct insert_duplicate_projected_row_inputs inputs,
+    struct planned_value **out_values
+);
+static bool insert_duplicate_index_has_assigned_part(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *index
+);
+static int insert_duplicate_key_tuple_has_null_part(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *index,
+    const struct planned_value *values,
+    bool *out_has_null_part
+);
+static int unique_key_tuple_exists_excluding_insert_duplicate_row(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *candidate,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *projected_values,
+    bool *out_exists
+);
+static int build_unique_key_lookup_excluding_insert_duplicate_row_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *candidate,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+);
+static int append_insert_duplicate_key_predicate_sql_from_parameters(
+    struct dynamic_string *string,
+    const struct loaded_index_info *index,
+    size_t first_parameter
+);
+static int bind_insert_duplicate_key_tuple_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct loaded_index_info *index,
+    const struct planned_value *values,
+    size_t value_count
 );
 static int convert_insert_duplicate_update_value(
     struct mylite_db *database,
@@ -58469,13 +58544,6 @@ static int plan_insert_duplicate_update_key(
             plan->duplicate_update.key_index = index;
         }
     }
-    if (insert_duplicate_assignment_targets_key(plan)) {
-        set_unsupported_error(
-            database,
-            "INSERT ... ON DUPLICATE KEY UPDATE does not support key-column assignments"
-        );
-        return MYLITE_ERROR;
-    }
     if (insert_duplicate_assignment_targets_auto_increment(plan)) {
         set_unsupported_error(
             database,
@@ -58483,8 +58551,47 @@ static int plan_insert_duplicate_update_key(
         );
         return MYLITE_ERROR;
     }
+    if (insert_duplicate_assignment_targets_key(plan)) {
+        return reject_insert_duplicate_parent_foreign_key_assignments(database, plan);
+    }
 
     return MYLITE_OK;
+}
+
+static int reject_insert_duplicate_parent_foreign_key_assignments(
+    struct mylite_db *database,
+    const struct planned_insert *plan
+) {
+    struct loaded_foreign_key_info *foreign_keys = NULL;
+    size_t foreign_key_count = 0U;
+    int rc = load_parent_foreign_key_infos(
+        database,
+        plan->table.table_id,
+        &foreign_keys,
+        &foreign_key_count
+    );
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < foreign_key_count; ++index) {
+        const struct loaded_foreign_key_info *foreign_key = &foreign_keys[index];
+
+        for (size_t part_index = 0U; part_index < foreign_key->part_count; ++part_index) {
+            if (insert_duplicate_assignment_targets_column_id(
+                    plan,
+                    foreign_key->parts[part_index].parent_column.column_id
+                )) {
+                set_unsupported_error(
+                    database,
+                    "INSERT ... ON DUPLICATE KEY UPDATE does not support parent foreign-key "
+                    "key assignments"
+                );
+                rc = MYLITE_ERROR;
+                break;
+            }
+        }
+    }
+
+    loaded_foreign_key_infos_deinit(&foreign_keys, &foreign_key_count);
+    return rc;
 }
 
 static bool insert_duplicate_assignment_targets_key(const struct planned_insert *plan) {
@@ -58521,6 +58628,26 @@ static bool insert_duplicate_assignment_targets_auto_increment(const struct plan
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
         if (plan->duplicate_update.assignments[index].assignment_column_index ==
             plan->auto_increment_column_index) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool insert_duplicate_assignment_targets_column_id(
+    const struct planned_insert *plan,
+    int64_t column_id
+) {
+    if (plan == NULL || column_id <= 0) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        size_t column_index = plan->duplicate_update.assignments[index].assignment_column_index;
+
+        if (column_index < plan->column_count &&
+            plan->columns[column_index].column_id == column_id) {
             return true;
         }
     }
@@ -132407,6 +132534,15 @@ static int apply_insert_duplicate_key_update(
     int rc = convert_insert_duplicate_update_values(database, plan, row_index, &assignment_values);
 
     if (rc == MYLITE_OK) {
+        rc = validate_insert_duplicate_key_assignment_conflicts(
+            database,
+            plan,
+            row_index,
+            conflicting_index,
+            assignment_values
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = build_insert_duplicate_update_sql(plan, conflicting_index, assignment_values, &sql);
     }
     if (rc == MYLITE_OK) {
@@ -132450,6 +132586,406 @@ static int apply_insert_duplicate_key_update(
     );
     free(sql);
 
+    return rc;
+}
+
+static int validate_insert_duplicate_key_assignment_conflicts(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *assignment_values
+) {
+    struct planned_value *current_values = NULL;
+    struct planned_value *projected_values = NULL;
+    int rc = MYLITE_OK;
+
+    if (!insert_duplicate_assignment_targets_key(plan)) {
+        return MYLITE_OK;
+    }
+
+    rc = fetch_insert_duplicate_current_row_values(
+        database,
+        plan,
+        row_index,
+        conflicting_index,
+        &current_values
+    );
+    if (rc == MYLITE_OK) {
+        rc = project_insert_duplicate_updated_row_values(
+            database,
+            plan,
+            (struct insert_duplicate_projected_row_inputs){
+                .current_values = current_values,
+                .assignment_values = assignment_values,
+            },
+            &projected_values
+        );
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->index_count; ++index) {
+        const struct loaded_index_info *candidate = &plan->indexes[index];
+        bool has_null_part = false;
+        bool exists = false;
+        char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY] = "";
+
+        if (!candidate->index.is_unique || candidate->part_count == 0U ||
+            !insert_duplicate_index_has_assigned_part(plan, candidate)) {
+            continue;
+        }
+        rc = insert_duplicate_key_tuple_has_null_part(
+            plan,
+            candidate,
+            projected_values,
+            &has_null_part
+        );
+        if (rc != MYLITE_OK || has_null_part) {
+            continue;
+        }
+        rc = unique_key_tuple_exists_excluding_insert_duplicate_row(
+            database,
+            plan,
+            row_index,
+            candidate,
+            conflicting_index,
+            projected_values,
+            &exists
+        );
+        if (rc == MYLITE_OK && exists) {
+            rc = format_key_tuple(
+                candidate,
+                projected_values,
+                plan->column_count,
+                value_text,
+                sizeof(value_text)
+            );
+            if (rc == MYLITE_OK) {
+                set_duplicate_key_error(
+                    database,
+                    plan->target.table_name,
+                    candidate->index.name,
+                    value_text
+                );
+                rc = MYLITE_ERROR;
+            }
+        }
+    }
+
+    insert_duplicate_update_values_deinit(&projected_values, plan->column_count);
+    insert_duplicate_update_values_deinit(&current_values, plan->column_count);
+    return rc;
+}
+
+static int fetch_insert_duplicate_current_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *conflicting_index,
+    struct planned_value **out_values
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_value *values = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    if (plan->column_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(plan->column_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = build_insert_duplicate_current_row_select_sql(plan, conflicting_index, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        int parameter_index = 1;
+
+        rc = bind_insert_duplicate_key_tuple_parameters(
+            statement,
+            &parameter_index,
+            conflicting_index,
+            plan->rows[row_index].values,
+            plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+                 ++column_index) {
+                rc = materialize_insert_select_selected_value(
+                    database,
+                    statement,
+                    (int)column_index,
+                    &plan->columns[column_index],
+                    row_index + 1U,
+                    &values[column_index]
+                );
+            }
+        } else if (sqlite_rc == SQLITE_DONE) {
+            set_physical_sqlite_row_error(database);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc != MYLITE_OK) {
+        insert_duplicate_update_values_deinit(&values, plan->column_count);
+        return rc;
+    }
+
+    *out_values = values;
+    return MYLITE_OK;
+}
+
+static int build_insert_duplicate_current_row_select_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_key_predicate_sql_from_parameters(
+            &string,
+            conflicting_index,
+            1U
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int project_insert_duplicate_updated_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    struct insert_duplicate_projected_row_inputs inputs,
+    struct planned_value **out_values
+) {
+    struct planned_value *values = NULL;
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    if (plan->column_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(plan->column_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct planned_value *source = &inputs.current_values[column_index];
+
+        for (size_t assignment_index = 0U;
+             assignment_index < plan->duplicate_update.assignment_count;
+             ++assignment_index) {
+            if (plan->duplicate_update.assignments[assignment_index].assignment_column_index ==
+                column_index) {
+                source = &inputs.assignment_values[assignment_index];
+                break;
+            }
+        }
+        rc = copy_planned_value(database, source, &values[column_index]);
+    }
+    if (rc != MYLITE_OK) {
+        insert_duplicate_update_values_deinit(&values, plan->column_count);
+        return rc;
+    }
+
+    *out_values = values;
+    return MYLITE_OK;
+}
+
+static bool insert_duplicate_index_has_assigned_part(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *index
+) {
+    if (plan == NULL || index == NULL) {
+        return false;
+    }
+
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        for (size_t assignment_index = 0U;
+             assignment_index < plan->duplicate_update.assignment_count;
+             ++assignment_index) {
+            if (index->parts[part_index].column_index ==
+                plan->duplicate_update.assignments[assignment_index].assignment_column_index) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static int insert_duplicate_key_tuple_has_null_part(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *index,
+    const struct planned_value *values,
+    bool *out_has_null_part
+) {
+    *out_has_null_part = false;
+
+    for (size_t part_index = 0U; part_index < index->part_count; ++part_index) {
+        size_t column_index = index->parts[part_index].column_index;
+
+        if (column_index >= plan->column_count) {
+            return MYLITE_ERROR;
+        }
+        if (values[column_index].is_null) {
+            *out_has_null_part = true;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int unique_key_tuple_exists_excluding_insert_duplicate_row(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct loaded_index_info *candidate,
+    const struct loaded_index_info *conflicting_index,
+    const struct planned_value *projected_values,
+    bool *out_exists
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int parameter_index = 1;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_exists = false;
+    rc = build_unique_key_lookup_excluding_insert_duplicate_row_sql(
+        plan,
+        candidate,
+        conflicting_index,
+        &sql
+    );
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_insert_duplicate_key_tuple_parameters(
+            statement,
+            &parameter_index,
+            candidate,
+            projected_values,
+            plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_insert_duplicate_key_tuple_parameters(
+            statement,
+            &parameter_index,
+            conflicting_index,
+            plan->rows[row_index].values,
+            plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_exists = true;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_unique_key_lookup_excluding_insert_duplicate_row_sql(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *candidate,
+    const struct loaded_index_info *conflicting_index,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_key_predicate_sql_from_parameters(&string, candidate, 1U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " AND NOT (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_duplicate_key_predicate_sql_from_parameters(
+            &string,
+            conflicting_index,
+            candidate->part_count + 1U
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
     return rc;
 }
 
@@ -132621,18 +133157,29 @@ static int append_insert_duplicate_key_predicate_sql(
     const struct planned_insert *plan,
     const struct loaded_index_info *conflicting_index
 ) {
+    return append_insert_duplicate_key_predicate_sql_from_parameters(
+        string,
+        conflicting_index,
+        plan->duplicate_update.assignment_count + 1U
+    );
+}
+
+static int append_insert_duplicate_key_predicate_sql_from_parameters(
+    struct dynamic_string *string,
+    const struct loaded_index_info *index,
+    size_t first_parameter
+) {
     int rc = MYLITE_OK;
 
-    if (conflicting_index == NULL || conflicting_index->part_count == 0U) {
+    if (index == NULL || index->part_count == 0U) {
         return MYLITE_ERROR;
     }
-    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < conflicting_index->part_count;
-         ++part_index) {
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         if (part_index != 0U) {
             rc = dynamic_string_append(string, " AND ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_loaded_key_part_sql(string, &conflicting_index->parts[part_index], NULL);
+            rc = append_loaded_key_part_sql(string, &index->parts[part_index], NULL);
         }
         if (rc == MYLITE_OK) {
             rc = dynamic_string_append(string, " = ");
@@ -132640,8 +133187,8 @@ static int append_insert_duplicate_key_predicate_sql(
         if (rc == MYLITE_OK) {
             rc = append_loaded_key_part_parameter_sql(
                 string,
-                &conflicting_index->parts[part_index],
-                plan->duplicate_update.assignment_count + part_index + 1U
+                &index->parts[part_index],
+                first_parameter + part_index
             );
         }
     }
@@ -132805,6 +133352,30 @@ static int bind_insert_duplicate_assignment_parameters(
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
         rc = bind_planned_value_parameter(statement, *parameter_index, &assignment_values[index]);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
+    return rc;
+}
+
+static int bind_insert_duplicate_key_tuple_parameters(
+    sqlite3_stmt *statement,
+    int *parameter_index,
+    const struct loaded_index_info *index,
+    const struct planned_value *values,
+    size_t value_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
+        size_t column_index = index->parts[part_index].column_index;
+
+        if (column_index >= value_count) {
+            return MYLITE_ERROR;
+        }
+        rc = bind_planned_value_parameter(statement, *parameter_index, &values[column_index]);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
         }

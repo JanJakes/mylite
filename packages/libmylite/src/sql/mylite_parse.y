@@ -1869,9 +1869,18 @@ joined_delete_statement(A) ::=
 }
 
 update_statement(A) ::=
-    UPDATE(U) table_name(T) SET update_assignment_list(S) where_clause_opt(W)
-    order_clause_opt(O) update_limit_clause_opt(L). {
-    A = mylite_sql_parser_make_update_statement(state, U, T, S, W, O, L);
+    UPDATE(U) update_table_source(T) SET update_assignment_list(S)
+    where_clause_opt(W) order_clause_opt(O) update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        U,
+        (struct mylite_sql_update_statement_parts){
+            .target_table = T,
+            .assignment_list = S,
+            .where_clause = W,
+            .order_clause = O,
+            .limit_clause = L,
+        });
 }
 joined_update_statement(A) ::=
     UPDATE(U) joined_update_table_source(LT) join_operator(JO) joined_update_table_source(RT)
@@ -1902,15 +1911,16 @@ joined_update_statement(A) ::=
 }
 
 joined_update_table_source(A) ::=
-    table_name(N) joined_update_table_alias_opt(AL) table_index_hints_opt(IH). {
+    update_table_source(S). {
+    A = S;
+}
+joined_update_table_source(A) ::=
+    table_name(N) AS identifier(AL) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
 
-joined_update_table_alias_opt(A) ::= . {
-    A = NULL;
-}
-joined_update_table_alias_opt(A) ::= AS identifier(I). {
-    A = I;
+update_table_source(A) ::= table_name(N) table_index_hints_opt(IH). {
+    A = mylite_sql_parser_make_table_source(state, N, NULL, IH);
 }
 
 do_statement(A) ::= DO(T) do_expression_list(E). {

@@ -3804,29 +3804,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_joined_delete_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token update_token,
-    struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *assignments,
-    struct mylite_sql_ast_node *where_clause,
-    struct mylite_sql_ast_node *order_clause,
-    struct mylite_sql_ast_node *limit_clause
+    struct mylite_sql_update_statement_parts parts
 ) {
     struct mylite_sql_source_span span = span_from_token(&update_token);
+    struct mylite_sql_ast_node *target = parts.target_table;
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (table_name != NULL) {
-        span = span_join(span, table_name->span);
+    if (target != NULL && target->kind == MYLITE_SQL_AST_FROM_TABLE &&
+        target->first_child != NULL && target->first_child->next_sibling == NULL) {
+        target = target->first_child;
     }
-    if (assignments != NULL) {
-        span = span_join(span, assignments->span);
+
+    if (target != NULL) {
+        span = span_join(span, target->span);
     }
-    if (where_clause != NULL) {
-        span = span_join(span, where_clause->span);
+    if (parts.assignment_list != NULL) {
+        span = span_join(span, parts.assignment_list->span);
     }
-    if (order_clause != NULL) {
-        span = span_join(span, order_clause->span);
+    if (parts.where_clause != NULL) {
+        span = span_join(span, parts.where_clause->span);
     }
-    if (limit_clause != NULL) {
-        span = span_join(span, limit_clause->span);
+    if (parts.order_clause != NULL) {
+        span = span_join(span, parts.order_clause->span);
+    }
+    if (parts.limit_clause != NULL) {
+        span = span_join(span, parts.limit_clause->span);
     }
 
     statement = make_node(state, MYLITE_SQL_AST_UPDATE_STATEMENT, span);
@@ -3834,11 +3836,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
         return NULL;
     }
 
-    mylite_sql_ast_node_append_child(statement, table_name);
-    mylite_sql_ast_node_append_child(statement, assignments);
-    mylite_sql_ast_node_append_child(statement, where_clause);
-    mylite_sql_ast_node_append_child(statement, order_clause);
-    mylite_sql_ast_node_append_child(statement, limit_clause);
+    mylite_sql_ast_node_append_child(statement, target);
+    mylite_sql_ast_node_append_child(statement, parts.assignment_list);
+    mylite_sql_ast_node_append_child(statement, parts.where_clause);
+    mylite_sql_ast_node_append_child(statement, parts.order_clause);
+    mylite_sql_ast_node_append_child(statement, parts.limit_clause);
     return statement;
 }
 

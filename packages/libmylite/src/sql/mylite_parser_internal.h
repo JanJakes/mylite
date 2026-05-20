@@ -13,6 +13,14 @@ struct mylite_sql_parser_state {
     bool accepted;
 };
 
+struct mylite_sql_update_statement_parts {
+    struct mylite_sql_ast_node *target_table;
+    struct mylite_sql_ast_node *assignment_list;
+    struct mylite_sql_ast_node *where_clause;
+    struct mylite_sql_ast_node *order_clause;
+    struct mylite_sql_ast_node *limit_clause;
+};
+
 struct mylite_sql_integer_type_name_tokens {
     struct mylite_sql_token type_token;
     enum mylite_sql_ast_integer_type integer_type;
@@ -1103,11 +1111,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_joined_delete_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token update_token,
-    struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *assignments,
-    struct mylite_sql_ast_node *where_clause,
-    struct mylite_sql_ast_node *order_clause,
-    struct mylite_sql_ast_node *limit_clause
+    struct mylite_sql_update_statement_parts parts
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_joined_update_statement(
     struct mylite_sql_parser_state *state,

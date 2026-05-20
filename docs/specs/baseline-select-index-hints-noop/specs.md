@@ -17,9 +17,10 @@ accept common WordPress/MySQL query shapes without pretending that MyLite has a
 cost-based optimizer or that secondary indexes already drive query execution.
 
 This phase does not add optimizer behavior, SQLite index selection, query plan
-metadata, comment optimizer hints, `JOIN_INDEX()` hints, `UPDATE` hints,
-`DELETE` hints, DML target hints, partition hints, optimizer cost model state,
-or protocol-visible optimizer diagnostics.
+metadata, comment optimizer hints, `JOIN_INDEX()` hints, `DELETE` hints,
+partition hints, optimizer cost model state, or protocol-visible optimizer
+diagnostics. Single-table `UPDATE` target hints are specified separately in
+`docs/specs/baseline-update-index-hints-noop/specs.md`.
 
 ## Sources And Evidence
 
@@ -71,9 +72,8 @@ Observed behavior shaping this slice:
   including when scopes differ.
 - Supported successful `SELECT` statements return rows normally, report
   `ROW_COUNT() = -1`, and leave `@@warning_count = 0`.
-- Single-table `UPDATE` accepts index hints in MySQL, but this phase defers
-  update-target hint support so the runtime can be designed with the DML
-  planner rather than bolted onto `SELECT`.
+- Single-table `UPDATE` accepts index hints in MySQL; MyLite covers that
+  follow-up slice in `docs/specs/baseline-update-index-hints-noop/specs.md`.
 - Single-table `DELETE ... USE INDEX(...)` is not accepted by MySQL in the
   tested shape and remains unsupported.
 
@@ -116,7 +116,6 @@ Deferred:
 
 - using hints to influence SQLite query plans or generated SQL;
 - preserving hints in public metadata or exposing optimizer diagnostics;
-- `UPDATE` table-reference hints;
 - `DELETE` target hints;
 - multi-table DML hints;
 - index hints on `information_schema` virtual tables;

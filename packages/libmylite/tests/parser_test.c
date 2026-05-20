@@ -21580,6 +21580,10 @@ static int test_update_statement(void) {
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *hint_list = NULL;
+    const struct mylite_sql_ast_node *hint = NULL;
+    const struct mylite_sql_ast_node *name_list = NULL;
     int failures = 0;
 
     failures +=
@@ -21602,6 +21606,65 @@ static int test_update_statement(void) {
         child_at(assignment, 1U),
         MYLITE_SQL_AST_OPERATOR_POSITIVE,
         "update positive assignment value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE app.simple_lifecycle FORCE KEY FOR ORDER BY (PRIMARY, k_amount) "
+        "SET amount = 2 WHERE id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 0U);
+    assignment_list = child_at(statement, 1U);
+    where_clause = child_at(statement, 2U);
+    hint_list = child_at(from_table, 1U);
+    hint = child_at(hint_list, 0U);
+    name_list = child_at(hint, 1U);
+    failures += expect_node(from_table, MYLITE_SQL_AST_FROM_TABLE, "update hinted target");
+    failures += expect_child_count(from_table, 2U, "update hinted target child count");
+    failures +=
+        expect_span_text(child_at(from_table, 0U), "app.simple_lifecycle", "update hinted table");
+    failures += expect_node(hint_list, MYLITE_SQL_AST_INDEX_HINT_LIST, "update hint list");
+    failures += expect_node(hint, MYLITE_SQL_AST_FORCE_INDEX_HINT, "update force key hint");
+    failures += expect_node(
+        child_at(hint, 0U),
+        MYLITE_SQL_AST_INDEX_HINT_FOR_ORDER_BY,
+        "update force order scope"
+    );
+    failures += expect_span_text(child_at(name_list, 0U), "PRIMARY", "update primary hint name");
+    failures += expect_span_text(child_at(name_list, 1U), "k_amount", "update second hint name");
+    failures += expect_node(
+        assignment_list,
+        MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST,
+        "update hinted assignment list"
+    );
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "update hinted where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE simple_lifecycle USE INDEX () SET amount = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 0U);
+    hint = child_at(child_at(from_table, 1U), 0U);
+    name_list = child_at(hint, 0U);
+    failures += expect_child_count(name_list, 0U, "update empty use index names");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE simple_lifecycle FORCE INDEX () SET amount = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "UPDATE simple_lifecycle IGNORE INDEX () SET amount = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

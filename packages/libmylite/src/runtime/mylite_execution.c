@@ -14600,6 +14600,14 @@ static int plan_single_table_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 );
+static const struct mylite_sql_ast_node *single_table_update_target_name_node(
+    const struct mylite_sql_ast_node *target
+);
+static int validate_update_index_hints(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_catalog_table_descriptor *table
+);
 static int plan_joined_update(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -62363,6 +62371,7 @@ static int plan_single_table_update(
     const struct mylite_sql_ast_node *statement,
     struct planned_update *out_plan
 ) {
+    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
     const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
     const struct mylite_sql_ast_node *where_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
@@ -62391,10 +62400,13 @@ static int plan_single_table_update(
 
     rc = resolve_visible_writable_table_reference(
         database,
-        child_at(statement, 0U),
+        single_table_update_target_name_node(target),
         &out_plan->target,
         &out_plan->table
     );
+    if (rc == MYLITE_OK) {
+        rc = validate_update_index_hints(database, target, &out_plan->table);
+    }
     if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
@@ -62493,6 +62505,30 @@ static int plan_single_table_update(
     }
 
     return rc;
+}
+
+static const struct mylite_sql_ast_node *single_table_update_target_name_node(
+    const struct mylite_sql_ast_node *target
+) {
+    if (target != NULL && target->kind == MYLITE_SQL_AST_FROM_TABLE) {
+        return child_at(target, 0U);
+    }
+    return target;
+}
+
+static int validate_update_index_hints(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    if (target == NULL || target->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+    if (from_table_alias_node(target) != NULL) {
+        set_unsupported_error(database, "UPDATE does not support aliases");
+        return MYLITE_ERROR;
+    }
+    return validate_select_index_hints(database, target, table);
 }
 
 static int plan_joined_update(

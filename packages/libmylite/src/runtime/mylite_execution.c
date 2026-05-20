@@ -15609,6 +15609,27 @@ static int convert_column_default_value(
     const struct planned_column *column,
     int64_t *out_value
 );
+static int parse_column_default_integer_magnitude(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_column *column,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+);
+static int finish_column_default_integer_value(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    const struct integer_column_range *range,
+    uint64_t magnitude,
+    bool is_negative,
+    int64_t *out_value
+);
+static int parse_column_default_integer_string(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+);
 static int evaluate_integer_default_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -94128,8 +94149,6 @@ static int convert_column_default_value(
     const struct planned_column *column,
     int64_t *out_value
 ) {
-    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
-    const struct mylite_sql_ast_node *literal = value_node;
     struct mylite_catalog_column_descriptor descriptor = {0};
     struct integer_column_range range = {0};
     bool is_negative = false;
@@ -94140,39 +94159,19 @@ static int convert_column_default_value(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
 
-        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-            is_negative = true;
-        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-            set_invalid_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-        literal = child_at(value_node, 0U);
-    }
-    if (!boolean_literal_magnitude(literal, &magnitude)) {
-        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-            set_invalid_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
-        if (rc != MYLITE_OK) {
-            set_invalid_default_error(database, column->name);
-            return MYLITE_ERROR;
-        }
-    }
-
-    snprintf(descriptor.name, sizeof(descriptor.name), "%s", column->name);
-    snprintf(descriptor.logical_type, sizeof(descriptor.logical_type), "%s", column->logical_type);
-    snprintf(
-        descriptor.physical_type,
-        sizeof(descriptor.physical_type),
-        "%s",
-        column->physical_type
+    rc = parse_column_default_integer_magnitude(
+        database,
+        value_node,
+        column,
+        &magnitude,
+        &is_negative
     );
-    descriptor.is_nullable = column->is_nullable;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    planned_column_descriptor_for_default(column, &descriptor);
     rc = integer_range_for_column(
         database,
         &descriptor,
@@ -94182,22 +94181,136 @@ static int convert_column_default_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
+
+    return finish_column_default_integer_value(
+        database,
+        column,
+        &range,
+        magnitude,
+        is_negative,
+        out_value
+    );
+}
+
+static int parse_column_default_integer_magnitude(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_column *column,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool has_unary = false;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || column == NULL || out_magnitude == NULL || out_is_negative == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_magnitude = 0U;
+    *out_is_negative = false;
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        has_unary = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            *out_is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (boolean_literal_magnitude(literal, out_magnitude)) {
+        return MYLITE_OK;
+    }
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        rc = parse_unsigned_integer_literal(&literal->span, out_magnitude);
+    } else if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING && !has_unary) {
+        rc = parse_column_default_integer_string(database, literal, out_magnitude, out_is_negative);
+    } else {
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        if (rc != MYLITE_NOMEM) {
+            set_invalid_default_error(database, column->name);
+        }
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int finish_column_default_integer_value(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    const struct integer_column_range *range,
+    uint64_t magnitude,
+    bool is_negative,
+    int64_t *out_value
+) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+
+    if (column == NULL || range == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
     if (is_negative) {
-        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
-            magnitude > range.negative_abs_max) {
+        if ((range->negative_abs_max == 0U && magnitude != 0U) ||
+            magnitude > range->negative_abs_max) {
             set_invalid_default_error(database, column->name);
             return MYLITE_ERROR;
         }
         *out_value = magnitude == bigint_signed_negative_abs_max ? INT64_MIN : -(int64_t)magnitude;
         return MYLITE_OK;
     }
-    if (magnitude > range.positive_max) {
+    if (magnitude > range->positive_max) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
 
     *out_value = (int64_t)magnitude;
     return MYLITE_OK;
+}
+
+static int parse_column_default_integer_string(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_magnitude,
+    bool *out_is_negative
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    enum dml_numeric_string_parse_result parse_result = DML_NUMERIC_STRING_PARSE_INVALID;
+    int rc = decode_sql_string_literal(
+        database,
+        literal,
+        "DEFAULT supports only baseline integer literals and exact quoted integer strings",
+        "invalid integer default string literal",
+        &text,
+        &text_length
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    parse_result = parse_signed_integer_text(text, text_length, out_magnitude, out_is_negative);
+    if (parse_result != DML_NUMERIC_STRING_PARSE_OK) {
+        rc = MYLITE_ERROR;
+    }
+
+    free(text);
+    return rc;
 }
 
 static int evaluate_integer_default_expression(

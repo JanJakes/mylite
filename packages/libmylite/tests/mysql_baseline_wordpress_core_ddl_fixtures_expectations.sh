@@ -37,6 +37,25 @@ expect_output() {
     fi
 }
 
+expect_error() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    set +e
+    output=$(run_mysql "$sql" "$@" 2>&1)
+    status=$?
+    set -e
+    if [ "$status" -eq 0 ]; then
+        fail "$label: expected error [$expected], got success [$output]"
+    fi
+    case "$output" in
+        *"$expected"*) ;;
+        *) fail "$label: expected error [$expected], got [$output]" ;;
+    esac
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
 }
@@ -91,6 +110,54 @@ setup_sql="SET sql_mode = ''; "\
 ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci;"
 
 run_mysql "$setup_sql" "$DATABASE" >/dev/null
+
+expect_output \
+    "fixture display width warning count" \
+    "2" \
+    "CREATE TABLE display_width_warning_probe (a bigint(20), b int(11)); "\
+"SELECT @@warning_count; "\
+"DROP TABLE display_width_warning_probe;" \
+    "$DATABASE"
+
+quoted_integer_defaults_expected=$(cat <<\EXPECTED
+0
+i	int	YES	0
+p	int	YES	7
+n	int	YES	-3
+bu	bigint unsigned	YES	9223372036854775807
+EXPECTED
+)
+expect_output \
+    "quoted integer default metadata" \
+    "$quoted_integer_defaults_expected" \
+    "CREATE TABLE quoted_defaults ("\
+"i INT DEFAULT '0', "\
+"p INT DEFAULT '+7', "\
+"n INT DEFAULT '-3', "\
+"bu BIGINT UNSIGNED DEFAULT '9223372036854775807'); "\
+"SELECT @@warning_count; "\
+"SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT "\
+"FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='${DATABASE}' "\
+"AND TABLE_NAME='quoted_defaults' ORDER BY ORDINAL_POSITION;" \
+    "$DATABASE"
+
+expect_error \
+    "invalid quoted integer default" \
+    "ERROR 1067 (42000)" \
+    "CREATE TABLE bad_quoted_int (id INT DEFAULT 'abc');" \
+    "$DATABASE"
+
+expect_error \
+    "negative quoted unsigned default" \
+    "ERROR 1067 (42000)" \
+    "CREATE TABLE bad_quoted_unsigned (id INT UNSIGNED DEFAULT '-1');" \
+    "$DATABASE"
+
+expect_error \
+    "quoted signed bigint default out of range" \
+    "ERROR 1067 (42000)" \
+    "CREATE TABLE bad_quoted_big_signed (id BIGINT DEFAULT '9223372036854775808');" \
+    "$DATABASE"
 
 wp_users_create_expected=$(cat <<\EXPECTED
 wp_users	CREATE TABLE `wp_users` (
@@ -183,11 +250,40 @@ expect_output \
     "SHOW CREATE TABLE wp_postmeta;" \
     "$DATABASE"
 
+wp_postmeta_show_index_expected=$(cat <<\EXPECTED
+wp_postmeta	0	PRIMARY	1	meta_id	A	0	NULL	NULL		BTREE			YES	NULL
+wp_postmeta	1	post_id	1	post_id	A	0	NULL	NULL		BTREE			YES	NULL
+wp_postmeta	1	meta_key	1	meta_key	A	0	191	NULL	YES	BTREE			YES	NULL
+EXPECTED
+)
+expect_output \
+    "wp_postmeta show index" \
+    "$wp_postmeta_show_index_expected" \
+    "SHOW INDEX FROM wp_postmeta;" \
+    "$DATABASE"
+
+wp_postmeta_columns_expected=$(cat <<\EXPECTED
+meta_id	bigint unsigned	NULL	NULL	PRI	auto_increment	1
+post_id	bigint unsigned	NULL	0	MUL		2
+meta_key	varchar(255)	utf8mb4_unicode_520_ci	NULL	MUL		3
+meta_value	longtext	utf8mb4_unicode_520_ci	NULL			4
+EXPECTED
+)
+expect_output \
+    "wp_postmeta information_schema columns" \
+    "$wp_postmeta_columns_expected" \
+    "SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, COLUMN_DEFAULT, COLUMN_KEY, EXTRA, "\
+"ORDINAL_POSITION "\
+"FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='${DATABASE}' "\
+"AND TABLE_NAME='wp_postmeta' ORDER BY ORDINAL_POSITION;" \
+    "$DATABASE"
+
 wp_row_values_expected=$(cat <<\EXPECTED
-2	0
+1	0
 1	siteurl	https://example.test	yes
 1	1	k	v
 2	2	NULL	NULL
+3	0	omitted	default
 EXPECTED
 )
 expect_output \
@@ -197,6 +293,7 @@ expect_output \
 "VALUES ('siteurl', 'https://example.test'); "\
 "INSERT INTO wp_postmeta (post_id, meta_key, meta_value) "\
 "VALUES (1, 'k', 'v'), (2, NULL, NULL); "\
+"INSERT INTO wp_postmeta (meta_key, meta_value) VALUES ('omitted', 'default'); "\
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SELECT option_id, option_name, option_value, autoload FROM wp_options; "\
 "SELECT meta_id, post_id, meta_key, meta_value FROM wp_postmeta ORDER BY meta_id;" \

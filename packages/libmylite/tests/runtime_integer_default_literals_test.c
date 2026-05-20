@@ -32,6 +32,7 @@ enum {
     alter_add_projection_column_count = 5,
     alter_set_default_projection_column_count = 7,
     alter_set_default_boundary_column_count = 10,
+    quoted_default_projection_column_count = 4,
     alter_removed_default_row_count = 5,
     drop_default_description_row_count = 8,
     show_columns_column_count = 6,
@@ -152,6 +153,13 @@ static int test_create_insert_metadata_and_persistence(void) {
     static const char *const show_i[] = {"i", "int", "YES", "", "5", ""};
     static const char *const show_nn[] = {"nn", "int", "NO", "", "11", ""};
     static const char *const show_nul[] = {"nul", "int", "YES", "", NULL, ""};
+    static const char *const quoted_default_row[] = {
+        "0",
+        "7",
+        "-3",
+        "9223372036854775807",
+    };
+    static const char *const show_quoted_p[] = {"p", "int", "YES", "", "7", ""};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -265,6 +273,47 @@ static int test_create_insert_metadata_and_persistence(void) {
             .sql = "SHOW CREATE TABLE defaults",
             .needle = "`nn` int NOT NULL DEFAULT '11'",
             .context = "SHOW CREATE TABLE not-null integer default",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE quoted_defaults ("
+        "i INT DEFAULT '0', "
+        "p INT DEFAULT '+7', "
+        "n INT DEFAULT '-3', "
+        "bu BIGINT UNSIGNED DEFAULT '9223372036854775807')"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO quoted_defaults () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, p, n, bu FROM quoted_defaults",
+            .values = quoted_default_row,
+            .column_count = quoted_default_projection_column_count,
+            .row_count = 1U,
+            .context = "quoted integer defaults fill omitted values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM quoted_defaults LIKE 'p'",
+            .values = show_quoted_p,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS quoted signed integer default",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE quoted_defaults",
+            .needle = "`p` int DEFAULT '7'",
+            .context = "SHOW CREATE TABLE quoted positive integer default",
         }
     );
 
@@ -874,6 +923,20 @@ static int test_alter_defaults(void) {
         NULL,
     };
     static const char *const show_renamed[] = {"renamed", "int", "YES", "", NULL, ""};
+    static const char *const quoted_alter_rows[] = {
+        "1",
+        "1",
+        "5",
+        "2",
+        "1",
+        "5",
+        "3",
+        "8",
+        "5",
+        "4",
+        "-9",
+        "5",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -992,6 +1055,55 @@ static int test_alter_defaults(void) {
             .column_count = show_columns_column_count,
             .row_count = 1U,
             .context = "SHOW COLUMNS removed default",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE quoted_alter_defaults (id INT NOT NULL, v INT DEFAULT 1)"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO quoted_alter_defaults (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE quoted_alter_defaults ADD COLUMN added INT DEFAULT '5'",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO quoted_alter_defaults (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE quoted_alter_defaults MODIFY v INT DEFAULT '+8'",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO quoted_alter_defaults (id) VALUES (3)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE quoted_alter_defaults CHANGE v changed INT DEFAULT '-9'",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO quoted_alter_defaults (id) VALUES (4)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, changed, added FROM quoted_alter_defaults ORDER BY id",
+            .values = quoted_alter_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "ALTER ADD MODIFY CHANGE quoted integer defaults",
         }
     );
 
@@ -1638,6 +1750,27 @@ static int test_default_diagnostics_and_if_not_exists(void) {
     failures += execute_error(
         database,
         "CREATE TABLE bad_tiny (id TINYINT DEFAULT 128)",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_quoted_int (id INT DEFAULT 'abc')",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_quoted_unsigned (id INT UNSIGNED DEFAULT '-1')",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_quoted_big_signed (id BIGINT DEFAULT '9223372036854775808')",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_quoted_big_unsigned ("
+        "id BIGINT UNSIGNED DEFAULT '9223372036854775808')",
         (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
     );
     failures += execute_statement_ok(database, "CREATE TABLE no_default (id INT NOT NULL, v INT)");

@@ -66,8 +66,16 @@ The expectation script verifies this behavior on MySQL 8.4.9:
   the full zero datetime without warnings.
 - `BIGINT(20) UNSIGNED` renders as `bigint unsigned` in `SHOW CREATE TABLE`
   and `SHOW COLUMNS`; the deprecated display width is not preserved in MySQL
-  8.4.9 metadata.
+  8.4.9 metadata. Creating the fixture tables emits MySQL warning 1681 for
+  each deprecated integer display width.
 - `INT(11) NOT NULL DEFAULT '0'` renders as `int NOT NULL DEFAULT '0'`.
+- Exact quoted decimal integer string defaults such as `'0'`, `'+7'`, and
+  `'-3'` are accepted for integer-family columns when the converted value fits
+  the current descriptor range. Invalid, unsupported, or out-of-range quoted
+  integer defaults produce `ERROR 1067 (42000) Invalid default value`.
+  MyLite does not extend its current signed-64 physical integer envelope in
+  this slice, so `BIGINT UNSIGNED` quoted defaults above `9223372036854775807`
+  remain unsupported even though MySQL can store larger unsigned values.
 - `VARCHAR` columns inheriting `utf8mb4_unicode_520_ci` render explicit column
   collation clauses in `SHOW CREATE TABLE`.
 - `LONGTEXT` columns inheriting the table collation render explicit collation
@@ -174,7 +182,12 @@ specifications listed above. This feature does not introduce a new snippet.
 - Table definitions are persistent base-table descriptors.
 - Display-width integer attributes are accepted through the existing deprecated
   display-width path. The descriptor and rendered metadata follow the current
-  MySQL 8.4.9 no-display-width shape.
+  MySQL 8.4.9 no-display-width shape and preserve the corresponding warning
+  counts.
+- Integer-family quoted numeric string defaults are decoded as SQL strings,
+  then accepted only when the decoded bytes form an exact optional-sign decimal
+  integer in the current MyLite physical range. The stored descriptor default is
+  the canonical integer value, so `'+7'` renders and materializes as `7`.
 - String columns inherit the table default `utf8mb4_unicode_520_ci` metadata
   and expose it through `SHOW CREATE TABLE` and `INFORMATION_SCHEMA.COLUMNS`.
   MyLite's existing ASCII comparison subset remains unchanged.
@@ -187,8 +200,9 @@ specifications listed above. This feature does not introduce a new snippet.
   indexes where current index slices provide them. Metadata comes from catalog
   descriptors, not SQLite introspection.
 - Successful supported fixture setup statements return no row result set unless
-  the statement is a metadata/query statement, preserve `warning_count == 0`
-  for the verified paths, and report MySQL-compatible affected rows.
+  the statement is a metadata/query statement. Warning counts match the
+  MySQL-verified fixture behavior: display-width DDL warnings are preserved,
+  while covered row DML paths report zero warnings.
 
 ## Diagnostics
 
@@ -199,6 +213,7 @@ feature-level diagnostics for:
 - unknown or missing schema/table/column/index names;
 - unknown character sets or collations;
 - invalid default values under the current SQL mode;
+- invalid, unsupported, or out-of-range quoted integer string defaults;
 - unsupported key parts and unsupported text/blob full-column indexes;
 - duplicate primary/unique keys;
 - allocation and physical SQLite failures;

@@ -1136,7 +1136,7 @@ static int test_change_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers CHANGE n changed BIGINT DEFAULT '5'",
+        "ALTER TABLE numbers CHANGE n changed BIGINT DEFAULT 'abc'",
         (struct expected_sql_error){
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",

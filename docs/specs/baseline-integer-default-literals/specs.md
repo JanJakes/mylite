@@ -53,6 +53,9 @@ baseline behavior:
 
 - `DEFAULT` accepts signed decimal integer literals for supported integer
   families. `DEFAULT +9` is normalized to `9`.
+- The later WordPress core DDL fixture slice extends the same integer-family
+  default conversion to exact quoted decimal integer strings, such as `'0'`,
+  `'+7'`, and `'-3'`, when the converted value is in range.
 - `TRUE` and `FALSE` defaults on `BOOL` / `BOOLEAN` normalize to `1` and `0`
   because those aliases render as signed `tinyint(1)`.
 - `SHOW CREATE TABLE` renders non-`NULL` integer defaults as single-quoted
@@ -214,6 +217,8 @@ Supported default conversion reuses MyLite-owned integer assignment conversion:
 
 - decimal integer literals with optional unary sign are parsed without relying
   on SQLite;
+- exact quoted decimal integer strings with an optional sign are decoded and
+  parsed through the same descriptor range checks;
 - `TRUE` converts to integer `1`;
 - `FALSE` converts to integer `0`;
 - `NULL` converts to the effective SQL `NULL` default only for nullable

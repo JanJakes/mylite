@@ -94,6 +94,29 @@ row	1	123	12	-3	100" \
 "SELECT 'row', id, i, u, b, bu FROM nums;" \
     "$DATABASE"
 
+expect_output \
+    "strict boundary decimals and malformed exponent tails" \
+    "status	8	0	0
+row	5	NULL	9223372036854775807	9223372036854775807
+row	6	NULL	9223372036854775807	9223372036854775807
+row	7	1	NULL	NULL
+row	8	1	NULL	NULL
+row	9	1	NULL	NULL
+row	10	1	NULL	NULL
+row	11	-1	NULL	NULL
+row	12	100	NULL	NULL" \
+"SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE nums; "\
+"INSERT INTO nums(id, i, b, bu) VALUES "\
+"(5, NULL, '9223372036854775807.0', '9223372036854775807.0'), "\
+"(6, NULL, '9.223372036854775807e18', '9.223372036854775807e18'), "\
+"(7, '1e', NULL, NULL), (8, '1e+', NULL, NULL), "\
+"(9, '1e-', NULL, NULL), (10, '.5', NULL, NULL), "\
+"(11, '-.5', NULL, NULL), (12, '1.e2', NULL, NULL); "\
+"SELECT 'status', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'row', id, i, b, bu FROM nums ORDER BY id;" \
+    "$DATABASE"
+
 expect_error \
     "strict numeric prefix truncation" \
     1265 \
@@ -108,8 +131,35 @@ expect_error \
     1265 \
     01000 \
     "Data truncated for column 'i' at row 1" \
-    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"SET sql_mode='STRICT_TRANS_TABLES'; "\
 "TRUNCATE nums; INSERT INTO nums(id, i) VALUES (2, '1.2abc');" \
+    "$DATABASE"
+
+expect_error \
+    "strict hexadecimal-looking prefix truncation" \
+    1265 \
+    01000 \
+    "Data truncated for column 'i' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE nums; INSERT INTO nums(id, i) VALUES (2, '0x10');" \
+    "$DATABASE"
+
+expect_error \
+    "strict incomplete exponent with suffix truncation" \
+    1265 \
+    01000 \
+    "Data truncated for column 'i' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE nums; INSERT INTO nums(id, i) VALUES (2, '1efoo');" \
+    "$DATABASE"
+
+expect_error \
+    "strict dotted integer with suffix truncation" \
+    1265 \
+    01000 \
+    "Data truncated for column 'i' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE nums; INSERT INTO nums(id, i) VALUES (2, '1.foo');" \
     "$DATABASE"
 
 expect_error \

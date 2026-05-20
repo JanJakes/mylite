@@ -17,6 +17,8 @@ enum {
     test_path_capacity = 1024,
     numeric_full_column_count = 8,
     numeric_update_column_count = 5,
+    numeric_boundary_column_count = 4,
+    numeric_boundary_row_count = 8,
     mysql_error_data_truncated = 1265,
     mysql_error_data_out_of_range = 1264,
     mysql_error_parse = 1064,
@@ -338,6 +340,40 @@ static int test_insert_ignore_clipping_and_diagnostics(void) {
 
 static int test_integer_string_prefix_scanning_and_adjustment(void) {
     static const char *const strict_inserted_row[] = {"10", "123", "12", "-3", "100"};
+    static const char *const strict_boundary_rows[] = {
+        "12",
+        NULL,
+        "9223372036854775807",
+        "9223372036854775807",
+        "13",
+        NULL,
+        "9223372036854775807",
+        "9223372036854775807",
+        "14",
+        "1",
+        NULL,
+        NULL,
+        "15",
+        "1",
+        NULL,
+        NULL,
+        "16",
+        "1",
+        NULL,
+        NULL,
+        "17",
+        "1",
+        NULL,
+        NULL,
+        "18",
+        "-1",
+        NULL,
+        NULL,
+        "19",
+        "100",
+        NULL,
+        NULL,
+    };
     static const char *const rounded_update_row[] = {"10", "2"};
     static const char *const duplicate_update_row[] = {"10", "3"};
     static const char *const nonstrict_insert_warnings[] = {
@@ -397,6 +433,10 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
         "Data truncated for column 'i' at row 2",
     };
     static const char *const updated_rows[] = {"30", "123", "31", "123"};
+    const struct expected_dml_result strict_boundary_result = {
+        .affected_rows = numeric_boundary_row_count,
+        .warning_count = 0U,
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -418,6 +458,26 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
             .column_count = numeric_update_column_count,
             .row_count = 1U,
             .context = "strict integer string prefix row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO nums(id, i, bi, bu) VALUES "
+        "(12, NULL, '9223372036854775807.0', '9223372036854775807.0'), "
+        "(13, NULL, '9.223372036854775807e18', '9.223372036854775807e18'), "
+        "(14, '1e', NULL, NULL), (15, '1e+', NULL, NULL), "
+        "(16, '1e-', NULL, NULL), (17, '.5', NULL, NULL), "
+        "(18, '-.5', NULL, NULL), (19, '1.e2', NULL, NULL)",
+        strict_boundary_result
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, bi, bu FROM nums WHERE id BETWEEN 12 AND 19 ORDER BY id",
+            .values = strict_boundary_rows,
+            .column_count = numeric_boundary_column_count,
+            .row_count = numeric_boundary_row_count,
+            .context = "strict integer decimal boundary and exponent rows",
         }
     );
     failures += expect_dml_result(
@@ -454,6 +514,33 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
     failures += execute_error(
         database,
         "INSERT INTO nums(id, i) VALUES (11, '123abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '0x10')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '1efoo')",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO nums(id, i) VALUES (11, '1.foo')",
         (struct expected_sql_error){
             .code = mysql_error_data_truncated,
             .sqlstate = "01000",

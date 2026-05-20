@@ -18,8 +18,14 @@ enum {
     repeated_comment_sql_prefix_capacity = 128,
     table_comment_max_characters = 2048,
     show_table_status_comment_column = 17,
+    mysql_error_no_database = 1046,
+    mysql_error_unknown_database = 1049,
+    mysql_error_unknown_table = 1146,
     mysql_error_parse = 1064,
+    mysql_error_incorrect_database_name = 1102,
+    mysql_error_incorrect_table_name = 1103,
     mysql_error_table_comment_too_long = 1628,
+    mysql_error_algorithm_not_supported = 1845,
 };
 
 struct expected_sql_error {
@@ -29,6 +35,7 @@ struct expected_sql_error {
 };
 
 static int test_persistent_comments_metadata_and_persistence(void);
+static int test_alter_table_comment_lifecycle(void);
 static int test_temporary_and_like_comment_cloning(void);
 static int test_comment_sql_modes(void);
 static int test_comment_diagnostics(void);
@@ -93,6 +100,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_persistent_comments_metadata_and_persistence();
+    failures += test_alter_table_comment_lifecycle();
     failures += test_temporary_and_like_comment_cloning();
     failures += test_comment_sql_modes();
     failures += test_comment_diagnostics();
@@ -211,6 +219,223 @@ static int test_persistent_comments_metadata_and_persistence(void) {
     return failures;
 }
 
+static int test_alter_table_comment_lifecycle(void) {
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *dml_result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter file");
+    failures += create_app_schema(database);
+    failures += execute_statement_ok(database, "CREATE TABLE altered (id INT) COMMENT='old'");
+    failures += execute_statement_ok(database, "ALTER TABLE altered COMMENT='new'");
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE altered",
+        1U,
+        "COMMENT='new'",
+        "altered SHOW CREATE comment"
+    );
+    failures += expect_single_cell_not_contains(
+        database,
+        "SHOW CREATE TABLE altered",
+        1U,
+        "COMMENT='old'",
+        "old ALTER comment replaced"
+    );
+    failures += expect_single_cell(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'altered'",
+        show_table_status_comment_column,
+        "new",
+        "altered SHOW TABLE STATUS comment"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'altered'",
+        0U,
+        "new",
+        "altered information schema comment"
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE altered COMMENT='locked', ALGORITHM=INPLACE, LOCK=NONE"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE altered",
+        1U,
+        "COMMENT='locked'",
+        "algorithm and lock tail accepted"
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE altered COMMENT=''");
+    failures += expect_single_cell_not_contains(
+        database,
+        "SHOW CREATE TABLE altered",
+        1U,
+        "COMMENT=",
+        "empty ALTER comment clears SHOW CREATE suffix"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'altered'",
+        0U,
+        "",
+        "empty ALTER comment visible in metadata"
+    );
+
+    failures += execute_statement_ok(database, "CREATE TABLE shadow (id INT) COMMENT='persistent'");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TEMPORARY TABLE shadow (id INT) COMMENT='temporary old'"
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE shadow COMMENT='temporary new'");
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE shadow",
+        1U,
+        "CREATE TEMPORARY TABLE",
+        "ALTER COMMENT targets shadowing temporary table"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE shadow",
+        1U,
+        "COMMENT='temporary new'",
+        "temporary ALTER comment stored"
+    );
+    failures += execute_statement_ok(database, "DROP TEMPORARY TABLE shadow");
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE shadow",
+        1U,
+        "COMMENT='persistent'",
+        "persistent comment unchanged after temporary shadow alter"
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE tx_guard (id INT)");
+    failures +=
+        execute_statement_ok(database, "CREATE TEMPORARY TABLE tx_comment (id INT) COMMENT='old'");
+    failures += execute_statement_ok(database, "START TRANSACTION");
+    failures += execute_ok(database, "INSERT INTO tx_guard VALUES (1)", &dml_result);
+    if (dml_result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(dml_result),
+            1,
+            "insert before rejected temporary ALTER comment"
+        );
+        mylite_result_free(dml_result);
+        dml_result = NULL;
+    }
+    failures += execute_error(
+        database,
+        "ALTER TABLE tx_comment COMMENT='new'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Temporary table DDL inside an active transaction is not supported",
+        }
+    );
+    failures += execute_statement_ok(database, "ROLLBACK");
+    failures += expect_single_cell(
+        database,
+        "SELECT COUNT(*) FROM tx_guard",
+        0U,
+        "0",
+        "rejected temporary ALTER comment does not commit active transaction"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE tx_comment",
+        1U,
+        "COMMENT='old'",
+        "rejected temporary ALTER comment preserves descriptor"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TEMPORARY TABLE tx_comment_prepared (id INT) COMMENT='old'"
+    );
+    failures += execute_statement_ok(
+        database,
+        "PREPARE tx_comment_stmt FROM 'ALTER TABLE tx_comment_prepared COMMENT=''new'''"
+    );
+    failures += execute_statement_ok(database, "START TRANSACTION");
+    failures += execute_ok(database, "INSERT INTO tx_guard VALUES (2)", &dml_result);
+    if (dml_result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(dml_result),
+            1,
+            "insert before rejected prepared temporary ALTER comment"
+        );
+        mylite_result_free(dml_result);
+        dml_result = NULL;
+    }
+    failures += execute_error(
+        database,
+        "EXECUTE tx_comment_stmt",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "Temporary table DDL inside an active transaction is not supported",
+        }
+    );
+    failures += execute_statement_ok(database, "ROLLBACK");
+    failures += expect_single_cell(
+        database,
+        "SELECT COUNT(*) FROM tx_guard",
+        0U,
+        "0",
+        "rejected prepared temporary ALTER comment does not commit active transaction"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE tx_comment_prepared",
+        1U,
+        "COMMENT='old'",
+        "rejected prepared temporary ALTER comment preserves descriptor"
+    );
+    failures += execute_statement_ok(database, "DEALLOCATE PREPARE tx_comment_stmt");
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read preamble after alter"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble unchanged after alter"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen alter file");
+    failures += execute_statement_ok(database, "ALTER TABLE app.altered COMMENT='qualified'");
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE app.altered",
+        1U,
+        "COMMENT='qualified'",
+        "schema-qualified ALTER comment without selected schema"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_temporary_and_like_comment_cloning(void) {
     mylite_db *database = NULL;
     int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open temp memory");
@@ -316,7 +541,53 @@ static int test_comment_diagnostics(void) {
     int failures =
         expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics memory");
 
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_default COMMENT='x'",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
     failures += create_app_schema(database);
+    failures += execute_statement_ok(database, "CREATE TABLE comment_target (id INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE unknown_schema.comment_target COMMENT='x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'unknown_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_comment COMMENT='x'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_reserved.comment_target COMMENT='x'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_reserved COMMENT='x'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name '_mylite_reserved'",
+        }
+    );
     failures += execute_error(
         database,
         "CREATE TABLE numeric_comment (id INT) COMMENT=123",
@@ -328,7 +599,61 @@ static int test_comment_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "ALTER TABLE comment_target COMMENT=123",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE comment_target COMMENT=NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE comment_target COMMENT=abc",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE comment_target COMMENT='a', COMMENT='b'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE comment_target COMMENT='instant', ALGORITHM=INSTANT",
+        (struct expected_sql_error){
+            .code = mysql_error_algorithm_not_supported,
+            .sqlstate = "0A000",
+            .message_part = "ALGORITHM=INSTANT is not supported for this operation",
+        }
+    );
+    failures += execute_error(
+        database,
         "CREATE TABLE nul_comment (id INT) COMMENT='a\\0b'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "table comments do not support NUL bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE comment_target COMMENT='a\\0b'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -472,19 +797,21 @@ static int test_independent_file_comments(void) {
     failures += create_app_schema(second);
     failures += execute_statement_ok(first, "CREATE TABLE independent (id INT) COMMENT='first'");
     failures += execute_statement_ok(second, "CREATE TABLE independent (id INT) COMMENT='second'");
+    failures += execute_statement_ok(first, "ALTER TABLE independent COMMENT='first altered'");
+    failures += execute_statement_ok(second, "ALTER TABLE independent COMMENT='second altered'");
     failures += expect_single_cell_contains(
         first,
         "SHOW CREATE TABLE independent",
         1U,
-        "COMMENT='first'",
-        "first handle comment"
+        "COMMENT='first altered'",
+        "first handle altered comment"
     );
     failures += expect_single_cell_contains(
         second,
         "SHOW CREATE TABLE independent",
         1U,
-        "COMMENT='second'",
-        "second handle comment"
+        "COMMENT='second altered'",
+        "second handle altered comment"
     );
 
     mylite_close(second);

@@ -68,6 +68,11 @@ int mylite_temporary_catalog_update_table_auto_increment_next(
     int64_t table_id, // NOLINT(bugprone-easily-swappable-parameters): mirror durable catalog API.
     int64_t auto_increment_next
 );
+int mylite_temporary_catalog_update_table_comment(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const char *comment
+);
 
 int mylite_temporary_catalog_try_read_table_by_name(
     const struct mylite_temporary_catalog *catalog,

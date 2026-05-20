@@ -533,6 +533,13 @@ int mylite_catalog_update_table_default_charset_collation_in_mutation(
     const char *default_collation,
     struct mylite_catalog_table_descriptor *out_table
 );
+int mylite_catalog_update_table_comment_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *comment,
+    struct mylite_catalog_table_descriptor *out_table
+);
 int mylite_catalog_update_schema_default_charset_collation_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

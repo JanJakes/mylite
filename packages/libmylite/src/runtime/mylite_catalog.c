@@ -3621,6 +3621,71 @@ int mylite_catalog_update_table_default_charset_collation_in_mutation(
     return MYLITE_OK;
 }
 
+int mylite_catalog_update_table_comment_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    const char *comment,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_table != NULL) {
+        *out_table = (struct mylite_catalog_table_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_optional_name(comment, MYLITE_CATALOG_TABLE_COMMENT_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables "
+        "SET comment = ?1, descriptor_version = descriptor_version + 1, "
+        "updated_catalog_generation = ?2 "
+        "WHERE table_id = ?3",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, comment);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 2, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 3, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (out_table != NULL) {
+        return read_table_by_id(database->sqlite, table_id, out_table);
+    }
+
+    return MYLITE_OK;
+}
+
 int mylite_catalog_update_schema_default_charset_collation_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

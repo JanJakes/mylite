@@ -2086,6 +2086,12 @@ struct planned_alter_table_default_charset_collation {
     bool changes_descriptor;
 };
 
+struct planned_alter_table_comment {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
+};
+
 struct planned_alter_schema_default_charset_collation {
     struct mylite_catalog_schema_descriptor schema;
     char default_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
@@ -7494,6 +7500,14 @@ static void clear_next_transaction_characteristics_before_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
 );
+static int prepare_statement_transaction_boundary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static bool alter_table_comment_targets_existing_temporary_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static bool statement_consumes_next_characteristics_before_execution(
     const struct mylite_sql_ast_node *statement
 );
@@ -7804,6 +7818,11 @@ static int execute_alter_table_index_visibility_statement(
     mylite_result **out_result
 );
 static int execute_alter_table_default_charset_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_comment_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -8990,6 +9009,13 @@ static int apply_create_table_comment_option(
     const struct mylite_sql_ast_node *table_options,
     struct planned_create_table *plan
 );
+static int decode_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *comment_option,
+    const char *table_name,
+    char *destination,
+    size_t destination_size
+);
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option
@@ -10146,6 +10172,15 @@ static int apply_alter_table_default_charset_collation_options(
 static int alter_table_default_charset_collation_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_default_charset_collation *plan
+);
+static int plan_alter_table_comment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_comment *out_plan
+);
+static int alter_table_comment_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_comment *plan
 );
 static int plan_alter_schema_default_charset_collation(
     struct mylite_db *database,
@@ -22615,22 +22650,20 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    int rc = MYLITE_OK;
+
     if (statement == NULL) {
         set_unsupported_error(database, "empty statement is not supported");
         return MYLITE_ERROR;
     }
     database->session.active_statement_time = (int64_t)mylite_statement_context_time(context);
 
-    clear_next_transaction_characteristics_before_statement(database, statement);
-    if (statement_requires_implicit_user_transaction_commit(statement)) {
-        int rc = commit_active_user_transaction_for_ddl(database);
-
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
+    rc = prepare_statement_transaction_boundary(database, statement);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     {
-        int rc = validate_alter_table_algorithm_lock_options(database, statement);
+        rc = validate_alter_table_algorithm_lock_options(database, statement);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -22767,6 +22800,8 @@ static int execute_non_prepared_statement(
             statement,
             out_result
         );
+    case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
+        return execute_alter_table_comment_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
         return execute_alter_table_order_by_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
@@ -23541,10 +23576,7 @@ static int execute_expanded_prepared_statement_sql(
     }
     if (rc == MYLITE_OK && statement != NULL) {
         database->session.active_statement_time = (int64_t)mylite_statement_context_time(&context);
-        clear_next_transaction_characteristics_before_statement(database, statement);
-        if (statement_requires_implicit_user_transaction_commit(statement)) {
-            rc = commit_active_user_transaction_for_ddl(database);
-        }
+        rc = prepare_statement_transaction_boundary(database, statement);
         if (rc == MYLITE_OK) {
             rc = validate_alter_table_algorithm_lock_options(database, statement);
         }
@@ -24131,10 +24163,88 @@ static void clear_next_transaction_characteristics_before_statement(
     }
 }
 
+static int prepare_statement_transaction_boundary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    bool needs_implicit_commit = statement_requires_implicit_user_transaction_commit(statement);
+
+    if (needs_implicit_commit && database->session.user_transaction_active &&
+        statement->kind == MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT &&
+        alter_table_comment_targets_existing_temporary_table(database, statement)) {
+        needs_implicit_commit = false;
+    }
+    if (!needs_implicit_commit) {
+        return MYLITE_OK;
+    }
+
+    clear_next_transaction_characteristics_before_statement(database, statement);
+    return commit_active_user_transaction_for_ddl(database);
+}
+
 static bool statement_consumes_next_characteristics_before_execution(
     const struct mylite_sql_ast_node *statement
 ) {
     return statement_requires_implicit_user_transaction_commit(statement);
+}
+
+static bool alter_table_comment_targets_existing_temporary_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_table_descriptor temporary_table = {0};
+    const char *schema_name = NULL;
+    const char *table_name = NULL;
+    size_t part_count = 0U;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || statement == NULL ||
+        statement->kind != MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT) {
+        return false;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(statement, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return false;
+    }
+    if (part_count == 1U) {
+        if (!database->session.has_selected_schema) {
+            return false;
+        }
+        schema_name = database->session.selected_schema;
+        table_name = parts[0];
+    } else if (part_count == 2U) {
+        schema_name = parts[0];
+        table_name = parts[1];
+    } else {
+        return false;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        schema_name,
+        table_name,
+        &temporary_table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        return false;
+    }
+    if (!found) {
+        return false;
+    }
+    if (temporary_table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        return false;
+    }
+    return true;
 }
 
 static void clear_select_consumed_next_transaction_characteristics(struct mylite_db *database) {
@@ -24730,6 +24840,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
     case MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT:
@@ -29740,6 +29851,82 @@ static int alter_table_default_charset_collation_from_plan(
     return MYLITE_OK;
 }
 
+static int execute_alter_table_comment_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_comment plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_comment(database, statement, &plan);
+    if (rc == MYLITE_OK && plan.table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY &&
+        database->session.user_transaction_active) {
+        set_unsupported_error(
+            database,
+            "Temporary table DDL inside an active transaction is not supported"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_comment_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int alter_table_comment_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_comment *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (plan->table.kind == MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        rc = mylite_temporary_catalog_update_table_comment(
+            &database->session.temporary_catalog,
+            plan->table.table_id,
+            plan->comment
+        );
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to update temporary table comment");
+        }
+        return rc;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_comment_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->comment,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to update table comment");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static int plan_alter_schema_default_charset_collation(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -29955,6 +30142,7 @@ static int validate_alter_table_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
         return validate_alter_table_online_metadata_algorithm_options(database, algorithm);
 
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
@@ -30094,6 +30282,7 @@ static bool alter_table_statement_accepts_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
         return true;
     default:
@@ -39943,6 +40132,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
     case MYLITE_SQL_AST_DO_STATEMENT:
         return 0;
@@ -45687,41 +45877,70 @@ static int apply_create_table_comment_option(
     table_option = child_at(table_options, 0U);
     while (table_option != NULL) {
         if (table_option->kind == MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
-            char *decoded = NULL;
-            size_t decoded_length = 0U;
-            size_t decoded_character_count = 0U;
-            int rc = decode_table_option_string_literal(
+            int rc = decode_table_comment_option(
                 database,
-                child_at(table_option, 0U),
-                &decoded,
-                (struct table_option_name_policy){
-                    .identifier_kind = "table comment",
-                    .nul_message = "table comments do not support NUL bytes",
-                }
+                table_option,
+                plan->target.table_name,
+                plan->comment,
+                sizeof(plan->comment)
             );
 
             if (rc != MYLITE_OK) {
                 return rc;
             }
-            decoded_length = strlen(decoded);
-            if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) !=
-                MYLITE_OK) {
-                free(decoded);
-                set_unsupported_error(database, "table comments support only valid UTF-8 text");
-                return MYLITE_ERROR;
-            }
-            if (decoded_character_count > MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS ||
-                decoded_length >= sizeof(plan->comment)) {
-                free(decoded);
-                set_table_comment_too_long_error(database, plan->target.table_name);
-                return MYLITE_ERROR;
-            }
-            memcpy(plan->comment, decoded, decoded_length + 1U);
-            free(decoded);
         }
         table_option = table_option->next_sibling;
     }
 
+    return MYLITE_OK;
+}
+
+static int decode_table_comment_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *comment_option,
+    const char *table_name,
+    char *destination,
+    size_t destination_size
+) {
+    char *decoded = NULL;
+    size_t decoded_length = 0U;
+    size_t decoded_character_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (comment_option == NULL || comment_option->kind != MYLITE_SQL_AST_TABLE_COMMENT_OPTION ||
+        destination == NULL || destination_size == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_table_option_string_literal(
+        database,
+        child_at(comment_option, 0U),
+        &decoded,
+        (struct table_option_name_policy){
+            .identifier_kind = "table comment",
+            .nul_message = "table comments do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    decoded_length = strlen(decoded);
+    if (validate_utf8_text(decoded, decoded_length, &decoded_character_count) != MYLITE_OK) {
+        free(decoded);
+        set_unsupported_error(database, "table comments support only valid UTF-8 text");
+        return MYLITE_ERROR;
+    }
+    if (decoded_character_count > MYLITE_CATALOG_TABLE_COMMENT_MAX_CHARACTERS ||
+        decoded_length >= destination_size) {
+        free(decoded);
+        set_table_comment_too_long_error(database, table_name);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(destination, decoded, decoded_length + 1U);
+    free(decoded);
     return MYLITE_OK;
 }
 
@@ -54918,6 +55137,38 @@ static int apply_alter_table_default_charset_collation_options(
             plan->default_charset,
             plan->default_collation,
             sizeof(plan->default_collation)
+        );
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_comment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_comment *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_comment){0};
+    rc = resolve_visible_writable_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
+        out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
+        set_unsupported_error(database, "ALTER TABLE COMMENT supports only base tables");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = decode_table_comment_option(
+            database,
+            child_at(statement, 1U),
+            out_plan->target.table_name,
+            out_plan->comment,
+            sizeof(out_plan->comment)
         );
     }
 

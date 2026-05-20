@@ -113,6 +113,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_create_table_comment_option_statements(void);
+static int test_alter_table_comment_statements(void);
 static int test_show_full_tables_statements(void);
 static int test_show_table_status_where_statement(void);
 static int test_table_binary_charset_options(void);
@@ -404,6 +405,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_create_table_comment_option_statements();
+    failures += test_alter_table_comment_statements();
     failures += test_show_full_tables_statements();
     failures += test_show_table_status_where_statement();
     failures += test_table_binary_charset_options();
@@ -10955,6 +10957,90 @@ static int test_create_table_comment_option_statements(void) {
         child_at(child_at(child_at(statement, 1U), 0U), 0U),
         "COMMENT",
         "comment identifier column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_comment_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *comment_option = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE commented COMMENT='new';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT,
+        "alter table comment statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter table comment child count");
+    failures += expect_span_text(child_at(statement, 0U), "commented", "comment target table");
+    comment_option = child_at(statement, 1U);
+    failures += expect_node(
+        comment_option,
+        MYLITE_SQL_AST_TABLE_COMMENT_OPTION,
+        "alter table comment option"
+    );
+    failures += expect_literal(
+        child_at(comment_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter table comment literal"
+    );
+    failures += expect_span_text(child_at(comment_option, 0U), "'new'", "alter comment text");
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) ==
+            MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED,
+        "alter comment default algorithm"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED,
+        "alter comment default lock"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.commented COMMENT \"new\", ALGORITHM=INPLACE, LOCK=NONE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT,
+        "qualified alter table comment statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app.commented", "qualified target");
+    failures += expect_span_text(
+        child_at(child_at(statement, 1U), 0U),
+        "\"new\"",
+        "double quoted alter comment literal"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INPLACE,
+        "alter comment inplace algorithm"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_NONE,
+        "alter comment none lock"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE commented COMMENT=123;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("ALTER TABLE commented COMMENT=NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("ALTER TABLE commented COMMENT=abc;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "ALTER TABLE commented COMMENT='first', COMMENT='second';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -214,6 +214,33 @@ int mylite_temporary_catalog_update_table_auto_increment_next(
     return MYLITE_ERROR;
 }
 
+int mylite_temporary_catalog_update_table_comment(
+    struct mylite_temporary_catalog *catalog,
+    int64_t table_id,
+    const char *comment
+) {
+    if (catalog == NULL || table_id >= 0 || comment == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strlen(comment) >= MYLITE_CATALOG_TABLE_COMMENT_CAPACITY) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; index < catalog->table_count; ++index) {
+        if (catalog->tables[index].table.table_id == table_id) {
+            snprintf(
+                catalog->tables[index].table.comment,
+                sizeof(catalog->tables[index].table.comment),
+                "%s",
+                comment
+            );
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
+}
+
 int mylite_temporary_catalog_try_read_table_by_name(
     const struct mylite_temporary_catalog *catalog,
     const char *schema_name,

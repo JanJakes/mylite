@@ -3,10 +3,12 @@
 This slice adds table-level `COMMENT` metadata for the existing persistent and
 temporary `CREATE TABLE` table-definition paths. The feature is intentionally
 limited to storing a MyLite-owned table descriptor comment and exposing it
-through existing descriptor-driven metadata surfaces. It does not implement
-column comments, index comments, NDB comment options, `ALTER TABLE ... COMMENT`,
-or broader table option handling such as `ROW_FORMAT`, `KEY_BLOCK_SIZE`, or
-statistics options.
+through existing descriptor-driven metadata surfaces. Later
+`ALTER TABLE ... COMMENT` support is specified separately in
+`docs/specs/baseline-alter-table-comment/specs.md`. This slice does not
+implement column comments, index comments, NDB comment options, or broader
+table option handling such as `ROW_FORMAT`, `KEY_BLOCK_SIZE`, or statistics
+options.
 
 ## Compatibility Authority
 
@@ -151,9 +153,8 @@ Supported successful comment forms report warning count `0`.
 Diagnostics for this slice:
 
 - Syntax errors for non-string comment forms, missing values, unsupported
-  comma-separated table option lists, column comments, index comments, and
-  `ALTER TABLE ... COMMENT` remain parser errors or existing unsupported
-  diagnostics.
+  comma-separated table option lists, column comments, and index comments
+  remain parser errors or existing unsupported diagnostics.
 - Decoded NUL bytes use a deterministic MyLite unsupported diagnostic:
   `table comments do not support NUL bytes`.
 - Comments longer than 2048 UTF-8 characters use MySQL-compatible error `1628 / HY000`
@@ -187,7 +188,6 @@ Runtime tests must cover:
 
 ## Deferred
 
-- `ALTER TABLE ... COMMENT`
 - column comments and index comments
 - comma-separated table option grammar
 - `ROW_FORMAT`, `KEY_BLOCK_SIZE`, `STATS_PERSISTENT`,

@@ -298,6 +298,9 @@ statement(A) ::= alter_table_column_visibility_statement(B). {
 statement(A) ::= alter_table_default_charset_collation_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_comment_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_order_by_statement(B). {
     A = B;
 }
@@ -1580,6 +1583,19 @@ alter_table_default_charset_collation_option(A) ::=
 alter_table_default_charset_collation_option(A) ::=
     default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+
+alter_table_comment_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) COMMENT(C) equal_opt STRING(V) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_comment_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_table_comment_option(
+            state,
+            C,
+            mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING)),
+        O);
 }
 
 alter_table_order_by_statement(A) ::=

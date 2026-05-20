@@ -23,6 +23,7 @@ enum {
     mysql_error_invalid_default = 1067,
     mysql_error_bad_null = 1048,
     mysql_error_no_default = 1364,
+    mysql_error_data_truncated = 1265,
     mysql_error_data_too_long = 1406,
     full_strings_row_count = 5,
     wide_table_column_count = 5,
@@ -567,6 +568,7 @@ static int test_varchar_diagnostics(void) {
     static const char *const escaped_wildcard_rows[] = {"30", "\\%", "31", "\\_"};
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
+    static const char *const text_trailing_space_row[] = {"43", "ab ", "3"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -782,6 +784,61 @@ static int test_varchar_diagnostics(void) {
             .message_part = "Field 'nn' doesn't have a default value",
         }
     );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE insert_select_target (id INT, v VARCHAR(3))");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE insert_select_v (id INT, v VARCHAR(8))");
+    failures += expect_statement_ok(database, "CREATE TABLE insert_select_c (id INT, c CHAR(8))");
+    failures += expect_statement_ok(database, "CREATE TABLE insert_select_t (id INT, t TEXT)");
+    failures += expect_dml_ok(database, "INSERT INTO insert_select_v VALUES (40, 'abcd')", 1);
+    failures += expect_dml_ok(database, "INSERT INTO insert_select_c VALUES (41, 'abcd')", 1);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO insert_select_t VALUES (42, 'abcd'), (43, 'ab  ')", 2);
+    failures += execute_error(
+        database,
+        "INSERT INTO insert_select_target SELECT id, v FROM insert_select_v WHERE id = 40",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'v' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO insert_select_target SELECT id, c FROM insert_select_c WHERE id = 41",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO insert_select_target SELECT id, t FROM insert_select_t WHERE id = 42",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO insert_select_target SELECT id, t FROM insert_select_t WHERE id = 43",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, LENGTH(v) FROM insert_select_target WHERE id = 43",
+            .values = text_trailing_space_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "varchar insert select text trailing space note",
+        }
+    );
     failures += expect_dml_result(
         database,
         "INSERT IGNORE INTO diag (id, nn) VALUES (10, NULL)",
@@ -921,9 +978,9 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, "statement column count");
-    failures += expect_size(mylite_result_row_count(result), 0U, "statement row count");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "statement warning count");
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_size(mylite_result_warning_count(result), 0U, sql);
     mylite_result_free(result);
 
     return failures;

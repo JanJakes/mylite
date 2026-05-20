@@ -23,6 +23,7 @@ enum {
     mysql_error_select_reduced = 1222,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_data_truncated = 1265,
 };
 
 struct expected_sql_error {
@@ -371,6 +372,11 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
         "CREATE TABLE required_target(id INT NOT NULL, must INT NOT NULL)",
         0
     );
+    failures +=
+        expect_dml_ok(database, "CREATE TABLE short_strings(id INT NOT NULL, v VARCHAR(3))", 0);
+    failures +=
+        expect_dml_ok(database, "CREATE TABLE wide_strings(id INT NOT NULL, v VARCHAR(8))", 0);
+    failures += expect_dml_ok(database, "INSERT INTO wide_strings VALUES (1, 'abcd')", 1);
     failures += expect_dml_ok(
         database,
         "INSERT INTO required_target(id) "
@@ -431,6 +437,27 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
             .code = mysql_error_bad_null,
             .sqlstate = "23000",
             .message_part = "cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO short_strings "
+        "SELECT id, v FROM wide_strings WHERE id = 1 "
+        "UNION ALL SELECT id, v FROM wide_strings WHERE id = 99",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'v' at row 1",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM short_strings",
+            .values = zero_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "compound varchar truncation rollback",
         }
     );
 

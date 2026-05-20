@@ -10836,6 +10836,13 @@ static int validate_insert_select_row(
     const struct planned_insert_select *plan,
     size_t row_number
 );
+static int insert_select_source_column_for_position(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    size_t target_position,
+    const struct mylite_catalog_column_descriptor **out_source_column
+);
 static int validate_insert_select_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -61905,26 +61912,83 @@ static int validate_insert_select_row(
             sqlite3_column_type(statement, (int)target_position) == SQLITE_NULL) {
             continue;
         }
-        const struct mylite_catalog_column_descriptor *source_column =
-            plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE
-                ? &plan->source.columns[target_position]
-                : NULL;
+        const struct mylite_catalog_column_descriptor *source_column = NULL;
 
-        rc = validate_insert_select_value(
+        rc = insert_select_source_column_for_position(
             database,
             statement,
-            (int)target_position,
-            source_column,
-            &plan->target.columns[column_index],
-            row_number,
-            adjust_value
+            plan,
+            target_position,
+            &source_column
         );
+        if (rc == MYLITE_OK) {
+            rc = validate_insert_select_value(
+                database,
+                statement,
+                (int)target_position,
+                source_column,
+                &plan->target.columns[column_index],
+                row_number,
+                adjust_value
+            );
+        }
 
         if (rc != MYLITE_OK) {
             return rc;
         }
     }
 
+    return MYLITE_OK;
+}
+
+static int insert_select_source_column_for_position(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_insert_select *plan,
+    size_t target_position,
+    const struct mylite_catalog_column_descriptor **out_source_column
+) {
+    sqlite3_int64 branch_index = 0;
+    const struct planned_insert_select_compound_branch *branch = NULL;
+
+    *out_source_column = NULL;
+    if (plan == NULL || statement == NULL) {
+        set_runtime_error(database, "invalid INSERT ... SELECT source validation");
+        return MYLITE_ERROR;
+    }
+    if (plan->source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE) {
+        if (target_position >= plan->source.column_count) {
+            set_runtime_error(database, "invalid INSERT ... SELECT source column");
+            return MYLITE_ERROR;
+        }
+        *out_source_column = &plan->source.columns[target_position];
+        return MYLITE_OK;
+    }
+    if (plan->source_kind != PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
+        return MYLITE_OK;
+    }
+    if (plan->target_count > (size_t)INT_MAX ||
+        sqlite3_column_type(statement, (int)plan->target_count) != SQLITE_INTEGER) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    branch_index = sqlite3_column_int64(statement, (int)plan->target_count);
+    if (branch_index < 0 ||
+        (uint64_t)branch_index >= (uint64_t)plan->compound_source.branch_count) {
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+    branch = &plan->compound_source.branches[(size_t)branch_index];
+    if (branch->kind != PLANNED_INSERT_SELECT_COMPOUND_BRANCH_TABLE) {
+        return MYLITE_OK;
+    }
+    if (target_position >= branch->source.column_count) {
+        set_runtime_error(database, "invalid INSERT ... SELECT UNION source column");
+        return MYLITE_ERROR;
+    }
+
+    *out_source_column = &branch->source.columns[target_position];
     return MYLITE_OK;
 }
 
@@ -62259,11 +62323,16 @@ static int validate_insert_select_convertible_varchar_value(
     if (character_count <= declared_length || validation.adjust_value) {
         return MYLITE_OK;
     }
-    if (validation.source_column == NULL &&
-        text_is_ascii_spaces(text + truncated_length, text_length - truncated_length)) {
-        return MYLITE_OK;
+    if (text_is_ascii_spaces(text + truncated_length, text_length - truncated_length)) {
+        if (validation.source_column == NULL ||
+            !column_descriptor_is_varchar(validation.source_column)) {
+            return MYLITE_OK;
+        }
+        set_data_truncated_error(database, validation.target_column->name, validation.row_number);
+        return MYLITE_ERROR;
     }
-    if (validation.source_column != NULL) {
+    if (validation.source_column != NULL &&
+        column_descriptor_is_varchar(validation.source_column)) {
         set_data_truncated_error(database, validation.target_column->name, validation.row_number);
     } else {
         set_data_too_long_error(database, validation.target_column->name, validation.row_number);
@@ -128021,6 +128090,15 @@ static int build_insert_select_compound_validation_sql(
                 column_index
             );
         }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_select_compound_qualified_branch_column_name(
+            &string,
+            insert_select_union_current_alias
+        );
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " FROM ");

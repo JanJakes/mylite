@@ -80,8 +80,10 @@ run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 run_mysql \
     "CREATE TABLE src_v(id INT, v VARCHAR(8)); "\
 "CREATE TABLE src_c(id INT, c CHAR(8)); "\
+"CREATE TABLE src_t(id INT, t TEXT); "\
 "INSERT INTO src_v VALUES (1,'abcd'),(2,'éééx'),(3,'ab  '); "\
 "INSERT INTO src_c VALUES (1,'abcd'),(2,'éééx'),(3,'ab  '); "\
+"INSERT INTO src_t VALUES (1,'abcd'),(2,'ab  '); "\
 "CREATE TABLE dst_v(id INT, v VARCHAR(3)); "\
 "CREATE TABLE dst_c(id INT, c CHAR(3)); "\
 "CREATE TABLE dst_pair(id INT, v VARCHAR(3), c CHAR(3));" \
@@ -106,6 +108,34 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "strict table-backed char to varchar overflow" \
+    1406 \
+    22001 \
+    "Data too long for column 'v' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"INSERT INTO dst_v SELECT id, c FROM src_c WHERE id = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "strict table-backed text to varchar overflow" \
+    1406 \
+    22001 \
+    "Data too long for column 'v' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"INSERT INTO dst_v SELECT id, t FROM src_t WHERE id = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "strict compound table-backed varchar overflow" \
+    1265 \
+    01000 \
+    "Data truncated for column 'v' at row 1" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"INSERT INTO dst_v SELECT id, v FROM src_v WHERE id = 1 "\
+"UNION ALL SELECT id, v FROM src_v WHERE id = 99;" \
+    "$DATABASE"
+
+expect_error \
     "strict row-scalar char overflow" \
     1406 \
     22001 \
@@ -121,6 +151,20 @@ expect_error \
     "Data too long for column 'c' at row 1" \
     "SET sql_mode='STRICT_TRANS_TABLES'; "\
 "INSERT INTO dst_c SELECT id, c FROM src_c WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "strict table-backed text trailing space behavior" \
+    "Note	1265	Data truncated for column 'v' at row 1
+status	1	1	0
+row	2	[ab ]	3	3" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE dst_v; "\
+"INSERT INTO dst_v SELECT id, t FROM src_t WHERE id = 2; "\
+"GET DIAGNOSTICS @rc = ROW_COUNT, @cond = NUMBER; "\
+"SHOW WARNINGS; "\
+"SELECT 'status', @rc, @cond, @@error_count; "\
+"SELECT 'row', id, CONCAT('[', v, ']'), LENGTH(v), CHAR_LENGTH(v) FROM dst_v;" \
     "$DATABASE"
 
 expect_output \

@@ -66,6 +66,11 @@ MySQL 8.4.9 establishes these expectations for the supported slice:
 - Strict table-backed `INSERT ... SELECT varchar_col` from a wider `VARCHAR`
   descriptor into `VARCHAR(3)` fails with `1265 / 01000` and rolls back the
   statement.
+- Strict table-backed `INSERT ... SELECT char_col` or `text_col` into a shorter
+  `VARCHAR` target fails with `1406 / 22001` for nonspace overflow.
+- Strict table-backed `INSERT ... SELECT text_col` into a shorter `VARCHAR`
+  target succeeds with note `1265 / 01000` when only trailing ASCII spaces are
+  removed.
 - Strict row-scalar `INSERT ... SELECT 'ab  '` into `VARCHAR(3)` stores
   `'ab '` and records note `1265`.
 - Strict table-backed `INSERT ... SELECT varchar_col` where the selected value
@@ -191,13 +196,15 @@ For selected `VARCHAR` values:
 - row-scalar values whose only excess characters are ASCII spaces are
   truncated to the target descriptor length and record note `1265`, including
   in strict mode;
-- table-backed values whose only excess characters are ASCII spaces are
-  truncated only when adjustment is enabled; strict non-`IGNORE` table-backed
-  values instead fail with `1265 / 01000`, matching observed MySQL 8.4.9
-  behavior;
+- table-backed `VARCHAR` values whose only excess characters are ASCII spaces
+  fail with `1265 / 01000` in strict non-`IGNORE` mode;
+- table-backed `CHAR` / `TEXT` values whose only excess characters are ASCII
+  spaces are truncated to the target descriptor length and record note `1265`,
+  including in strict mode;
 - nonspace overflow truncates with warning `1265` when adjustment is enabled;
 - otherwise, row-scalar nonspace overflow fails with `1406 / 22001`, while
-  table-backed `VARCHAR` source overflow fails with `1265 / 01000`.
+  table-backed `VARCHAR` source overflow fails with `1265 / 01000` and
+  table-backed `CHAR` / `TEXT` source overflow fails with `1406 / 22001`.
 
 For selected `CHAR` values:
 
@@ -221,7 +228,8 @@ produce no string conversion diagnostics.
 The existing generated SQL shape is preserved:
 
 - table-backed and compound sources are materialized into a MyLite-owned
-  temporary SQLite table;
+  temporary SQLite table, with compound rows retaining their branch-origin
+  marker for source-type-sensitive validation;
 - the temporary result is validated through a prepared SQLite `SELECT`;
 - rows are streamed through MyLite-owned target conversion and then inserted
   through a prepared descriptor-built physical `INSERT`;
@@ -237,11 +245,13 @@ optional grammar to implement MySQL string semantics.
 Supported diagnostics are:
 
 - `1406 / 22001`: strict row-scalar `CHAR` / `VARCHAR` nonspace overflow, and
-  strict table-backed `CHAR` nonspace overflow;
+  strict table-backed `CHAR` / `TEXT` nonspace overflow into `CHAR` /
+  `VARCHAR` targets;
 - `1265 / 01000` as an error: strict table-backed `VARCHAR` overflow;
 - warning `1265 / 01000`: adjusted nonspace-overlength selected `CHAR` /
   `VARCHAR` value;
-- note `1265 / 01000`: strict row-scalar `VARCHAR` excess trailing spaces;
+- note `1265 / 01000`: strict row-scalar `VARCHAR` and table-backed
+  `CHAR` / `TEXT` excess trailing spaces into a `VARCHAR` target;
 - existing unsupported-expression diagnostics for values outside this slice;
 - existing allocation, physical SQLite, and public API diagnostics.
 

@@ -24,6 +24,7 @@ enum {
     sql_select_limit_independent_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_incorrect_argument_type = 1232,
 };
 
 struct expected_sql_error {
@@ -69,6 +70,7 @@ static int expect_show_count_warnings(
 );
 static int expect_show_count_errors(mylite_db *database, const char *expected, const char *context);
 static int execute_statement_ok(mylite_db *database, const char *sql);
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -115,6 +117,27 @@ static int test_sql_select_limit_values_and_persistence(void) {
         "0",
         "-1",
     };
+    static const char *const session_two_values[] = {
+        "2",
+        "18446744073709551615",
+        "2",
+        "2",
+        "0",
+        "0",
+    };
+    static const char *const session_default_values[] = {
+        "18446744073709551615",
+        "18446744073709551615",
+        "18446744073709551615",
+        "18446744073709551615",
+        "0",
+        "0",
+    };
+    static const char *const hex_columns[] = {
+        "HEX(@@sql_select_limit)",
+        "HEX(@@global.sql_select_limit)",
+    };
+    static const char *const hex_values[] = {"2", "FFFFFFFFFFFFFFFF"};
     static const char *const label_columns[] = {
         "@@SQL_SELECT_LIMIT",
         "@@Global.Sql_Select_Limit",
@@ -178,6 +201,19 @@ static int test_sql_select_limit_values_and_persistence(void) {
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"1", "10", "2", "20", "3", "30"};
     static const char *const limited_table_values[] = {"1", "10", "2", "20"};
+    static const char *const explicit_limit_table_values[] = {"1", "10", "2", "20", "3", "30"};
+    static const char *const internal_source_table_values[] = {"1", "10", "2", "20", "3", "30"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_zero_values[] = {"sql_select_limit", "0"};
+    static const char *const scalar_one_column[] = {"1"};
+    static const char *const aggregate_columns[] = {"c"};
+    static const char *const group_columns[] = {"score", "c"};
+    static const char *const group_values[] = {"10", "1"};
+    static const char *const union_columns[] = {"id"};
+    static const char *const union_values[] = {"1"};
+    static const char *const information_schema_columns[] = {"TABLE_NAME"};
+    static const char *const information_schema_limited_values[] = {"child"};
+    static const char *const information_schema_explicit_values[] = {"child", "ctas_copy"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -329,6 +365,7 @@ static int test_sql_select_limit_values_and_persistence(void) {
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE child (id INT, score INT)");
+    failures += execute_statement_ok(database, "CREATE TABLE sibling (id INT)");
     failures += execute_statement_ok(
         database,
         "INSERT INTO child (id, score) VALUES (1, 10),(2, 20),(3, 30)"
@@ -351,18 +388,188 @@ static int test_sql_select_limit_values_and_persistence(void) {
             .values = table_values,
             .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
             .row_count = 3U,
-            .context = "sql select limit does not cap descriptor select",
+            .context = "default sql select limit does not cap descriptor select",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_select_limit = 2");
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->sql_select_limit,
+        2,
+        "session sql select limit updates state"
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_select_limit, @@global.sql_select_limit, "
+        "@@session.sql_select_limit, @@local.sql_select_limit, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = session_two_values,
+            .count = sql_select_limit_value_column_count,
+            .context = "mutable session sql select limit values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT HEX(@@sql_select_limit), HEX(@@global.sql_select_limit)",
+        (struct expected_result){
+            .columns = hex_columns,
+            .values = hex_values,
+            .count = sizeof(hex_columns) / sizeof(hex_columns[0]),
+            .context = "mutable sql select limit in numeric scalar function",
         }
     );
     failures += expect_query_table_result(
         database,
-        "SELECT id, score FROM child ORDER BY id LIMIT 2",
+        "SELECT id, score FROM child ORDER BY id",
         (struct expected_table_result){
             .columns = table_columns,
             .values = limited_table_values,
             .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
             .row_count = 2U,
-            .context = "explicit descriptor select limit still applies",
+            .context = "session sql select limit caps descriptor select",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT id, score FROM child ORDER BY id LIMIT 3",
+        (struct expected_table_result){
+            .columns = table_columns,
+            .values = explicit_limit_table_values,
+            .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
+            .row_count = 3U,
+            .context = "explicit descriptor select limit overrides sql select limit",
+        }
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE insert_copy (id INT, score INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO insert_copy SELECT id, score FROM child ORDER BY id",
+        3
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT id, score FROM insert_copy ORDER BY id LIMIT 3",
+        (struct expected_table_result){
+            .columns = table_columns,
+            .values = internal_source_table_values,
+            .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
+            .row_count = 3U,
+            .context = "sql select limit does not cap insert select source rows",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ctas_copy AS SELECT id, score FROM child ORDER BY id"
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT id, score FROM ctas_copy ORDER BY id LIMIT 3",
+        (struct expected_table_result){
+            .columns = table_columns,
+            .values = internal_source_table_values,
+            .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
+            .row_count = 3U,
+            .context = "sql select limit does not cap create table select source rows",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET LOCAL sql_select_limit = 1");
+    failures += expect_query_table_result(
+        database,
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = 'app' "
+        "ORDER BY TABLE_NAME",
+        (struct expected_table_result){
+            .columns = information_schema_columns,
+            .values = information_schema_limited_values,
+            .column_count =
+                sizeof(information_schema_columns) / sizeof(information_schema_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit caps information schema select",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = 'app' "
+        "ORDER BY TABLE_NAME LIMIT 2",
+        (struct expected_table_result){
+            .columns = information_schema_columns,
+            .values = information_schema_explicit_values,
+            .column_count =
+                sizeof(information_schema_columns) / sizeof(information_schema_columns[0]),
+            .row_count = 2U,
+            .context = "information schema explicit limit overrides sql select limit",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT score, COUNT(*) AS c FROM child GROUP BY score ORDER BY score",
+        (struct expected_table_result){
+            .columns = group_columns,
+            .values = group_values,
+            .column_count = sizeof(group_columns) / sizeof(group_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit caps grouped select",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT id FROM child WHERE id = 1 UNION ALL SELECT id FROM child WHERE id = 2",
+        (struct expected_table_result){
+            .columns = union_columns,
+            .values = union_values,
+            .column_count = sizeof(union_columns) / sizeof(union_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit caps compound select",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET @@SESSION.sql_select_limit = 0");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_zero_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "show variables reports zero sql select limit",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT 1",
+        (struct expected_table_result){
+            .columns = scalar_one_column,
+            .values = NULL,
+            .column_count = sizeof(scalar_one_column) / sizeof(scalar_one_column[0]),
+            .row_count = 0U,
+            .context = "zero sql select limit caps scalar select",
+        }
+    );
+    failures += expect_query_table_result(
+        database,
+        "SELECT COUNT(*) AS c FROM child",
+        (struct expected_table_result){
+            .columns = aggregate_columns,
+            .values = NULL,
+            .column_count = sizeof(aggregate_columns) / sizeof(aggregate_columns[0]),
+            .row_count = 0U,
+            .context = "zero sql select limit caps aggregate select",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET @@sql_select_limit = DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_select_limit, @@global.sql_select_limit, "
+        "@@session.sql_select_limit, @@local.sql_select_limit, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = session_default_values,
+            .count = sql_select_limit_value_column_count,
+            .context = "default resets sql select limit",
         }
     );
 
@@ -411,6 +618,19 @@ static int test_sql_select_limit_qualifiers_and_errors(void) {
         "18446744073709551615",
         "18446744073709551615",
         "18446744073709551615",
+    };
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_zero_values[] = {"sql_select_limit", "0"};
+    static const char *const show_one_values[] = {"sql_select_limit", "1"};
+    static const char *const show_two_values[] = {"sql_select_limit", "2"};
+    static const char *const show_default_values[] = {
+        "sql_select_limit",
+        "18446744073709551615",
+    };
+    const struct expected_sql_error incorrect_argument = {
+        .code = mysql_error_incorrect_argument_type,
+        .sqlstate = "42000",
+        .message_part = "Incorrect argument type to variable 'sql_select_limit'",
     };
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -483,6 +703,115 @@ static int test_sql_select_limit_qualifiers_and_errors(void) {
         }
     );
 
+    failures += execute_statement_ok(database, "SET @@SESSION.sql_select_limit = +2");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_two_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "session-qualified sql select limit assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_select_limit = TRUE");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_one_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "local sql select limit boolean assignment",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_select_limit = -1", &result);
+    failures += expect_size(mylite_result_column_count(result), 0U, "negative sql select limit");
+    failures += expect_size(mylite_result_row_count(result), 0U, "negative sql select limit");
+    failures +=
+        expect_size(mylite_result_warning_count(result), 1U, "negative sql select limit warning");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        expect_show_count_warnings(database, "1", "negative sql select limit warning count");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_zero_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "negative sql select limit clamps to zero",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_select_limit = DEFAULT");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_default_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit default assignment",
+        }
+    );
+    failures += execute_error(database, "SET SESSION sql_select_limit = '2'", incorrect_argument);
+    failures += execute_error(database, "SET SESSION sql_select_limit = 1.5", incorrect_argument);
+    failures += execute_error(database, "SET SESSION sql_select_limit = NULL", incorrect_argument);
+    failures += execute_error(database, "SET SESSION sql_select_limit = ON", incorrect_argument);
+    failures += execute_error(
+        database,
+        "SET SESSION sql_select_limit = 18446744073709551616",
+        incorrect_argument
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_select_limit = 2");
+    failures += execute_error(
+        database,
+        "SET sql_select_limit = 1, sql_select_limit = 'bad'",
+        incorrect_argument
+    );
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_two_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit rollback after multi-assignment failure",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @limit_value = 1");
+    failures += execute_statement_ok(database, "SET sql_select_limit = @limit_value");
+    failures += expect_query_table_result(
+        database,
+        "SHOW SESSION VARIABLES LIKE 'sql_select_limit'",
+        (struct expected_table_result){
+            .columns = show_variable_columns,
+            .values = show_one_values,
+            .column_count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .row_count = 1U,
+            .context = "sql select limit integer user variable assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @limit_text = '2'");
+    failures += execute_error(database, "SET sql_select_limit = @limit_text", incorrect_argument);
+    failures += execute_error(
+        database,
+        "SET GLOBAL sql_select_limit = 7",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL sql_select_limit assignment is not supported",
+        }
+    );
+
     mylite_close(database);
     return failures;
 }
@@ -493,18 +822,36 @@ static int test_independent_sql_select_limit_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"18446744073709551615", "1", "0"};
+    static const char *const first_values[] = {"1", "0", "0"};
     static const char *const second_values[] = {"18446744073709551615", "0", "0"};
+    static const char *const table_columns[] = {"id"};
+    static const char *const first_table_values[] = {"1"};
+    static const char *const second_table_values[] = {"1", "2"};
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures +=
-        expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql select limit handle");
-    failures +=
-        expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql select limit handle");
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    if (make_test_path(first_path, sizeof(first_path), "first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "second") != 0) {
+        return 1;
+    }
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures += execute_statement_ok(first, "CREATE DATABASE app");
+    failures += execute_statement_ok(first, "USE app");
+    failures += execute_statement_ok(second, "CREATE DATABASE app");
+    failures += execute_statement_ok(second, "USE app");
+    failures += execute_statement_ok(first, "CREATE TABLE t (id INT)");
+    failures += execute_statement_ok(first, "INSERT INTO t (id) VALUES (1),(2)");
+    failures += execute_statement_ok(second, "CREATE TABLE t (id INT)");
+    failures += execute_statement_ok(second, "INSERT INTO t (id) VALUES (1),(2)");
+    failures += execute_statement_ok(first, "SET sql_select_limit = 1");
 
     failures +=
         execute_ok(first, "SELECT @@sql_select_limit, @@warning_count, @@error_count", &result);
@@ -519,6 +866,17 @@ static int test_independent_sql_select_limit_handles(void) {
     );
     mylite_result_free(result);
     result = NULL;
+    failures += expect_query_table_result(
+        first,
+        "SELECT id FROM t ORDER BY id",
+        (struct expected_table_result){
+            .columns = table_columns,
+            .values = first_table_values,
+            .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
+            .row_count = 1U,
+            .context = "first handle sql select limit caps rows",
+        }
+    );
 
     failures +=
         execute_ok(second, "SELECT @@sql_select_limit, @@warning_count, @@error_count", &result);
@@ -532,9 +890,23 @@ static int test_independent_sql_select_limit_handles(void) {
         }
     );
     mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_table_result(
+        second,
+        "SELECT id FROM t ORDER BY id",
+        (struct expected_table_result){
+            .columns = table_columns,
+            .values = second_table_values,
+            .column_count = sizeof(table_columns) / sizeof(table_columns[0]),
+            .row_count = 2U,
+            .context = "second handle sql select limit remains default",
+        }
+    );
 
     mylite_close(second);
     mylite_close(first);
+    remove_related_files(second_path);
+    remove_related_files(first_path);
     return failures;
 }
 
@@ -660,6 +1032,18 @@ static int execute_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, sql);
+    failures += expect_size(mylite_result_warning_count(result), 0U, sql);
     mylite_result_free(result);
     return failures;
 }

@@ -134,10 +134,21 @@ expect_value \
     "1	$MYSQL_DEFAULT_SQL_SELECT_LIMIT	1	1	0	0	0" \
     "$mutable_values"
 
+hex_values=$(run_mysql \
+    "SET SESSION sql_select_limit=2; \
+     SELECT HEX(@@sql_select_limit), HEX(@@global.sql_select_limit); \
+     SET SESSION sql_select_limit=DEFAULT;")
+expect_value \
+    "mysql numeric functions observe mutable sql_select_limit" \
+    "2	FFFFFFFFFFFFFFFF" \
+    "$hex_values"
+
 limited_rows=$(run_mysql \
     "USE $MYSQL_DATABASE; \
      DROP TABLE IF EXISTS t; \
      CREATE TABLE t (id INT); \
+     CREATE TABLE a_probe (id INT); \
+     CREATE TABLE b_probe (id INT); \
      INSERT INTO t VALUES (1),(2),(3); \
      SET SESSION sql_select_limit=1; \
      SELECT id FROM t ORDER BY id; \
@@ -157,12 +168,165 @@ expect_value \
     "1|2|" \
     "$explicit_limit_rows"
 
+internal_source_rows=$(run_mysql \
+    "USE $MYSQL_DATABASE; \
+     DROP TABLE IF EXISTS insert_copy; \
+     DROP TABLE IF EXISTS ctas_copy; \
+     CREATE TABLE insert_copy (id INT); \
+     SET SESSION sql_select_limit=1; \
+     INSERT INTO insert_copy SELECT id FROM t ORDER BY id; \
+     SELECT ROW_COUNT(), COUNT(*) FROM insert_copy; \
+     CREATE TABLE ctas_copy AS SELECT id FROM t ORDER BY id; \
+     SELECT COUNT(*) FROM ctas_copy; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 2 \
+    | tr '\n' '|')
+expect_value \
+    "mysql sql_select_limit does not cap insert-select or create-table-select source rows" \
+    "3	3|3|" \
+    "$internal_source_rows"
+
+accepted_assignment_values=$(run_mysql \
+    "SET @@SESSION.sql_select_limit=+2; \
+     SELECT @@sql_select_limit LIMIT 1; \
+     SET LOCAL sql_select_limit=TRUE; \
+     SELECT @@sql_select_limit LIMIT 1; \
+     SET @@sql_select_limit=FALSE; \
+     SELECT @@sql_select_limit LIMIT 1; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql accepts qualified signed and boolean sql_select_limit assignments" \
+    "2|1|0|" \
+    "$accepted_assignment_values"
+
+negative_assignment_values=$(run_mysql \
+    "SET SESSION sql_select_limit=-1; \
+     SELECT @@sql_select_limit, @@warning_count LIMIT 1; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | head -n 1)
+expect_value \
+    "mysql negative sql_select_limit clamps to zero with warning" \
+    "0	1" \
+    "$negative_assignment_values"
+
+user_variable_values=$(run_mysql \
+    "SET @limit_value=1; \
+     SET SESSION sql_select_limit=@limit_value; \
+     SELECT @@sql_select_limit LIMIT 1; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 1)
+expect_value \
+    "mysql accepts integer user variable sql_select_limit assignment" \
+    "1" \
+    "$user_variable_values"
+
+expect_error \
+    "mysql rejects string user variable sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET @limit_text='2'; SET SESSION sql_select_limit=@limit_text;"
+
 zero_limit_rows=$(run_mysql \
     "USE $MYSQL_DATABASE; \
      SET SESSION sql_select_limit=0; \
      SELECT id FROM t ORDER BY id; \
      SET SESSION sql_select_limit=DEFAULT;")
 expect_value "mysql sql_select_limit zero returns no select rows" "" "$zero_limit_rows"
+
+expect_output \
+    "mysql sql_select_limit zero caps scalar selects" \
+    "" \
+    "SET SESSION sql_select_limit=0; SELECT 1; SET SESSION sql_select_limit=DEFAULT;"
+
+expect_output \
+    "mysql sql_select_limit zero caps aggregate selects" \
+    "" \
+    "USE $MYSQL_DATABASE; \
+     SET SESSION sql_select_limit=0; \
+     SELECT COUNT(*) FROM t; \
+     SET SESSION sql_select_limit=DEFAULT;"
+
+grouped_limited_rows=$(run_mysql \
+    "USE $MYSQL_DATABASE; \
+     SET SESSION sql_select_limit=1; \
+     SELECT id, COUNT(*) FROM t GROUP BY id ORDER BY id; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 1)
+expect_value "mysql sql_select_limit caps grouped selects" "1	1" "$grouped_limited_rows"
+
+union_limited_rows=$(run_mysql \
+    "USE $MYSQL_DATABASE; \
+     SET SESSION sql_select_limit=1; \
+     SELECT id FROM t WHERE id = 1 UNION ALL SELECT id FROM t WHERE id = 2; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 1)
+expect_value "mysql sql_select_limit caps final union rows" "1" "$union_limited_rows"
+
+information_schema_limited_rows=$(run_mysql \
+    "USE $MYSQL_DATABASE; \
+     SET SESSION sql_select_limit=1; \
+     SELECT TABLE_NAME FROM information_schema.tables \
+       WHERE TABLE_SCHEMA = '$MYSQL_DATABASE' \
+       AND TABLE_NAME IN ('a_probe', 'b_probe') \
+       ORDER BY TABLE_NAME; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 1)
+expect_value \
+    "mysql sql_select_limit caps information_schema selects" \
+    "a_probe" \
+    "$information_schema_limited_rows"
+
+information_schema_explicit_limit_rows=$(run_mysql \
+    "USE $MYSQL_DATABASE; \
+     SET SESSION sql_select_limit=1; \
+     SELECT TABLE_NAME FROM information_schema.tables \
+       WHERE TABLE_SCHEMA = '$MYSQL_DATABASE' \
+       AND TABLE_NAME IN ('a_probe', 'b_probe') \
+       ORDER BY TABLE_NAME LIMIT 2; \
+     SET SESSION sql_select_limit=DEFAULT;" \
+    | tail -n 2 \
+    | tr '\n' '|')
+expect_value \
+    "mysql information_schema explicit limit overrides sql_select_limit" \
+    "a_probe|b_probe|" \
+    "$information_schema_explicit_limit_rows"
+
+expect_error \
+    "mysql rejects string sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET SESSION sql_select_limit='2';"
+
+expect_error \
+    "mysql rejects decimal sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET SESSION sql_select_limit=1.5;"
+
+expect_error \
+    "mysql rejects null sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET SESSION sql_select_limit=NULL;"
+
+expect_error \
+    "mysql rejects on sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET SESSION sql_select_limit=ON;"
+
+expect_error \
+    "mysql rejects overflowing sql_select_limit assignment" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'sql_select_limit'" \
+    "SET SESSION sql_select_limit=18446744073709551616;"
 
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \

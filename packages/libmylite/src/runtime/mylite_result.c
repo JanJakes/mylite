@@ -163,6 +163,25 @@ int mylite_result_append_text_row(mylite_result *result, const char *const *valu
     return rc;
 }
 
+void mylite_result_truncate_rows(mylite_result *result, size_t row_count) {
+    size_t first_value = 0U;
+    size_t value_count = 0U;
+
+    if (result == NULL || row_count >= result->row_count) {
+        return;
+    }
+    first_value = row_count * result->column_count;
+    value_count = (result->row_count - row_count) * result->column_count;
+    for (size_t index = 0U; index < value_count; ++index) {
+        free(result->values[first_value + index]);
+        result->values[first_value + index] = NULL;
+    }
+    if (result->value_sizes != NULL) {
+        memset(&result->value_sizes[first_value], 0, value_count * sizeof(*result->value_sizes));
+    }
+    result->row_count = row_count;
+}
+
 void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_rows) {
     if (result == NULL) {
         return;

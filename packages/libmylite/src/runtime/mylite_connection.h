@@ -129,6 +129,7 @@ struct mylite_session_state {
     uint64_t last_insert_id;
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
+    uint64_t sql_select_limit;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     struct mylite_session_savepoint *savepoints;

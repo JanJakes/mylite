@@ -38,6 +38,7 @@ int mylite_result_append_column_descriptor(
 );
 int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_result_cell *values);
 int mylite_result_append_text_row(mylite_result *result, const char *const *values);
+void mylite_result_truncate_rows(mylite_result *result, size_t row_count);
 void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_rows);
 void mylite_result_set_warning_count(mylite_result *result, size_t warning_count);
 void mylite_result_set_found_row_count(mylite_result *result, uint64_t found_row_count);

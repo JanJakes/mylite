@@ -5,6 +5,7 @@
 
 #include <stdatomic.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -349,6 +350,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->last_insert_id = 0U;
     session->auto_increment_increment = 1U;
     session->auto_increment_offset = 1U;
+    session->sql_select_limit = UINT64_MAX;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->user_transaction_active = false;

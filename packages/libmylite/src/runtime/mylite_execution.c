@@ -6741,6 +6741,7 @@ struct set_session_snapshot {
     uint64_t sql_mode;
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
+    uint64_t sql_select_limit;
     int64_t timestamp_override;
     int time_zone_offset_minutes;
     enum mylite_transaction_isolation session_transaction_isolation;
@@ -7264,7 +7265,8 @@ static int apply_set_system_variable_assignment(
 static int apply_set_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
-    const struct session_scalar_cell *value
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
 );
 static int parse_set_boolean_cell_value(
     struct mylite_db *database,
@@ -7351,6 +7353,29 @@ static int set_incorrect_system_variable_argument_type_error(
     const char *variable_name
 );
 static int append_truncated_incorrect_auto_increment_warning(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
+);
+static int apply_set_sql_select_limit_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int parse_set_sql_select_limit_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int append_truncated_incorrect_system_variable_warning(
     struct mylite_db *database,
     const char *variable_name,
     const char *value_text
@@ -7972,6 +7997,31 @@ static int execute_select_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int execute_grouped_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int execute_count_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int execute_column_aggregate_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int execute_descriptor_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int execute_compound_select_statement(
@@ -8088,8 +8138,17 @@ static bool compound_result_cells_equal_ascii_ci(
 static int execute_scalar_or_row_scalar_select_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result,
     bool *out_handled
+);
+static void apply_sql_select_limit_to_plan_limit(
+    const struct mylite_db *database,
+    struct planned_select_limit *limit
+);
+static void apply_sql_select_limit_to_result(
+    const struct mylite_db *database,
+    mylite_result *result
 );
 static int reject_select_modifier_usage_if_needed(
     struct mylite_db *database,
@@ -8099,6 +8158,7 @@ static int execute_information_schema_select_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int select_statement_targets_information_schema(
@@ -8117,6 +8177,7 @@ static int execute_information_schema_query(
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int build_information_schema_rows(
@@ -10966,6 +11027,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
 static int execute_row_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int plan_row_scalar_select(
@@ -11321,6 +11383,7 @@ static int plan_count_column(
 static int execute_count_from_plan(
     struct mylite_db *database,
     const struct planned_count *plan,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static bool select_statement_has_column_aggregate(const struct mylite_sql_ast_node *statement);
@@ -11366,6 +11429,7 @@ static int plan_column_group_concat_options(
 static int execute_column_aggregate_from_plan(
     struct mylite_db *database,
     const struct planned_column_aggregate *plan,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int append_count_result_column(
@@ -11509,6 +11573,7 @@ static bool select_statement_is_scalar_projection_attempt(
 static int execute_scalar_projection_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int append_scalar_projection_columns_and_values(
@@ -13718,6 +13783,10 @@ static int format_session_scalar_uint64_value(
 static uint64_t auto_increment_step_system_variable_value(
     const struct mylite_db *database,
     enum session_system_variable_kind kind,
+    bool global_scope
+);
+static uint64_t sql_select_limit_system_variable_value(
+    const struct mylite_db *database,
     bool global_scope
 );
 static const char *default_sql_mode_value(void);
@@ -23207,7 +23276,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DO_STATEMENT:
         return execute_do_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT: {
-        int rc = execute_select_statement(database, context, statement, out_result);
+        int rc = execute_select_statement(database, context, statement, true, out_result);
 
         if (rc == MYLITE_OK) {
             clear_select_consumed_next_transaction_characteristics(database);
@@ -25898,6 +25967,8 @@ static int apply_set_system_variable_assignment(
     if (unwrap_parenthesized_expression(value_node) != NULL &&
         unwrap_parenthesized_expression(value_node)->kind == MYLITE_SQL_AST_USER_VARIABLE) {
         struct session_scalar_cell value = {0};
+        enum mylite_session_user_variable_value_kind value_kind =
+            MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
 
         rc = session_user_variable_value(
             database,
@@ -25905,7 +25976,14 @@ static int apply_set_system_variable_assignment(
             &value
         );
         if (rc == MYLITE_OK) {
-            rc = apply_set_system_variable_cell_value(database, &target, &value);
+            rc = session_user_variable_value_kind(
+                database,
+                unwrap_parenthesized_expression(value_node),
+                &value_kind
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = apply_set_system_variable_cell_value(database, &target, &value, value_kind);
         }
         session_scalar_cell_deinit(&value);
         return rc;
@@ -25925,6 +26003,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT ||
         target.kind == SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET) {
         return apply_set_auto_increment_step_value(database, &target, value_node);
+    }
+    if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
+        return apply_set_sql_select_limit_value(database, &target, value_node);
     }
     if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
@@ -26950,6 +27031,7 @@ static int copy_set_session_snapshot(
     out_snapshot->sql_mode = session->sql_mode;
     out_snapshot->auto_increment_increment = session->auto_increment_increment;
     out_snapshot->auto_increment_offset = session->auto_increment_offset;
+    out_snapshot->sql_select_limit = session->sql_select_limit;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
     out_snapshot->session_transaction_isolation = session->session_transaction_isolation;
@@ -27045,6 +27127,7 @@ static void restore_set_session_snapshot(
     session->sql_mode = snapshot->sql_mode;
     session->auto_increment_increment = snapshot->auto_increment_increment;
     session->auto_increment_offset = snapshot->auto_increment_offset;
+    session->sql_select_limit = snapshot->sql_select_limit;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
     session->session_transaction_isolation = snapshot->session_transaction_isolation;
@@ -27098,10 +27181,12 @@ static void free_session_user_variables(
 static int apply_set_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
-    const struct session_scalar_cell *value
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
 ) {
     bool boolean_value = false;
     uint64_t modes = 0U;
+    uint64_t sql_select_limit = UINT64_MAX;
     int rc = MYLITE_OK;
 
     if (target == NULL || value == NULL) {
@@ -27130,6 +27215,27 @@ static int apply_set_system_variable_cell_value(
             return MYLITE_ERROR;
         }
         return set_session_time_zone(database, value->value);
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL sql_select_limit assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = parse_set_sql_select_limit_cell_value(
+            database,
+            target->name,
+            value,
+            value_kind,
+            &sql_select_limit
+        );
+        if (rc == MYLITE_OK) {
+            database->session.sql_select_limit = sql_select_limit;
+            database->session.system_variables_are_placeholder = false;
+        }
+        return rc;
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
@@ -27876,6 +27982,177 @@ static int append_truncated_incorrect_auto_increment_warning(
         sizeof(message),
         "Truncated incorrect %s value: '%s'",
         variable_name == NULL ? "auto_increment" : variable_name,
+        value_text == NULL ? "" : value_text
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_truncated_incorrect_auto_increment,
+        "HY000",
+        message
+    );
+}
+
+static int apply_set_sql_select_limit_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = UINT64_MAX;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid sql_select_limit system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL sql_select_limit assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_sql_select_limit_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.sql_select_limit = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_sql_select_limit_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid sql_select_limit output");
+        return MYLITE_ERROR;
+    }
+    *out_value = UINT64_MAX;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 0U;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+    if (parse_unsigned_integer_literal(&literal_node->span, &magnitude) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (negative) {
+        *out_value = 0U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
+}
+
+static int parse_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid sql_select_limit output");
+        return MYLITE_ERROR;
+    }
+    *out_value = UINT64_MAX;
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    if (value->has_value_size) {
+        text_size = value->value_size;
+    } else {
+        text_size = strlen(text);
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (parse_unsigned_integer_literal(&unsigned_span, out_value) != MYLITE_OK) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (negative) {
+        *out_value = 0U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value->value
+        );
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_truncated_incorrect_system_variable_warning(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *value_text
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%s'",
+        variable_name == NULL ? "system variable" : variable_name,
         value_text == NULL ? "" : value_text
     );
 
@@ -31114,12 +31391,9 @@ static int execute_select_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    struct planned_select plan = {0};
-    struct planned_grouped_aggregate grouped_plan = {0};
-    struct planned_count count_plan = {false};
-    struct planned_column_aggregate aggregate_plan = {0};
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
     bool projected_statement_handled = false;
@@ -31147,12 +31421,14 @@ static int execute_select_statement(
             database,
             context,
             statement,
+            apply_sql_select_limit,
             out_result
         );
     }
     rc = execute_scalar_or_row_scalar_select_if_needed(
         database,
         statement,
+        apply_sql_select_limit,
         out_result,
         &projected_statement_handled
     );
@@ -31164,37 +31440,28 @@ static int execute_select_statement(
         return rc;
     }
     if (select_statement_has_group_by_clause(statement)) {
-        rc = plan_grouped_aggregate(database, statement, &grouped_plan);
-        if (rc == MYLITE_OK) {
-            rc = append_select_modifier_warnings(database, statement);
-        }
-        if (rc == MYLITE_OK) {
-            rc = execute_grouped_aggregate_from_plan(database, &grouped_plan, out_result);
-        }
-        planned_grouped_aggregate_deinit(&grouped_plan);
-        return rc;
+        return execute_grouped_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     if (select_statement_has_count_aggregate(statement)) {
-        rc = plan_count(database, statement, &count_plan);
-        if (rc == MYLITE_OK) {
-            rc = append_select_modifier_warnings(database, statement);
-        }
-        if (rc == MYLITE_OK) {
-            rc = execute_count_from_plan(database, &count_plan, out_result);
-        }
-        planned_count_deinit(&count_plan);
-        return rc;
+        return execute_count_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     if (select_statement_has_column_aggregate(statement)) {
-        rc = plan_column_aggregate(database, statement, &aggregate_plan);
-        if (rc == MYLITE_OK) {
-            rc = append_select_modifier_warnings(database, statement);
-        }
-        if (rc == MYLITE_OK) {
-            rc = execute_column_aggregate_from_plan(database, &aggregate_plan, out_result);
-        }
-        planned_column_aggregate_deinit(&aggregate_plan);
-        return rc;
+        return execute_column_aggregate_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     if (select_statement_is_scalar_projection_attempt(statement)) {
         set_unsupported_error(
@@ -31215,7 +31482,91 @@ static int execute_select_statement(
         return MYLITE_ERROR;
     }
 
-    rc = plan_select(database, statement, &plan);
+    return execute_descriptor_select_statement(
+        database,
+        statement,
+        apply_sql_select_limit,
+        out_result
+    );
+}
+
+static int execute_grouped_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct planned_grouped_aggregate grouped_plan = {0};
+    int rc = plan_grouped_aggregate(database, statement, &grouped_plan);
+
+    if (rc == MYLITE_OK && apply_sql_select_limit) {
+        apply_sql_select_limit_to_plan_limit(database, &grouped_plan.limit);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_grouped_aggregate_from_plan(database, &grouped_plan, out_result);
+    }
+    planned_grouped_aggregate_deinit(&grouped_plan);
+    return rc;
+}
+
+static int execute_count_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct planned_count count_plan = {false};
+    int rc = plan_count(database, statement, &count_plan);
+
+    if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_count_from_plan(database, &count_plan, apply_sql_select_limit, out_result);
+    }
+    planned_count_deinit(&count_plan);
+    return rc;
+}
+
+static int execute_column_aggregate_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct planned_column_aggregate aggregate_plan = {0};
+    int rc = plan_column_aggregate(database, statement, &aggregate_plan);
+
+    if (rc == MYLITE_OK) {
+        rc = append_select_modifier_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_column_aggregate_from_plan(
+            database,
+            &aggregate_plan,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
+    planned_column_aggregate_deinit(&aggregate_plan);
+    return rc;
+}
+
+static int execute_descriptor_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    struct planned_select plan = {0};
+    int rc = plan_select(database, statement, &plan);
+
+    if (rc == MYLITE_OK && apply_sql_select_limit) {
+        apply_sql_select_limit_to_plan_limit(database, &plan.limit);
+    }
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
     }
@@ -31243,7 +31594,7 @@ static int execute_compound_select_statement(
     int rc = reject_compound_select_branch_shape(database, first_branch);
 
     if (rc == MYLITE_OK) {
-        rc = execute_select_statement(database, context, first_branch, &branch_result);
+        rc = execute_select_statement(database, context, first_branch, false, &branch_result);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -31290,6 +31641,7 @@ static int execute_compound_select_statement(
     }
 
     mylite_result_set_affected_rows(result, 0);
+    apply_sql_select_limit_to_result(database, result);
     free(string_collation_columns);
     return finish_successful_result(database, result, out_result);
 }
@@ -31350,7 +31702,7 @@ static int append_compound_term(
     int rc = reject_compound_select_branch_shape(database, branch);
 
     if (rc == MYLITE_OK) {
-        rc = execute_select_statement(database, context, branch, &branch_result);
+        rc = execute_select_statement(database, context, branch, false, &branch_result);
     }
     if (rc == MYLITE_OK &&
         mylite_result_column_count(branch_result) != mylite_result_column_count(*in_out_result)) {
@@ -31377,6 +31729,44 @@ static int append_compound_term(
 
     mylite_result_free(branch_result);
     return rc;
+}
+
+static void apply_sql_select_limit_to_plan_limit(
+    const struct mylite_db *database,
+    struct planned_select_limit *limit
+) {
+    uint64_t row_count = UINT64_MAX;
+
+    if (database == NULL || limit == NULL || limit->has_limit) {
+        return;
+    }
+    row_count = database->session.sql_select_limit;
+    if (row_count == UINT64_MAX || row_count > (uint64_t)INT64_MAX) {
+        return;
+    }
+
+    limit->has_limit = true;
+    limit->row_count = (int64_t)row_count;
+    limit->has_offset = false;
+    limit->offset = 0;
+}
+
+static void apply_sql_select_limit_to_result(
+    const struct mylite_db *database,
+    mylite_result *result
+) {
+    uint64_t row_count = UINT64_MAX;
+
+    if (database == NULL || result == NULL) {
+        return;
+    }
+    row_count = database->session.sql_select_limit;
+    if (row_count == UINT64_MAX || row_count > (uint64_t)SIZE_MAX) {
+        return;
+    }
+    if ((uint64_t)mylite_result_row_count(result) > row_count) {
+        mylite_result_truncate_rows(result, (size_t)row_count);
+    }
 }
 
 static int reject_compound_select_branch_shape(
@@ -31883,18 +32273,34 @@ static bool compound_result_cells_equal_ascii_ci(
 static int execute_scalar_or_row_scalar_select_if_needed(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result,
     bool *out_handled
 ) {
     *out_handled = true;
     if (select_statement_is_row_function_scalar_projection(statement)) {
-        return execute_scalar_projection_select_statement(database, statement, out_result);
+        return execute_scalar_projection_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     if (select_statement_is_row_scalar_projection_attempt(statement)) {
-        return execute_row_scalar_select_statement(database, statement, out_result);
+        return execute_row_scalar_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     if (select_statement_is_scalar_projection(statement)) {
-        return execute_scalar_projection_select_statement(database, statement, out_result);
+        return execute_scalar_projection_select_statement(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
     }
 
     *out_handled = false;
@@ -31945,13 +32351,21 @@ static int execute_information_schema_select_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     struct information_schema_query query = {0};
     int rc = resolve_information_schema_query(database, statement, &query);
 
     if (rc == MYLITE_OK) {
-        rc = execute_information_schema_query(database, context, statement, &query, out_result);
+        rc = execute_information_schema_query(
+            database,
+            context,
+            statement,
+            &query,
+            apply_sql_select_limit,
+            out_result
+        );
     }
     information_schema_query_deinit(&query);
     return rc;
@@ -32079,6 +32493,7 @@ static int execute_information_schema_query(
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     struct information_schema_row_set rows = {0};
@@ -32125,6 +32540,9 @@ static int execute_information_schema_query(
     }
 
     mylite_result_set_affected_rows(result, 0);
+    if (apply_sql_select_limit && !query->limit.has_limit) {
+        apply_sql_select_limit_to_result(database, result);
+    }
     return finish_successful_result(database, result, out_result);
 }
 
@@ -68032,11 +68450,15 @@ static bool select_statement_is_row_scalar_projection_attempt(
 static int execute_row_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     struct planned_row_scalar_select plan = {false};
     int rc = plan_row_scalar_select(database, statement, &plan);
 
+    if (rc == MYLITE_OK && apply_sql_select_limit) {
+        apply_sql_select_limit_to_plan_limit(database, &plan.limit);
+    }
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
     }
@@ -68847,6 +69269,7 @@ static int plan_count_column(
 static int execute_count_from_plan(
     struct mylite_db *database,
     const struct planned_count *plan,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     mylite_result *result = NULL;
@@ -68875,6 +69298,9 @@ static int execute_count_from_plan(
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return count_execution_error(database, rc);
+    }
+    if (apply_sql_select_limit) {
+        apply_sql_select_limit_to_result(database, result);
     }
 
     return finish_successful_result(database, result, out_result);
@@ -69495,6 +69921,7 @@ static int plan_column_group_concat_options(
 static int execute_column_aggregate_from_plan(
     struct mylite_db *database,
     const struct planned_column_aggregate *plan,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     mylite_result *result = NULL;
@@ -69512,6 +69939,9 @@ static int execute_column_aggregate_from_plan(
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return column_aggregate_execution_error(database, rc);
+    }
+    if (apply_sql_select_limit) {
+        apply_sql_select_limit_to_result(database, result);
     }
 
     return finish_successful_result(database, result, out_result);
@@ -70309,6 +70739,7 @@ static bool select_statement_is_scalar_projection_attempt(
 static int execute_scalar_projection_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
@@ -70378,6 +70809,9 @@ static int execute_scalar_projection_select_statement(
         database->session.last_insert_id = previous_last_insert_id;
         mylite_result_free(result);
         return rc;
+    }
+    if (apply_sql_select_limit) {
+        apply_sql_select_limit_to_result(database, result);
     }
 
     return finish_successful_result(database, result, out_result);
@@ -81494,7 +81928,10 @@ static int hex_numeric_system_variable_value(
         out_value->integer = 0U;
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
-        out_value->integer = UINT64_MAX;
+        out_value->integer = sql_select_limit_system_variable_value(
+            database,
+            system_variable_expression_has_global_scope(expression)
+        );
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_TIMESTAMP:
         timestamp = current_timestamp_epoch(database);
@@ -88346,7 +88783,10 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         rc = format_uint64(
             database,
-            UINT64_MAX,
+            sql_select_limit_system_variable_value(
+                database,
+                system_variable_expression_has_global_scope(expression)
+            ),
             out_cell->integer_text,
             sizeof(out_cell->integer_text)
         );
@@ -88515,6 +88955,16 @@ static uint64_t auto_increment_step_system_variable_value(
         return database->session.auto_increment_offset;
     }
     return 1U;
+}
+
+static uint64_t sql_select_limit_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return UINT64_MAX;
+    }
+    return database->session.sql_select_limit;
 }
 
 static const char *transaction_isolation_system_variable_value(
@@ -88937,7 +89387,12 @@ static int show_system_variable_value(
         }
         return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT: {
-        int rc = format_uint64(database, UINT64_MAX, integer_buffer, integer_buffer_size);
+        int rc = format_uint64(
+            database,
+            sql_select_limit_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size
+        );
         if (rc == MYLITE_OK) {
             *out_value = integer_buffer;
         }
@@ -127467,6 +127922,9 @@ static int build_row_scalar_select_sql(
     if (rc == MYLITE_OK && !plan->has_source) {
         rc = append_row_scalar_tableless_filter_sql(&string, plan, &next_parameter);
     }
+    if (rc == MYLITE_OK && !plan->has_source) {
+        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+    }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
         if (*out_sql == NULL) {
@@ -134914,6 +135372,15 @@ static int bind_row_scalar_select_parameters_at(
             &plan->tableless_filter.subquery,
             parameter_index
         );
+    }
+    if (rc == MYLITE_OK && !plan->has_source && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+    if (rc == MYLITE_OK && !plan->has_source && plan->limit.has_offset) {
+        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
     }
 
     return rc;

@@ -1,5 +1,10 @@
 # Baseline SQL Select Limit System Variable
 
+Status note: this earlier fixed-read slice is extended by
+`docs/specs/baseline-mutable-sql-select-limit/specs.md`, which adds
+handle-local mutable session state and implicit top-level `SELECT` caps while
+keeping global state fixed.
+
 ## Status
 
 This feature specifies a narrow scalar system-variable slice for

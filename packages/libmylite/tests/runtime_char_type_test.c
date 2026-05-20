@@ -425,6 +425,7 @@ static int test_char_diagnostics(void) {
     static const char *const escaped_wildcard_rows[] = {"30", "\\%", "31", "\\_"};
     static const char *const zero_space_row[] = {"1", ""};
     static const char *const char_from_select_row[] = {"40", "a"};
+    static const char *const raw_select_row[] = {"41", "b", "z"};
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
     char path[test_path_capacity];
@@ -621,14 +622,16 @@ static int test_char_diagnostics(void) {
         "CREATE TABLE raw_src (id INT NOT NULL, v VARCHAR(3), nn CHAR(1))"
     );
     failures += expect_dml_ok(database, "INSERT INTO raw_src VALUES (41, 'b ', 'z')", 1);
-    failures += execute_error(
+    failures +=
+        expect_dml_ok(database, "INSERT INTO diag (id, v, nn) SELECT id, v, nn FROM raw_src", 1);
+    failures += expect_query_values(
         database,
-        "INSERT INTO diag (id, v, nn) SELECT id, v, nn FROM raw_src",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "INSERT ... SELECT into CHAR supports only already-canonical CHAR values",
+        (struct expected_query){
+            .sql = "SELECT id, v, nn FROM diag WHERE id = 41",
+            .values = raw_select_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "char insert select trims selected raw text",
         }
     );
     failures += expect_dml_result(

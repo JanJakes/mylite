@@ -15,8 +15,10 @@
 enum {
     test_path_capacity = 1024,
     nonstrict_update_two_row_three_column_warning_count = 6,
+    strict_scalar_string_column_count = 7,
     mysql_error_bad_null = 1048,
     mysql_error_duplicate_key = 1062,
+    mysql_error_data_truncated = 1265,
     mysql_error_data_too_long = 1406,
     mysql_error_no_default = 1364,
 };
@@ -662,6 +664,60 @@ static int test_nonstrict_insert_select_coercion(void) {
         "0000-00-00 00:00:00",
         "5",
     };
+    static const char *const strict_scalar_varchar_trailing_warnings[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+    };
+    static const char *const strict_scalar_string_rows[] = {
+        "1",
+        "[ab ]",
+        "3",
+        "3",
+        "[ab]",
+        "2",
+        "2",
+    };
+    static const char *const insert_select_string_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 2",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 2",
+    };
+    static const char *const insert_select_string_rows[] = {
+        "1",
+        "[abc]",
+        "[abc]",
+        "2",
+        "[ééé]",
+        "[ééé]",
+    };
+    static const char *const row_scalar_string_warnings[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'v' at row 1",
+        "Warning",
+        "1265",
+        "Data truncated for column 'c' at row 1",
+    };
+    static const char *const row_scalar_string_row[] = {
+        "1",
+        "[abc]",
+        "[abc]",
+    };
+    static const char *const reopened_string_row[] = {
+        "2",
+        "[ééé]",
+        "[ééé]",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -851,6 +907,235 @@ static int test_nonstrict_insert_select_coercion(void) {
         }
     );
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE string_src(id INT NOT NULL, v VARCHAR(8), c CHAR(8))",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create insert select string source"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_src VALUES (1, 'abcd', 'abcd'), (2, 'éééx', 'éééx'), "
+        "(3, 'ab  ', 'ab  '), (4, 'ok', 'abcd')",
+        (struct expected_statement){.affected_rows = 4, .warning_count = 0U},
+        "seed insert select string source"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE string_dst(id INT NOT NULL, v VARCHAR(3), c CHAR(3))",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create insert select string target"
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=DEFAULT",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "set strict insert select string mode"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO string_dst SELECT 1, 'abcd', 'ok'",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO string_dst SELECT id, v, c FROM string_src WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_data_truncated,
+            .sqlstate = "01000",
+            .message_part = "Data truncated for column 'v' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO string_dst SELECT 1, 'ok', 'abcd'",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'c' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO string_dst SELECT id, v, c FROM string_src WHERE id = 4",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'c' at row 1",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE string_dst",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for strict row-scalar string trailing spaces"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_dst SELECT 1, 'ab  ', 'ab  '",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 1U},
+        "strict row-scalar insert select string trailing spaces"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = strict_scalar_varchar_trailing_warnings,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "strict row-scalar varchar trailing warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql =
+                "SELECT id, CONCAT('[', v, ']'), LENGTH(v), CHAR_LENGTH(v), CONCAT('[', c, ']'), "
+                "LENGTH(c), CHAR_LENGTH(c) FROM string_dst",
+            .values = strict_scalar_string_rows,
+            .column_count = strict_scalar_string_column_count,
+            .row_count = 1U,
+            .context = "strict row-scalar string trailing row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "set nonstrict insert select string mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE string_dst",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for nonstrict insert select string truncation"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_dst SELECT id, v, c FROM string_src WHERE id IN (1, 2) ORDER BY id",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 4U},
+        "nonstrict table-backed insert select string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = insert_select_string_warnings,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "nonstrict insert select string truncation warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT('[', v, ']'), CONCAT('[', c, ']') "
+                   "FROM string_dst ORDER BY id",
+            .values = insert_select_string_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict insert select string truncation rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE string_dst",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for row-scalar insert select string truncation"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_dst SELECT 1, 'abcd', 'abcd'",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 2U},
+        "nonstrict row-scalar insert select string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = row_scalar_string_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict row-scalar string truncation warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT('[', v, ']'), CONCAT('[', c, ']') FROM string_dst",
+            .values = row_scalar_string_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict row-scalar string truncation row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=DEFAULT",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "set strict insert ignore select string mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE string_dst",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for insert ignore select string truncation"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT IGNORE INTO string_dst SELECT id, v, c FROM string_src WHERE id = 1",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 2U},
+        "strict insert ignore select string truncation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = row_scalar_string_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "insert ignore select string truncation warnings",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "reset nonstrict insert select string mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE string_dst",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for insert select string zero source"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_dst SELECT id, v, c FROM string_src WHERE id > 99",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "nonstrict insert select string zero source"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM string_dst",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "insert select string zero source rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_dst SELECT id, v, c FROM string_src WHERE id = 2",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 2U},
+        "nonstrict insert select string persistence row"
+    );
+
     mylite_close(database);
     database = NULL;
 
@@ -876,6 +1161,16 @@ static int test_nonstrict_insert_select_coercion(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "reopened insert select adjusted row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT('[', v, ']'), CONCAT('[', c, ']') FROM string_dst",
+            .values = reopened_string_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "reopened insert select string adjusted row",
         }
     );
 

@@ -110,6 +110,30 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const multi_no_key_rows[] = {"1", "10", "20"};
     static const char *const unique_rows[] = {"1", "10", "200"};
     static const char *const unique_multi_rows[] = {"1", "10", "200", "300"};
+    static const char *const primary_unique_rows[] = {"1", "10", "500", "2", "20", "400"};
+    static const char *const two_unique_rows[] = {"1", "10", "500", "2", "20", "400"};
+    static const char *const altered_unique_rows[] = {"1", "10", "500", "2", "20", "200"};
+    static const char *const temporary_shadow_rows[] = {"1", "10", "500", "2", "20", "200"};
+    static const char *const persistent_shadow_rows[] = {"9", "90", "900"};
+    static const char *const composite_plus_unique_rows[] = {
+        "1",
+        "1",
+        "10",
+        "300",
+        "2",
+        "2",
+        "20",
+        "400",
+    };
+    static const char *const multi_key_null_rows[] = {
+        "NULL",
+        "10",
+        "100",
+        "NULL",
+        "20",
+        "200",
+    };
+    static const char *const multi_key_no_op_rows[] = {"1", "10", "100"};
     static const char *const composite_primary_rows[] = {
         "1",
         "2",
@@ -137,8 +161,20 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const default_rows[] = {"1", "7", NULL};
     static const char *const multi_default_rows[] = {"1", "7", NULL};
     static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
+    static const char *const auto_increment_primary_unique_rows[] = {
+        "1",
+        "10",
+        "300",
+        "2",
+        "20",
+        "200",
+        "4",
+        "30",
+        "400",
+    };
     static const char *const last_insert_id_one[] = {"1"};
     static const char *const last_insert_id_three[] = {"3"};
+    static const char *const last_insert_id_four[] = {"4"};
     static const char *const priority_rows[] = {"1", "30"};
     static const char *const typed_rows[] = {
         "9.99",
@@ -322,6 +358,217 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "unique duplicate multiple row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE primary_unique_t(id INT PRIMARY KEY, u INT UNIQUE, v INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO primary_unique_t VALUES (1, 10, 100), (2, 20, 200)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO primary_unique_t VALUES (1, 30, 300) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO primary_unique_t VALUES (3, 20, 400) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO primary_unique_t VALUES (1, 20, 500) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u, v FROM primary_unique_t ORDER BY id",
+            .values = primary_unique_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "primary and secondary unique duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE two_unique_t(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO two_unique_t VALUES (1, 10, 100), (2, 20, 200)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO two_unique_t VALUES (1, 30, 300) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO two_unique_t VALUES (3, 20, 400) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO two_unique_t VALUES (1, 20, 500) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM two_unique_t ORDER BY a",
+            .values = two_unique_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "two secondary unique duplicate rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE altered_unique_t(a INT UNIQUE, b INT, v INT)");
+    failures += expect_statement_ok(database, "ALTER TABLE altered_unique_t ADD UNIQUE KEY u_b(b)");
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO altered_unique_t VALUES (1, 10, 100), (2, 20, 200)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO altered_unique_t VALUES (1, 20, 500) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM altered_unique_t ORDER BY a",
+            .values = altered_unique_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "altered unique key duplicate order",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE shadow_key_t(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO shadow_key_t VALUES (9, 90, 900)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TEMPORARY TABLE shadow_key_t(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO shadow_key_t VALUES (1, 10, 100), (2, 20, 200)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO shadow_key_t VALUES (1, 20, 500) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM shadow_key_t ORDER BY a",
+            .values = temporary_shadow_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "temporary shadow duplicate rows",
+        }
+    );
+    failures += expect_statement_ok(database, "DROP TEMPORARY TABLE shadow_key_t");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM shadow_key_t",
+            .values = persistent_shadow_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "persistent table after temporary shadow duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_plus_unique(a INT NOT NULL, b INT NOT NULL, u INT UNIQUE, v INT, "
+        "PRIMARY KEY(a,b))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO composite_plus_unique VALUES (1, 1, 10, 100), (2, 2, 20, 200)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_plus_unique VALUES (1, 1, 30, 300) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_plus_unique VALUES (3, 3, 20, 400) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, u, v FROM composite_plus_unique ORDER BY a",
+            .values = composite_plus_unique_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "composite primary plus unique duplicate rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE multi_key_nullable(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO multi_key_nullable VALUES (NULL, 10, 100)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO multi_key_nullable VALUES (NULL, 20, 200) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IFNULL(a, 'NULL'), b, v FROM multi_key_nullable ORDER BY b",
+            .values = multi_key_null_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "multi-key nullable unique inserts",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE multi_key_no_op(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO multi_key_no_op VALUES (1, 10, 100)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO multi_key_no_op VALUES (1, 20, 100) ON DUPLICATE KEY UPDATE v = 100",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM multi_key_no_op",
+            .values = multi_key_no_op_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "multi-key no-op duplicate row",
         }
     );
 
@@ -527,6 +774,56 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 3U,
             .row_count = 2U,
             .context = "duplicate generated auto increment rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE auto_multi_key(id INT AUTO_INCREMENT PRIMARY KEY, u INT UNIQUE, v INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO auto_multi_key(u, v) VALUES (10, 100), (20, 200)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_multi_key(u, v) VALUES (10, 300) "
+        "ON DUPLICATE KEY UPDATE v = VALUES(v)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "multi-key duplicate generated auto increment leaves last insert id",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO auto_multi_key(u, v) VALUES (30, 400)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = last_insert_id_four,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "post-multi-key-duplicate generated auto increment id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, u, v FROM auto_multi_key ORDER BY id",
+            .values = auto_increment_primary_unique_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "multi-key duplicate generated auto increment rows",
         }
     );
 
@@ -797,11 +1094,24 @@ static int test_duplicate_update_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT INTO two_keys VALUES (1, 1, 1) ON DUPLICATE KEY UPDATE v = 2",
+        "INSERT INTO two_keys VALUES (1, 1, 1) ON DUPLICATE KEY UPDATE u = 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports only one enforced key",
+            .message_part = "does not support key-column assignments",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE two_secondary_keys(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO two_secondary_keys VALUES (1, 2, 3) ON DUPLICATE KEY UPDATE a = 4",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "does not support key-column assignments",
         }
     );
     failures += expect_statement_ok(

@@ -57154,15 +57154,12 @@ static int plan_insert_duplicate_update_key(
     struct mylite_db *database,
     struct planned_insert *plan
 ) {
-    size_t unique_key_count = 0U;
-
     for (size_t index = 0U; index < plan->index_count; ++index) {
         const struct loaded_index_info *candidate = &plan->indexes[index];
 
         if (!candidate->index.is_unique) {
             continue;
         }
-        ++unique_key_count;
         if (candidate->part_count == 0U) {
             set_unsupported_error(
                 database,
@@ -57170,17 +57167,12 @@ static int plan_insert_duplicate_update_key(
             );
             return MYLITE_ERROR;
         }
-        plan->duplicate_update.has_key = true;
-        plan->duplicate_update.key_index = index;
+        if (!plan->duplicate_update.has_key) {
+            plan->duplicate_update.has_key = true;
+            plan->duplicate_update.key_index = index;
+        }
     }
-    if (unique_key_count > 1U) {
-        set_unsupported_error(
-            database,
-            "INSERT ... ON DUPLICATE KEY UPDATE supports only one enforced key"
-        );
-        return MYLITE_ERROR;
-    }
-    if (plan->duplicate_update.has_key && insert_duplicate_assignment_targets_key(plan)) {
+    if (insert_duplicate_assignment_targets_key(plan)) {
         set_unsupported_error(
             database,
             "INSERT ... ON DUPLICATE KEY UPDATE does not support key-column assignments"
@@ -57199,21 +57191,24 @@ static int plan_insert_duplicate_update_key(
 }
 
 static bool insert_duplicate_assignment_targets_key(const struct planned_insert *plan) {
-    const struct loaded_index_info *key = NULL;
-
-    if (plan == NULL || !plan->duplicate_update.has_key ||
-        plan->duplicate_update.key_index >= plan->index_count) {
+    if (plan == NULL) {
         return false;
     }
 
-    key = &plan->indexes[plan->duplicate_update.key_index];
-    for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
-        for (size_t assignment_index = 0U;
-             assignment_index < plan->duplicate_update.assignment_count;
-             ++assignment_index) {
-            if (key->parts[part_index].column_index ==
-                plan->duplicate_update.assignments[assignment_index].assignment_column_index) {
-                return true;
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct loaded_index_info *key = &plan->indexes[index];
+
+        if (!key->index.is_unique) {
+            continue;
+        }
+        for (size_t part_index = 0U; part_index < key->part_count; ++part_index) {
+            for (size_t assignment_index = 0U;
+                 assignment_index < plan->duplicate_update.assignment_count;
+                 ++assignment_index) {
+                if (key->parts[part_index].column_index ==
+                    plan->duplicate_update.assignments[assignment_index].assignment_column_index) {
+                    return true;
+                }
             }
         }
     }

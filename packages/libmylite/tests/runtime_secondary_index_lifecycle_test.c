@@ -1009,15 +1009,6 @@ static int test_secondary_index_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unique_binary_prefix (v VARBINARY(10), UNIQUE KEY u (v(3)))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Unique binary prefix indexes are not yet supported",
-        }
-    );
-    failures += execute_error(
-        database,
         "CREATE TABLE duplicate_prefix_part (name VARCHAR(20), KEY k (name(3), name(5)))",
         (struct expected_sql_error){
             .code = mysql_error_duplicate_column,

@@ -33,6 +33,9 @@ enum {
     composite_unique_prefix_index_part_count = 8,
     composite_unique_prefix_insert_row_count = 6,
     composite_unique_prefix_dml_row_count = 8,
+    unique_binary_prefix_column_count = 5,
+    unique_binary_prefix_index_count = 4,
+    unique_binary_prefix_dml_row_count = 6,
     mysql_error_parse = 1064,
     mysql_error_duplicate_key = 1062,
     mysql_error_key_too_long = 1071,
@@ -70,6 +73,7 @@ struct repeated_text_request {
 
 static int test_unique_prefix_metadata_dml_and_persistence(void);
 static int test_composite_unique_prefix_metadata_dml_and_persistence(void);
+static int test_unique_binary_prefix_metadata_dml_and_persistence(void);
 static int test_long_unique_prefix_dml(void);
 static int test_unique_prefix_diagnostics(void);
 static int test_unique_prefix_independent_handles(void);
@@ -120,6 +124,7 @@ int main(void) {
 
     failures += test_unique_prefix_metadata_dml_and_persistence();
     failures += test_composite_unique_prefix_metadata_dml_and_persistence();
+    failures += test_unique_binary_prefix_metadata_dml_and_persistence();
     failures += test_long_unique_prefix_dml();
     failures += test_unique_prefix_diagnostics();
     failures += test_unique_prefix_independent_handles();
@@ -762,6 +767,334 @@ static int test_composite_unique_prefix_metadata_dml_and_persistence(void) {
     return failures;
 }
 
+static int test_unique_binary_prefix_metadata_dml_and_persistence(void) {
+    static const char *const show_columns_rows[] = {
+        "id", "int",          "YES", "",    NULL, "", "b",  "binary(4)", "YES", "UNI", NULL, "",
+        "vb", "varbinary(8)", "YES", "UNI", NULL, "", "bl", "blob",      "YES", "UNI", NULL, "",
+        "tb", "tinyblob",     "YES", "UNI", NULL, "",
+    };
+    static const char *const show_index_rows[] = {
+        "ubp", "0", "u_b",  "1", "b",  "A", "0", "2", NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "ubp", "0", "u_vb", "1", "vb", "A", "0", "3", NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "ubp", "0", "u_bl", "1", "bl", "A", "0", "4", NULL, "YES", "BTREE", "", "", "YES", NULL,
+        "ubp", "0", "u_tb", "1", "tb", "A", "0", "5", NULL, "YES", "BTREE", "", "", "YES", NULL,
+    };
+    static const char *const show_create_rows[] = {
+        "ubp",
+        "CREATE TABLE `ubp` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `b` binary(4) DEFAULT NULL,\n"
+        "  `vb` varbinary(8) DEFAULT NULL,\n"
+        "  `bl` blob,\n"
+        "  `tb` tinyblob,\n"
+        "  UNIQUE KEY `u_b` (`b`(2)),\n"
+        "  UNIQUE KEY `u_vb` (`vb`(3)),\n"
+        "  UNIQUE KEY `u_bl` (`bl`(4)),\n"
+        "  UNIQUE KEY `u_tb` (`tb`(5))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const statistics_rows[] = {
+        "u_b",  "0", "1", "b",  "2", "YES", "u_bl", "0", "1", "bl", "4", "YES",
+        "u_tb", "0", "1", "tb", "5", "YES", "u_vb", "0", "1", "vb", "3", "YES",
+    };
+    static const char *const ignore_rows[] = {
+        "1",
+        "61626364",
+        "78795A",
+        "2",
+        "646566",
+        "7A7A",
+        "3",
+        NULL,
+        "7171FF",
+        "4",
+        NULL,
+        NULL,
+        "7",
+        NULL,
+        "6B6B",
+        "8",
+        NULL,
+        NULL,
+    };
+    static const char *const ignore_warnings[] = {
+        "Warning",
+        "1062",
+        "Duplicate entry 'abc' for key 'ignore_binary.u_vb'",
+        "Warning",
+        "1062",
+        "Duplicate entry 'xy' for key 'ignore_binary.u_bl'",
+    };
+    static const char *const odku_rows[] = {"61626364", "2"};
+    static const char *const update_rows[] = {
+        "1",
+        "61626364",
+        "78795A",
+        "2",
+        "717273",
+        "7A7A",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "unique_binary_prefix") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open unique binary prefix file");
+    failures += create_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ubp ("
+        "id INT, b BINARY(4), vb VARBINARY(8), bl BLOB, tb TINYBLOB, "
+        "UNIQUE KEY u_b (b(2)), UNIQUE KEY u_vb (vb(3)))"
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE ubp ADD UNIQUE KEY u_bl (bl(4))");
+    failures += expect_statement_ok(database, "CREATE UNIQUE INDEX u_tb ON ubp (tb(5))");
+    failures += expect_physical_index_count(
+        database,
+        unique_binary_prefix_index_count,
+        "unique binary prefix physical indexes"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ubp",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = unique_binary_prefix_column_count,
+            .context = "unique binary prefix SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM ubp",
+            .values = show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = unique_binary_prefix_index_count,
+            .context = "unique binary prefix SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE ubp",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "unique binary prefix SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, "
+                   "NULLABLE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'ubp' ORDER BY INDEX_NAME",
+            .values = statistics_rows,
+            .column_count = statistics_probe_field_count,
+            .row_count = unique_binary_prefix_index_count,
+            .context = "unique binary prefix INFORMATION_SCHEMA.STATISTICS",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ignore_binary ("
+        "id INT, vb VARBINARY(8), bl BLOB, "
+        "UNIQUE KEY u_vb (vb(3)), UNIQUE KEY u_bl (bl(2)))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ignore_binary VALUES "
+        "(1, X'61626364', X'78795A'),"
+        "(2, X'646566', X'7A7A'),"
+        "(3, NULL, X'7171FF'),"
+        "(4, NULL, NULL)",
+        4
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO ignore_binary VALUES "
+        "(5, X'616263FF', X'6D6D'),"
+        "(6, X'676869', X'7879AA'),"
+        "(7, NULL, X'6B6B'),"
+        "(8, NULL, NULL)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = ignore_warnings,
+            .column_count = show_warnings_field_count,
+            .row_count = 2U,
+            .context = "unique binary prefix INSERT IGNORE warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, HEX(vb), HEX(bl) FROM ignore_binary ORDER BY id",
+            .values = ignore_rows,
+            .column_count = 3U,
+            .row_count = unique_binary_prefix_dml_row_count,
+            .context = "unique binary prefix INSERT IGNORE state",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE odku_binary (vb VARBINARY(8), n INT, UNIQUE KEY u_vb (vb(3)))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO odku_binary VALUES (X'61626364', 1)", 1);
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO odku_binary VALUES (X'616263FF', 2) "
+        "ON DUPLICATE KEY UPDATE n = VALUES(n)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(vb), n FROM odku_binary",
+            .values = odku_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "unique binary prefix ODKU state",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE update_binary ("
+        "id INT, vb VARBINARY(8), bl BLOB, "
+        "UNIQUE KEY u_vb (vb(3)), UNIQUE KEY u_bl (bl(2)))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO update_binary VALUES "
+        "(1, X'61626364', X'78795A'),(2, X'646566', X'7A7A')",
+        2
+    );
+    failures += execute_error(
+        database,
+        "UPDATE update_binary SET vb = X'616263EE' WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc' for key 'update_binary.u_vb'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE update_binary SET bl = X'787900' WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'xy' for key 'update_binary.u_bl'",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE update_binary SET vb = X'717273' WHERE id = 2", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, HEX(vb), HEX(bl) FROM update_binary ORDER BY id",
+            .values = update_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "unique binary prefix UPDATE state",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE escape_binary (vb VARBINARY(4), UNIQUE KEY u_vb (vb(2)))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO escape_binary VALUES (X'0001AA')", 1);
+    failures += execute_error(
+        database,
+        "INSERT INTO escape_binary VALUES (X'0001BB')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '\\x00\\x01' for key 'escape_binary.u_vb'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE alter_existing (vb VARBINARY(8))");
+    failures += expect_dml_ok(database, "INSERT INTO alter_existing VALUES (X'61626364')", 1);
+    failures += expect_dml_ok(database, "INSERT INTO alter_existing VALUES (X'616263FF')", 1);
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_existing ADD UNIQUE KEY u_vb (vb(3))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc' for key 'alter_existing.u_vb'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE create_existing (b BINARY(4))");
+    failures += expect_dml_ok(database, "INSERT INTO create_existing VALUES (X'61626364')", 1);
+    failures += expect_dml_ok(database, "INSERT INTO create_existing VALUES (X'61627878')", 1);
+    failures += execute_error(
+        database,
+        "CREATE UNIQUE INDEX u_b ON create_existing (b(2))",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'ab' for key 'create_existing.u_b'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone_unique_binary_prefix LIKE ubp");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone_unique_binary_prefix' "
+                   "AND NON_UNIQUE = 0 AND SUB_PART IS NOT NULL",
+            .values = (const char *const[]){"4"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "CREATE TABLE LIKE copies unique binary prefix metadata",
+        }
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after unique binary prefix lifecycle"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen unique binary prefix file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, HEX(vb), HEX(bl) FROM update_binary ORDER BY id",
+            .values = update_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "unique binary prefix rows persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_long_unique_prefix_dml(void) {
     static const char *const count_rows[] = {"1"};
     static const char *const odku_rows[] = {"2"};
@@ -1024,6 +1357,33 @@ static int test_unique_prefix_diagnostics(void) {
                 "BLOB/TEXT column 'body' used in key specification without a key length",
         }
     );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_zero_prefix (b BINARY(4), UNIQUE KEY u (b(0)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_part_length_cannot_be_zero,
+            .sqlstate = "HY000",
+            .message_part = "Key part 'b' length cannot be 0",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE varbinary_prefix_too_long (v VARBINARY(10), UNIQUE KEY u (v(11)))",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_prefix_key,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect prefix key",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE tinyblob_prefix_too_long (body TINYBLOB, UNIQUE KEY u (body(256)))",
+        (struct expected_sql_error){
+            .code = mysql_error_key_too_long,
+            .sqlstate = "42000",
+            .message_part = "Specified key was too long; max key length is 255 bytes",
+        }
+    );
     failures += expect_statement_ok(database, "CREATE TABLE dup_alter (v VARCHAR(20))");
     failures += expect_dml_ok(database, "INSERT INTO dup_alter VALUES ('abcdef'),('abcxyz')", 2);
     failures += execute_error(
@@ -1068,6 +1428,8 @@ static int test_unique_prefix_diagnostics(void) {
 static int test_unique_prefix_independent_handles(void) {
     static const char *const first_values[] = {"abcdef"};
     static const char *const second_values[] = {"zzzzzz"};
+    static const char *const first_binary_values[] = {"61626364"};
+    static const char *const second_binary_values[] = {"7A7A7A"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -1120,6 +1482,45 @@ static int test_unique_prefix_independent_handles(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "second unique prefix file state",
+        }
+    );
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE bin (id INT, v VARBINARY(8), UNIQUE KEY u_v (v(3)))"
+    );
+    failures += expect_statement_ok(
+        second,
+        "CREATE TABLE bin (id INT, v VARBINARY(8), UNIQUE KEY u_v (v(3)))"
+    );
+    failures += expect_dml_ok(first, "INSERT INTO bin VALUES (1, X'61626364')", 1);
+    failures += expect_dml_ok(second, "INSERT INTO bin VALUES (1, X'7A7A7A')", 1);
+    failures += execute_error(
+        first,
+        "INSERT INTO bin VALUES (2, X'616263FF')",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry 'abc' for key 'bin.u_v'",
+        }
+    );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT HEX(v) FROM bin WHERE id = 1",
+            .values = first_binary_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "first unique binary prefix file state",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT HEX(v) FROM bin WHERE id = 1",
+            .values = second_binary_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "second unique binary prefix file state",
         }
     );
 

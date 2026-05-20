@@ -21654,12 +21654,14 @@ static int bind_update_unique_key_assignment_parameters(
 );
 static int format_sqlite_key_tuple(
     sqlite3_stmt *statement,
+    const struct loaded_index_part *parts,
     size_t part_count,
     char *destination,
     size_t destination_size
 );
 static int format_sqlite_key_part(
     sqlite3_stmt *statement,
+    const struct loaded_index_part *part,
     int column_index,
     char *destination,
     size_t destination_size
@@ -21692,6 +21694,13 @@ static int format_key_part_value(
 );
 static int format_key_value(
     const struct planned_value *value,
+    char *destination,
+    size_t destination_size
+);
+static bool loaded_index_part_is_binary_prefix(const struct loaded_index_part *part);
+static int format_binary_key_bytes(
+    const void *bytes,
+    size_t byte_count,
     char *destination,
     size_t destination_size
 );
@@ -43513,14 +43522,6 @@ static int validate_planned_secondary_index_part(
             out_prefix_length
         );
         if (rc == MYLITE_OK && !is_fulltext) {
-            if (index->is_unique &&
-                planned_column_is_binary_string_family(&plan->columns[column_index])) {
-                set_unsupported_error(
-                    database,
-                    "Unique binary prefix indexes are not yet supported"
-                );
-                return MYLITE_ERROR;
-            }
             rc = validate_secondary_index_prefix_for_planned_column(
                 database,
                 &plan->columns[column_index],
@@ -49031,6 +49032,7 @@ static int validate_alter_table_add_primary_key_duplicates(
         if (sqlite_rc == SQLITE_ROW) {
             rc = format_sqlite_key_tuple(
                 statement,
+                NULL,
                 plan->part_count,
                 duplicate_value,
                 sizeof(duplicate_value)
@@ -49960,11 +49962,6 @@ static int validate_loaded_add_index_part_attributes(
         if (is_fulltext) {
             return validate_alter_table_add_fulltext_column(database, column);
         }
-        if (plan->is_unique && column_descriptor_is_binary_string_family(column)) {
-            set_unsupported_error(database, "Unique binary prefix indexes are not yet supported");
-            return MYLITE_ERROR;
-        }
-
         return validate_secondary_index_prefix_for_column_descriptor(
             database,
             column,
@@ -50213,16 +50210,6 @@ static int validate_loaded_unique_index_part_list(
         set_runtime_error(database, "invalid unique-index key parts");
         return MYLITE_ERROR;
     }
-    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
-        const struct loaded_index_part *part = &parts[part_index];
-
-        if (part->index_column.has_prefix_length &&
-            column_descriptor_is_binary_string_family(&part->column)) {
-            set_unsupported_error(database, "Unique binary prefix indexes are not yet supported");
-            return MYLITE_ERROR;
-        }
-    }
-
     return MYLITE_OK;
 }
 
@@ -51844,6 +51831,7 @@ static int validate_create_unique_index_duplicates(
         if (sqlite_rc == SQLITE_ROW) {
             rc = format_sqlite_key_tuple(
                 statement,
+                plan->parts,
                 plan->part_count,
                 duplicate_value,
                 sizeof(duplicate_value)
@@ -131481,6 +131469,7 @@ static int find_update_unique_key_conflict_tuple(
         if (sqlite_rc == SQLITE_ROW) {
             rc = format_sqlite_key_tuple(
                 statement,
+                index->parts,
                 index->part_count,
                 destination,
                 destination_size
@@ -131514,6 +131503,7 @@ static int find_update_unique_key_conflict_tuple(
             if (sqlite_rc == SQLITE_ROW) {
                 rc = format_sqlite_key_tuple(
                     statement,
+                    index->parts,
                     index->part_count,
                     destination,
                     destination_size
@@ -131964,6 +131954,7 @@ static int bind_update_unique_key_assignment_parameters(
 
 static int format_sqlite_key_tuple(
     sqlite3_stmt *statement,
+    const struct loaded_index_part *parts,
     size_t part_count,
     char *destination,
     size_t destination_size
@@ -131981,7 +131972,13 @@ static int format_sqlite_key_tuple(
         if (part_index >= (size_t)INT_MAX) {
             return MYLITE_ERROR;
         }
-        rc = format_sqlite_key_part(statement, (int)part_index, value_text, sizeof(value_text));
+        rc = format_sqlite_key_part(
+            statement,
+            parts == NULL ? NULL : &parts[part_index],
+            (int)part_index,
+            value_text,
+            sizeof(value_text)
+        );
         if (rc == MYLITE_OK) {
             rc = append_formatted_key_part(
                 destination,
@@ -131998,16 +131995,19 @@ static int format_sqlite_key_tuple(
 
 static int format_sqlite_key_part(
     sqlite3_stmt *statement,
+    const struct loaded_index_part *part,
     int column_index,
     char *destination,
     size_t destination_size
 ) {
     int written = 0;
+    int sqlite_type = SQLITE_NULL;
 
     if (destination == NULL || destination_size == 0U) {
         return MYLITE_ERROR;
     }
-    switch (sqlite3_column_type(statement, column_index)) {
+    sqlite_type = sqlite3_column_type(statement, column_index);
+    switch (sqlite_type) {
     case SQLITE_NULL:
         written = snprintf(destination, destination_size, "NULL");
         break;
@@ -132020,6 +132020,20 @@ static int format_sqlite_key_part(
         );
         break;
     default: {
+        if (loaded_index_part_is_binary_prefix(part)) {
+            const void *bytes = sqlite3_column_blob(statement, column_index);
+            int byte_count = sqlite3_column_bytes(statement, column_index);
+
+            if ((bytes == NULL && byte_count != 0) || byte_count < 0) {
+                return MYLITE_ERROR;
+            }
+            return format_binary_key_bytes(
+                bytes,
+                (size_t)byte_count,
+                destination,
+                destination_size
+            );
+        }
         const unsigned char *sqlite_text = sqlite3_column_text(statement, column_index);
         size_t text_length = 0U;
 
@@ -132161,6 +132175,15 @@ static int format_key_part_value(
         return MYLITE_ERROR;
     }
     if (!part->index_column.has_prefix_length || value->is_null || !value->is_text) {
+        if (part->index_column.has_prefix_length && value->is_blob) {
+            if (part->index_column.prefix_length < 0 ||
+                (uint64_t)part->index_column.prefix_length > SIZE_MAX) {
+                return MYLITE_ERROR;
+            }
+            prefix_length = (size_t)part->index_column.prefix_length;
+            copy_length = value->text_length < prefix_length ? value->text_length : prefix_length;
+            return format_binary_key_bytes(value->text, copy_length, destination, destination_size);
+        }
         return format_key_value(value, destination, destination_size);
     }
     if (part->index_column.prefix_length < 0 ||
@@ -132197,11 +132220,78 @@ static int format_key_value(
         memcpy(destination, value->text, value->text_length);
         destination[value->text_length] = '\0';
         return MYLITE_OK;
+    } else if (value->is_blob) {
+        return format_binary_key_bytes(
+            value->text,
+            value->text_length,
+            destination,
+            destination_size
+        );
     } else {
         written = snprintf(destination, destination_size, "%" PRId64, value->integer);
     }
     if (written < 0 || (size_t)written >= destination_size) {
         return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool loaded_index_part_is_binary_prefix(const struct loaded_index_part *part) {
+    if (part == NULL) {
+        return false;
+    }
+    if (!part->index_column.has_prefix_length) {
+        return false;
+    }
+    if (!column_descriptor_is_binary_string_family(&part->column)) {
+        return false;
+    }
+
+    return true;
+}
+
+static int format_binary_key_bytes(
+    const void *bytes,
+    size_t byte_count,
+    char *destination,
+    size_t destination_size
+) {
+    enum {
+        printable_ascii_min = 0x20,
+        printable_ascii_max = 0x7e,
+        hex_high_nibble_shift = 4,
+        hex_nibble_mask = 0x0f,
+    };
+
+    static const char hex_digits[] = "0123456789ABCDEF";
+    const unsigned char *source = bytes;
+    size_t used = 0U;
+
+    if ((bytes == NULL && byte_count != 0U) || destination == NULL || destination_size == 0U) {
+        return MYLITE_ERROR;
+    }
+    destination[0] = '\0';
+    for (size_t index = 0U; index < byte_count; ++index) {
+        unsigned char byte = source[index];
+
+        if (byte >= printable_ascii_min && byte <= printable_ascii_max) {
+            if (used + 1U >= destination_size) {
+                break;
+            }
+            destination[used] = (char)byte;
+            ++used;
+        } else {
+            if (used + 4U >= destination_size) {
+                break;
+            }
+            destination[used] = '\\';
+            destination[used + 1U] = 'x';
+            destination[used + 2U] = hex_digits[(byte >> hex_high_nibble_shift) & hex_nibble_mask];
+            destination[used + 3U] = hex_digits[byte & hex_nibble_mask];
+            used += 4U;
+        }
+        destination[used] = '\0';
     }
 
     return MYLITE_OK;

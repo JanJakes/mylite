@@ -260,6 +260,9 @@ static int test_date_add_second_sql_modes_and_errors(void) {
         "DATE_ADD ('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
     };
     static const char *const ignore_space_values[] = {"2008-01-02 13:29:18"};
+    static const char *const table_columns[] = {
+        "DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -415,13 +418,15 @@ static int test_date_add_second_sql_modes_and_errors(void) {
                 "DATE_ADD() INTERVAL SECOND supports only signed integer literals and NULL",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT DATE_ADD('2008-01-02 13:29:17', INTERVAL 1 SECOND) FROM t",
+            .columns = table_columns,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "DATE_ADD table-backed literal projection over empty table",
         }
     );
 
@@ -665,6 +670,9 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
         "2008-01-02 13:29:18",
         "2008-01-02 13:29:16",
     };
+    static const char *const table_columns[] = {
+        "DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND)"
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -855,13 +863,15 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT DATE_SUB('2008-01-02 13:29:17', INTERVAL 1 SECOND) FROM t",
+            .columns = table_columns,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "DATE_SUB table-backed literal projection over empty table",
         }
     );
 

@@ -41,6 +41,7 @@ struct expected_query {
 
 static int test_nonstrict_insert_replace_defaults_and_persistence(void);
 static int test_nonstrict_update_null_and_default(void);
+static int test_nonstrict_insert_select_coercion(void);
 static int test_nonstrict_guardrails(void);
 static int seed_schema(mylite_db *database);
 static int create_coercion_table(mylite_db *database);
@@ -83,6 +84,7 @@ int main(void) {
 
     failures += test_nonstrict_insert_replace_defaults_and_persistence();
     failures += test_nonstrict_update_null_and_default();
+    failures += test_nonstrict_insert_select_coercion();
     failures += test_nonstrict_guardrails();
 
     return failures == 0 ? 0 : 1;
@@ -571,6 +573,306 @@ static int test_nonstrict_update_null_and_default(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "dropped nullable update warning",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_nonstrict_insert_select_coercion(void) {
+    static const char *const omitted_warnings[] = {
+        "Warning",
+        "1364",
+        "Field 'i' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 'v' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 'dt' doesn't have a default value",
+    };
+    static const char *const selected_null_warnings[] = {
+        "Warning",
+        "1364",
+        "Field 'v' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 'dt' doesn't have a default value",
+        "Warning",
+        "1048",
+        "Column 'i' cannot be null",
+    };
+    static const char *const range_warnings[] = {
+        "Warning",
+        "1364",
+        "Field 'v' doesn't have a default value",
+        "Warning",
+        "1364",
+        "Field 'dt' doesn't have a default value",
+        "Warning",
+        "1264",
+        "Out of range value for column 'i' at row 2",
+        "Warning",
+        "1264",
+        "Out of range value for column 'i' at row 3",
+    };
+    static const char *const omitted_rows[] = {
+        "0",
+        "",
+        "0000-00-00 00:00:00",
+        "10",
+        "0",
+        "",
+        "0000-00-00 00:00:00",
+        "30",
+    };
+    static const char *const selected_null_rows[] = {
+        "10",
+        "",
+        "0000-00-00 00:00:00",
+        "1",
+        "0",
+        "",
+        "0000-00-00 00:00:00",
+        "2",
+    };
+    static const char *const clipped_rows[] = {
+        "1",
+        "1",
+        "2147483647",
+        "2",
+        "-2147483648",
+        "3",
+    };
+    static const char *const zero_rows[] = {"0"};
+    static const char *const scalar_omitted_row[] = {
+        "0",
+        "",
+        "0000-00-00 00:00:00",
+        "4",
+    };
+    static const char *const scalar_null_row[] = {
+        "0",
+        "",
+        "0000-00-00 00:00:00",
+        "5",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "insert_select") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open insert select file");
+    failures += seed_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){0, 0U},
+        "set insert select sql mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE src(id INT NOT NULL, n INT NULL, b BIGINT)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create insert select source"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO src VALUES (1, 10, 1), (2, NULL, 2147483648), (3, 30, -2147483649)",
+        (struct expected_statement){.affected_rows = 3, .warning_count = 0U},
+        "seed insert select source"
+    );
+    failures += create_coercion_table(database);
+
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(n) SELECT n FROM src WHERE id IN (1, 3) ORDER BY id",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 3U},
+        "nonstrict insert select omitted defaults"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = omitted_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "insert select omitted warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, v, dt, n FROM coerce_t ORDER BY n",
+            .values = omitted_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "insert select omitted rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE coerce_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for selected null"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(i, n) SELECT n, id FROM src WHERE id IN (1, 2) ORDER BY id",
+        (struct expected_statement){.affected_rows = 2, .warning_count = 3U},
+        "nonstrict insert select selected null"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = selected_null_warnings,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "insert select selected null warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, v, dt, n FROM coerce_t ORDER BY n",
+            .values = selected_null_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "insert select selected null rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE coerce_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for clipped integers"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(i, n) SELECT b, id FROM src WHERE id IN (1, 2, 3) ORDER BY id",
+        (struct expected_statement){.affected_rows = 3, .warning_count = 4U},
+        "nonstrict insert select integer clipping"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = range_warnings,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "insert select integer clipping warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, n FROM coerce_t ORDER BY n",
+            .values = clipped_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "insert select clipped integer rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE coerce_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for zero source"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(i, n) SELECT n, id FROM src WHERE id > 100",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "nonstrict insert select zero source"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM coerce_t",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "insert select zero source rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(n) SELECT 4",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 3U},
+        "nonstrict row-scalar insert select omitted defaults"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, v, dt, n FROM coerce_t",
+            .values = scalar_omitted_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "row-scalar insert select omitted row",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "TRUNCATE coerce_t",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "truncate for row-scalar null"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO coerce_t(i, n) SELECT NULL, 5",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 3U},
+        "nonstrict row-scalar insert select selected null"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, v, dt, n FROM coerce_t",
+            .values = scalar_null_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "row-scalar insert select selected null row",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "insert select coercion preserves preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen insert select file");
+    failures += expect_statement_ok(
+        database,
+        "USE app",
+        (struct expected_statement){0, 0U},
+        "use reopened insert select schema"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i, v, dt, n FROM coerce_t",
+            .values = scalar_null_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "reopened insert select adjusted row",
         }
     );
 

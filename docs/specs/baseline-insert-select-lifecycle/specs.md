@@ -162,7 +162,8 @@ This feature must not implement:
 - primary/unique/foreign keys, duplicate-key handling, auto-increment,
   `LAST_INSERT_ID()` changes, generated columns, check constraints, triggers,
   cascades, privileges, warning demotion, non-strict SQL modes, or SQLite fork
-  patches.
+  patches in this original slice. Later specs extend some of those areas
+  independently.
 
 ## Ownership Boundary
 
@@ -421,5 +422,5 @@ only this limited descriptor-backed `INSERT ... SELECT` subset. Update
 `docs/compatibility/sql-query-expressions.md` only if source `SELECT` support
 changes beyond reusing the already documented subset. Do not claim joins,
 literal projection inserts, CTAS, keys, duplicate handling, ignored inserts,
-warning demotion, auto-increment, generated columns, triggers, privileges, or
-general expression evaluation.
+auto-increment, generated columns, triggers, privileges, or general expression
+evaluation beyond separately specified later extensions.

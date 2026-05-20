@@ -6,10 +6,14 @@ omitted no-explicit-default non-`AUTO_INCREMENT` `INSERT` / `REPLACE` target
 columns and explicit `DEFAULT` values for no-default columns use the same
 implicit descriptor values as the existing `INSERT IGNORE` subset, and matched
 single-table `UPDATE` assignments of `NULL` to `NOT NULL` columns or `DEFAULT`
-to no-default columns adjust with warnings. Omitted `AUTO_INCREMENT` columns
-continue to generate values. Explicit `NULL` in ordinary `INSERT` / `REPLACE`
-remains an error outside `IGNORE`, and broader non-strict string, numeric,
-temporal, range, and expression coercions remain outside the current subset.
+to no-default columns adjust with warnings. Descriptor-backed `INSERT ...
+SELECT` additionally adjusts omitted no-default targets, selected `NULL` into
+`NOT NULL` targets, and selected integer range violations for compatible
+integer-family targets. Omitted `AUTO_INCREMENT` columns continue to generate
+values. Explicit `NULL` in ordinary `INSERT` / `REPLACE` `VALUES` and `SET`
+forms remains an error outside `IGNORE`, and broader non-strict string,
+numeric, temporal, range, and expression coercions remain outside the current
+subset.
 
 Descriptor-backed `INSERT`, `REPLACE`, admitted duplicate-key assignment, and
 single-table `UPDATE` numeric targets also accept exact quoted numeric strings:
@@ -18,7 +22,7 @@ range, quoted fixed decimal strings for `DECIMAL` family targets, and quoted
 finite decimal or scientific-notation strings for approximate targets. This is
 storage conversion only. Integer-family column defaults also accept exact quoted
 decimal integer strings within the current physical range. General expression
-coercion, selected-row conversion, prefix numeric string scanning, whitespace
+coercion, broad selected-row conversion, prefix numeric string scanning, whitespace
 trimming, quoted decimal/approximate defaults, and broader non-strict conversion
 remain deferred.
 

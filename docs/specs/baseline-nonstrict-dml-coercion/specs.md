@@ -128,7 +128,9 @@ This feature does not add:
 - non-strict explicit `NULL` demotion for ordinary `INSERT` or `REPLACE`;
 - full expression coercion, expression defaults, `DEFAULT(column_name)` changes,
   generated columns, triggers, privileges, or protocol info strings;
-- selected-row warning demotion for `INSERT ... SELECT`;
+- selected-row warning demotion for `INSERT ... SELECT` in this original
+  ordinary-DML slice; the later baseline insert-select non-strict coercion
+  spec covers its limited selected-row extension;
 - string-to-number, string-to-temporal, or arbitrary expression conversion;
 - overlength nonspace text truncation, full decimal/float warning parity, or
   complete MySQL non-strict conversion coverage;

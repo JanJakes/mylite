@@ -10703,6 +10703,10 @@ static int finish_insert_select_row_scalar_result(
 );
 static void planned_insert_row_deinit(struct planned_insert_row *row, size_t column_count);
 static int normalize_insert_select_row_scalar_result(struct mylite_db *database, int rc);
+static bool insert_select_allows_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert_select *plan
+);
 static int validate_insert_select_row_scalar_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -10759,6 +10763,16 @@ static int materialize_insert_select_selected_value(
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
+    bool adjust_value,
+    struct planned_value *out_value
+);
+static int materialize_insert_select_integer_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number,
+    bool adjust_value,
     struct planned_value *out_value
 );
 static int materialize_sqlite_binary_string_value(
@@ -10785,7 +10799,8 @@ static int materialize_insert_select_raw_value(
 );
 static int materialize_insert_select_omitted_value(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *target_column,
+    const struct planned_insert_select *plan,
+    size_t column_index,
     struct planned_value *out_value
 );
 static int validate_insert_select_rows(
@@ -10805,7 +10820,8 @@ static int validate_insert_select_value(
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
-    size_t row_number
+    size_t row_number,
+    bool adjust_value
 );
 static bool insert_select_source_target_types_are_compatible(
     const struct mylite_catalog_column_descriptor *source_column,
@@ -10895,7 +10911,8 @@ static int validate_insert_select_integer_value(
     sqlite3_stmt *statement,
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *target_column,
-    size_t row_number
+    size_t row_number,
+    bool adjust_value
 );
 
 static int plan_select(
@@ -46354,7 +46371,8 @@ static int validate_create_table_select_row(
             (int)column_index,
             &column,
             &column,
-            row_number
+            row_number,
+            false
         );
         if (rc != MYLITE_OK) {
             return rc;
@@ -61094,6 +61112,14 @@ static int materialize_insert_select_row_scalar_row(
         plan->target_indexes,
         plan->target_count
     );
+    if (rc == MYLITE_OK && insert_select_allows_adjustment(database, plan)) {
+        rc = append_insert_omitted_column_warnings(
+            database,
+            &plan->target,
+            plan->target_indexes,
+            plan->target_count
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = validate_insert_select_row_scalar_row(database, statement, plan, 1U);
     }
@@ -61162,12 +61188,24 @@ static int normalize_insert_select_row_scalar_result(struct mylite_db *database,
     return MYLITE_ERROR;
 }
 
+static bool insert_select_allows_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert_select *plan
+) {
+    if (plan == NULL) {
+        return false;
+    }
+    return dml_allows_missing_default_adjustment(database, plan->target.ignore_errors);
+}
+
 static int validate_insert_select_row_scalar_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_insert_select *plan,
     size_t row_number
 ) {
+    bool adjust_value = insert_select_allows_adjustment(database, plan);
+
     if (plan->target_count > (size_t)INT_MAX) {
         return MYLITE_ERROR;
     }
@@ -61187,7 +61225,8 @@ static int validate_insert_select_row_scalar_row(
             (int)target_position,
             NULL,
             target_column,
-            row_number
+            row_number,
+            adjust_value
         );
 
         if (rc != MYLITE_OK) {
@@ -61373,6 +61412,7 @@ static int materialize_insert_select_row_values(
     size_t row_number,
     struct planned_value *values
 ) {
+    bool adjust_value = insert_select_allows_adjustment(database, plan);
     int rc = MYLITE_OK;
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->target.column_count;
@@ -61389,12 +61429,14 @@ static int materialize_insert_select_row_values(
                 (int)target_position,
                 &plan->target.columns[column_index],
                 row_number,
+                adjust_value,
                 &values[column_index]
             );
         } else {
             rc = materialize_insert_select_omitted_value(
                 database,
-                &plan->target.columns[column_index],
+                plan,
+                column_index,
                 &values[column_index]
             );
         }
@@ -61409,11 +61451,32 @@ static int materialize_insert_select_selected_value(
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
+    bool adjust_value,
     struct planned_value *out_value
 ) {
     if (sqlite3_column_type(statement, selected_column_index) == SQLITE_NULL) {
+        if (column_descriptor_is_auto_increment(target_column)) {
+            *out_value = (struct planned_value){.is_null = true};
+            return MYLITE_OK;
+        }
+        if (adjust_value && !target_column->is_nullable) {
+            return convert_null_insert_value(database, target_column, true, out_value);
+        }
         *out_value = (struct planned_value){.is_null = true};
         return MYLITE_OK;
+    }
+    if (sqlite3_column_type(statement, selected_column_index) == SQLITE_INTEGER &&
+        target_column->physical_type[0] != '\0' &&
+        strcmp(target_column->physical_type, "INTEGER") == 0) {
+        return materialize_insert_select_integer_value(
+            database,
+            statement,
+            selected_column_index,
+            target_column,
+            row_number,
+            adjust_value,
+            out_value
+        );
     }
     if (column_descriptor_is_binary_string_family(target_column)) {
         return materialize_sqlite_binary_string_value(
@@ -61441,6 +61504,43 @@ static int materialize_insert_select_selected_value(
         statement,
         selected_column_index,
         out_value
+    );
+}
+
+static int materialize_insert_select_integer_value(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int selected_column_index,
+    const struct mylite_catalog_column_descriptor *target_column,
+    size_t row_number,
+    bool adjust_value,
+    struct planned_value *out_value
+) {
+    const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+    int64_t selected_value = (int64_t)sqlite3_column_int64(statement, selected_column_index);
+    bool is_negative = selected_value < 0;
+    uint64_t magnitude = (uint64_t)selected_value;
+
+    if (is_negative) {
+        if (selected_value == INT64_MIN) {
+            magnitude = int64_negative_abs_max;
+        } else {
+            magnitude = (uint64_t)(-selected_value);
+        }
+    }
+
+    out_value->is_null = false;
+    out_value->is_text = false;
+    out_value->is_blob = false;
+    out_value->is_real = false;
+    return convert_integer_for_column_with_policy(
+        database,
+        magnitude,
+        is_negative,
+        target_column,
+        row_number,
+        adjust_value,
+        &out_value->integer
     );
 }
 
@@ -61575,12 +61675,23 @@ static int materialize_insert_select_raw_value(
 
 static int materialize_insert_select_omitted_value(
     struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *target_column,
+    const struct planned_insert_select *plan,
+    size_t column_index,
     struct planned_value *out_value
 ) {
+    const struct mylite_catalog_column_descriptor *target_column = NULL;
+
+    if (plan == NULL || column_index >= plan->target.column_count) {
+        set_runtime_error(database, "invalid INSERT ... SELECT omitted target column");
+        return MYLITE_ERROR;
+    }
+    target_column = &plan->target.columns[column_index];
     if (column_descriptor_is_auto_increment(target_column)) {
         *out_value = (struct planned_value){.is_null = true};
         return MYLITE_OK;
+    }
+    if (insert_select_allows_adjustment(database, plan)) {
+        return allocate_insert_column_value(database, &plan->target, column_index, out_value);
     }
 
     return materialize_dml_default_value(database, target_column, false, out_value);
@@ -61605,6 +61716,14 @@ static int validate_insert_select_rows(
                 plan->target_count
             );
             checked_omitted_columns = true;
+            if (rc == MYLITE_OK && insert_select_allows_adjustment(database, plan)) {
+                rc = append_insert_omitted_column_warnings(
+                    database,
+                    &plan->target,
+                    plan->target_indexes,
+                    plan->target_count
+                );
+            }
         }
         if (rc == MYLITE_OK && row_number == SIZE_MAX) {
             set_unsupported_error(database, "INSERT ... SELECT selected too many rows");
@@ -61631,6 +61750,8 @@ static int validate_insert_select_row(
     const struct planned_insert_select *plan,
     size_t row_number
 ) {
+    bool adjust_value = insert_select_allows_adjustment(database, plan);
+
     if (plan->target_count > (size_t)INT_MAX) {
         return MYLITE_ERROR;
     }
@@ -61653,7 +61774,8 @@ static int validate_insert_select_row(
             (int)target_position,
             source_column,
             &plan->target.columns[column_index],
-            row_number
+            row_number,
+            adjust_value
         );
 
         if (rc != MYLITE_OK) {
@@ -61670,7 +61792,8 @@ static int validate_insert_select_value(
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
-    size_t row_number
+    size_t row_number,
+    bool adjust_value
 ) {
     int sqlite_type = sqlite3_column_type(statement, selected_column_index);
 
@@ -61681,6 +61804,9 @@ static int validate_insert_select_value(
     }
     if (sqlite_type == SQLITE_NULL) {
         if (!target_column->is_nullable) {
+            if (adjust_value) {
+                return MYLITE_OK;
+            }
             if (column_descriptor_is_spatial(target_column)) {
                 set_spatial_bad_null_error(database, target_column->name);
                 return MYLITE_ERROR;
@@ -61795,7 +61921,8 @@ static int validate_insert_select_value(
         statement,
         selected_column_index,
         target_column,
-        row_number
+        row_number,
+        adjust_value
     );
 }
 
@@ -62338,9 +62465,11 @@ static int validate_insert_select_integer_value(
     sqlite3_stmt *statement,
     int selected_column_index,
     const struct mylite_catalog_column_descriptor *target_column,
-    size_t row_number
+    size_t row_number,
+    bool adjust_value
 ) {
     const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+    struct integer_column_range range = {0};
     int64_t selected_value = 0;
     bool is_negative = false;
     uint64_t magnitude = 0U;
@@ -62352,6 +62481,14 @@ static int validate_insert_select_integer_value(
             "INSERT ... SELECT does not support implicit integer conversion"
         );
         return MYLITE_ERROR;
+    }
+    if (adjust_value) {
+        return integer_range_for_column(
+            database,
+            target_column,
+            "INSERT supports only baseline integer columns",
+            &range
+        );
     }
 
     selected_value = (int64_t)sqlite3_column_int64(statement, selected_column_index);
@@ -121490,7 +121627,7 @@ static int materialize_update_scalar_subquery_integer_value(
         return MYLITE_ERROR;
     }
 
-    rc = validate_insert_select_integer_value(database, statement, 0, target_column, 1U);
+    rc = validate_insert_select_integer_value(database, statement, 0, target_column, 1U, false);
     if (rc == MYLITE_OK) {
         *out_value = (struct planned_value){
             .is_null = false,
@@ -133248,6 +133385,7 @@ static int fetch_insert_duplicate_current_row_values(
                     (int)column_index,
                     &plan->columns[column_index],
                     row_index + 1U,
+                    false,
                     &values[column_index]
                 );
             }

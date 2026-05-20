@@ -852,13 +852,12 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .message_part = "Field 'must' doesn't have a default value",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT IGNORE INTO required_target(id) SELECT id FROM src WHERE id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_field_no_default,
-            .sqlstate = "HY000",
-            .message_part = "Field 'must' doesn't have a default value",
+        (struct expected_dml_warning_status){
+            .affected_rows = 1,
+            .warning_count = 1U,
         }
     );
     failures += execute_error(
@@ -870,13 +869,12 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .message_part = "Column 'must' cannot be null",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT IGNORE INTO required_target(id, must) SELECT id, n FROM src WHERE id = 2",
-        (struct expected_sql_error){
-            .code = mysql_error_bad_null,
-            .sqlstate = "23000",
-            .message_part = "Column 'must' cannot be null",
+        (struct expected_dml_warning_status){
+            .affected_rows = 1,
+            .warning_count = 1U,
         }
     );
     failures += execute_error(
@@ -888,13 +886,12 @@ static int test_insert_select_schema_resolution_and_diagnostics(void) {
             .message_part = "Out of range value for column 'i' at row 2",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT IGNORE INTO dst(id, i) SELECT id, b FROM src ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'i' at row 2",
+        (struct expected_dml_warning_status){
+            .affected_rows = 2,
+            .warning_count = 1U,
         }
     );
     failures += execute_error(

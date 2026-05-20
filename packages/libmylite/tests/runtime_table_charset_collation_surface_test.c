@@ -431,8 +431,18 @@ static int test_table_default_binary_charset_inheritance(void) {
                                              "  `med` mediumblob,\n"
                                              "  `lon` longblob\n"
                                              ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char binary_key_create[] = "CREATE TABLE `binary_key` (\n"
+                                            "  `v` varbinary(10) DEFAULT NULL,\n"
+                                            "  KEY `v_idx` (`v`)\n"
+                                            ") ENGINE=InnoDB DEFAULT CHARSET=binary";
     static const char *const table_collation_columns[] = {"TABLE_COLLATION"};
     static const char *const binary_table_collation[] = {"binary"};
+    static const char *const binary_key_stat_columns[] = {
+        "INDEX_NAME",
+        "COLUMN_NAME",
+        "SUB_PART",
+    };
+    static const char *const binary_key_stat_values[] = {"v_idx", "v", NULL};
     static const char *const v_metadata_columns[] = {
         "DATA_TYPE",
         "COLUMN_TYPE",
@@ -593,6 +603,30 @@ static int test_table_default_binary_charset_inheritance(void) {
             .column_count = sizeof(data_columns) / sizeof(data_columns[0]),
         },
         "binary default stored values"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE binary_key (v VARCHAR(10), KEY v_idx(v)) DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE binary_key",
+            .table_name = "binary_key",
+            .create_sql = binary_key_create,
+            .context = "binary default full-column key show create",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT INDEX_NAME, COLUMN_NAME, SUB_PART FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'binary_key'",
+        (struct expected_single_row_result){
+            .columns = binary_key_stat_columns,
+            .values = binary_key_stat_values,
+            .column_count = sizeof(binary_key_stat_columns) / sizeof(binary_key_stat_columns[0]),
+        },
+        "binary default full-column key information_schema"
     );
 
     failures += execute_statement_ok(
@@ -829,15 +863,6 @@ static int test_charset_collation_diagnostics(void) {
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",
             .message_part = "Invalid default value for 'v'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE binary_key (v VARCHAR(10), KEY v_idx(v)) DEFAULT CHARSET=binary",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
         }
     );
     failures += execute_error(

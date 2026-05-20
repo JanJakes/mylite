@@ -2034,6 +2034,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_unique_prefix_index_lifecycle_test)
 
+  add_executable(mylite_runtime_binary_full_column_index_test
+    tests/runtime_binary_full_column_index_test.c
+  )
+  target_link_libraries(mylite_runtime_binary_full_column_index_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_binary_full_column_index_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_binary_full_column_index_test)
+
   add_executable(mylite_runtime_descending_index_key_parts_test
     tests/runtime_descending_index_key_parts_test.c
   )
@@ -3780,6 +3791,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.unique_prefix_index_lifecycle
     COMMAND mylite_runtime_unique_prefix_index_lifecycle_test
+  )
+  add_test(
+    NAME libmylite.runtime.binary_full_column_index
+    COMMAND mylite_runtime_binary_full_column_index_test
   )
   add_test(
     NAME libmylite.runtime.descending_index_key_parts

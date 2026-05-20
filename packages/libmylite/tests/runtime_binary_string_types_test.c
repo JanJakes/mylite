@@ -608,15 +608,7 @@ static int test_binary_diagnostics(void) {
             .message_part = "cannot be null",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE INDEX d_b ON d (b)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
-        }
-    );
+    failures += expect_statement_ok(database, "CREATE INDEX d_b ON d (b)");
 
     mylite_close(database);
     remove_related_files(path);

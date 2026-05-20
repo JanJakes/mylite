@@ -15251,6 +15251,12 @@ static int binary_string_prefix_key_bytes(
     uint64_t prefix,
     uint64_t *out_key_bytes
 );
+static int binary_string_full_key_bytes(
+    struct mylite_db *database,
+    const struct binary_string_type_info *info,
+    const char *column_name,
+    uint64_t *out_key_bytes
+);
 static int planned_index_part_key_bytes(
     struct mylite_db *database,
     const struct planned_column *column,
@@ -15272,6 +15278,11 @@ static int validate_create_table_primary_key_key_length(
 static int planned_primary_key_part_key_bytes(
     struct mylite_db *database,
     const struct planned_column *column,
+    uint64_t *out_key_bytes
+);
+static int column_descriptor_primary_key_part_key_bytes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
     uint64_t *out_key_bytes
 );
 static int parse_secondary_index_part_prefix_length(
@@ -21692,12 +21703,35 @@ static int format_key_part_value(
     char *destination,
     size_t destination_size
 );
+static int format_blob_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
+    bool trim_fixed_binary_padding,
+    char *destination,
+    size_t destination_size
+);
+static int format_text_prefix_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
+    char *destination,
+    size_t destination_size
+);
+static int index_part_prefix_length(
+    const struct loaded_index_part *part,
+    size_t *out_prefix_length
+);
+static size_t limited_copy_length(size_t value_length, size_t maximum_length);
 static int format_key_value(
     const struct planned_value *value,
     char *destination,
     size_t destination_size
 );
-static bool loaded_index_part_is_binary_prefix(const struct loaded_index_part *part);
+static bool loaded_index_part_uses_binary_key_display(const struct loaded_index_part *part);
+static size_t binary_key_display_byte_count(
+    const struct loaded_index_part *part,
+    const void *bytes,
+    size_t byte_count
+);
 static int format_binary_key_bytes(
     const void *bytes,
     size_t byte_count,
@@ -43749,8 +43783,8 @@ static int validate_secondary_index_column(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column) || planned_column_is_set(column)) {
+    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -43947,6 +43981,29 @@ static int binary_string_prefix_key_bytes(
     return MYLITE_OK;
 }
 
+static int binary_string_full_key_bytes(
+    struct mylite_db *database,
+    const struct binary_string_type_info *info,
+    const char *column_name,
+    uint64_t *out_key_bytes
+) {
+    if (info == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid binary string key part");
+        return MYLITE_ERROR;
+    }
+    if (info->blob_family) {
+        set_blob_key_without_length_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    if (info->maximum_length == 0U) {
+        set_storage_engine_cant_index_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_key_bytes = info->maximum_length;
+    return MYLITE_OK;
+}
+
 static int planned_index_part_key_bytes(
     struct mylite_db *database,
     const struct planned_column *column,
@@ -43989,12 +44046,19 @@ static int planned_index_part_key_bytes(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_binary_string_family(column)) {
+        struct binary_string_type_info storage = {0};
+        const struct binary_string_type_info *info =
+            binary_string_type_info_for_logical_type(column->logical_type, &storage);
+
+        return binary_string_full_key_bytes(database, info, column->name, out_key_bytes);
+    }
     if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column) || planned_column_is_set(column)) {
+    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -44020,12 +44084,16 @@ static int validate_unique_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (planned_column_is_binary_blob_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
     if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_binary_string_family(column) || planned_column_is_bit(column) ||
-        planned_column_is_enum(column) || planned_column_is_set(column)) {
+    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
+        planned_column_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -48645,7 +48713,7 @@ static int validate_alter_table_primary_key_key_length(
     for (size_t part_index = 0U; part_index < plan->part_count; ++part_index) {
         const struct loaded_index_part *part = &plan->parts[part_index];
         uint64_t part_bytes = 0U;
-        int rc = column_descriptor_index_part_key_bytes(database, &part->column, &part_bytes);
+        int rc = column_descriptor_primary_key_part_key_bytes(database, &part->column, &part_bytes);
 
         if (rc != MYLITE_OK) {
             return rc;
@@ -50127,16 +50195,19 @@ static int column_descriptor_index_part_key_bytes(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_binary_blob_family(column)) {
-        set_blob_key_without_length_error(database, column->name);
-        return MYLITE_ERROR;
+    if (column_descriptor_is_binary_string_family(column)) {
+        struct binary_string_type_info storage = {0};
+        const struct binary_string_type_info *info =
+            binary_string_type_info_for_logical_type(column->logical_type, &storage);
+
+        return binary_string_full_key_bytes(database, info, column->name, out_key_bytes);
     }
     if (column_descriptor_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
-        column_descriptor_is_enum(column) || column_descriptor_is_set(column)) {
+    if (column_descriptor_is_bit(column) || column_descriptor_is_enum(column) ||
+        column_descriptor_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -50291,6 +50362,48 @@ static int planned_primary_key_part_key_bytes(
         return rc;
     }
     if (planned_column_is_json(column)) {
+        set_json_key_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return row_size_for_column_descriptor(
+        database,
+        column->logical_type,
+        column->physical_type,
+        "PRIMARY KEY supports only integer columns",
+        out_key_bytes
+    );
+}
+
+static int column_descriptor_primary_key_part_key_bytes(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    uint64_t *out_key_bytes
+) {
+    size_t column_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || out_key_bytes == NULL) {
+        set_runtime_error(database, "invalid primary-key key part");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_char(column)) {
+        rc = char_length_for_column(database, column, &column_length);
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length *
+                             logical_type_max_bytes_per_character(column->logical_type);
+        }
+        return rc;
+    }
+    if (column_descriptor_is_varchar(column)) {
+        rc = varchar_length_for_column(database, column, &column_length);
+        if (rc == MYLITE_OK) {
+            *out_key_bytes = (uint64_t)column_length *
+                             logical_type_max_bytes_per_character(column->logical_type);
+        }
+        return rc;
+    }
+    if (column_descriptor_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -51672,12 +51785,19 @@ static int validate_alter_table_add_index_column(
         set_blob_key_without_length_error(database, column->name);
         return MYLITE_ERROR;
     }
+    if (column_descriptor_is_binary_blob_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_binary_string_family(column)) {
+        return MYLITE_OK;
+    }
     if (column_descriptor_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
-        column_descriptor_is_enum(column) || column_descriptor_is_set(column)) {
+    if (column_descriptor_is_bit(column) || column_descriptor_is_enum(column) ||
+        column_descriptor_is_set(column)) {
         set_unsupported_error(database, "Secondary indexes do not yet support this column type");
         return MYLITE_ERROR;
     }
@@ -55679,7 +55799,7 @@ static int validate_alter_table_modify_primary_index(
             set_primary_key_part_null_error(database);
             return MYLITE_ERROR;
         }
-        rc = column_descriptor_index_part_key_bytes(database, &part->column, &part_bytes);
+        rc = column_descriptor_primary_key_part_key_bytes(database, &part->column, &part_bytes);
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -132020,16 +132140,18 @@ static int format_sqlite_key_part(
         );
         break;
     default: {
-        if (loaded_index_part_is_binary_prefix(part)) {
+        if (loaded_index_part_uses_binary_key_display(part)) {
             const void *bytes = sqlite3_column_blob(statement, column_index);
             int byte_count = sqlite3_column_bytes(statement, column_index);
+            size_t display_byte_count = 0U;
 
             if ((bytes == NULL && byte_count != 0) || byte_count < 0) {
                 return MYLITE_ERROR;
             }
+            display_byte_count = binary_key_display_byte_count(part, bytes, (size_t)byte_count);
             return format_binary_key_bytes(
                 bytes,
-                (size_t)byte_count,
+                display_byte_count,
                 destination,
                 destination_size
             );
@@ -132168,30 +132290,63 @@ static int format_key_part_value(
     char *destination,
     size_t destination_size
 ) {
-    size_t prefix_length = 0U;
-    size_t copy_length = 0U;
-
     if (part == NULL || value == NULL || destination == NULL || destination_size == 0U) {
         return MYLITE_ERROR;
     }
+    if (value->is_blob && loaded_index_part_uses_binary_key_display(part)) {
+        return format_blob_key_part_value(part, value, true, destination, destination_size);
+    }
     if (!part->index_column.has_prefix_length || value->is_null || !value->is_text) {
         if (part->index_column.has_prefix_length && value->is_blob) {
-            if (part->index_column.prefix_length < 0 ||
-                (uint64_t)part->index_column.prefix_length > SIZE_MAX) {
-                return MYLITE_ERROR;
-            }
-            prefix_length = (size_t)part->index_column.prefix_length;
-            copy_length = value->text_length < prefix_length ? value->text_length : prefix_length;
-            return format_binary_key_bytes(value->text, copy_length, destination, destination_size);
+            return format_blob_key_part_value(part, value, false, destination, destination_size);
         }
         return format_key_value(value, destination, destination_size);
     }
-    if (part->index_column.prefix_length < 0 ||
-        (uint64_t)part->index_column.prefix_length > SIZE_MAX) {
+
+    return format_text_prefix_key_part_value(part, value, destination, destination_size);
+}
+
+static int format_blob_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
+    bool trim_fixed_binary_padding,
+    char *destination,
+    size_t destination_size
+) {
+    size_t copy_length = 0U;
+
+    if (part == NULL || value == NULL) {
         return MYLITE_ERROR;
     }
-    prefix_length = (size_t)part->index_column.prefix_length;
-    copy_length = value->text_length < prefix_length ? value->text_length : prefix_length;
+    copy_length = value->text_length;
+    if (part->index_column.has_prefix_length) {
+        size_t prefix_length = 0U;
+
+        if (index_part_prefix_length(part, &prefix_length) != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+        copy_length = limited_copy_length(value->text_length, prefix_length);
+    }
+    if (trim_fixed_binary_padding) {
+        copy_length = binary_key_display_byte_count(part, value->text, copy_length);
+    }
+
+    return format_binary_key_bytes(value->text, copy_length, destination, destination_size);
+}
+
+static int format_text_prefix_key_part_value(
+    const struct loaded_index_part *part,
+    const struct planned_value *value,
+    char *destination,
+    size_t destination_size
+) {
+    size_t prefix_length = 0U;
+    size_t copy_length = 0U;
+
+    if (index_part_prefix_length(part, &prefix_length) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    copy_length = limited_copy_length(value->text_length, prefix_length);
     if (value->text == NULL || copy_length >= destination_size) {
         return MYLITE_ERROR;
     }
@@ -132199,6 +132354,23 @@ static int format_key_part_value(
     destination[copy_length] = '\0';
 
     return MYLITE_OK;
+}
+
+static int index_part_prefix_length(
+    const struct loaded_index_part *part,
+    size_t *out_prefix_length
+) {
+    if (part == NULL || out_prefix_length == NULL || part->index_column.prefix_length < 0 ||
+        (uint64_t)part->index_column.prefix_length > SIZE_MAX) {
+        return MYLITE_ERROR;
+    }
+    *out_prefix_length = (size_t)part->index_column.prefix_length;
+
+    return MYLITE_OK;
+}
+
+static size_t limited_copy_length(size_t value_length, size_t maximum_length) {
+    return value_length < maximum_length ? value_length : maximum_length;
 }
 
 static int format_key_value(
@@ -132237,18 +132409,35 @@ static int format_key_value(
     return MYLITE_OK;
 }
 
-static bool loaded_index_part_is_binary_prefix(const struct loaded_index_part *part) {
+static bool loaded_index_part_uses_binary_key_display(const struct loaded_index_part *part) {
     if (part == NULL) {
         return false;
     }
-    if (!part->index_column.has_prefix_length) {
-        return false;
+
+    return column_descriptor_is_binary_string_family(&part->column);
+}
+
+static size_t binary_key_display_byte_count(
+    const struct loaded_index_part *part,
+    const void *bytes,
+    size_t byte_count
+) {
+    struct binary_string_type_info storage = {0};
+    const struct binary_string_type_info *info = NULL;
+    const unsigned char *source = bytes;
+
+    if (part == NULL || bytes == NULL || byte_count == 0U) {
+        return byte_count;
     }
-    if (!column_descriptor_is_binary_string_family(&part->column)) {
-        return false;
+    info = binary_string_type_info_for_logical_type(part->column.logical_type, &storage);
+    if (info == NULL || !info->fixed_length) {
+        return byte_count;
+    }
+    while (byte_count > 0U && source[byte_count - 1U] == '\0') {
+        --byte_count;
     }
 
-    return true;
+    return byte_count;
 }
 
 static int format_binary_key_bytes(

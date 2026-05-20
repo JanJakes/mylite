@@ -643,6 +643,7 @@ static bool catalog_logical_type_accepts_current_date(const char *logical_type);
 static bool catalog_logical_type_accepts_current_time(const char *logical_type);
 static bool catalog_logical_type_accepts_text_default(const char *logical_type);
 static bool catalog_logical_type_is_bit(const char *logical_type);
+static bool catalog_logical_type_is_text_family(const char *logical_type);
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type);
 static bool catalog_logical_type_equals(const char *logical_type, const char *expected);
 static int validate_catalog_bool_i64(int64_t value, bool *out_bool);
@@ -8561,7 +8562,8 @@ static int validate_catalog_text_default_value(
         return MYLITE_OK;
     }
     if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
-        if (!catalog_logical_type_accepts_integer_expression_default(values->logical_type) ||
+        if ((!catalog_logical_type_accepts_integer_expression_default(values->logical_type) &&
+             !catalog_logical_type_is_text_family(values->logical_type)) ||
             strcmp(values->default_text, "NULL") != 0) {
             return MYLITE_MISUSE;
         }
@@ -8623,6 +8625,9 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
     if (catalog_logical_type_accepts_empty_text_default(logical_type)) {
         return true;
     }
+    if (catalog_logical_type_is_text_family(logical_type)) {
+        return true;
+    }
     if (text_has_ascii_case_insensitive_prefix(logical_type, "ENUM(") != 0) {
         return true;
     }
@@ -8670,7 +8675,17 @@ static bool catalog_logical_type_is_bit(const char *logical_type) {
     return true;
 }
 
+static bool catalog_logical_type_is_text_family(const char *logical_type) {
+    return (catalog_logical_type_equals(logical_type, "TINYTEXT") ||
+            catalog_logical_type_equals(logical_type, "TEXT") ||
+            catalog_logical_type_equals(logical_type, "MEDIUMTEXT") ||
+            catalog_logical_type_equals(logical_type, "LONGTEXT")) != 0;
+}
+
 static bool catalog_logical_type_accepts_empty_text_default(const char *logical_type) {
+    if (catalog_logical_type_is_text_family(logical_type)) {
+        return true;
+    }
     if (text_has_ascii_case_insensitive_prefix(logical_type, "CHAR(") != 0) {
         return true;
     }

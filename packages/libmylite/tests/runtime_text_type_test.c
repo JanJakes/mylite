@@ -24,7 +24,9 @@ enum {
     mysql_error_incorrect_column_specifier = 1063,
     text_family_row_count = 3,
     text_family_column_count = 6,
+    text_expression_default_column_count = 8,
     information_schema_text_column_count = 11,
+    text_expression_default_metadata_column_count = 3,
     tinytext_overlength_byte_count = 256,
 };
 
@@ -48,6 +50,7 @@ struct expected_dml_result {
 };
 
 static int test_text_success_persistence_and_introspection(void);
+static int test_text_parenthesized_defaults(void);
 static int test_text_diagnostics(void);
 static int test_text_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -89,6 +92,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_text_success_persistence_and_introspection();
+    failures += test_text_parenthesized_defaults();
     failures += test_text_diagnostics();
     failures += test_text_independent_handles();
 
@@ -412,6 +416,415 @@ static int test_text_success_persistence_and_introspection(void) {
     return failures;
 }
 
+static int test_text_parenthesized_defaults(void) {
+    static const char *const show_columns_rows[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        NULL,
+        "",
+        "tt",
+        "tinytext",
+        "YES",
+        "",
+        "_utf8mb4'tiny'",
+        "DEFAULT_GENERATED",
+        "t",
+        "text",
+        "YES",
+        "",
+        "_utf8mb4'abc'",
+        "DEFAULT_GENERATED",
+        "empty_text",
+        "text",
+        "YES",
+        "",
+        "_utf8mb4''",
+        "DEFAULT_GENERATED",
+        "mt",
+        "mediumtext",
+        "YES",
+        "",
+        "_utf8mb4'medium'",
+        "DEFAULT_GENERATED",
+        "lt",
+        "longtext",
+        "YES",
+        "",
+        "_utf8mb4'long'",
+        "DEFAULT_GENERATED",
+        "nullable",
+        "text",
+        "YES",
+        "",
+        "NULL",
+        "DEFAULT_GENERATED",
+        "nn",
+        "text",
+        "NO",
+        "",
+        "_utf8mb4'required'",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const show_create_rows[] = {
+        "text_expr",
+        "CREATE TABLE `text_expr` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `tt` tinytext DEFAULT (_utf8mb4'tiny'),\n"
+        "  `t` text DEFAULT (_utf8mb4'abc'),\n"
+        "  `empty_text` text DEFAULT (_utf8mb4''),\n"
+        "  `mt` mediumtext DEFAULT (_utf8mb4'medium'),\n"
+        "  `lt` longtext DEFAULT (_utf8mb4'long'),\n"
+        "  `nullable` text DEFAULT (NULL),\n"
+        "  `nn` text NOT NULL DEFAULT (_utf8mb4'required')\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_rows[] = {
+        "id",
+        NULL,
+        "",
+        "tt",
+        "_utf8mb4'tiny'",
+        "DEFAULT_GENERATED",
+        "t",
+        "_utf8mb4'abc'",
+        "DEFAULT_GENERATED",
+        "empty_text",
+        "_utf8mb4''",
+        "DEFAULT_GENERATED",
+        "mt",
+        "_utf8mb4'medium'",
+        "DEFAULT_GENERATED",
+        "lt",
+        "_utf8mb4'long'",
+        "DEFAULT_GENERATED",
+        "nullable",
+        "NULL",
+        "DEFAULT_GENERATED",
+        "nn",
+        "_utf8mb4'required'",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const default_rows[] = {
+        "1",
+        "tiny",
+        "abc",
+        "",
+        "medium",
+        "long",
+        NULL,
+        "required",
+        "2",
+        "tiny",
+        "abc",
+        "",
+        "medium",
+        "long",
+        NULL,
+        "required",
+    };
+    static const char *const update_default_rows[] = {"1", "abc", NULL};
+    static const char *const replace_default_rows[] = {"1", "rep", NULL, "required"};
+    static const char *const added_rows[] = {"1", "add", "2", "add"};
+    static const char *const altered_rows[] = {
+        "1",
+        NULL,
+        "add",
+        "2",
+        "mod",
+        "add",
+        "3",
+        "changed",
+        "add",
+    };
+    static const char *const altered_show_create_rows[] = {
+        "alter_text",
+        "CREATE TABLE `alter_text` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `a` text DEFAULT (_utf8mb4'changed'),\n"
+        "  `b` text DEFAULT (_utf8mb4'add')\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const moved_rows[] = {
+        "1",
+        "2",
+        "kept",
+        "3",
+        "4",
+        "right",
+    };
+    static const char *const moved_show_create_rows[] = {
+        "move_text",
+        "CREATE TABLE `move_text` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `b` int NOT NULL,\n"
+        "  `a` text DEFAULT (_utf8mb4'right')\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "text-defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text defaults file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE text_expr (id INT NOT NULL, tt TINYTEXT DEFAULT ('tiny'), "
+        "t TEXT DEFAULT ('abc'), empty_text TEXT DEFAULT (''), "
+        "mt MEDIUMTEXT DEFAULT ('medium'), lt LONGTEXT DEFAULT ('long'), "
+        "nullable TEXT DEFAULT (NULL), nn TEXT NOT NULL DEFAULT ('required'))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM text_expr",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = text_expression_default_column_count,
+            .context = "text expression defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE text_expr",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = text_expression_default_column_count,
+            .context = "text expression defaults DESCRIBE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN text_expr",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = text_expression_default_column_count,
+            .context = "text expression defaults EXPLAIN table",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE text_expr",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "text expression defaults SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'text_expr' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = text_expression_default_metadata_column_count,
+            .row_count = text_expression_default_column_count,
+            .context = "text expression defaults information schema",
+        }
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO text_expr (id) VALUES (1)", 1);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO text_expr VALUES "
+        "(2, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, tt, t, empty_text, mt, lt, nullable, nn "
+                   "FROM text_expr ORDER BY id",
+            .values = default_rows,
+            .column_count = text_expression_default_column_count,
+            .row_count = 2U,
+            .context = "text expression defaults materialization",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE text_expr SET t = DEFAULT, nullable = DEFAULT WHERE id = 1",
+        0
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, t, nullable FROM text_expr WHERE id = 1",
+            .values = update_default_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "text expression defaults update default",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE text_replace (id INT NOT NULL, t TEXT DEFAULT ('rep'), "
+        "nullable TEXT DEFAULT (NULL), nn TEXT NOT NULL DEFAULT ('required'))"
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO text_replace (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, t, nullable, nn FROM text_replace",
+            .values = replace_default_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "text expression defaults REPLACE materialization",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE text_like LIKE text_expr");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE text_like",
+            .values =
+                (const char *const[]){
+                    "text_like",
+                    "CREATE TABLE `text_like` (\n"
+                    "  `id` int NOT NULL,\n"
+                    "  `tt` tinytext DEFAULT (_utf8mb4'tiny'),\n"
+                    "  `t` text DEFAULT (_utf8mb4'abc'),\n"
+                    "  `empty_text` text DEFAULT (_utf8mb4''),\n"
+                    "  `mt` mediumtext DEFAULT (_utf8mb4'medium'),\n"
+                    "  `lt` longtext DEFAULT (_utf8mb4'long'),\n"
+                    "  `nullable` text DEFAULT (NULL),\n"
+                    "  `nn` text NOT NULL DEFAULT (_utf8mb4'required')\n"
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+                },
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "text expression defaults CREATE LIKE",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE text_expr ADD COLUMN added TEXT DEFAULT ('add')"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM text_expr ORDER BY id",
+            .values = added_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "text expression defaults ALTER ADD",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE alter_text (id INT NOT NULL, a TEXT)");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_text ADD COLUMN b TEXT DEFAULT ('add')");
+    failures += expect_dml_ok(database, "INSERT INTO alter_text (id) VALUES (1)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_text MODIFY COLUMN a TEXT DEFAULT ('mod')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_text (id) VALUES (2)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_text CHANGE COLUMN a a TEXT DEFAULT ('changed')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_text (id) VALUES (3)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM alter_text ORDER BY id",
+            .values = altered_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "text expression defaults ALTER MODIFY CHANGE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE alter_text",
+            .values = altered_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "text expression defaults altered SHOW CREATE",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE move_text (id INT NOT NULL, a TEXT DEFAULT ('left'), b INT NOT NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO move_text VALUES (1, 'kept', 2)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE move_text MODIFY a TEXT DEFAULT ('right') AFTER b"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO move_text (id, b) VALUES (3, 4)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b, a FROM move_text ORDER BY id",
+            .values = moved_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "text expression defaults ALTER MODIFY rebuild",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE move_text",
+            .values = moved_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "text expression defaults moved SHOW CREATE",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read text defaults preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "text defaults preamble preserved"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen text defaults file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM alter_text ORDER BY id",
+            .values = altered_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "text expression defaults persisted after reopen",
+        }
+    );
+    failures += expect_statement_ok(database, "RENAME TABLE text_expr TO text_expr_renamed");
+    failures += expect_statement_ok(database, "DROP TABLE text_expr_renamed");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_text_diagnostics(void) {
     static const char *const ignore_null_row[] = {"10", ""};
     static const char *const ignore_default_row[] = {"11", ""};
@@ -525,6 +938,37 @@ static int test_text_diagnostics(void) {
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",
             .message_part = "Invalid default value for 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_numeric_expression_default (v TEXT DEFAULT (123))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE diag ALTER COLUMN nn SET DEFAULT ('x')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'nn'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE bad_null_default (v TEXT NOT NULL DEFAULT (NULL))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO bad_null_default () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'v' cannot be null",
         }
     );
     failures += execute_error(

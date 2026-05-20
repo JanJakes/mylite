@@ -402,15 +402,8 @@ static int test_alias_diagnostics(void) {
             .message_part = "Invalid default value for 'a'",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_long_default_expr (a LONG DEFAULT ('abc'))",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'a'",
-        }
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE long_default_expr (a LONG DEFAULT ('abc'))");
     failures += execute_error(
         database,
         "CREATE TABLE bad_long_varbinary_default_literal (a LONG VARBINARY DEFAULT X'41')",

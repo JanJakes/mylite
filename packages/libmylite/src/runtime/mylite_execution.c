@@ -229,6 +229,7 @@ enum {
     literal_projection_max_significant_digits = 81,
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
+    generated_default_display_text_capacity = (MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY * 2) + 16,
     decimal_default_precision = 10,
     decimal_default_scale = 0,
     decimal_max_precision = 65,
@@ -8213,6 +8214,9 @@ static int column_default_display_text(
     size_t default_text_size,
     const char **out_default_text
 );
+static int append_mysql_utf8mb4_expression_text(struct dynamic_string *string, const char *text);
+static int format_mysql_utf8mb4_expression_text(const char *text, char *buffer, size_t buffer_size);
+static int append_mysql_escaped_expression_text(struct dynamic_string *string, const char *text);
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column);
 static bool column_default_is_generated_extra(
     const struct mylite_catalog_column_descriptor *column
@@ -14130,6 +14134,14 @@ static int append_show_create_table_column_default(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column
 );
+static int append_show_create_table_expression_default(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int append_show_create_table_text_expression_default(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int append_show_create_table_column_suffix(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column,
@@ -15417,11 +15429,19 @@ static int finalize_planned_column_integer_expression_default(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_text_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
 static bool column_default_value_is_current_date_expression(
     const struct mylite_sql_ast_node *value_node
 );
 static bool column_default_value_is_current_time_expression(
     const struct mylite_sql_ast_node *value_node
+);
+static bool column_default_value_is_parenthesized_text_expression(
+    const struct mylite_sql_ast_node *default_node
 );
 static void planned_column_descriptor_for_default(
     const struct planned_column *column,
@@ -15955,6 +15975,10 @@ static bool modify_column_integer_value_domain_matches(
     const struct planned_column *replacement_column
 );
 static bool modify_column_char_varchar_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool modify_column_text_family_replacement_supported(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
@@ -32450,7 +32474,7 @@ static int append_information_schema_columns_base_column_row(
     size_t index_count
 ) {
     char ordinal_text[integer_text_capacity];
-    char default_text[integer_text_capacity];
+    char default_text[generated_default_display_text_capacity];
     char character_length_text[integer_text_capacity];
     char character_octet_text[integer_text_capacity];
     char numeric_precision_text[integer_text_capacity];
@@ -32589,9 +32613,23 @@ static int column_default_display_text(
             default_text_size
         );
     case MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL:
-    case MYLITE_CATALOG_COLUMN_DEFAULT_TEXT:
     case MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION:
     case MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION:
+        *out_default_text = column->default_text;
+        return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_TEXT:
+        if (column_descriptor_is_text_family(column)) {
+            int rc = format_mysql_utf8mb4_expression_text(
+                column->default_text,
+                default_text,
+                default_text_size
+            );
+
+            if (rc == MYLITE_OK) {
+                *out_default_text = default_text;
+            }
+            return rc;
+        }
         *out_default_text = column->default_text;
         return MYLITE_OK;
     case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP:
@@ -32609,6 +32647,66 @@ static int column_default_display_text(
     }
 
     return MYLITE_OK;
+}
+
+static int append_mysql_utf8mb4_expression_text(struct dynamic_string *string, const char *text) {
+    int rc = dynamic_string_append(string, "_utf8mb4'");
+
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_escaped_expression_text(string, text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '\'');
+    }
+    return rc;
+}
+
+static int format_mysql_utf8mb4_expression_text(
+    const char *text,
+    char *buffer,
+    size_t buffer_size
+) {
+    struct dynamic_string string = {0};
+    int rc = append_mysql_utf8mb4_expression_text(&string, text);
+
+    if (rc == MYLITE_OK && (string.length + 1U) > buffer_size) {
+        rc = MYLITE_NOMEM;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(buffer, string.text, string.length + 1U);
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_mysql_escaped_expression_text(struct dynamic_string *string, const char *text) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
+        switch (text[index]) {
+        case '\'':
+            rc = dynamic_string_append(string, "\\'");
+            break;
+        case '\\':
+            rc = dynamic_string_append(string, "\\\\");
+            break;
+        case '\n':
+            rc = dynamic_string_append(string, "\\n");
+            break;
+        case '\r':
+            rc = dynamic_string_append(string, "\\r");
+            break;
+        case '\t':
+            rc = dynamic_string_append(string, "\\t");
+            break;
+        default:
+            rc = dynamic_string_append_char(string, text[index]);
+            break;
+        }
+    }
+
+    return rc;
 }
 
 static const char *column_extra_text(const struct mylite_catalog_column_descriptor *column) {
@@ -32648,6 +32746,8 @@ static bool column_default_is_generated_extra(
     const struct mylite_catalog_column_descriptor *column
 ) {
     return (column_default_kind_is_expression(column->default_kind) ||
+            (column_descriptor_is_text_family(column) &&
+             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) != 0;
@@ -38733,15 +38833,7 @@ static int append_show_create_table_column_default(
         return dynamic_string_append(string, " DEFAULT (curtime())");
     }
     if (column_default_kind_is_expression(column->default_kind)) {
-        int rc = dynamic_string_append(string, " DEFAULT (");
-
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, column->default_text);
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_char(string, ')');
-        }
-        return rc;
+        return append_show_create_table_expression_default(string, column);
     }
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         if (column_descriptor_is_bit(column) &&
@@ -38752,6 +38844,10 @@ static int append_show_create_table_column_default(
                 rc = dynamic_string_append(string, column->default_text);
             }
             return rc;
+        }
+        if (column_descriptor_is_text_family(column) &&
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+            return append_show_create_table_text_expression_default(string, column);
         }
         if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
@@ -38772,6 +38868,36 @@ static int append_show_create_table_column_default(
     }
 
     return dynamic_string_append(string, default_text);
+}
+
+static int append_show_create_table_expression_default(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    int rc = dynamic_string_append(string, " DEFAULT (");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, column->default_text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_show_create_table_text_expression_default(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    int rc = dynamic_string_append(string, " DEFAULT (");
+
+    if (rc == MYLITE_OK) {
+        rc = append_mysql_utf8mb4_expression_text(string, column->default_text);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_show_create_table_column_suffix(
@@ -54218,7 +54344,13 @@ static int plan_alter_table_set_default(
             child_at(statement, 2U),
             &out_plan->column
         );
-        rc = validate_column_default(database, out_plan->column.default_node, &out_plan->column);
+        if (column_descriptor_is_text_family(&out_plan->original_column)) {
+            set_invalid_default_error(database, out_plan->original_column.name);
+            rc = MYLITE_ERROR;
+        } else {
+            rc =
+                validate_column_default(database, out_plan->column.default_node, &out_plan->column);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = finalize_planned_column_default(database, &out_plan->column);
@@ -55394,6 +55526,10 @@ static int complete_alter_table_modify_column_plan(
         &out_plan->original_column,
         &out_plan->column
     );
+    bool supports_text_family_replacement = modify_column_text_family_replacement_supported(
+        &out_plan->original_column,
+        &out_plan->column
+    );
     bool supports_binary_string_replacement = modify_column_binary_string_replacement_supported(
         &out_plan->original_column,
         &out_plan->column
@@ -55402,8 +55538,8 @@ static int complete_alter_table_modify_column_plan(
         modify_column_temporal_replacement_supported(&out_plan->original_column, &out_plan->column);
     int rc = MYLITE_OK;
 
-    if (!supports_char_varchar_replacement && !supports_binary_string_replacement &&
-        !supports_temporal_replacement &&
+    if (!supports_char_varchar_replacement && !supports_text_family_replacement &&
+        !supports_binary_string_replacement && !supports_temporal_replacement &&
         (column_descriptor_is_string_family(&out_plan->original_column) ||
          column_descriptor_is_binary_string_family(&out_plan->original_column) ||
          column_descriptor_is_json(&out_plan->original_column) ||
@@ -55862,6 +55998,17 @@ static int validate_existing_text_for_column(
     }
     if (column_descriptor_is_char(column)) {
         return validate_canonical_char_text(
+            database,
+            column,
+            (struct varchar_text_validation){
+                .text = (const char *)text,
+                .text_length = (size_t)byte_count,
+                .row_number = row_number,
+            }
+        );
+    }
+    if (column_descriptor_is_text_family(column)) {
+        return validate_text_family_text(
             database,
             column,
             (struct varchar_text_validation){
@@ -92018,7 +92165,14 @@ static int validate_column_default_value(
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_text_family(column) || planned_column_is_binary_string_family(column)) {
+    if (planned_column_is_text_family(column)) {
+        if (column_default_value_is_parenthesized_text_expression(default_node)) {
+            return MYLITE_OK;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (planned_column_is_binary_string_family(column)) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -92097,6 +92251,9 @@ static int finalize_planned_column_default(
         return MYLITE_ERROR;
     }
     if (column_default_value_is_parenthesized_expression(column->default_node)) {
+        if (planned_column_is_text_family(column)) {
+            return finalize_planned_column_text_expression_default(database, column, value_node);
+        }
         if (planned_column_is_bit(column) || planned_column_is_year(column) ||
             planned_column_is_enum(column) || planned_column_is_set(column) ||
             planned_column_is_json(column)) {
@@ -92206,6 +92363,52 @@ static int finalize_planned_column_integer_expression_default(
     column->default_integer = default_integer;
 
     return MYLITE_OK;
+}
+
+static int finalize_planned_column_text_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION;
+        snprintf(column->default_text, sizeof(column->default_text), "NULL");
+        return MYLITE_OK;
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_text_family_literal(database, expression, &descriptor, 1U, &value);
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
+    }
+
+    return rc;
 }
 
 static int finalize_planned_column_string_default(
@@ -93228,6 +93431,23 @@ static bool column_default_value_is_parenthesized_expression(
     const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
 
     return (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) != 0;
+}
+
+static bool column_default_value_is_parenthesized_text_expression(
+    const struct mylite_sql_ast_node *default_node
+) {
+    const struct mylite_sql_ast_node *value_node = child_at(default_node, 0U);
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_INTEGER;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION ||
+        expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
 }
 
 static int check_duplicate_column_names(
@@ -96307,6 +96527,14 @@ static bool modify_column_char_varchar_replacement_supported(
 ) {
     return (column_descriptor_is_char_or_varchar(original_column) &&
             planned_column_is_char_or_varchar(replacement_column)) != 0;
+}
+
+static bool modify_column_text_family_replacement_supported(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    return (column_descriptor_is_text_family(original_column) &&
+            planned_column_is_text_family(replacement_column)) != 0;
 }
 
 static bool modify_column_binary_string_replacement_supported(
@@ -119688,7 +119916,7 @@ static int append_show_column(
     struct show_columns_context *context = user_data;
     const char *type_text = NULL;
     char type_text_storage[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
-    char default_text[integer_text_capacity];
+    char default_text[generated_default_display_text_capacity];
     const char *values[show_full_columns_result_column_count] = {0};
     int rc = MYLITE_OK;
 

@@ -550,8 +550,8 @@ static int test_catalog_default_text_validation(void) {
             "",
             &column
         ),
-        MYLITE_MISUSE,
-        "catalog rejects TEXT descriptor defaults"
+        MYLITE_OK,
+        "catalog accepts TEXT descriptor defaults"
     );
 
     mylite_close(database);

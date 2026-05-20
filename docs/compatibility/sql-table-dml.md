@@ -24,6 +24,18 @@ persistent and temporary tables when `1 <= offset <= increment <= 65535`.
 Mutable global values and the unclear MySQL edge case where offset exceeds the
 increment remain deferred.
 
+Ordinary non-strict DML has a limited implicit-default adjustment surface. When
+neither `STRICT_TRANS_TABLES` nor `STRICT_ALL_TABLES` is active, supported
+`INSERT` / `REPLACE` `VALUES` and `SET` statements warn and materialize the
+existing descriptor implicit values for omitted no-explicit-default
+non-`AUTO_INCREMENT` columns and explicit `DEFAULT` values targeting no-default
+columns. Omitted `AUTO_INCREMENT` columns still use generated values. Supported
+single-table `UPDATE` statements warn and materialize those same values for
+matched rows when assigning `NULL` to `NOT NULL` columns or `DEFAULT` to
+no-default columns; no-match updates and `LIMIT 0` do not record these
+conversion warnings. Explicit `NULL` in ordinary `INSERT` / `REPLACE` still
+errors outside `IGNORE`, and broader non-strict conversion remains deferred.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `DELETE` (single-table) | 🟡 | Limited persistent or shadowing session temporary base-table `DELETE FROM table` with optional baseline descriptor `WHERE` predicate boolean expression, including keyword `NOT`, `AND`/`&&`, `XOR`, `OR`/`\|\|`, limited `BETWEEN` range predicates, limited `IN` membership predicates, compatible `BIT` literal predicates, descriptor-column `IS [NOT] TRUE` / `FALSE` / `UNKNOWN`, limited ASCII `CHAR`, `VARCHAR`, and baseline `TEXT` family string-literal equality/null-safe equality/inequality/range/membership predicates plus limited `LIKE` / `NOT LIKE` pattern predicates, limited `REGEXP` / `RLIKE` / `NOT REGEXP` / `NOT RLIKE` ASCII regular-expression predicates, and limited `REGEXP_LIKE()` predicates over nonbinary string descriptor values and scalar literal patterns, and limited `YEAR`, canonical `DATE` / `TIME`, and canonical plus limited `T`-separator, numeric-offset, and single trailing-`Z`/`z` truncation-warning `DATE` / `DATETIME` / `TIMESTAMP` string-literal predicates, one unqualified integer, `BIT`, `YEAR`, `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, or ASCII nonbinary string (`CHAR`, `VARCHAR`, baseline `TEXT` family) descriptor `ORDER BY` column, optional `ASC`/`DESC`, exact affected rows, `LIMIT row_count` using unsigned decimal literals in signed 64-bit range, parent-side rejection for rows referenced by supported `RESTRICT` / `NO ACTION` foreign-key descriptors, direct non-recursive `ON DELETE CASCADE` child removal, and direct non-recursive `ON DELETE SET NULL` child-key nulling for supported foreign-key descriptors without changing parent affected-row counts; admitted string comparisons, ranges, membership, and ordering use MyLite's registered ASCII `utf8mb4_0900_ai_ci` collation, and `TIME` range predicates and ordering use signed total-second semantics; no aliases, partitions, modifiers, `USING`, non-ASCII string predicate literals or full Unicode string ordering, full ordering, LIMIT offset forms, triggers, recursive actions beyond the current direct FK action subset, or privilege semantics |

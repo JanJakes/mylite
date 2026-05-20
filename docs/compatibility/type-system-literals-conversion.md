@@ -1,5 +1,16 @@
 # Type system, literals, and conversion
 
+Ordinary non-strict DML currently has a narrow MySQL-compatible adjustment
+surface: when neither `STRICT_TRANS_TABLES` nor `STRICT_ALL_TABLES` is active,
+omitted no-explicit-default non-`AUTO_INCREMENT` `INSERT` / `REPLACE` target
+columns and explicit `DEFAULT` values for no-default columns use the same
+implicit descriptor values as the existing `INSERT IGNORE` subset, and matched
+single-table `UPDATE` assignments of `NULL` to `NOT NULL` columns or `DEFAULT`
+to no-default columns adjust with warnings. Omitted `AUTO_INCREMENT` columns
+continue to generate values. Explicit `NULL` in ordinary `INSERT` / `REPLACE`
+remains an error outside `IGNORE`, and broader non-strict string, numeric,
+temporal, range, and expression coercions remain outside the current subset.
+
 ## Numeric types
 
 | Feature | Status | Notes |

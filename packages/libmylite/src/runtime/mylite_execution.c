@@ -14498,6 +14498,30 @@ static int execute_update_from_plan(
     const struct planned_update *plan,
     mylite_result *result
 );
+static int read_update_matched_row_count(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count
+);
+static int read_single_table_update_matched_row_count(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count
+);
+static int build_single_table_update_matched_count_sql(
+    const struct planned_update *plan,
+    char **out_sql
+);
+static int append_remaining_nonstrict_update_adjustment_warnings(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t matched_row_count
+);
+static int append_update_assignment_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int prepare_executable_update_plan(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -16472,6 +16496,10 @@ static int make_insert_ignore_implicit_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
+static bool dml_allows_missing_default_adjustment(
+    const struct mylite_db *database,
+    bool ignore_errors
+);
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -16521,7 +16549,7 @@ static int convert_null_insert_value(
 static int materialize_dml_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
-    bool ignore_errors,
+    bool adjust_missing_default,
     struct planned_value *out_value
 );
 static int validate_default_function_source_value(
@@ -16851,6 +16879,7 @@ static int canonicalize_datetime_text(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static bool session_sql_mode_is_strict(const struct mylite_db *database);
 static bool temporal_sql_mode_is_strict(const struct mylite_db *database);
 static bool temporal_sql_mode_has_no_zero_date(const struct mylite_db *database);
 static bool temporal_sql_mode_has_no_zero_in_date(const struct mylite_db *database);
@@ -21186,6 +21215,10 @@ static bool planned_update_column_has_auto_update(
 );
 static size_t planned_update_auto_update_column_count(const struct planned_update *plan);
 static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
+static int bind_update_matched_count_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
+);
 static int append_joined_update_matched_target_filter_sql(
     struct dynamic_string *string,
     const struct planned_update *plan,
@@ -60990,6 +61023,7 @@ static int execute_update_from_plan(
     struct planned_update executable_plan = *plan;
     struct mylite_statement_transaction transaction = {0};
     bool matches_any_row = false;
+    uint64_t matched_row_count = 0U;
     int64_t affected_rows = 0;
     int rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
@@ -60997,10 +61031,18 @@ static int execute_update_from_plan(
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        rc = update_matches_any_row(database, plan, &matches_any_row);
+        rc = read_update_matched_row_count(database, plan, &matched_row_count);
+        matches_any_row = matched_row_count > 0U;
     }
     if (rc == MYLITE_OK) {
         rc = prepare_executable_update_plan(database, plan, matches_any_row, &executable_plan);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        rc = append_remaining_nonstrict_update_adjustment_warnings(
+            database,
+            plan,
+            matched_row_count
+        );
     }
     if (rc == MYLITE_OK && matches_any_row) {
         rc = apply_parent_update_actions(database, &executable_plan);
@@ -61041,6 +61083,169 @@ static int execute_update_from_plan(
     }
 
     mylite_result_set_affected_rows(result, affected_rows);
+
+    return MYLITE_OK;
+}
+
+static int read_update_matched_row_count(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count
+) {
+    bool matches_any_row = false;
+
+    if (out_row_count == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    *out_row_count = 0U;
+    if (plan == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (plan->limit.has_limit && plan->limit.row_count == 0) {
+        return MYLITE_OK;
+    }
+    if (plan->is_joined) {
+        int rc = update_matches_any_row(database, plan, &matches_any_row);
+
+        if (rc == MYLITE_OK && matches_any_row) {
+            *out_row_count = 1U;
+        }
+        return rc;
+    }
+
+    return read_single_table_update_matched_row_count(database, plan, out_row_count);
+}
+
+static int read_single_table_update_matched_row_count(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t *out_row_count
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_single_table_update_matched_count_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_matched_count_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            sqlite3_int64 row_count = sqlite3_column_int64(statement, 0);
+
+            if (row_count < 0) {
+                rc = MYLITE_ERROR;
+            } else {
+                *out_row_count = (uint64_t)row_count;
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_single_table_update_matched_count_sql(
+    const struct planned_update *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
+        rc = append_update_row_filter_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_remaining_nonstrict_update_adjustment_warnings(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    uint64_t matched_row_count
+) {
+    int rc = MYLITE_OK;
+
+    if (matched_row_count <= 1U || session_sql_mode_is_strict(database)) {
+        return MYLITE_OK;
+    }
+    for (uint64_t row_index = 1U; rc == MYLITE_OK && row_index < matched_row_count; ++row_index) {
+        if (planned_update_has_multiple_assignments(plan)) {
+            for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+                rc = append_update_assignment_adjustment_warning(
+                    database,
+                    plan->assignments[index].value_node,
+                    &plan->assignments[index].column
+                );
+            }
+        } else {
+            rc = append_update_assignment_adjustment_warning(
+                database,
+                plan->assignment_value_node,
+                &plan->assignment_column
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int append_update_assignment_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || column == NULL) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (!column->is_nullable) {
+            return append_bad_null_warning(database, column->name);
+        }
+        return MYLITE_OK;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
+        if (!column->is_nullable) {
+            return append_bad_null_warning(database, column->name);
+        }
+        return MYLITE_OK;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT) {
+        return append_no_default_warning(database, column->name);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && !column->is_nullable &&
+        !column_descriptor_is_enum(column)) {
+        return append_no_default_warning(database, column->name);
+    }
 
     return MYLITE_OK;
 }
@@ -65437,6 +65642,10 @@ static int canonicalize_datetime_text(
 }
 
 static bool temporal_sql_mode_is_strict(const struct mylite_db *database) {
+    return session_sql_mode_is_strict(database);
+}
+
+static bool session_sql_mode_is_strict(const struct mylite_db *database) {
     if (database == NULL) {
         return false;
     }
@@ -98071,6 +98280,16 @@ static int check_insert_target_duplicate(
     return MYLITE_OK;
 }
 
+static bool insert_allows_implicit_default_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert *plan
+) {
+    if (plan == NULL) {
+        return false;
+    }
+    return dml_allows_missing_default_adjustment(database, plan->ignore_errors);
+}
+
 static int check_insert_omitted_columns(
     struct mylite_db *database,
     const struct planned_insert *plan,
@@ -98091,7 +98310,7 @@ static int check_insert_omitted_columns(
             !plan->columns[column_index].is_nullable &&
             plan->columns[column_index].default_kind ==
                 MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
-            if (plan->ignore_errors) {
+            if (insert_allows_implicit_default_adjustment(database, plan)) {
                 continue;
             }
             set_bad_null_error(database, plan->columns[column_index].name);
@@ -98103,7 +98322,7 @@ static int check_insert_omitted_columns(
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
               !column_default_kind_materializes_value(plan->columns[column_index].default_kind)))) {
-            if (plan->ignore_errors) {
+            if (insert_allows_implicit_default_adjustment(database, plan)) {
                 continue;
             }
             set_no_default_error(database, plan->columns[column_index].name);
@@ -98229,7 +98448,8 @@ static int plan_insert_row(
 
         value_node = value_node == NULL ? NULL : value_node->next_sibling;
     }
-    if (rc == MYLITE_OK && plan->ignore_errors && row_number == 1U) {
+    if (rc == MYLITE_OK && insert_allows_implicit_default_adjustment(database, plan) &&
+        row_number == 1U) {
         rc = append_insert_omitted_column_warnings(database, plan, target_indexes, target_count);
     }
 
@@ -98251,7 +98471,9 @@ static int append_insert_omitted_column_warnings(
                 break;
             }
         }
-        if (!column_is_targeted && !plan->columns[column_index].is_nullable &&
+        if (!column_is_targeted &&
+            !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
+            !plan->columns[column_index].is_nullable &&
             plan->columns[column_index].default_kind ==
                 MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
             int rc = append_bad_null_warning(database, plan->columns[column_index].name);
@@ -98261,6 +98483,7 @@ static int append_insert_omitted_column_warnings(
             }
         } else if (
             !column_is_targeted &&
+            !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
@@ -98317,7 +98540,7 @@ static int plan_insert_set_row(
         );
         assignment = assignment->next_sibling;
     }
-    if (rc == MYLITE_OK && plan->ignore_errors) {
+    if (rc == MYLITE_OK && insert_allows_implicit_default_adjustment(database, plan)) {
         rc = append_insert_omitted_column_warnings(database, plan, target_indexes, target_count);
     }
 
@@ -98362,6 +98585,8 @@ static int allocate_insert_column_value(
     struct planned_value *out_value
 ) {
     const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+    bool adjust_implicit_default = (insert_allows_implicit_default_adjustment(database, plan) &&
+                                    !column_descriptor_is_auto_increment(column)) != 0;
 
     if (column_default_kind_has_integer_value(column->default_kind)) {
         out_value->is_null = false;
@@ -98400,13 +98625,13 @@ static int allocate_insert_column_value(
         return make_current_time_value(database, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
-        if (!plan->ignore_errors || column->is_nullable) {
+        if (!adjust_implicit_default || column->is_nullable) {
             out_value->is_null = true;
             return MYLITE_OK;
         }
         return make_insert_ignore_implicit_value(database, column, out_value);
     }
-    if (!plan->ignore_errors || column->is_nullable) {
+    if (!adjust_implicit_default || column->is_nullable) {
         out_value->is_null = true;
         return MYLITE_OK;
     }
@@ -98465,6 +98690,13 @@ static int make_insert_ignore_implicit_value(
     return MYLITE_OK;
 }
 
+static bool dml_allows_missing_default_adjustment(
+    const struct mylite_db *database,
+    bool ignore_errors
+) {
+    return (ignore_errors || !session_sql_mode_is_strict(database)) != 0;
+}
+
 static int convert_insert_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -98494,7 +98726,12 @@ static int convert_insert_value(
         );
     }
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
-        return materialize_dml_default_value(database, column, ignore_errors, out_value);
+        return materialize_dml_default_value(
+            database,
+            column,
+            dml_allows_missing_default_adjustment(database, ignore_errors),
+            out_value
+        );
     }
     rc = convert_statement_time_value_for_column(database, value_node, column, out_value, &handled);
     if (handled) {
@@ -98792,7 +99029,7 @@ static int convert_null_insert_value(
 static int materialize_dml_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
-    bool ignore_errors,
+    bool adjust_missing_default,
     struct planned_value *out_value
 ) {
     if (column_default_kind_has_integer_value(column->default_kind)) {
@@ -98842,13 +99079,13 @@ static int materialize_dml_default_value(
         return make_current_time_value(database, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
-        return convert_null_insert_value(database, column, ignore_errors, out_value);
+        return convert_null_insert_value(database, column, adjust_missing_default, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
         *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
         return MYLITE_OK;
     }
-    if (!ignore_errors) {
+    if (!adjust_missing_default) {
         set_no_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -117884,6 +118121,7 @@ static int convert_update_value_for_column(
     struct planned_value *out_value
 ) {
     bool handled = false;
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
     int rc = MYLITE_OK;
 
     value_node = unwrap_parenthesized_expression(value_node);
@@ -117895,7 +118133,7 @@ static int convert_update_value_for_column(
     planned_value_deinit(out_value);
     *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
     if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
-        return materialize_dml_default_value(database, column, false, out_value);
+        return materialize_dml_default_value(database, column, adjust_missing_default, out_value);
     }
     rc = convert_statement_time_value_for_column(database, value_node, column, out_value, &handled);
     if (handled) {
@@ -117904,8 +118142,15 @@ static int convert_update_value_for_column(
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
-            set_bad_null_error(database, column->name);
-            return MYLITE_ERROR;
+            if (!adjust_missing_default) {
+                set_bad_null_error(database, column->name);
+                return MYLITE_ERROR;
+            }
+            rc = append_bad_null_warning(database, column->name);
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            return make_insert_ignore_implicit_value(database, column, out_value);
         }
         return MYLITE_OK;
     }
@@ -133162,6 +133407,20 @@ static int bind_update_matched_parameters(
     int parameter_index = 1;
 
     return bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+}
+
+static int bind_update_matched_count_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
+) {
+    int parameter_index = 1;
+    int rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+    }
+
+    return rc;
 }
 
 static int bind_planned_value_parameter(

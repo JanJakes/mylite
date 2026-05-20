@@ -757,6 +757,17 @@ static int test_charset_collation_diagnostics(void) {
         "CREATE TABLE raw_nul_collation (id INT) COLLATE=`utf8mb4"
         "\0"
         "_0900_ai_ci`";
+    static const char binary_default_value_create[] = "CREATE TABLE `binary_default_value` (\n"
+                                                      "  `v` varbinary(10) DEFAULT 'ab'\n"
+                                                      ") ENGINE=InnoDB DEFAULT CHARSET=binary";
+    static const char *const binary_default_value_columns[] = {
+        "HEX(v)",
+        "LENGTH(v)",
+    };
+    static const char *const binary_default_value_values[] = {
+        "6162",
+        "2",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -856,14 +867,30 @@ static int test_charset_collation_diagnostics(void) {
             .message_part = "COLLATION 'ascii_bin' is not valid for CHARACTER SET 'utf8mb4'",
         }
     );
-    failures += execute_error(
+    failures += execute_statement_ok(
         database,
-        "CREATE TABLE binary_default_value (v VARCHAR(10) DEFAULT 'ab') DEFAULT CHARSET=binary",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
+        "CREATE TABLE binary_default_value (v VARCHAR(10) DEFAULT 'ab') DEFAULT CHARSET=binary"
+    );
+    failures += expect_show_create_text(
+        database,
+        (struct expected_show_create_text){
+            .show_sql = "SHOW CREATE TABLE binary_default_value",
+            .table_name = "binary_default_value",
+            .create_sql = binary_default_value_create,
+            .context = "binary table default inherited column default",
         }
+    );
+    failures += execute_statement_ok(database, "INSERT INTO binary_default_value () VALUES ()");
+    failures += expect_single_row_result(
+        database,
+        "SELECT HEX(v), LENGTH(v) FROM binary_default_value",
+        (struct expected_single_row_result){
+            .columns = binary_default_value_columns,
+            .values = binary_default_value_values,
+            .column_count =
+                sizeof(binary_default_value_columns) / sizeof(binary_default_value_columns[0]),
+        },
+        "binary table default inherited default bytes"
     );
     failures += execute_error(
         database,

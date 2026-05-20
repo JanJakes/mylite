@@ -2,7 +2,9 @@
 
 set -eu
 
+MYSQL_BIN="${MYLITE_MYSQL_BIN:-mysql}"
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
 DATABASE="mylite_binary_string_types_expectations_$$"
 
 fail() {
@@ -13,9 +15,15 @@ fail() {
 run_mysql() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql \
-            -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        printf '%s\n' "$sql" \
+            | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" \
+                -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql \
+                -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    fi
 }
 
 expect_output() {
@@ -409,7 +417,7 @@ expect_error \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "mysql accepts deferred binary literal defaults" \
+    "mysql accepts binary literal defaults" \
     "CREATE TABLE deferred_binary_default (b BINARY(3) DEFAULT X'41', v VARBINARY(3) DEFAULT X'42'); "\
 "INSERT INTO deferred_binary_default () VALUES (); "\
 "SELECT HEX(b), LENGTH(b), HEX(v), LENGTH(v) FROM deferred_binary_default;" \

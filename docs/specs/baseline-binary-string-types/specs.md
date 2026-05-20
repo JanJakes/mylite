@@ -9,10 +9,11 @@ family columns plus byte-safe public result readback.
 The feature is intentionally not full MySQL binary-string support. It admits
 bounded byte values from ordinary string and hexadecimal literals, `NULL`,
 strict length checks, fixed-length `BINARY` zero-byte padding, descriptor
-cloning/copying, and descriptor-backed introspection. It does not implement
-binary defaults, expression defaults, binary comparisons, binary ordering,
-binary indexes, string introducers, bit literals, parameters, streaming large
-objects, protocol-grade metadata, or SQLite fork patches.
+cloning/copying, binary literal defaults for `BINARY` and `VARBINARY`, and
+descriptor-backed introspection. It does not implement expression defaults,
+binary comparisons, binary ordering, binary indexes, string introducers, bit
+literals, parameters, streaming large objects, protocol-grade metadata, or
+SQLite fork patches.
 
 ## Sources
 
@@ -108,9 +109,9 @@ slice:
 - Single-table `UPDATE` reports changed-row affected counts. Reassigning a
   value that produces the same stored byte string reports zero affected rows.
 - `BINARY` and `VARBINARY` can have literal defaults. BLOB family columns can
-  have defaults only when written as expressions. MyLite defers binary-string
-  defaults in this slice because the durable catalog default field is currently
-  NUL-terminated text.
+  have defaults only when written as expressions in MySQL. MyLite supports the
+  `BINARY`/`VARBINARY` literal-default subset and defers BLOB-family expression
+  defaults to a later expression-default slice.
 - MySQL permits binary-string comparisons, ordering, grouping, and indexing
   with bytewise semantics. MyLite defers those wider operations here except for
   existing `IS NULL` and `IS NOT NULL` predicate forms.
@@ -180,8 +181,9 @@ This feature must not implement:
   column-level charset/collation attributes for binary string descriptors, or
   general binary collation metadata beyond introspection values verified for
   this slice;
-- explicit binary defaults, expression defaults, `DEFAULT(col_name)`, or
-  durable binary default storage;
+- BLOB-family defaults, expression defaults, or general binary default
+  expressions beyond the literal `BINARY` / `VARBINARY` subset specified in
+  `docs/specs/baseline-binary-string-defaults/specs.md`;
 - binary-to-integer, integer-to-binary, bit-literal, decimal/float, temporal,
   function, incompatible subquery, user-variable, parameter, or arbitrary
   expression assignment conversion;
@@ -216,9 +218,10 @@ This feature must not implement:
   padding, rejects unsupported conversions or operations, and produces
   descriptor-driven SQLite plans.
 - The catalog remains authoritative for logical type, physical type,
-  nullability, visibility, defaults, and column order. This slice reuses
-  logical and physical type descriptor fields and does not change the catalog
-  default schema because binary defaults are deferred.
+  nullability, visibility, defaults, and column order. Literal `BINARY` and
+  `VARBINARY` defaults are covered by
+  `docs/specs/baseline-binary-string-defaults/specs.md`; BLOB-family expression
+  defaults remain deferred.
 - Result and introspection builders render logical descriptors to MySQL-shaped
   text. SQLite schema text and `sqlite_schema` are not metadata authority.
 - SQLite owns physical row storage, scans, and mutations for generated prepared
@@ -401,7 +404,8 @@ Supported diagnostics must include:
   current MySQL row-size baseline;
 - unknown schema, unknown table, reserved `_mylite_*` target names, and
   unsupported object kinds through existing descriptor resolution;
-- unsupported explicit binary defaults and BLOB expression defaults;
+- unsupported BLOB literal/expression defaults and unsupported binary default
+  expressions beyond admitted `BINARY` / `VARBINARY` literals;
 - unsupported assignment expression, unsupported bit literal, unsupported
   nonliteral value, unsupported binary predicate, unsupported binary ordering,
   and unsupported binary index diagnostics;

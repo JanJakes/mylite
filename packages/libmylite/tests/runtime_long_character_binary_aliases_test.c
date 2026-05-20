@@ -408,9 +408,9 @@ static int test_alias_diagnostics(void) {
         database,
         "CREATE TABLE bad_long_varbinary_default_literal (a LONG VARBINARY DEFAULT X'41')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_invalid_default,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "Invalid default value for 'a'",
         }
     );
     failures += execute_error(

@@ -101,6 +101,8 @@ bs	610000	3
 vs	62	1
 b_empty	000000	3
 v_empty		0
+b0		0
+v0		0
 b_zero	000000	3
 v_zero	0000	2
 v_ff	4100FF	3" \
@@ -111,6 +113,8 @@ v_ff	4100FF	3" \
 "vs VARBINARY(3) DEFAULT 'b', "\
 "b_empty BINARY(3) DEFAULT X'', "\
 "v_empty VARBINARY(3) DEFAULT X'', "\
+"b0 BINARY(0) DEFAULT X'', "\
+"v0 VARBINARY(0) DEFAULT X'', "\
 "b_zero BINARY(3) DEFAULT X'0000', "\
 "v_zero VARBINARY(3) DEFAULT X'0000', "\
 "v_ff VARBINARY(3) DEFAULT X'4100FF'); "\
@@ -121,6 +125,8 @@ v_ff	4100FF	3" \
 "SELECT 'vs', HEX(vs), LENGTH(vs) FROM defaults_probe UNION ALL "\
 "SELECT 'b_empty', HEX(b_empty), LENGTH(b_empty) FROM defaults_probe UNION ALL "\
 "SELECT 'v_empty', HEX(v_empty), LENGTH(v_empty) FROM defaults_probe UNION ALL "\
+"SELECT 'b0', HEX(b0), LENGTH(b0) FROM defaults_probe UNION ALL "\
+"SELECT 'v0', HEX(v0), LENGTH(v0) FROM defaults_probe UNION ALL "\
 "SELECT 'b_zero', HEX(b_zero), LENGTH(b_zero) FROM defaults_probe UNION ALL "\
 "SELECT 'v_zero', HEX(v_zero), LENGTH(v_zero) FROM defaults_probe UNION ALL "\
 "SELECT 'v_ff', HEX(v_ff), LENGTH(v_ff) FROM defaults_probe;" \
@@ -134,6 +140,8 @@ bs:0x61:4
 vs:0x62:4
 b_empty:0x:2
 v_empty::0
+b0::0
+v0::0
 b_zero:0x:2
 v_zero:0x:2
 v_ff:0x41:4" \
@@ -152,6 +160,8 @@ defaults_probe	CREATE TABLE `defaults_probe` (
   `vs` varbinary(3) DEFAULT 'b',
   `b_empty` binary(3) DEFAULT '\0\0\0',
   `v_empty` varbinary(3) DEFAULT '',
+  `b0` binary(0) DEFAULT '',
+  `v0` varbinary(0) DEFAULT '',
   `b_zero` binary(3) DEFAULT '\0\0\0',
   `v_zero` varbinary(3) DEFAULT '\0\0',
   `v_ff` varbinary(3) DEFAULT 0x4100FF

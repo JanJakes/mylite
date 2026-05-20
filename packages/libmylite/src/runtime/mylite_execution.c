@@ -481,6 +481,8 @@ enum {
     byte_all_bits_mask = 0xff,
     byte_high_nibble_shift = 4,
     byte_low_nibble_mask = 0x0f,
+    ascii_printable_min_byte = 0x20U,
+    ascii_printable_max_byte = 0x7eU,
     blob_family_row_size_contribution = 12,
     mysql_max_row_size = 65535,
     innodb_max_key_length_bytes = 3072,
@@ -8367,6 +8369,20 @@ static int column_default_display_text(
     size_t default_text_size,
     const char **out_default_text
 );
+static int format_binary_default_display_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+);
+static int decode_binary_default_text(
+    struct mylite_db *database,
+    const char *default_text,
+    char **out_bytes,
+    size_t *out_byte_count
+);
+static size_t binary_default_display_byte_count(const char *bytes, size_t byte_count);
 static int append_mysql_utf8mb4_expression_text(struct dynamic_string *string, const char *text);
 static int format_mysql_utf8mb4_expression_text(const char *text, char *buffer, size_t buffer_size);
 static int append_mysql_escaped_expression_text(struct dynamic_string *string, const char *text);
@@ -14422,6 +14438,27 @@ static int append_show_create_table_column_default(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column
 );
+static int append_show_create_table_non_integer_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int append_show_create_table_binary_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+);
+static bool binary_default_bytes_use_hex_literal(const char *bytes, size_t byte_count);
+static int append_binary_default_hex_literal(
+    struct dynamic_string *string,
+    const char *bytes,
+    size_t byte_count
+);
+static int append_mysql_quoted_binary_default_text(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length
+);
 static int append_show_create_table_expression_default(
     struct dynamic_string *string,
     const struct mylite_catalog_column_descriptor *column
@@ -15737,6 +15774,10 @@ static int finalize_planned_column_bit_default(
     struct mylite_db *database,
     struct planned_column *column
 );
+static int finalize_planned_column_binary_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
 static int finalize_planned_column_year_default(
     struct mylite_db *database,
     struct planned_column *column
@@ -15792,6 +15833,11 @@ static int copy_planned_default_text(
     struct mylite_db *database,
     struct planned_column *column,
     struct planned_value *value
+);
+static int copy_planned_binary_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct planned_value *value
 );
 static int copy_planned_default_approximate_text(
     struct mylite_db *database,
@@ -16964,6 +17010,11 @@ static int materialize_dml_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     bool adjust_missing_default,
+    struct planned_value *out_value
+);
+static int materialize_binary_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
 static int validate_default_function_source_value(
@@ -20974,6 +21025,11 @@ static int append_alter_table_add_column_enum_default(
     const struct planned_alter_table_add_column *plan
 );
 static int append_alter_table_add_column_bit_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_binary_default(
     struct mylite_db *database,
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
@@ -33988,6 +34044,14 @@ static int column_default_display_text(
         }
         *out_default_text = column->default_text;
         return MYLITE_OK;
+    case MYLITE_CATALOG_COLUMN_DEFAULT_BINARY:
+        return format_binary_default_display_text(
+            database,
+            column,
+            default_text,
+            default_text_size,
+            out_default_text
+        );
     case MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP:
         *out_default_text = "CURRENT_TIMESTAMP";
         return MYLITE_OK;
@@ -34003,6 +34067,108 @@ static int column_default_display_text(
     }
 
     return MYLITE_OK;
+}
+
+static int format_binary_default_display_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    char *default_text,
+    size_t default_text_size,
+    const char **out_default_text
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    size_t display_byte_count = 0U;
+    int rc = decode_binary_default_text(database, column->default_text, &bytes, &byte_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    display_byte_count = binary_default_display_byte_count(bytes, byte_count);
+    if (byte_count == 0U) {
+        if (default_text_size == 0U) {
+            free(bytes);
+            return MYLITE_NOMEM;
+        }
+        default_text[0] = '\0';
+    } else if (display_byte_count == 0U) {
+        if (default_text_size < sizeof("0x")) {
+            free(bytes);
+            return MYLITE_NOMEM;
+        }
+        memcpy(default_text, "0x", sizeof("0x"));
+    } else {
+        char *hex_text = NULL;
+        size_t hex_length = 0U;
+
+        rc =
+            format_hex_bytes(database, (const unsigned char *)bytes, display_byte_count, &hex_text);
+        if (rc == MYLITE_OK) {
+            hex_length = strlen(hex_text);
+            if ((hex_length + sizeof("0x")) > default_text_size) {
+                rc = MYLITE_NOMEM;
+            } else {
+                default_text[0] = '0';
+                default_text[1] = 'x';
+                memcpy(default_text + 2U, hex_text, hex_length + 1U);
+            }
+        }
+        free(hex_text);
+    }
+    if (rc == MYLITE_OK) {
+        *out_default_text = default_text;
+    }
+    free(bytes);
+    return rc;
+}
+
+static int decode_binary_default_text(
+    struct mylite_db *database,
+    const char *default_text,
+    char **out_bytes,
+    size_t *out_byte_count
+) {
+    size_t hex_length = default_text == NULL ? 0U : strlen(default_text);
+    size_t byte_count = hex_length / 2U;
+    char *bytes = NULL;
+
+    if (default_text == NULL || out_bytes == NULL || out_byte_count == NULL ||
+        (hex_length % 2U) != 0U) {
+        return MYLITE_MISUSE;
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+
+    bytes = malloc(byte_count + 1U);
+    if (bytes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t byte_index = 0U; byte_index < byte_count; ++byte_index) {
+        unsigned char high = 0U;
+        unsigned char low = 0U;
+        size_t hex_index = byte_index * 2U;
+
+        if (hex_nibble_value(default_text[hex_index], &high) != MYLITE_OK ||
+            hex_nibble_value(default_text[hex_index + 1U], &low) != MYLITE_OK) {
+            free(bytes);
+            return MYLITE_MISUSE;
+        }
+        bytes[byte_index] = (char)((high << byte_high_nibble_shift) | low);
+    }
+    bytes[byte_count] = '\0';
+    *out_bytes = bytes;
+    *out_byte_count = byte_count;
+    return MYLITE_OK;
+}
+
+static size_t binary_default_display_byte_count(const char *bytes, size_t byte_count) {
+    for (size_t index = 0U; index < byte_count; ++index) {
+        if (bytes[index] == '\0') {
+            return index;
+        }
+    }
+    return byte_count;
 }
 
 static int append_mysql_utf8mb4_expression_text(struct dynamic_string *string, const char *text) {
@@ -40203,24 +40369,7 @@ static int append_show_create_table_column_default(
         return append_show_create_table_expression_default(string, column);
     }
     if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-        if (column_descriptor_is_bit(column) &&
-            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-            int rc = dynamic_string_append(string, " DEFAULT ");
-
-            if (rc == MYLITE_OK) {
-                rc = dynamic_string_append(string, column->default_text);
-            }
-            return rc;
-        }
-        if (column_descriptor_is_text_family(column) &&
-            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-            return append_show_create_table_text_expression_default(string, column);
-        }
-        if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
-            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
-            return append_mysql_quoted_default_text(string, column->default_text);
-        }
-        return MYLITE_OK;
+        return append_show_create_table_non_integer_column_default(database, string, column);
     }
 
     written = snprintf(
@@ -40235,6 +40384,128 @@ static int append_show_create_table_column_default(
     }
 
     return dynamic_string_append(string, default_text);
+}
+
+static int append_show_create_table_non_integer_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column_descriptor_is_bit(column) &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        int rc = dynamic_string_append(string, " DEFAULT ");
+
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, column->default_text);
+        }
+        return rc;
+    }
+    if (column_descriptor_is_text_family(column) &&
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        return append_show_create_table_text_expression_default(string, column);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {
+        return append_show_create_table_binary_default(database, string, column);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
+        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        return append_mysql_quoted_default_text(string, column->default_text);
+    }
+    return MYLITE_OK;
+}
+
+static int append_show_create_table_binary_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = decode_binary_default_text(database, column->default_text, &bytes, &byte_count);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " DEFAULT ");
+    }
+    if (rc == MYLITE_OK) {
+        if (binary_default_bytes_use_hex_literal(bytes, byte_count)) {
+            rc = append_binary_default_hex_literal(string, bytes, byte_count);
+        } else {
+            rc = append_mysql_quoted_binary_default_text(string, bytes, byte_count);
+        }
+    }
+    free(bytes);
+    return rc;
+}
+
+static bool binary_default_bytes_use_hex_literal(const char *bytes, size_t byte_count) {
+    for (size_t index = 0U; index < byte_count; ++index) {
+        unsigned char byte = (unsigned char)bytes[index];
+
+        if (byte == '\0' ||
+            (byte >= ascii_printable_min_byte && byte <= ascii_printable_max_byte)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+static int append_binary_default_hex_literal(
+    struct dynamic_string *string,
+    const char *bytes,
+    size_t byte_count
+) {
+    static const char hex_digits[] = "0123456789ABCDEF";
+    int rc = dynamic_string_append(string, "0x");
+
+    for (size_t byte_index = 0U; rc == MYLITE_OK && byte_index < byte_count; ++byte_index) {
+        unsigned char byte = (unsigned char)bytes[byte_index];
+
+        rc = dynamic_string_append_char(string, hex_digits[byte >> byte_high_nibble_shift]);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, hex_digits[byte & byte_low_nibble_mask]);
+        }
+    }
+    return rc;
+}
+
+static int append_mysql_quoted_binary_default_text(
+    struct dynamic_string *string,
+    const char *text,
+    size_t text_length
+) {
+    int rc = dynamic_string_append_char(string, '\'');
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < text_length; ++index) {
+        switch (text[index]) {
+        case '\0':
+            rc = dynamic_string_append(string, "\\0");
+            break;
+        case '\'':
+            rc = dynamic_string_append(string, "''");
+            break;
+        case '\\':
+            rc = dynamic_string_append(string, "\\\\");
+            break;
+        case '\n':
+            rc = dynamic_string_append(string, "\\n");
+            break;
+        case '\r':
+            rc = dynamic_string_append(string, "\\r");
+            break;
+        case '\t':
+            rc = dynamic_string_append(string, "\\t");
+            break;
+        default:
+            rc = dynamic_string_append_char(string, text[index]);
+            break;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '\'');
+    }
+
+    return rc;
 }
 
 static int append_show_create_table_expression_default(
@@ -50508,6 +50779,9 @@ static enum mylite_catalog_column_default_kind alter_table_primary_key_default_k
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {
+        return MYLITE_CATALOG_COLUMN_DEFAULT_BINARY;
+    }
 
     return MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT;
 }
@@ -57648,6 +57922,7 @@ static bool modify_column_definition_matches(
     }
     if ((original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
          original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+         original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
          column_default_kind_is_expression(original_column->default_kind)) &&
         strcmp(original_column->default_text, replacement_column->default_text) != 0) {
         return false;
@@ -94919,6 +95194,18 @@ static int validate_column_default_value(
         return MYLITE_ERROR;
     }
     if (planned_column_is_binary_string_family(column)) {
+        enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+        if (planned_column_is_binary_blob_family(column) || value_node == NULL ||
+            value_node->kind != MYLITE_SQL_AST_LITERAL) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+            return MYLITE_OK;
+        }
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
@@ -95034,6 +95321,9 @@ static int finalize_planned_column_type_default(
     }
     if (planned_column_is_bit(column)) {
         return finalize_planned_column_bit_default(database, column);
+    }
+    if (planned_column_is_binary_string_family(column)) {
+        return finalize_planned_column_binary_default(database, column);
     }
     if (planned_column_is_year(column)) {
         return finalize_planned_column_year_default(database, column);
@@ -95320,6 +95610,49 @@ static int finalize_planned_column_bit_default(
     if (rc == MYLITE_OK) {
         column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_TEXT;
     }
+    return rc;
+}
+
+static int finalize_planned_column_binary_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .integer = 0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (planned_column_is_binary_blob_family(column)) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    planned_column_descriptor_for_default(column, &descriptor);
+    rc = convert_binary_string_literal(
+        database,
+        child_at(column->default_node, 0U),
+        &descriptor,
+        1U,
+        false,
+        &value
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_planned_binary_default_text(database, column, &value);
+    }
+    planned_value_deinit(&value);
+    if (rc == MYLITE_OK) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_BINARY;
+    }
+
     return rc;
 }
 
@@ -95644,6 +95977,40 @@ static int copy_planned_default_text(
     memcpy(column->default_text, value->text, value->text_length);
     column->default_text[value->text_length] = '\0';
 
+    return MYLITE_OK;
+}
+
+static int copy_planned_binary_default_text(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct planned_value *value
+) {
+    char *hex_text = NULL;
+    size_t hex_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value == NULL || !value->is_blob || (value->text == NULL && value->text_length != 0U)) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = format_hex_bytes(
+        database,
+        (const unsigned char *)value->text,
+        value->text_length,
+        &hex_text
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    hex_length = strlen(hex_text);
+    if (hex_length >= sizeof(column->default_text)) {
+        free(hex_text);
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(column->default_text, hex_text, hex_length + 1U);
+    free(hex_text);
     return MYLITE_OK;
 }
 
@@ -97927,6 +98294,7 @@ static bool column_default_kind_has_text_value(
 ) {
     return (default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) != 0;
 }
@@ -97945,6 +98313,7 @@ static bool column_default_kind_materializes_value(
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT ||
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
             default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
@@ -101782,6 +102151,9 @@ static int allocate_insert_column_value(
             out_value
         );
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {
+        return materialize_binary_default_value(database, column, out_value);
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }
@@ -102265,6 +102637,9 @@ static int materialize_dml_default_value(
             out_value
         );
     }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {
+        return materialize_binary_default_value(database, column, out_value);
+    }
     if (column_descriptor_is_approximate(column) &&
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_approximate_default_value(database, column, out_value);
@@ -102297,6 +102672,29 @@ static int materialize_dml_default_value(
         return MYLITE_ERROR;
     }
     return materialize_dml_missing_default_value(database, column, out_value);
+}
+
+static int materialize_binary_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (!column_descriptor_is_binary_string_family(column) ||
+        column_descriptor_is_binary_blob_family(column)) {
+        set_runtime_error(database, "invalid binary default descriptor");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_binary_default_text(database, column->default_text, &bytes, &byte_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return assign_blob_value(database, bytes, byte_count, out_value);
 }
 
 static int validate_default_function_source_value(
@@ -127825,6 +128223,9 @@ static int append_alter_table_add_column_explicit_default(
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return append_alter_table_add_column_bit_default(database, string, plan);
     }
+    if (plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_BINARY) {
+        return append_alter_table_add_column_binary_default(database, string, plan);
+    }
     if (planned_column_is_approximate(&plan->column) &&
         plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         int rc = dynamic_string_append(string, " DEFAULT ");
@@ -127900,6 +128301,22 @@ static int append_alter_table_add_column_bit_default(
     }
     planned_value_deinit(&value);
 
+    return rc;
+}
+
+static int append_alter_table_add_column_binary_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = decode_binary_default_text(database, plan->column.default_text, &bytes, &byte_count);
+
+    if (rc == MYLITE_OK) {
+        rc = append_sqlite_blob_default(string, bytes, byte_count);
+    }
+    free(bytes);
     return rc;
 }
 

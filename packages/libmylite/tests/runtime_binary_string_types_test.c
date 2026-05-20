@@ -23,6 +23,14 @@ enum {
     binary_column_mediumblob = 6,
     binary_column_longblob = 7,
     binary_column_not_null_varbinary = 8,
+    binary_defaults_show_columns_row_count = 12,
+    binary_defaults_information_schema_row_count = 11,
+    binary_defaults_column_v_empty = 5,
+    binary_defaults_column_b0 = 6,
+    binary_defaults_column_v0 = 7,
+    binary_defaults_column_b_zero = 8,
+    binary_defaults_column_v_zero = 9,
+    binary_defaults_column_v_ff = 10,
     mysql_error_parse = 1064,
     mysql_error_column_length_too_big = 1074,
     mysql_error_row_size_too_large = 1118,
@@ -57,6 +65,7 @@ struct expected_dml_result {
 };
 
 static int test_binary_success_persistence_and_introspection(void);
+static int test_binary_defaults(void);
 static int test_binary_diagnostics(void);
 static int test_binary_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -105,6 +114,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_binary_success_persistence_and_introspection();
+    failures += test_binary_defaults();
     failures += test_binary_diagnostics();
     failures += test_binary_independent_handles();
 
@@ -494,6 +504,327 @@ static int test_binary_success_persistence_and_introspection(void) {
     return failures;
 }
 
+static int test_binary_defaults(void) {
+    static const char *const show_columns_rows[] = {
+        "id",      "int",          "YES", "", NULL,   "",
+        "b",       "binary(3)",    "YES", "", "0x41", "",
+        "v",       "varbinary(3)", "YES", "", "0x42", "",
+        "bs",      "binary(3)",    "YES", "", "0x61", "",
+        "vs",      "varbinary(3)", "YES", "", "0x62", "",
+        "b_empty", "binary(3)",    "YES", "", "0x",   "",
+        "v_empty", "varbinary(3)", "YES", "", "",     "",
+        "b0",      "binary(0)",    "YES", "", "",     "",
+        "v0",      "varbinary(0)", "YES", "", "",     "",
+        "b_zero",  "binary(3)",    "YES", "", "0x",   "",
+        "v_zero",  "varbinary(3)", "YES", "", "0x",   "",
+        "v_ff",    "varbinary(3)", "YES", "", "0x41", "",
+    };
+    static const char *const show_create_rows[] = {
+        "defaults_probe",
+        "CREATE TABLE `defaults_probe` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `b` binary(3) DEFAULT 'A\\0\\0',\n"
+        "  `v` varbinary(3) DEFAULT 'B\\0',\n"
+        "  `bs` binary(3) DEFAULT 'a\\0\\0',\n"
+        "  `vs` varbinary(3) DEFAULT 'b',\n"
+        "  `b_empty` binary(3) DEFAULT '\\0\\0\\0',\n"
+        "  `v_empty` varbinary(3) DEFAULT '',\n"
+        "  `b0` binary(0) DEFAULT '',\n"
+        "  `v0` varbinary(0) DEFAULT '',\n"
+        "  `b_zero` binary(3) DEFAULT '\\0\\0\\0',\n"
+        "  `v_zero` varbinary(3) DEFAULT '\\0\\0',\n"
+        "  `v_ff` varbinary(3) DEFAULT 0x4100FF\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_rows[] = {
+        "b", "0x41", "v", "0x42", "bs", "0x61",   "vs", "0x62",   "b_empty", "0x",   "v_empty",
+        "",  "b0",   "",  "v0",   "",   "b_zero", "0x", "v_zero", "0x",      "v_ff", "0x41",
+    };
+    static const unsigned char b_default[] = {0x41U, 0x00U, 0x00U};
+    static const unsigned char v_default[] = {0x42U, 0x00U};
+    static const unsigned char bs_default[] = {0x61U, 0x00U, 0x00U};
+    static const unsigned char vs_default[] = {0x62U};
+    static const unsigned char b_empty_default[] = {0x00U, 0x00U, 0x00U};
+    static const unsigned char b_zero_default[] = {0x00U, 0x00U, 0x00U};
+    static const unsigned char v_zero_default[] = {0x00U, 0x00U};
+    static const unsigned char v_ff_default[] = {0x41U, 0x00U, 0xffU};
+    static const unsigned char replacement_b[] = {0x41U, 0x00U};
+    static const unsigned char add_b[] = {0x41U, 0x00U};
+    static const unsigned char add_v[] = {0x42U};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_result *result = NULL;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary defaults file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE defaults_probe ("
+        "id INT, "
+        "b BINARY(3) DEFAULT X'41', "
+        "v VARBINARY(3) DEFAULT X'4200', "
+        "bs BINARY(3) DEFAULT 'a', "
+        "vs VARBINARY(3) DEFAULT 'b', "
+        "b_empty BINARY(3) DEFAULT X'', "
+        "v_empty VARBINARY(3) DEFAULT X'', "
+        "b0 BINARY(0) DEFAULT X'', "
+        "v0 VARBINARY(0) DEFAULT X'', "
+        "b_zero BINARY(3) DEFAULT X'0000', "
+        "v_zero VARBINARY(3) DEFAULT X'0000', "
+        "v_ff VARBINARY(3) DEFAULT X'4100FF')"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM defaults_probe",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = binary_defaults_show_columns_row_count,
+            .context = "binary defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE defaults_probe",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "binary defaults SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'defaults_probe' "
+                   "AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = 2U,
+            .row_count = binary_defaults_information_schema_row_count,
+            .context = "binary defaults INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO defaults_probe (id) VALUES (1)", 1);
+    failures += execute_ok(
+        database,
+        "SELECT b, v, bs, vs, b_empty, v_empty, b0, v0, b_zero, v_zero, v_ff "
+        "FROM defaults_probe WHERE id = 1",
+        &result
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = b_default, .size = sizeof(b_default)},
+        "BINARY hex default padding"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = v_default, .size = sizeof(v_default)},
+        "VARBINARY hex default preserves bytes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.bytes = bs_default, .size = sizeof(bs_default)},
+        "BINARY string default padding"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = vs_default, .size = sizeof(vs_default)},
+        "VARBINARY string default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        4U,
+        (struct expected_bytes){.bytes = b_empty_default, .size = sizeof(b_empty_default)},
+        "BINARY empty default padding"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_v_empty,
+        (struct expected_bytes){.bytes = (const unsigned char *)"", .size = 0U},
+        "VARBINARY empty default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_b0,
+        (struct expected_bytes){.bytes = (const unsigned char *)"", .size = 0U},
+        "BINARY(0) empty default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_v0,
+        (struct expected_bytes){.bytes = (const unsigned char *)"", .size = 0U},
+        "VARBINARY(0) empty default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_b_zero,
+        (struct expected_bytes){.bytes = b_zero_default, .size = sizeof(b_zero_default)},
+        "BINARY zero default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_v_zero,
+        (struct expected_bytes){.bytes = v_zero_default, .size = sizeof(v_zero_default)},
+        "VARBINARY zero default"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        binary_defaults_column_v_ff,
+        (struct expected_bytes){.bytes = v_ff_default, .size = sizeof(v_ff_default)},
+        "VARBINARY high-byte default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_dml_ok(database, "UPDATE defaults_probe SET v = X'5A' WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE defaults_probe SET v = DEFAULT WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE defaults_probe SET v = DEFAULT WHERE id = 1", 0);
+    failures += execute_ok(database, "SELECT v FROM defaults_probe WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = v_default, .size = sizeof(v_default)},
+        "UPDATE DEFAULT restores VARBINARY bytes"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE replace_defaults (id INT PRIMARY KEY, b BINARY(2) DEFAULT X'41')"
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO replace_defaults VALUES (1, X'42')", 1);
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO replace_defaults (id, b) VALUES (1, DEFAULT)", 2);
+    failures += execute_ok(database, "SELECT b FROM replace_defaults WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = replacement_b, .size = sizeof(replacement_b)},
+        "REPLACE DEFAULT materializes BINARY default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE add_defaults (id INT)");
+    failures += expect_dml_ok(database, "INSERT INTO add_defaults VALUES (1)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_defaults ADD COLUMN b BINARY(2) DEFAULT X'41'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_defaults ADD COLUMN v VARBINARY(2) DEFAULT X'42'"
+    );
+    failures += execute_ok(database, "SELECT b, v FROM add_defaults WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = add_b, .size = sizeof(add_b)},
+        "ALTER ADD BINARY default backfill"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = add_v, .size = sizeof(add_v)},
+        "ALTER ADD VARBINARY default backfill"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE set_defaults (id INT, b BINARY(2))");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE set_defaults ALTER COLUMN b SET DEFAULT X'41'");
+    failures += expect_dml_ok(database, "INSERT INTO set_defaults (id) VALUES (1)", 1);
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE set_defaults ALTER COLUMN b DROP DEFAULT");
+    failures += execute_ok(database, "SHOW CREATE TABLE set_defaults", &result);
+    failures += expect_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "`b` binary(2)",
+        "ALTER DROP DEFAULT binary SHOW CREATE"
+    );
+    failures += expect_true(
+        strstr(mylite_result_value_text(result, 0U, 1U), "`b` binary(2) DEFAULT") == NULL,
+        "ALTER DROP DEFAULT removes binary default rendering"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE defaults_clone LIKE defaults_probe");
+    failures += expect_dml_ok(database, "INSERT INTO defaults_clone (id) VALUES (2)", 1);
+    failures += execute_ok(database, "SELECT b FROM defaults_clone WHERE id = 2", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = b_default, .size = sizeof(b_default)},
+        "CREATE TABLE LIKE preserves binary default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read binary default preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "binary defaults file preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen binary defaults file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += execute_ok(database, "SELECT b FROM defaults_clone WHERE id = 2", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = b_default, .size = sizeof(b_default)},
+        "binary default reopen persistence"
+    );
+    mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_binary_diagnostics(void) {
     static const unsigned char truncated_b[] = {0x01U, 0x02U, 0x03U};
     static const unsigned char implicit_nn[] = {0x00U, 0x00U};
@@ -536,9 +867,20 @@ static int test_binary_diagnostics(void) {
             .message_part = "Row size too large",
         }
     );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE binary_default_ok (b BINARY(3) DEFAULT 'a')");
     failures += execute_error(
         database,
-        "CREATE TABLE bad_default (b BINARY(3) DEFAULT 'a')",
+        "CREATE TABLE bad_binary_default (b BINARY(3) DEFAULT X'41424344')",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_varbinary_default (v VARBINARY(3) DEFAULT X'41424344')",
         (struct expected_sql_error){
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",

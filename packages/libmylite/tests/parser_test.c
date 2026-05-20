@@ -22735,7 +22735,18 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("CREATE TABLE t (id INT DEFAULT 0x1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("CREATE TABLE t (b BINARY(2) DEFAULT 0x1);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_literal(
+        child_at(
+            first_child_kind(
+                child_at(child_at(child_at(result.root, 0U), 1U), 0U),
+                MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "hex binary default"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

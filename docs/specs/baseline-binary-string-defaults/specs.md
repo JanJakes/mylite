@@ -56,15 +56,13 @@ slice:
 - Omitted-column `INSERT`, explicit `DEFAULT` in admitted `INSERT`, `REPLACE`,
   and `UPDATE`, and `ALTER TABLE ... ADD COLUMN ... DEFAULT` materialize the
   descriptor default bytes.
-- `SHOW CREATE TABLE` renders binary defaults as either quoted binary strings
-  with MySQL escapes or hexadecimal literals when non-display bytes make that
-  the MySQL rendering. MyLite may render a hexadecimal literal for all
-  supported binary defaults in this slice because it is semantically equivalent
-  SQL and deterministic.
+- `SHOW CREATE TABLE` renders binary defaults as quoted binary strings when the
+  converted bytes are printable ASCII or `0x00`, and as hexadecimal literals
+  when non-display bytes make that the MySQL rendering.
 - `SHOW COLUMNS` and `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` report binary
-  defaults as text. MySQL trims trailing `0x00` bytes in this metadata
-  representation and reports `0x` for all-zero nonempty binary defaults. Empty
-  `VARBINARY` defaults display as the empty string.
+  defaults as text. MySQL's metadata representation stops at the first
+  `0x00` byte and reports `0x` when a nonempty default starts with `0x00`.
+  Zero-length `BINARY` and `VARBINARY` defaults display as the empty string.
 - BLOB-family literal defaults without parentheses are rejected by MySQL.
   BLOB-family expression defaults such as `DEFAULT (X'41')` are accepted by
   MySQL but remain outside this slice because MyLite's general expression
@@ -137,8 +135,11 @@ authoritative default.
 
 `BINARY(n)` defaults are padded with `0x00` to exactly `n` bytes. `BINARY(0)`
 defaults store zero bytes. `VARBINARY(n)` defaults store exactly the decoded
-bytes and accept zero bytes. Overlength defaults return MySQL-style invalid
-default diagnostics instead of truncating.
+bytes and accept zero bytes. Converted defaults must fit the current catalog
+default payload envelope, which stores the bytes as uppercase hex text and
+therefore admits up to 511 converted bytes in this slice. Overlength defaults
+or defaults outside that payload envelope return MySQL-style invalid-default
+diagnostics instead of truncating.
 
 Durable catalog storage uses a new binary default kind whose `default_text`
 payload is an uppercase hexadecimal encoding of the converted bytes. This keeps
@@ -147,17 +148,17 @@ authoritative. The hexadecimal payload is internal descriptor data, not the
 user-visible default rendering.
 
 `SHOW COLUMNS` and `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` decode the
-catalog payload, trim trailing zero bytes for display, and return:
+catalog payload, stop at the first zero byte for display, and return:
 
-- an empty string for zero-length `VARBINARY` defaults;
+- an empty string for zero-length `BINARY` and `VARBINARY` defaults;
 - `0x` for nonempty defaults whose display bytes are all trimmed away;
 - `0x` followed by uppercase hex digits for remaining bytes.
 
-`SHOW CREATE TABLE` renders binary defaults as deterministic hexadecimal SQL
-literals. This may differ cosmetically from MySQL's quoted-string rendering for
-printable byte sequences, but it is equivalent SQL for the supported subset and
-avoids relying on MySQL's display heuristic. Tests must verify stored bytes,
-metadata defaults, and the accepted generated DDL shape.
+`SHOW CREATE TABLE` renders binary defaults as deterministic MySQL-compatible
+SQL text for the supported byte shapes: quoted binary strings for printable
+ASCII and `0x00` bytes, and hexadecimal literals when non-display bytes are
+present. Tests must verify stored bytes, metadata defaults, and the accepted
+generated DDL shape.
 
 ## Ownership Boundary
 

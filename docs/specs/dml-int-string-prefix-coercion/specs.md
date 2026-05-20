@@ -77,9 +77,16 @@ Runtime probes establish these expectations for this slice:
   targets, rounds half away from zero, and stores the rounded integer without a
   warning. Examples: `'1.5'` stores `2`, `'-2.5'` stores `-3`, and `'1e2'`
   stores `100`.
+- Strict DML preserves exact integer-family boundary behavior for admitted
+  decimal and exponent strings inside MyLite's physical integer envelope.
+  Examples: `'9223372036854775807.0'` and
+  `'9.223372036854775807e18'` store `9223372036854775807`.
+- Strict DML accepts incomplete exponent markers at end-of-token with no
+  warning. Examples: `'1e'`, `'1e+'`, and `'1e-'` store `1`.
 - Strict DML rejects a numeric prefix followed by non-whitespace trailing text
   with error `1265 / 01000`, `Data truncated for column '<column>' at row <n>`.
-  Examples include `'123abc'`, `'1.2abc'`, and `'1e2x'`.
+  Examples include `'123abc'`, `'1.2abc'`, `'1e2x'`, `'1efoo'`, `'1.foo'`,
+  and `'0x10'`.
 - Strict DML rejects strings that do not start with a number after leading
   whitespace with error `1366 / HY000`,
   `Incorrect integer value: '<value>' for column '<column>' at row <n>`.
@@ -188,24 +195,27 @@ The decoded byte string is scanned as follows:
    and carriage return.
 2. Accept an optional `+` or `-` sign only when the next byte begins a numeric
    token. A sign followed by whitespace is invalid.
-3. Accept a C-locale numeric token over ASCII bytes:
+3. Accept a MyLite-owned decimal token over ASCII bytes:
    - decimal digits;
    - optional decimal point where MySQL's observed integer assignment accepts
      the token;
    - optional exponent with `e` or `E`, optional exponent sign, and exponent
      digits where MySQL's observed integer assignment accepts the token.
+   Incomplete exponent suffixes at the end of the token are consumed for
+   diagnostic purposes but do not change the numeric value.
 4. If no numeric token is found, the string is invalid.
 5. If the remaining suffix contains only ASCII whitespace, conversion is exact
    for diagnostic purposes.
 6. If the remaining suffix contains any non-whitespace byte, conversion is
    truncated.
 
-Integer-only prefixes are parsed through MyLite's exact unsigned-magnitude
-parser so large integer strings do not lose precision before range checking.
-Decimal or exponent prefixes are parsed with MyLite's existing finite C-locale
-floating parser, then rounded half away from zero before integer range
-checking. The rounded value must fit MyLite's current absolute integer
-conversion envelope before it can be passed to descriptor range conversion.
+Integer, decimal, and exponent prefixes are parsed through MyLite's
+precision-preserving decimal scanner so large integer-family boundary strings
+do not lose precision before range checking. Decimal and exponent prefixes are
+rounded half away from zero through decimal digit and exponent arithmetic, not
+through binary floating-point conversion. The rounded absolute value must fit
+MyLite's current unsigned 64-bit conversion envelope before it can be passed to
+descriptor range conversion.
 
 ### Strict Mode
 

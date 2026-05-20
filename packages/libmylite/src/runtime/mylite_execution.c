@@ -102706,8 +102706,9 @@ static enum dml_numeric_string_parse_result round_dml_integer_decimal_scan(
     }
 
     *out_magnitude = 0U;
-    *out_is_negative = false;
+    *out_is_negative = scan->is_negative;
     if (dml_integer_decimal_token_has_only_zero_digits(scan)) {
+        *out_is_negative = false;
         return DML_NUMERIC_STRING_PARSE_OK;
     }
 

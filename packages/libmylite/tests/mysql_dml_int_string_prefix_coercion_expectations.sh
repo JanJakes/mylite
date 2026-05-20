@@ -226,6 +226,23 @@ row	4	100	0	9223372036854775807	0" \
     "$DATABASE"
 
 expect_output \
+    "insert ignore negative overflow clipping" \
+    "Warning	1264	Out of range value for column 'b' at row 1
+Warning	1264	Out of range value for column 'b' at row 2
+status	2	2	0
+row	5	-9223372036854775808
+row	6	-9223372036854775808" \
+    "SET sql_mode='STRICT_TRANS_TABLES'; "\
+"TRUNCATE nums; "\
+"INSERT IGNORE INTO nums(id, b) VALUES "\
+"(5, '-999999999999999999999999'), (6, '-1e100'); "\
+"GET DIAGNOSTICS @rc = ROW_COUNT, @cond = NUMBER; "\
+"SHOW WARNINGS; "\
+"SELECT 'status', @rc, @cond, @@error_count; "\
+"SELECT 'row', id, b FROM nums ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "nonstrict update matched rows warn no-match does not" \
     "Warning	1265	Data truncated for column 'i' at row 1
 Warning	1265	Data truncated for column 'i' at row 2

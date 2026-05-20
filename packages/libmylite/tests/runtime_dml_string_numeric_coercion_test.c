@@ -408,6 +408,20 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
         "1366",
         "Incorrect integer value: 'abc123' for column 'bi' at row 1",
     };
+    static const char *const negative_overflow_warnings[] = {
+        "Warning",
+        "1264",
+        "Out of range value for column 'bi' at row 1",
+        "Warning",
+        "1264",
+        "Out of range value for column 'bi' at row 2",
+    };
+    static const char *const negative_overflow_rows[] = {
+        "23",
+        "-9223372036854775808",
+        "24",
+        "-9223372036854775808",
+    };
     static const char *const adjusted_rows[] = {
         "22",
         "123",
@@ -588,6 +602,32 @@ static int test_integer_string_prefix_scanning_and_adjustment(void) {
             .column_count = 3U,
             .row_count = 3U,
             .context = "INSERT IGNORE integer string warnings",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO nums(id, bi) VALUES "
+        "(23, '-999999999999999999999999'), (24, '-1e100')",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = negative_overflow_warnings,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "INSERT IGNORE negative integer overflow warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, bi FROM nums WHERE id IN (23, 24) ORDER BY id",
+            .values = negative_overflow_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "INSERT IGNORE negative integer overflow rows",
         }
     );
 

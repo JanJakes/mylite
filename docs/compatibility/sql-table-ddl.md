@@ -29,10 +29,12 @@ views or a privilege engine.
 ## CREATE TABLE and table options
 
 The representative WordPress core setup shapes in
-`docs/specs/baseline-wordpress-core-ddl-fixtures/specs.md` are covered as
-combined fixture paths over the current limited `CREATE TABLE`, default,
-charset/collation, auto-increment, and index surfaces. This is not a full
-WordPress schema or `dbDelta()` compatibility claim.
+`docs/specs/baseline-wordpress-core-ddl-fixtures/specs.md` and
+`docs/specs/baseline-wordpress-posts-comments-ddl-fixtures/specs.md` are
+covered as combined fixture paths over the current limited `CREATE TABLE`,
+default, charset/collation, auto-increment, text, zero-temporal,
+prefix/composite index, and metadata surfaces. This is not a full WordPress
+schema or `dbDelta()` compatibility claim.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

@@ -37,6 +37,18 @@ expect_output() {
     fi
 }
 
+expect_output_rstrip() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql "$sql" "$@" | sed 's/[[:space:]]*$//')
+    if [ "$output" != "$expected" ]; then
+        fail "$label: expected [$expected], got [$output]"
+    fi
+}
+
 expect_error() {
     label=$1
     expected=$2
@@ -98,6 +110,59 @@ setup_sql="SET sql_mode = ''; "\
 "PRIMARY KEY (option_id), "\
 "UNIQUE KEY option_name (option_name), "\
 "KEY autoload (autoload)"\
+") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci; "\
+"CREATE TABLE wp_posts ("\
+"ID bigint(20) unsigned NOT NULL auto_increment, "\
+"post_author bigint(20) unsigned NOT NULL default '0', "\
+"post_date datetime NOT NULL default '0000-00-00 00:00:00', "\
+"post_date_gmt datetime NOT NULL default '0000-00-00 00:00:00', "\
+"post_content longtext NOT NULL, "\
+"post_title text NOT NULL, "\
+"post_excerpt text NOT NULL, "\
+"post_status varchar(20) NOT NULL default 'publish', "\
+"comment_status varchar(20) NOT NULL default 'open', "\
+"ping_status varchar(20) NOT NULL default 'open', "\
+"post_password varchar(255) NOT NULL default '', "\
+"post_name varchar(200) NOT NULL default '', "\
+"to_ping text NOT NULL, "\
+"pinged text NOT NULL, "\
+"post_modified datetime NOT NULL default '0000-00-00 00:00:00', "\
+"post_modified_gmt datetime NOT NULL default '0000-00-00 00:00:00', "\
+"post_content_filtered longtext NOT NULL, "\
+"post_parent bigint(20) unsigned NOT NULL default '0', "\
+"guid varchar(255) NOT NULL default '', "\
+"menu_order int(11) NOT NULL default '0', "\
+"post_type varchar(20) NOT NULL default 'post', "\
+"post_mime_type varchar(100) NOT NULL default '', "\
+"comment_count bigint(20) NOT NULL default '0', "\
+"PRIMARY KEY (ID), "\
+"KEY post_name (post_name(191)), "\
+"KEY type_status_date (post_type,post_status,post_date,ID), "\
+"KEY post_parent (post_parent), "\
+"KEY post_author (post_author)"\
+") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci; "\
+"CREATE TABLE wp_comments ("\
+"comment_ID bigint(20) unsigned NOT NULL auto_increment, "\
+"comment_post_ID bigint(20) unsigned NOT NULL default '0', "\
+"comment_author tinytext NOT NULL, "\
+"comment_author_email varchar(100) NOT NULL default '', "\
+"comment_author_url varchar(200) NOT NULL default '', "\
+"comment_author_IP varchar(100) NOT NULL default '', "\
+"comment_date datetime NOT NULL default '0000-00-00 00:00:00', "\
+"comment_date_gmt datetime NOT NULL default '0000-00-00 00:00:00', "\
+"comment_content text NOT NULL, "\
+"comment_karma int(11) NOT NULL default '0', "\
+"comment_approved varchar(20) NOT NULL default '1', "\
+"comment_agent varchar(255) NOT NULL default '', "\
+"comment_type varchar(20) NOT NULL default 'comment', "\
+"comment_parent bigint(20) unsigned NOT NULL default '0', "\
+"user_id bigint(20) unsigned NOT NULL default '0', "\
+"PRIMARY KEY (comment_ID), "\
+"KEY comment_post_ID (comment_post_ID), "\
+"KEY comment_approved_date_gmt (comment_approved,comment_date_gmt), "\
+"KEY comment_date_gmt (comment_date_gmt), "\
+"KEY comment_parent (comment_parent), "\
+"KEY comment_author_email (comment_author_email(10))"\
 ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci; "\
 "CREATE TABLE wp_postmeta ("\
 "meta_id bigint(20) unsigned NOT NULL auto_increment, "\
@@ -230,6 +295,193 @@ expect_output \
     "wp_options show create" \
     "$wp_options_create_expected" \
     "SHOW CREATE TABLE wp_options;" \
+    "$DATABASE"
+
+wp_posts_create_expected=$(cat <<\EXPECTED
+wp_posts	CREATE TABLE `wp_posts` (
+  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `post_author` bigint unsigned NOT NULL DEFAULT '0',
+  `post_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `post_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `post_content` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_title` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_excerpt` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'publish',
+  `comment_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'open',
+  `ping_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'open',
+  `post_password` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `post_name` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `to_ping` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `pinged` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_modified` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `post_modified_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `post_content_filtered` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_parent` bigint unsigned NOT NULL DEFAULT '0',
+  `guid` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `menu_order` int NOT NULL DEFAULT '0',
+  `post_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'post',
+  `post_mime_type` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_count` bigint NOT NULL DEFAULT '0',
+  PRIMARY KEY (`ID`),
+  KEY `post_name` (`post_name`(191)),
+  KEY `type_status_date` (`post_type`,`post_status`,`post_date`,`ID`),
+  KEY `post_parent` (`post_parent`),
+  KEY `post_author` (`post_author`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci
+EXPECTED
+)
+expect_output \
+    "wp_posts show create" \
+    "$wp_posts_create_expected" \
+    "SHOW CREATE TABLE wp_posts;" \
+    "$DATABASE"
+
+wp_posts_show_index_expected=$(cat <<\EXPECTED
+wp_posts	0	PRIMARY	1	ID	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	post_name	1	post_name	A	0	191	NULL		BTREE			YES	NULL
+wp_posts	1	type_status_date	1	post_type	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	type_status_date	2	post_status	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	type_status_date	3	post_date	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	type_status_date	4	ID	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	post_parent	1	post_parent	A	0	NULL	NULL		BTREE			YES	NULL
+wp_posts	1	post_author	1	post_author	A	0	NULL	NULL		BTREE			YES	NULL
+EXPECTED
+)
+expect_output \
+    "wp_posts show index" \
+    "$wp_posts_show_index_expected" \
+    "SHOW INDEX FROM wp_posts;" \
+    "$DATABASE"
+
+wp_posts_show_column_keys_expected=$(printf '%b' \
+    'ID\tbigint unsigned\tNO\tPRI\tNULL\tauto_increment\n'\
+    'post_date\tdatetime\tNO\t\t0000-00-00 00:00:00\n'\
+    'post_status\tvarchar(20)\tNO\t\tpublish\n'\
+    'post_type\tvarchar(20)\tNO\tMUL\tpost')
+expect_output_rstrip \
+    "wp_posts SHOW COLUMNS key fields" \
+    "$wp_posts_show_column_keys_expected" \
+    "SHOW COLUMNS FROM wp_posts "\
+"WHERE Field IN ('ID','post_type','post_status','post_date');" \
+    "$DATABASE"
+
+wp_posts_column_keys_expected=$(cat <<\EXPECTED
+ID	PRI
+post_date
+post_status
+post_type	MUL
+EXPECTED
+)
+expect_output_rstrip \
+    "wp_posts information_schema column keys" \
+    "$wp_posts_column_keys_expected" \
+    "SELECT COLUMN_NAME, COLUMN_KEY FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='wp_posts' "\
+"AND COLUMN_NAME IN ('ID','post_type','post_status','post_date') "\
+"ORDER BY ORDINAL_POSITION;" \
+    "$DATABASE"
+
+wp_posts_insert_expected=$(cat <<\EXPECTED
+1	0	1	0	0000-00-00 00:00:00	publish	open	open		0	0	post	0	body	Title	filtered
+EXPECTED
+)
+expect_output \
+    "wp_posts inserted row" \
+    "$wp_posts_insert_expected" \
+    "INSERT INTO wp_posts (post_content, post_title, post_excerpt, to_ping, pinged, "\
+"post_content_filtered) VALUES ('body', 'Title', '', '', '', 'filtered'); "\
+"SELECT ROW_COUNT(), @@warning_count, ID, post_author, post_date, post_status, "\
+"comment_status, ping_status, post_name, post_parent, menu_order, post_type, "\
+"comment_count, post_content, post_title, post_content_filtered FROM wp_posts;" \
+    "$DATABASE"
+
+wp_comments_create_expected=$(cat <<\EXPECTED
+wp_comments	CREATE TABLE `wp_comments` (
+  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `comment_post_ID` bigint unsigned NOT NULL DEFAULT '0',
+  `comment_author` tinytext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_author_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_author_url` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_author_IP` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `comment_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `comment_content` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_karma` int NOT NULL DEFAULT '0',
+  `comment_approved` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '1',
+  `comment_agent` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'comment',
+  `comment_parent` bigint unsigned NOT NULL DEFAULT '0',
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`comment_ID`),
+  KEY `comment_post_ID` (`comment_post_ID`),
+  KEY `comment_approved_date_gmt` (`comment_approved`,`comment_date_gmt`),
+  KEY `comment_date_gmt` (`comment_date_gmt`),
+  KEY `comment_parent` (`comment_parent`),
+  KEY `comment_author_email` (`comment_author_email`(10))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci
+EXPECTED
+)
+expect_output \
+    "wp_comments show create" \
+    "$wp_comments_create_expected" \
+    "SHOW CREATE TABLE wp_comments;" \
+    "$DATABASE"
+
+wp_comments_show_index_expected=$(cat <<\EXPECTED
+wp_comments	0	PRIMARY	1	comment_ID	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_post_ID	1	comment_post_ID	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_approved_date_gmt	1	comment_approved	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_approved_date_gmt	2	comment_date_gmt	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_date_gmt	1	comment_date_gmt	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_parent	1	comment_parent	A	0	NULL	NULL		BTREE			YES	NULL
+wp_comments	1	comment_author_email	1	comment_author_email	A	0	10	NULL		BTREE			YES	NULL
+EXPECTED
+)
+expect_output \
+    "wp_comments show index" \
+    "$wp_comments_show_index_expected" \
+    "SHOW INDEX FROM wp_comments;" \
+    "$DATABASE"
+
+wp_comments_show_column_keys_expected=$(printf '%b' \
+    'comment_ID\tbigint unsigned\tNO\tPRI\tNULL\tauto_increment\n'\
+    'comment_date_gmt\tdatetime\tNO\tMUL\t0000-00-00 00:00:00\n'\
+    'comment_approved\tvarchar(20)\tNO\tMUL\t1\n'\
+    'comment_parent\tbigint unsigned\tNO\tMUL\t0')
+expect_output_rstrip \
+    "wp_comments SHOW COLUMNS key fields" \
+    "$wp_comments_show_column_keys_expected" \
+    "SHOW COLUMNS FROM wp_comments "\
+"WHERE Field IN ('comment_ID','comment_approved','comment_date_gmt','comment_parent');" \
+    "$DATABASE"
+
+wp_comments_column_keys_expected=$(cat <<\EXPECTED
+comment_ID	PRI
+comment_date_gmt	MUL
+comment_approved	MUL
+comment_parent	MUL
+EXPECTED
+)
+expect_output_rstrip \
+    "wp_comments information_schema column keys" \
+    "$wp_comments_column_keys_expected" \
+    "SELECT COLUMN_NAME, COLUMN_KEY FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='wp_comments' "\
+"AND COLUMN_NAME IN ('comment_ID','comment_approved','comment_date_gmt','comment_parent') "\
+"ORDER BY ORDINAL_POSITION;" \
+    "$DATABASE"
+
+wp_comments_insert_expected=$(cat <<\EXPECTED
+1	0	1	0	Jan		0000-00-00 00:00:00	hello	1	comment	0
+EXPECTED
+)
+expect_output \
+    "wp_comments inserted row" \
+    "$wp_comments_insert_expected" \
+    "INSERT INTO wp_comments (comment_author, comment_content) VALUES ('Jan', 'hello'); "\
+"SELECT ROW_COUNT(), @@warning_count, comment_ID, comment_post_ID, comment_author, "\
+"comment_author_email, comment_date, comment_content, comment_approved, comment_type, "\
+"user_id FROM wp_comments;" \
     "$DATABASE"
 
 wp_postmeta_create_expected=$(cat <<\EXPECTED

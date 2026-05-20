@@ -16360,7 +16360,11 @@ static bool column_has_unique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
-static bool column_has_composite_unique_secondary_index(
+static bool column_has_first_composite_unique_secondary_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+);
+static bool column_has_first_nonunique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
@@ -99486,10 +99490,10 @@ static const char *column_key_text(
     if (column_has_unique_secondary_index(indexes, column->column_id)) {
         return "UNI";
     }
-    if (column_has_composite_unique_secondary_index(indexes, column->column_id)) {
+    if (column_has_first_composite_unique_secondary_index(indexes, column->column_id)) {
         return "MUL";
     }
-    if (column_has_nonunique_secondary_index(indexes, column->column_id)) {
+    if (column_has_first_nonunique_secondary_index(indexes, column->column_id)) {
         return "MUL";
     }
     if (column_has_first_fulltext_index(indexes, column->column_id)) {
@@ -99537,19 +99541,30 @@ static bool column_has_unique_secondary_index(
     return false;
 }
 
-static bool column_has_composite_unique_secondary_index(
+static bool column_has_first_composite_unique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 ) {
     for (size_t index = 0U; index < indexes.count; ++index) {
         if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-            indexes.indexes[index].index.is_unique && indexes.indexes[index].part_count > 1U) {
-            for (size_t part_index = 0U; part_index < indexes.indexes[index].part_count;
-                 ++part_index) {
-                if (indexes.indexes[index].parts[part_index].index_column.column_id == column_id) {
-                    return true;
-                }
-            }
+            indexes.indexes[index].index.is_unique && indexes.indexes[index].part_count > 1U &&
+            indexes.indexes[index].parts[0].index_column.column_id == column_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool column_has_first_nonunique_secondary_index(
+    struct loaded_index_info_span indexes,
+    int64_t column_id
+) {
+    for (size_t index = 0U; index < indexes.count; ++index) {
+        if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+            !indexes.indexes[index].index.is_unique && indexes.indexes[index].part_count > 0U &&
+            indexes.indexes[index].parts[0].index_column.column_id == column_id) {
+            return true;
         }
     }
 

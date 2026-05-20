@@ -22,6 +22,13 @@ enum {
     information_schema_columns_column_count = 6,
     statistics_column_count = 6,
     wp_users_column_row_count = 10,
+    wp_posts_column_row_count = 23,
+    wp_posts_index_row_count = 8,
+    wp_posts_projection_column_count = 14,
+    wp_comments_column_row_count = 15,
+    wp_comments_index_row_count = 7,
+    wp_comments_projection_column_count = 9,
+    wp_posts_comments_create_warning_count = 5,
     wp_postmeta_column_row_count = 4,
     wp_postmeta_index_row_count = 3,
 };
@@ -105,6 +112,33 @@ static int test_wordpress_core_fixture_setup_persistence_and_preamble(void) {
         "https://example.test",
         "yes",
     };
+    static const char *const wp_posts_rows[] = {
+        "1",
+        "0",
+        "0000-00-00 00:00:00",
+        "publish",
+        "open",
+        "open",
+        "",
+        "0",
+        "0",
+        "post",
+        "0",
+        "body",
+        "Title",
+        "filtered",
+    };
+    static const char *const wp_comments_rows[] = {
+        "1",
+        "0",
+        "Jan",
+        "",
+        "0000-00-00 00:00:00",
+        "hello",
+        "1",
+        "comment",
+        "0",
+    };
     static const char *const wp_postmeta_rows[] = {
         "1",
         "1",
@@ -160,6 +194,42 @@ static int test_wordpress_core_fixture_setup_persistence_and_preamble(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "wp_options inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_posts (post_content, post_title, post_excerpt, to_ping, pinged, "
+        "post_content_filtered) VALUES ('body', 'Title', '', '', '', 'filtered')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ID, post_author, post_date, post_status, comment_status, "
+                   "ping_status, post_name, post_parent, menu_order, post_type, "
+                   "comment_count, post_content, post_title, post_content_filtered "
+                   "FROM wp_posts",
+            .values = wp_posts_rows,
+            .column_count = wp_posts_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_posts inserted row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO wp_comments (comment_author, comment_content) VALUES ('Jan', 'hello')",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT comment_ID, comment_post_ID, comment_author, "
+                   "comment_author_email, comment_date, comment_content, "
+                   "comment_approved, comment_type, user_id FROM wp_comments",
+            .values = wp_comments_rows,
+            .column_count = wp_comments_projection_column_count,
+            .row_count = 1U,
+            .context = "wp_comments inserted row",
         }
     );
     failures += expect_dml_ok(
@@ -317,6 +387,73 @@ static int create_wordpress_fixture_tables(mylite_db *database) {
     );
     failures += expect_statement_result(
         database,
+        "CREATE TABLE wp_posts ("
+        "ID bigint(20) unsigned NOT NULL auto_increment, "
+        "post_author bigint(20) unsigned NOT NULL default '0', "
+        "post_date datetime NOT NULL default '0000-00-00 00:00:00', "
+        "post_date_gmt datetime NOT NULL default '0000-00-00 00:00:00', "
+        "post_content longtext NOT NULL, "
+        "post_title text NOT NULL, "
+        "post_excerpt text NOT NULL, "
+        "post_status varchar(20) NOT NULL default 'publish', "
+        "comment_status varchar(20) NOT NULL default 'open', "
+        "ping_status varchar(20) NOT NULL default 'open', "
+        "post_password varchar(255) NOT NULL default '', "
+        "post_name varchar(200) NOT NULL default '', "
+        "to_ping text NOT NULL, "
+        "pinged text NOT NULL, "
+        "post_modified datetime NOT NULL default '0000-00-00 00:00:00', "
+        "post_modified_gmt datetime NOT NULL default '0000-00-00 00:00:00', "
+        "post_content_filtered longtext NOT NULL, "
+        "post_parent bigint(20) unsigned NOT NULL default '0', "
+        "guid varchar(255) NOT NULL default '', "
+        "menu_order int(11) NOT NULL default '0', "
+        "post_type varchar(20) NOT NULL default 'post', "
+        "post_mime_type varchar(100) NOT NULL default '', "
+        "comment_count bigint(20) NOT NULL default '0', "
+        "PRIMARY KEY (ID), "
+        "KEY post_name (post_name(191)), "
+        "KEY type_status_date (post_type, post_status, post_date, ID), "
+        "KEY post_parent (post_parent), "
+        "KEY post_author (post_author)"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_posts_comments_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE TABLE wp_comments ("
+        "comment_ID bigint(20) unsigned NOT NULL auto_increment, "
+        "comment_post_ID bigint(20) unsigned NOT NULL default '0', "
+        "comment_author tinytext NOT NULL, "
+        "comment_author_email varchar(100) NOT NULL default '', "
+        "comment_author_url varchar(200) NOT NULL default '', "
+        "comment_author_IP varchar(100) NOT NULL default '', "
+        "comment_date datetime NOT NULL default '0000-00-00 00:00:00', "
+        "comment_date_gmt datetime NOT NULL default '0000-00-00 00:00:00', "
+        "comment_content text NOT NULL, "
+        "comment_karma int(11) NOT NULL default '0', "
+        "comment_approved varchar(20) NOT NULL default '1', "
+        "comment_agent varchar(255) NOT NULL default '', "
+        "comment_type varchar(20) NOT NULL default 'comment', "
+        "comment_parent bigint(20) unsigned NOT NULL default '0', "
+        "user_id bigint(20) unsigned NOT NULL default '0', "
+        "PRIMARY KEY (comment_ID), "
+        "KEY comment_post_ID (comment_post_ID), "
+        "KEY comment_approved_date_gmt (comment_approved, comment_date_gmt), "
+        "KEY comment_date_gmt (comment_date_gmt), "
+        "KEY comment_parent (comment_parent), "
+        "KEY comment_author_email (comment_author_email(10))"
+        ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci",
+        (struct expected_dml_result){
+            .affected_rows = 1,
+            .warning_count = wp_posts_comments_create_warning_count,
+        }
+    );
+    failures += expect_statement_result(
+        database,
         "CREATE TABLE wp_postmeta ("
         "meta_id bigint(20) unsigned NOT NULL auto_increment, "
         "post_id bigint(20) unsigned NOT NULL default '0', "
@@ -395,6 +532,238 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "",
         "",
     };
+    static const char *const wp_posts_columns[] = {
+        "ID",
+        "bigint unsigned",
+        "NO",
+        "PRI",
+        NULL,
+        "auto_increment",
+        "post_author",
+        "bigint unsigned",
+        "NO",
+        "MUL",
+        "0",
+        "",
+        "post_date",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "post_date_gmt",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "post_content",
+        "longtext",
+        "NO",
+        "",
+        NULL,
+        "",
+        "post_title",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "post_excerpt",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "post_status",
+        "varchar(20)",
+        "NO",
+        "",
+        "publish",
+        "",
+        "comment_status",
+        "varchar(20)",
+        "NO",
+        "",
+        "open",
+        "",
+        "ping_status",
+        "varchar(20)",
+        "NO",
+        "",
+        "open",
+        "",
+        "post_password",
+        "varchar(255)",
+        "NO",
+        "",
+        "",
+        "",
+        "post_name",
+        "varchar(200)",
+        "NO",
+        "MUL",
+        "",
+        "",
+        "to_ping",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "pinged",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "post_modified",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "post_modified_gmt",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "post_content_filtered",
+        "longtext",
+        "NO",
+        "",
+        NULL,
+        "",
+        "post_parent",
+        "bigint unsigned",
+        "NO",
+        "MUL",
+        "0",
+        "",
+        "guid",
+        "varchar(255)",
+        "NO",
+        "",
+        "",
+        "",
+        "menu_order",
+        "int",
+        "NO",
+        "",
+        "0",
+        "",
+        "post_type",
+        "varchar(20)",
+        "NO",
+        "MUL",
+        "post",
+        "",
+        "post_mime_type",
+        "varchar(100)",
+        "NO",
+        "",
+        "",
+        "",
+        "comment_count",
+        "bigint",
+        "NO",
+        "",
+        "0",
+        "",
+    };
+    static const char *const wp_comments_columns[] = {
+        "comment_ID",
+        "bigint unsigned",
+        "NO",
+        "PRI",
+        NULL,
+        "auto_increment",
+        "comment_post_ID",
+        "bigint unsigned",
+        "NO",
+        "MUL",
+        "0",
+        "",
+        "comment_author",
+        "tinytext",
+        "NO",
+        "",
+        NULL,
+        "",
+        "comment_author_email",
+        "varchar(100)",
+        "NO",
+        "MUL",
+        "",
+        "",
+        "comment_author_url",
+        "varchar(200)",
+        "NO",
+        "",
+        "",
+        "",
+        "comment_author_IP",
+        "varchar(100)",
+        "NO",
+        "",
+        "",
+        "",
+        "comment_date",
+        "datetime",
+        "NO",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "comment_date_gmt",
+        "datetime",
+        "NO",
+        "MUL",
+        "0000-00-00 00:00:00",
+        "",
+        "comment_content",
+        "text",
+        "NO",
+        "",
+        NULL,
+        "",
+        "comment_karma",
+        "int",
+        "NO",
+        "",
+        "0",
+        "",
+        "comment_approved",
+        "varchar(20)",
+        "NO",
+        "MUL",
+        "1",
+        "",
+        "comment_agent",
+        "varchar(255)",
+        "NO",
+        "",
+        "",
+        "",
+        "comment_type",
+        "varchar(20)",
+        "NO",
+        "",
+        "comment",
+        "",
+        "comment_parent",
+        "bigint unsigned",
+        "NO",
+        "MUL",
+        "0",
+        "",
+        "user_id",
+        "bigint unsigned",
+        "NO",
+        "",
+        "0",
+        "",
+    };
     static const char *const wp_users_show_create[] = {
         "wp_users",
         "CREATE TABLE `wp_users` (\n"
@@ -427,6 +796,76 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "  KEY `autoload` (`autoload`)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
     };
+    static const char *const wp_posts_show_create[] = {
+        "wp_posts",
+        "CREATE TABLE `wp_posts` (\n"
+        "  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `post_author` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `post_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `post_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `post_content` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `post_title` text COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `post_excerpt` text COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `post_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'publish',\n"
+        "  `comment_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'open',\n"
+        "  `ping_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'open',\n"
+        "  `post_password` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'',\n"
+        "  `post_name` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `to_ping` text COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `pinged` text COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `post_modified` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `post_modified_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `post_content_filtered` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `post_parent` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `guid` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',\n"
+        "  `menu_order` int NOT NULL DEFAULT '0',\n"
+        "  `post_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'post',\n"
+        "  `post_mime_type` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'',\n"
+        "  `comment_count` bigint NOT NULL DEFAULT '0',\n"
+        "  PRIMARY KEY (`ID`),\n"
+        "  KEY `post_name` (`post_name`(191)),\n"
+        "  KEY `type_status_date` (`post_type`,`post_status`,`post_date`,`ID`),\n"
+        "  KEY `post_parent` (`post_parent`),\n"
+        "  KEY `post_author` (`post_author`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
+    static const char *const wp_comments_show_create[] = {
+        "wp_comments",
+        "CREATE TABLE `wp_comments` (\n"
+        "  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `comment_post_ID` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `comment_author` tinytext COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `comment_author_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL "
+        "DEFAULT '',\n"
+        "  `comment_author_url` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL "
+        "DEFAULT '',\n"
+        "  `comment_author_IP` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL "
+        "DEFAULT '',\n"
+        "  `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `comment_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n"
+        "  `comment_content` text COLLATE utf8mb4_unicode_520_ci NOT NULL,\n"
+        "  `comment_karma` int NOT NULL DEFAULT '0',\n"
+        "  `comment_approved` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'1',\n"
+        "  `comment_agent` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'',\n"
+        "  `comment_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT "
+        "'comment',\n"
+        "  `comment_parent` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  `user_id` bigint unsigned NOT NULL DEFAULT '0',\n"
+        "  PRIMARY KEY (`comment_ID`),\n"
+        "  KEY `comment_post_ID` (`comment_post_ID`),\n"
+        "  KEY `comment_approved_date_gmt` (`comment_approved`,`comment_date_gmt`),\n"
+        "  KEY `comment_date_gmt` (`comment_date_gmt`),\n"
+        "  KEY `comment_parent` (`comment_parent`),\n"
+        "  KEY `comment_author_email` (`comment_author_email`(10))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+    };
     static const char *const wp_postmeta_show_create[] = {
         "wp_postmeta",
         "CREATE TABLE `wp_postmeta` (\n"
@@ -449,6 +888,155 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "wp_postmeta", "1", "meta_key", "1",   "meta_key",
         "A",           "0", "191",      NULL,  "YES",
         "BTREE",       "",  "",         "YES", NULL,
+    };
+    static const char *const wp_posts_show_index[] = {
+        "wp_posts", "0",           "PRIMARY",
+        "1",        "ID",          "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "post_name",
+        "1",        "post_name",   "A",
+        "0",        "191",         NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "type_status_date",
+        "1",        "post_type",   "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "type_status_date",
+        "2",        "post_status", "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "type_status_date",
+        "3",        "post_date",   "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "type_status_date",
+        "4",        "ID",          "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "post_parent",
+        "1",        "post_parent", "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+        "wp_posts", "1",           "post_author",
+        "1",        "post_author", "A",
+        "0",        NULL,          NULL,
+        "",         "BTREE",       "",
+        "",         "YES",         NULL,
+    };
+    static const char *const wp_comments_show_index[] = {
+        "wp_comments",
+        "0",
+        "PRIMARY",
+        "1",
+        "comment_ID",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_post_ID",
+        "1",
+        "comment_post_ID",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_approved_date_gmt",
+        "1",
+        "comment_approved",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_approved_date_gmt",
+        "2",
+        "comment_date_gmt",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_date_gmt",
+        "1",
+        "comment_date_gmt",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_parent",
+        "1",
+        "comment_parent",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "wp_comments",
+        "1",
+        "comment_author_email",
+        "1",
+        "comment_author_email",
+        "A",
+        "0",
+        "10",
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
     };
     static const char *const wp_postmeta_information_schema_columns[] = {
         "meta_id",
@@ -476,11 +1064,41 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
         "",
         "",
     };
+    static const char *const wp_posts_information_schema_post_content[] = {
+        "post_content",
+        "longtext",
+        "utf8mb4_unicode_520_ci",
+        NULL,
+        "",
+        "",
+    };
+    static const char *const wp_comments_information_schema_author[] = {
+        "comment_author",
+        "tinytext",
+        "utf8mb4_unicode_520_ci",
+        NULL,
+        "",
+        "",
+    };
     static const char *const primary_statistics_rows[] = {
         "PRIMARY",
         "1",
         "meta_id",
         NULL,
+        "",
+        "YES",
+    };
+    static const char *const type_status_date_statistics_rows[] = {
+        "type_status_date", "1", "post_type",   NULL, "", "YES",
+        "type_status_date", "2", "post_status", NULL, "", "YES",
+        "type_status_date", "3", "post_date",   NULL, "", "YES",
+        "type_status_date", "4", "ID",          NULL, "", "YES",
+    };
+    static const char *const comment_author_email_statistics_rows[] = {
+        "comment_author_email",
+        "1",
+        "comment_author_email",
+        "10",
         "",
         "YES",
     };
@@ -510,6 +1128,26 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
             .context = "wp_users columns",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM wp_posts",
+            .values = wp_posts_columns,
+            .column_count = show_columns_column_count,
+            .row_count = wp_posts_column_row_count,
+            .context = "wp_posts columns",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM wp_comments",
+            .values = wp_comments_columns,
+            .column_count = show_columns_column_count,
+            .row_count = wp_comments_column_row_count,
+            .context = "wp_comments columns",
+        }
+    );
 
     if (check_show_create) {
         failures += expect_query_values(
@@ -530,6 +1168,26 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
                 .column_count = show_create_column_count,
                 .row_count = 1U,
                 .context = "wp_options show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_posts",
+                .values = wp_posts_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_posts show create",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW CREATE TABLE wp_comments",
+                .values = wp_comments_show_create,
+                .column_count = show_create_column_count,
+                .row_count = 1U,
+                .context = "wp_comments show create",
             }
         );
         failures += expect_query_values(
@@ -556,6 +1214,26 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_posts",
+            .values = wp_posts_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_posts_index_row_count,
+            .context = "wp_posts SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM wp_comments",
+            .values = wp_comments_show_index,
+            .column_count = show_index_column_count,
+            .row_count = wp_comments_index_row_count,
+            .context = "wp_comments SHOW INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, COLUMN_DEFAULT, "
                    "COLUMN_KEY, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
                    "WHERE TABLE_SCHEMA='wp' AND TABLE_NAME='wp_postmeta' "
@@ -564,6 +1242,32 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
             .column_count = information_schema_columns_column_count,
             .row_count = wp_postmeta_column_row_count,
             .context = "wp_postmeta INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, COLUMN_DEFAULT, "
+                   "COLUMN_KEY, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA='wp' AND TABLE_NAME='wp_posts' "
+                   "AND COLUMN_NAME='post_content'",
+            .values = wp_posts_information_schema_post_content,
+            .column_count = information_schema_columns_column_count,
+            .row_count = 1U,
+            .context = "wp_posts INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, COLUMN_DEFAULT, "
+                   "COLUMN_KEY, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA='wp' AND TABLE_NAME='wp_comments' "
+                   "AND COLUMN_NAME='comment_author'",
+            .values = wp_comments_information_schema_author,
+            .column_count = information_schema_columns_column_count,
+            .row_count = 1U,
+            .context = "wp_comments INFORMATION_SCHEMA.COLUMNS",
         }
     );
     failures += expect_query_values(
@@ -602,6 +1306,30 @@ static int verify_fixture_metadata(mylite_db *database, bool check_show_create) 
             .context = "wp_postmeta post_id statistics",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, NULLABLE, "
+                   "IS_VISIBLE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='wp' "
+                   "AND TABLE_NAME='wp_posts' AND INDEX_NAME='type_status_date'",
+            .values = type_status_date_statistics_rows,
+            .column_count = statistics_column_count,
+            .row_count = 4U,
+            .context = "wp_posts type_status_date statistics",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART, NULLABLE, "
+                   "IS_VISIBLE FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='wp' "
+                   "AND TABLE_NAME='wp_comments' AND INDEX_NAME='comment_author_email'",
+            .values = comment_author_email_statistics_rows,
+            .column_count = statistics_column_count,
+            .row_count = 1U,
+            .context = "wp_comments comment_author_email statistics",
+        }
+    );
 
     return failures;
 }
@@ -613,6 +1341,33 @@ static int verify_fixture_rows(mylite_db *database, const char *context) {
         "siteurl",
         "https://example.test",
         "yes",
+    };
+    static const char *const wp_posts_rows[] = {
+        "1",
+        "0",
+        "0000-00-00 00:00:00",
+        "publish",
+        "open",
+        "open",
+        "",
+        "0",
+        "0",
+        "post",
+        "0",
+        "body",
+        "Title",
+        "filtered",
+    };
+    static const char *const wp_comments_rows[] = {
+        "1",
+        "0",
+        "Jan",
+        "",
+        "0000-00-00 00:00:00",
+        "hello",
+        "1",
+        "comment",
+        "0",
     };
     static const char *const wp_postmeta_rows[] = {
         "1",
@@ -645,6 +1400,31 @@ static int verify_fixture_rows(mylite_db *database, const char *context) {
             .sql = "SELECT option_id, option_name, option_value, autoload FROM wp_options",
             .values = wp_options_rows,
             .column_count = 4U,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ID, post_author, post_date, post_status, comment_status, "
+                   "ping_status, post_name, post_parent, menu_order, post_type, "
+                   "comment_count, post_content, post_title, post_content_filtered "
+                   "FROM wp_posts",
+            .values = wp_posts_rows,
+            .column_count = wp_posts_projection_column_count,
+            .row_count = 1U,
+            .context = context,
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT comment_ID, comment_post_ID, comment_author, "
+                   "comment_author_email, comment_date, comment_content, "
+                   "comment_approved, comment_type, user_id FROM wp_comments",
+            .values = wp_comments_rows,
+            .column_count = wp_comments_projection_column_count,
             .row_count = 1U,
             .context = context,
         }

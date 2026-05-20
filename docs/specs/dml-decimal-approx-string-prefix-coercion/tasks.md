@@ -1,0 +1,19 @@
+# DML Decimal And Approximate String Prefix Coercion Tasks
+
+- [x] Read current compatibility, DML, parser, runtime, numeric conversion,
+  non-strict coercion, SQLite integration, and test context.
+- [x] Research official MySQL 8.4 type-conversion, SQL-mode, and out-of-range
+  documentation.
+- [x] Probe MySQL 8.4.9 runtime behavior for strict, non-strict, and
+  `INSERT IGNORE` decimal/approximate string storage conversion.
+- [x] Write the independent feature spec with ownership boundaries, conversion
+  rules, diagnostics, physical SQLite handling, performance notes, and tests.
+- [x] Add MySQL-runtime expectation script for the feature.
+- [ ] Update compatibility documentation for the exact supported subset.
+- [ ] Implement descriptor-owned decimal and approximate string prefix scanning
+  and warning adjustment for row-value `INSERT`, `REPLACE`, admitted
+  duplicate-key assignments, and matched single-table `UPDATE`.
+- [ ] Add fast C runtime coverage.
+- [ ] Run focused build/tests and the MySQL expectation script.
+- [ ] Run `cmake --workflow --preset check`.
+- [ ] Review, commit, push `main`, and continue to the next baseline slice.

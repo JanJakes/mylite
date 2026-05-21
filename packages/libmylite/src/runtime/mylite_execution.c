@@ -1837,11 +1837,26 @@ struct planned_rename_table_statement {
     size_t pair_count;
 };
 
+struct zero_temporal_default_warning {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+struct zero_temporal_default_warnings {
+    struct zero_temporal_default_warning *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct zero_temporal_default_warning_filter {
+    int64_t skipped_column_id;
+};
+
 struct planned_alter_table_add_column {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct planned_column column;
     struct mylite_catalog_column_descriptor *columns;
+    struct zero_temporal_default_warnings zero_temporal_default_warnings;
     size_t column_count;
     size_t target_column_index;
     bool changes_position;
@@ -2075,6 +2090,7 @@ struct planned_alter_table_modify_column {
     const char *failure_message;
     const char *rowid_alias;
     struct loaded_index_info *indexes;
+    struct zero_temporal_default_warnings zero_temporal_default_warnings;
     size_t index_count;
     int64_t affected_rows;
 };
@@ -2084,6 +2100,7 @@ struct planned_alter_table_set_default {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor original_column;
     struct planned_column column;
+    struct zero_temporal_default_warnings zero_temporal_default_warnings;
 };
 
 struct planned_alter_table_drop_default {
@@ -9905,11 +9922,46 @@ static int plan_alter_table_add_column_position(
     const struct mylite_sql_ast_node *position,
     struct planned_alter_table_add_column *out_plan
 );
+static int finish_alter_table_add_column_plan_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_add_column *out_plan,
+    struct mylite_catalog_column_descriptor **columns,
+    size_t column_count
+);
 static int reject_nonempty_temporal_add_column_without_default(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
     const struct planned_column *column
 );
+static int collect_no_zero_date_default_warnings(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct zero_temporal_default_warning_filter filter,
+    struct zero_temporal_default_warnings *out_warnings
+);
+static int reserve_zero_temporal_default_warnings(
+    struct mylite_db *database,
+    const struct zero_temporal_default_warnings *warnings
+);
+static int append_zero_temporal_default_warnings(
+    struct mylite_db *database,
+    const struct zero_temporal_default_warnings *warnings
+);
+static int append_zero_temporal_default_warning(
+    struct mylite_db *database,
+    const char *column_name
+);
+static bool column_descriptor_has_full_zero_temporal_default(
+    const struct mylite_catalog_column_descriptor *column
+);
+static int append_zero_temporal_default_warning_name(
+    struct mylite_db *database,
+    struct zero_temporal_default_warnings *warnings,
+    const char *column_name
+);
+static void zero_temporal_default_warnings_deinit(struct zero_temporal_default_warnings *warnings);
 static void planned_alter_table_add_column_deinit(struct planned_alter_table_add_column *plan);
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
@@ -10706,6 +10758,7 @@ static int plan_alter_table_set_default(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_set_default *out_plan
 );
+static void planned_alter_table_set_default_deinit(struct planned_alter_table_set_default *plan);
 static int alter_table_set_default_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_set_default *plan
@@ -31279,7 +31332,13 @@ static int execute_alter_table_add_column_statement(
 
     rc = plan_alter_table_add_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_add_column_from_plan(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
     if (rc != MYLITE_OK) {
         planned_alter_table_add_column_deinit(&plan);
@@ -31707,7 +31766,13 @@ static int execute_alter_table_modify_column_statement(
 
     rc = plan_alter_table_modify_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_modify_column_from_plan(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
     if (rc != MYLITE_OK) {
         planned_alter_table_modify_column_deinit(&plan);
@@ -31736,7 +31801,13 @@ static int execute_alter_table_change_column_statement(
 
     rc = plan_alter_table_change_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_modify_column_from_plan(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
     }
     if (rc != MYLITE_OK) {
         planned_alter_table_modify_column_deinit(&plan);
@@ -31765,14 +31836,22 @@ static int execute_alter_table_set_default_statement(
 
     rc = plan_alter_table_set_default(database, statement, &plan);
     if (rc == MYLITE_OK) {
+        rc = reserve_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
+    }
+    if (rc == MYLITE_OK) {
         rc = alter_table_set_default_from_plan(database, &plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = append_zero_temporal_default_warnings(database, &plan.zero_temporal_default_warnings);
+    }
     if (rc != MYLITE_OK) {
+        planned_alter_table_set_default_deinit(&plan);
         mylite_result_free(result);
         return rc;
     }
 
     mylite_result_set_affected_rows(result, 0);
+    planned_alter_table_set_default_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -51299,10 +51378,13 @@ static int plan_alter_table_add_column(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        out_plan->columns = columns;
-        out_plan->column_count = column_count;
-        columns = NULL;
-        rc = plan_alter_table_add_column_position(database, child_at(statement, 2U), out_plan);
+        rc = finish_alter_table_add_column_plan_columns(
+            database,
+            child_at(statement, 2U),
+            out_plan,
+            &columns,
+            column_count
+        );
     }
     if (rc != MYLITE_OK) {
         planned_alter_table_add_column_deinit(out_plan);
@@ -51311,6 +51393,31 @@ static int plan_alter_table_add_column(
     free(columns);
 
     return rc;
+}
+
+static int finish_alter_table_add_column_plan_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *position,
+    struct planned_alter_table_add_column *out_plan,
+    struct mylite_catalog_column_descriptor **columns,
+    size_t column_count
+) {
+    int rc = collect_no_zero_date_default_warnings(
+        database,
+        *columns,
+        column_count,
+        (struct zero_temporal_default_warning_filter){.skipped_column_id = -1},
+        &out_plan->zero_temporal_default_warnings
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->columns = *columns;
+    out_plan->column_count = column_count;
+    *columns = NULL;
+    return plan_alter_table_add_column_position(database, position, out_plan);
 }
 
 static int plan_alter_table_add_column_position(
@@ -51397,12 +51504,132 @@ static int reject_nonempty_temporal_add_column_without_default(
     return MYLITE_ERROR;
 }
 
+static int collect_no_zero_date_default_warnings(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct zero_temporal_default_warning_filter filter,
+    struct zero_temporal_default_warnings *out_warnings
+) {
+    int rc = MYLITE_OK;
+
+    if (!temporal_sql_mode_has_no_zero_date(database) || temporal_sql_mode_is_strict(database)) {
+        return MYLITE_OK;
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        const struct mylite_catalog_column_descriptor *column = &columns[column_index];
+
+        if (column->column_id == filter.skipped_column_id ||
+            !column_descriptor_has_full_zero_temporal_default(column)) {
+            continue;
+        }
+        rc = append_zero_temporal_default_warning_name(database, out_warnings, column->name);
+    }
+
+    return rc;
+}
+
+static int reserve_zero_temporal_default_warnings(
+    struct mylite_db *database,
+    const struct zero_temporal_default_warnings *warnings
+) {
+    if (warnings == NULL || warnings->count == 0U) {
+        return MYLITE_OK;
+    }
+    return reserve_additional_warning_capacity(database, warnings->count);
+}
+
+static int append_zero_temporal_default_warnings(
+    struct mylite_db *database,
+    const struct zero_temporal_default_warnings *warnings
+) {
+    int rc = MYLITE_OK;
+
+    if (warnings == NULL) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < warnings->count; ++index) {
+        rc = append_zero_temporal_default_warning(database, warnings->items[index].column_name);
+    }
+
+    return rc;
+}
+
+static int append_zero_temporal_default_warning(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    return append_out_of_range_warning(database, column_name, 1U);
+}
+
+static bool column_descriptor_has_full_zero_temporal_default(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL || column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
+        return false;
+    }
+    if (column_descriptor_is_date(column)) {
+        return strcmp(column->default_text, "0000-00-00") == 0;
+    }
+    if (column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+        return strcmp(column->default_text, "0000-00-00 00:00:00") == 0;
+    }
+    return false;
+}
+
+static int append_zero_temporal_default_warning_name(
+    struct mylite_db *database,
+    struct zero_temporal_default_warnings *warnings,
+    const char *column_name
+) {
+    struct zero_temporal_default_warning *items = NULL;
+
+    if (warnings == NULL || column_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (warnings->count == warnings->capacity) {
+        size_t new_capacity = warnings->capacity == 0U ? 4U : warnings->capacity * 2U;
+
+        if (new_capacity < warnings->capacity ||
+            new_capacity > SIZE_MAX / sizeof(warnings->items[0])) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = realloc(warnings->items, new_capacity * sizeof(warnings->items[0]));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        warnings->items = items;
+        warnings->capacity = new_capacity;
+    }
+
+    snprintf(
+        warnings->items[warnings->count].column_name,
+        sizeof(warnings->items[warnings->count].column_name),
+        "%s",
+        column_name
+    );
+    ++warnings->count;
+    return MYLITE_OK;
+}
+
+static void zero_temporal_default_warnings_deinit(struct zero_temporal_default_warnings *warnings) {
+    if (warnings == NULL) {
+        return;
+    }
+
+    free(warnings->items);
+    *warnings = (struct zero_temporal_default_warnings){0};
+}
+
 static void planned_alter_table_add_column_deinit(struct planned_alter_table_add_column *plan) {
     if (plan == NULL) {
         return;
     }
 
     free(plan->columns);
+    zero_temporal_default_warnings_deinit(&plan->zero_temporal_default_warnings);
     *plan = (struct planned_alter_table_add_column){0};
 }
 
@@ -57903,10 +58130,30 @@ static int plan_alter_table_set_default(
     } else if (rc == MYLITE_OK) {
         rc = finalize_planned_column_default(database, &out_plan->column);
     }
+    if (rc == MYLITE_OK) {
+        rc = collect_no_zero_date_default_warnings(
+            database,
+            columns,
+            column_count,
+            (struct zero_temporal_default_warning_filter){
+                .skipped_column_id = out_plan->original_column.column_id,
+            },
+            &out_plan->zero_temporal_default_warnings
+        );
+    }
 
     free(columns);
 
     return rc;
+}
+
+static void planned_alter_table_set_default_deinit(struct planned_alter_table_set_default *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    zero_temporal_default_warnings_deinit(&plan->zero_temporal_default_warnings);
+    *plan = (struct planned_alter_table_set_default){0};
 }
 
 static int alter_table_set_default_from_plan(
@@ -58932,6 +59179,17 @@ static int resolve_alter_table_column_replacement_plan(
         rc = resolve_alter_table_modify_column_position(database, columns, column_count, out_plan);
     }
     if (rc == MYLITE_OK) {
+        rc = collect_no_zero_date_default_warnings(
+            database,
+            columns,
+            column_count,
+            (struct zero_temporal_default_warning_filter){
+                .skipped_column_id = out_plan->original_column.column_id,
+            },
+            &out_plan->zero_temporal_default_warnings
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_index_infos(
             database,
             out_plan->table.table_id,
@@ -59329,6 +59587,7 @@ static void planned_alter_table_modify_column_deinit(
     }
 
     free(plan->columns);
+    zero_temporal_default_warnings_deinit(&plan->zero_temporal_default_warnings);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_alter_table_modify_column){0};
 }

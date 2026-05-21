@@ -16,6 +16,8 @@
 enum {
     test_path_capacity = 1024,
     show_columns_column_count = 6,
+    zero_in_date_show_columns_row_count = 5,
+    combined_zero_modes_show_columns_row_count = 3,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
     mysql_error_incorrect_timestamp_value = 1525,
@@ -43,6 +45,7 @@ struct expected_dml_result {
 
 static int test_zero_temporal_dml_modes(void);
 static int test_zero_temporal_defaults_predicates_and_persistence(void);
+static int test_zero_temporal_alter_defaults(void);
 static int test_zero_temporal_update_replace_copy(void);
 static int test_zero_temporal_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -91,6 +94,7 @@ int main(void) {
 
     failures += test_zero_temporal_dml_modes();
     failures += test_zero_temporal_defaults_predicates_and_persistence();
+    failures += test_zero_temporal_alter_defaults();
     failures += test_zero_temporal_update_replace_copy();
     failures += test_zero_temporal_independent_handles();
 
@@ -702,6 +706,496 @@ static int test_zero_temporal_defaults_predicates_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "reopened zero temporal defaults",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_zero_temporal_alter_defaults(void) {
+    static const char *const full_zero_show_rows[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "d",
+        "date",
+        "YES",
+        "",
+        "0000-00-00",
+        "",
+        "dt",
+        "datetime",
+        "YES",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "ts",
+        "timestamp",
+        "YES",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+    };
+    static const char *const full_zero_insert_rows[] = {
+        "1",
+        "0000-00-00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+    };
+    static const char *const no_zero_in_date_show_rows[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "d",
+        "date",
+        "YES",
+        "",
+        "0000-00-00",
+        "",
+        "dt",
+        "datetime",
+        "YES",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+        "t",
+        "time",
+        "YES",
+        "",
+        "00:00:00",
+        "",
+        "y",
+        "year",
+        "YES",
+        "",
+        "0000",
+        "",
+    };
+    static const char *const combined_zero_modes_show_rows[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "d",
+        "date",
+        "YES",
+        "",
+        "0000-00-00",
+        "",
+        "dt",
+        "datetime",
+        "YES",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+    };
+    static const char *const modify_change_rows[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "dt2",
+        "datetime",
+        "YES",
+        "",
+        "2024-01-00 00:00:00",
+        "",
+        "ts3",
+        "timestamp",
+        "YES",
+        "",
+        "0000-00-00 00:00:00",
+        "",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter defaults file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(database, "CREATE TABLE add_empty (id INT)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_empty ADD COLUMN d DATE DEFAULT '0000-00-00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_empty ADD COLUMN dt DATETIME DEFAULT '0000-00-00 00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_empty ADD COLUMN ts TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00'"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM add_empty",
+            .values = full_zero_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 4U,
+            .context = "empty sql_mode ALTER ADD zero defaults metadata",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO add_empty (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, dt, ts FROM add_empty",
+            .values = full_zero_insert_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "empty sql_mode ALTER ADD zero defaults materialized",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE'");
+    failures += expect_statement_ok(database, "CREATE TABLE add_no_zero_date (id INT)");
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_no_zero_date ADD COLUMN d DATE DEFAULT '0000-00-00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_no_zero_date ADD COLUMN dt DATETIME DEFAULT '0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_no_zero_date ADD COLUMN ts TIMESTAMP NULL DEFAULT "
+        "'0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM add_no_zero_date",
+            .values = full_zero_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 4U,
+            .context = "NO_ZERO_DATE ALTER ADD zero defaults metadata",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_IN_DATE'");
+    failures += expect_statement_ok(database, "CREATE TABLE add_no_zero_in_date (id INT)");
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_no_zero_in_date ADD COLUMN d DATE DEFAULT '2024-00-01'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_no_zero_in_date ADD COLUMN dt DATETIME DEFAULT "
+        "'2024-01-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_no_zero_in_date ADD COLUMN t TIME DEFAULT '00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_no_zero_in_date ADD COLUMN y YEAR DEFAULT '0000'"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM add_no_zero_in_date",
+            .values = no_zero_in_date_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = zero_in_date_show_columns_row_count,
+            .context = "NO_ZERO_IN_DATE ALTER ADD adjusted defaults",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE set_empty (id INT, d DATE, dt DATETIME, ts TIMESTAMP NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE set_empty ALTER COLUMN d SET DEFAULT '0000-00-00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE set_empty ALTER COLUMN dt SET DEFAULT '0000-00-00 00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE set_empty ALTER COLUMN ts SET DEFAULT '0000-00-00 00:00:00'"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM set_empty",
+            .values = full_zero_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 4U,
+            .context = "empty sql_mode ALTER SET zero defaults metadata",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO set_empty (id) VALUES (1)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, dt, ts FROM set_empty",
+            .values = full_zero_insert_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "empty sql_mode ALTER SET zero defaults materialized",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE set_no_zero_date (id INT, d DATE, dt DATETIME, ts TIMESTAMP NULL)"
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_no_zero_date ALTER COLUMN d SET DEFAULT '0000-00-00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_no_zero_date ALTER COLUMN dt SET DEFAULT '0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_no_zero_date ALTER COLUMN ts SET DEFAULT '0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 3U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM set_no_zero_date",
+            .values = full_zero_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 4U,
+            .context = "NO_ZERO_DATE ALTER SET zero defaults metadata",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_IN_DATE'");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE set_no_zero_in_date (id INT, d DATE, dt DATETIME, t TIME, y YEAR)"
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_no_zero_in_date ALTER COLUMN d SET DEFAULT '2024-00-01'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_no_zero_in_date ALTER COLUMN dt SET DEFAULT '2024-01-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE set_no_zero_in_date ALTER COLUMN t SET DEFAULT '00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE set_no_zero_in_date ALTER COLUMN y SET DEFAULT '0000'"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM set_no_zero_in_date",
+            .values = no_zero_in_date_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = zero_in_date_show_columns_row_count,
+            .context = "NO_ZERO_IN_DATE ALTER SET adjusted defaults",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE,NO_ZERO_IN_DATE'");
+    failures += expect_statement_ok(database, "CREATE TABLE add_combined (id INT)");
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_combined ADD COLUMN d DATE DEFAULT '2024-00-01'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE add_combined ADD COLUMN dt DATETIME DEFAULT '2024-01-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM add_combined",
+            .values = combined_zero_modes_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = combined_zero_modes_show_columns_row_count,
+            .context = "combined zero modes ALTER ADD adjusted defaults",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE set_combined (id INT, d DATE, dt DATETIME)");
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_combined ALTER COLUMN d SET DEFAULT '2024-00-01'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE set_combined ALTER COLUMN dt SET DEFAULT '2024-01-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM set_combined",
+            .values = combined_zero_modes_show_rows,
+            .column_count = show_columns_column_count,
+            .row_count = combined_zero_modes_show_columns_row_count,
+            .context = "combined zero modes ALTER SET adjusted defaults",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE modify_change (id INT, dt DATETIME, ts TIMESTAMP NULL)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE modify_change MODIFY COLUMN dt DATETIME DEFAULT '2024-01-00 00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE modify_change MODIFY COLUMN ts TIMESTAMP NULL DEFAULT "
+        "'0000-00-00 00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE modify_change CHANGE COLUMN dt dt2 DATETIME DEFAULT "
+        "'2024-01-00 00:00:00'"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE modify_change CHANGE COLUMN ts ts2 TIMESTAMP NULL DEFAULT "
+        "'0000-00-00 00:00:00'"
+    );
+    failures += execute_statement_ok(database, "SET sql_mode = 'NO_ZERO_DATE'");
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE modify_change MODIFY COLUMN ts2 TIMESTAMP NULL DEFAULT "
+        "'0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE modify_change CHANGE COLUMN ts2 ts3 TIMESTAMP NULL DEFAULT "
+        "'0000-00-00 00:00:00'",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM modify_change",
+            .values = modify_change_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 3U,
+            .context = "MODIFY CHANGE zero temporal defaults",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE'");
+    failures += expect_statement_ok(database, "CREATE TABLE bad_add_date (id INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_add_date ADD COLUMN d DATE DEFAULT '0000-00-00'",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'd'",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE bad_set_ts (id INT, ts TIMESTAMP NULL)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_set_ts ALTER COLUMN ts SET DEFAULT '0000-00-00 00:00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'ts'",
+        }
+    );
+
+    failures +=
+        execute_statement_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE'");
+    failures += expect_statement_ok(database, "CREATE TABLE bad_add_dt (id INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_add_dt ADD COLUMN dt DATETIME DEFAULT '2024-01-00 00:00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'dt'",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE bad_change_dt (id INT, dt DATETIME)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_change_dt CHANGE COLUMN dt dt2 DATETIME DEFAULT '2024-01-00 00:00:00'",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'dt2'",
+        }
+    );
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        MYLITE_FILE_PREAMBLE_SIZE,
+        "alter defaults file preamble"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen alter defaults file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, d, dt, ts FROM set_empty",
+            .values = full_zero_insert_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "reopened ALTER SET zero defaults materialized",
         }
     );
 

@@ -17,4 +17,4 @@
   preamble/catalog preservation.
 - [x] Update compatibility matrix and detail docs.
 - [x] Run focused tests, MySQL expectation script, and full check workflow.
-- [ ] Review, commit, and push to `origin/main`.
+- [x] Review, commit, and push to `origin/main`.

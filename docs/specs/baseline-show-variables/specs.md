@@ -144,6 +144,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `default_storage_engine` | yes | yes | `InnoDB` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
+| `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |
@@ -168,6 +169,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `updatable_views_with_limit` | yes | yes | `YES` |
 | `version` | yes | yes | `mylite_version()` |
 | `version_comment` | yes | yes | `MyLite` |
+| `wait_timeout` | yes | yes | current session value or fixed global `28800` |
 | `warning_count` | yes | no | `0` |
 
 `warning_count` and `error_count` are fixed to `0` inside `SHOW VARIABLES`

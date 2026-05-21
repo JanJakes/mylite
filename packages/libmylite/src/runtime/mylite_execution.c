@@ -614,6 +614,8 @@ static const double logarithm_base_two = 2.0;
 static const double logarithm_base_ten = 10.0;
 static const uint64_t longtext_max_length = 4294967295ULL;
 static const uint64_t max_allowed_packet_default_value = 67108864ULL;
+static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
+static const uint64_t timeout_system_variable_max_value = 31536000ULL;
 static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;
 static const unsigned char ascii_max_byte = 0x7fU;
 static const char national_character_set_name[] = "utf8mb3";
@@ -6758,6 +6760,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY = 46,
     SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT = 47,
     SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET = 48,
+    SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT = 49,
+    SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
 };
 
 struct system_variable_component {
@@ -6804,6 +6808,8 @@ struct set_session_snapshot {
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
     uint64_t sql_select_limit;
+    uint64_t wait_timeout;
+    uint64_t interactive_timeout;
     int64_t timestamp_override;
     int time_zone_offset_minutes;
     enum mylite_transaction_isolation session_transaction_isolation;
@@ -6847,6 +6853,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
     {"gtid_owned", SESSION_SYSTEM_VARIABLE_GTID_OWNED, true, true},
     {"gtid_purged", SESSION_SYSTEM_VARIABLE_GTID_PURGED, true, true},
+    {"interactive_timeout", SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
     {"lower_case_file_system", SESSION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
     {"lower_case_table_names", SESSION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"max_allowed_packet", SESSION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
@@ -6877,6 +6884,7 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT, true, true},
     {"version", SESSION_SYSTEM_VARIABLE_VERSION, true, true},
     {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT, true, true},
+    {"wait_timeout", SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT, true, true},
     {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT, true, false},
 };
 
@@ -7330,6 +7338,18 @@ static int apply_set_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_timeout_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int parse_set_boolean_cell_value(
     struct mylite_db *database,
     const char *variable_name,
@@ -7424,6 +7444,30 @@ static int apply_set_sql_select_limit_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_timeout_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_timeout_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t value
+);
+static int parse_set_timeout_system_variable_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_timeout_system_variable_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
 static int parse_set_sql_select_limit_value(
     struct mylite_db *database,
     const char *variable_name,
@@ -7431,6 +7475,13 @@ static int parse_set_sql_select_limit_value(
     uint64_t *out_value
 );
 static int parse_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_set_timeout_system_variable_cell_value(
     struct mylite_db *database,
     const char *variable_name,
     const struct session_scalar_cell *value,
@@ -7448,6 +7499,7 @@ static int validate_set_fixed_uint64_value(
     uint64_t expected_value,
     const char *unsupported_message
 );
+static bool is_timeout_system_variable_kind(enum session_system_variable_kind kind);
 static int apply_set_sql_mode_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
@@ -13921,6 +13973,11 @@ static uint64_t auto_increment_step_system_variable_value(
 );
 static uint64_t sql_select_limit_system_variable_value(
     const struct mylite_db *database,
+    bool global_scope
+);
+static uint64_t timeout_system_variable_value(
+    const struct mylite_db *database,
+    enum session_system_variable_kind kind,
     bool global_scope
 );
 static const char *default_sql_mode_value(void);
@@ -26587,6 +26644,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_value(database, &target, value_node);
     }
+    if (is_timeout_system_variable_kind(target.kind)) {
+        return apply_set_timeout_system_variable_value(database, &target, value_node);
+    }
     if (target.kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         return apply_set_foreign_key_checks_value(database, &target, value_node);
     }
@@ -27612,6 +27672,8 @@ static int copy_set_session_snapshot(
     out_snapshot->auto_increment_increment = session->auto_increment_increment;
     out_snapshot->auto_increment_offset = session->auto_increment_offset;
     out_snapshot->sql_select_limit = session->sql_select_limit;
+    out_snapshot->wait_timeout = session->wait_timeout;
+    out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
     out_snapshot->session_transaction_isolation = session->session_transaction_isolation;
@@ -27708,6 +27770,8 @@ static void restore_set_session_snapshot(
     session->auto_increment_increment = snapshot->auto_increment_increment;
     session->auto_increment_offset = snapshot->auto_increment_offset;
     session->sql_select_limit = snapshot->sql_select_limit;
+    session->wait_timeout = snapshot->wait_timeout;
+    session->interactive_timeout = snapshot->interactive_timeout;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
     session->session_transaction_isolation = snapshot->session_transaction_isolation;
@@ -27766,7 +27830,6 @@ static int apply_set_system_variable_cell_value(
 ) {
     bool boolean_value = false;
     uint64_t modes = 0U;
-    uint64_t sql_select_limit = UINT64_MAX;
     int rc = MYLITE_OK;
 
     if (target == NULL || value == NULL) {
@@ -27797,25 +27860,10 @@ static int apply_set_system_variable_cell_value(
         return set_session_time_zone(database, value->value);
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
-        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
-            set_unsupported_error(
-                database,
-                "SET GLOBAL sql_select_limit assignment is not supported"
-            );
-            return MYLITE_ERROR;
-        }
-        rc = parse_set_sql_select_limit_cell_value(
-            database,
-            target->name,
-            value,
-            value_kind,
-            &sql_select_limit
-        );
-        if (rc == MYLITE_OK) {
-            database->session.sql_select_limit = sql_select_limit;
-            database->session.system_variables_are_placeholder = false;
-        }
-        return rc;
+        return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
+    }
+    if (is_timeout_system_variable_kind(target->kind)) {
+        return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
     }
     if (target->kind == SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
@@ -27847,6 +27895,71 @@ static int apply_set_system_variable_cell_value(
         "SET system variable assignments from user variables are not supported for this variable"
     );
     return MYLITE_ERROR;
+}
+
+static int apply_set_sql_select_limit_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    uint64_t sql_select_limit = UINT64_MAX;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL sql_select_limit assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_sql_select_limit_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &sql_select_limit
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    database->session.sql_select_limit = sql_select_limit;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int apply_set_timeout_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    uint64_t timeout = timeout_system_variable_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(
+            database,
+            "SET GLOBAL timeout system variable assignment is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_timeout_system_variable_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &timeout
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return apply_timeout_system_variable_value(database, target, timeout);
 }
 
 static int parse_set_boolean_cell_value(
@@ -28720,6 +28833,217 @@ static int parse_set_sql_select_limit_cell_value(
     }
 
     return MYLITE_OK;
+}
+
+static int apply_set_timeout_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = timeout_system_variable_default_value;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid timeout system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            timeout_system_variable_default_value,
+            "SET timeout system variable supports only fixed no-op global assignments"
+        );
+    }
+
+    rc = parse_set_timeout_system_variable_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return apply_timeout_system_variable_value(database, target, value);
+}
+
+static int apply_timeout_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t value
+) {
+    if (database == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
+        database->session.wait_timeout = value;
+    } else if (target->kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
+        database->session.interactive_timeout = value;
+    } else {
+        set_runtime_error(database, "invalid timeout system variable kind");
+        return MYLITE_ERROR;
+    }
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_timeout_system_variable_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid timeout system variable output");
+        return MYLITE_ERROR;
+    }
+    *out_value = timeout_system_variable_default_value;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
+            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        }
+        *out_value = 1U;
+        return append_truncated_incorrect_system_variable_warning(database, variable_name, "0");
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+    return parse_timeout_system_variable_integer(
+        database,
+        variable_name,
+        &literal_node->span,
+        negative,
+        value_text,
+        out_value
+    );
+}
+
+static int parse_timeout_system_variable_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+) {
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid timeout system variable output");
+        return MYLITE_ERROR;
+    }
+    if (negative) {
+        *out_value = 1U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+    if (unsigned_span == NULL ||
+        parse_unsigned_integer_literal(unsigned_span, &magnitude) != MYLITE_OK ||
+        magnitude > timeout_system_variable_max_value) {
+        *out_value = timeout_system_variable_max_value;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+    if (magnitude == 0U) {
+        *out_value = 1U;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            variable_name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
+}
+
+static int parse_set_timeout_system_variable_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid timeout system variable output");
+        return MYLITE_ERROR;
+    }
+    *out_value = timeout_system_variable_default_value;
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    if (value->has_value_size) {
+        text_size = value->value_size;
+    } else {
+        text_size = strlen(text);
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+    }
+
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    return parse_timeout_system_variable_integer(
+        database,
+        variable_name,
+        &unsigned_span,
+        negative,
+        value->value,
+        out_value
+    );
+}
+
+static bool is_timeout_system_variable_kind(enum session_system_variable_kind kind) {
+    if (kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
+        return true;
+    }
+    if (kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
+        return true;
+    }
+    return false;
 }
 
 static int append_truncated_incorrect_system_variable_warning(
@@ -83506,6 +83830,14 @@ static int hex_numeric_system_variable_value(
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+        out_value->integer = timeout_system_variable_value(
+            database,
+            variable,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         out_value->integer = foreign_key_checks_system_variable_uint64_value(
             database,
@@ -90348,6 +90680,17 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+        return format_session_scalar_uint64_value(
+            database,
+            timeout_system_variable_value(
+                database,
+                variable,
+                system_variable_expression_has_global_scope(expression)
+            ),
+            out_cell
+        );
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
@@ -90571,6 +90914,23 @@ static uint64_t sql_select_limit_system_variable_value(
     return database->session.sql_select_limit;
 }
 
+static uint64_t timeout_system_variable_value(
+    const struct mylite_db *database,
+    enum session_system_variable_kind kind,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return timeout_system_variable_default_value;
+    }
+    if (kind == SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
+        return database->session.wait_timeout;
+    }
+    if (kind == SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
+        return database->session.interactive_timeout;
+    }
+    return timeout_system_variable_default_value;
+}
+
 static const char *transaction_isolation_system_variable_value(
     const struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -90768,6 +91128,8 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
+    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
@@ -90929,6 +91291,15 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             auto_increment_step_system_variable_value(database, kind, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
+        return format_show_system_variable_uint64_value(
+            database,
+            timeout_system_variable_value(database, kind, global_scope),
             integer_buffer,
             integer_buffer_size,
             out_value

@@ -26,6 +26,7 @@ enum {
         MYLITE_SESSION_USER_VARIABLE_NAME_MAX_CHARACTERS *
         MYLITE_SESSION_USER_VARIABLE_UTF8MB4_MAX_BYTES_PER_CHARACTER,
     MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY = MYLITE_SESSION_USER_VARIABLE_NAME_MAX_BYTES + 1,
+    MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE = 28800,
 };
 
 #define MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT                                                       \
@@ -130,6 +131,8 @@ struct mylite_session_state {
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
     uint64_t sql_select_limit;
+    uint64_t wait_timeout;
+    uint64_t interactive_timeout;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     struct mylite_session_savepoint *savepoints;

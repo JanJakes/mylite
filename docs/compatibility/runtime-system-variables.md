@@ -454,7 +454,7 @@ Performance Schema variable tables remain unsupported.
 | `innodb_version` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_write_io_threads` | ❌ | Value, scope, SET, diagnostics |
 | `insert_id` | ❌ | Value, scope, SET, diagnostics |
-| `interactive_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `interactive_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `internal_tmp_mem_storage_engine` | ❌ | Value, scope, SET, diagnostics |
 | `join_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `keep_files_on_create` | ❌ | Value, scope, SET, diagnostics |
@@ -1014,7 +1014,7 @@ Performance Schema variable tables remain unsupported.
 | `version_compile_zlib` | ❌ | Value, scope, SET, diagnostics |
 | `version_tokens_session` | ❌ | Value, scope, SET, diagnostics |
 | `version_tokens_session_number` | ❌ | Value, scope, SET, diagnostics |
-| `wait_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `wait_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `warning_count` | 🟡 | Limited read-only scalar `SELECT @@warning_count`, `@@session.warning_count`, and `@@local.warning_count` over the previous diagnostics snapshot; counts warning and note records currently stored by MyLite, while missing-schema `DROP DATABASE IF EXISTS` intentionally exposes only a statement result warning count; no global scope, `SET`, `max_error_count`, mutable `sql_notes`, or broader counted-but-not-stored conditions |
 | `windowing_use_high_precision` | ❌ | Value, scope, SET, diagnostics |
 | `xa_detach_on_prepare` | ❌ | Value, scope, SET, diagnostics |

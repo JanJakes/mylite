@@ -119,6 +119,7 @@ supported_session_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
@@ -139,7 +140,8 @@ supported_session_rows=$(run_mysql "
       'sql_mode',
       'sql_require_primary_key',
       'sql_replica_skip_counter',
-      'sql_slave_skip_counter'
+      'sql_slave_skip_counter',
+      'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported session rows" "autocommit|ON
 character_set_client|utf8mb4
@@ -155,6 +157,7 @@ collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
+interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
@@ -179,6 +182,7 @@ unique_checks|ON
 updatable_views_with_limit|YES
 version|8.4.9
 version_comment|MySQL Community Server - GPL
+wait_timeout|28800
 warning_count|0" "$supported_session_rows"
 
 supported_global_rows=$(run_mysql "
@@ -201,6 +205,7 @@ supported_global_rows=$(run_mysql "
       'autocommit',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'interactive_timeout',
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
@@ -221,7 +226,8 @@ supported_global_rows=$(run_mysql "
       'sql_mode',
       'sql_require_primary_key',
       'sql_replica_skip_counter',
-      'sql_slave_skip_counter'
+      'sql_slave_skip_counter',
+      'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported global rows" "autocommit|ON
 character_set_client|utf8mb4
@@ -236,6 +242,7 @@ collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
 default_storage_engine|InnoDB
 foreign_key_checks|ON
+interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
@@ -258,7 +265,8 @@ transaction_read_only|OFF
 unique_checks|ON
 updatable_views_with_limit|YES
 version|8.4.9
-version_comment|MySQL Community Server - GPL" "$supported_global_rows"
+version_comment|MySQL Community Server - GPL
+wait_timeout|28800" "$supported_global_rows"
 
 sql_log_global=$(run_mysql "SHOW GLOBAL VARIABLES LIKE 'sql_log_bin';")
 expect_value "session-only sql_log_bin omitted globally" "" "$sql_log_global"

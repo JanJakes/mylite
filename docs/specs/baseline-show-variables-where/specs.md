@@ -204,6 +204,13 @@ visibility with decimal text value `67108864`. The `SHOW VARIABLES WHERE`
 predicate evaluates over this row like any other fixed text row; this baseline
 does not enforce packet, string, or result-buffer size limits.
 
+`wait_timeout` and `interactive_timeout` are part of the registry after their
+baseline timeout system-variable slice. They have default, session/local
+`SHOW`, and global `SHOW` visibility. Session/local rows expose the current
+handle-local value; global rows expose the fixed default `28800`. The `SHOW
+VARIABLES WHERE` predicate evaluates over these rows like any other decimal
+text row; this baseline does not enforce idle timeouts or protocol behavior.
+
 ## Scope Semantics
 
 No explicit scope, `SESSION`, and `LOCAL` use the existing session-visible

@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 48,
-    global_variable_row_count = 44,
+    session_variable_row_count = 50,
+    global_variable_row_count = 46,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -131,6 +131,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"interactive_timeout", "28800"},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"max_allowed_packet", "67108864"},
@@ -158,6 +159,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"updatable_views_with_limit", "YES"},
         {"version", mylite_version()},
         {"version_comment", "MyLite"},
+        {"wait_timeout", "28800"},
         {"warning_count", "0"},
     };
     const char *const expected_global_rows[global_variable_row_count][variable_column_count] = {
@@ -180,6 +182,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
+        {"interactive_timeout", "28800"},
         {"lower_case_file_system", "OFF"},
         {"lower_case_table_names", "0"},
         {"max_allowed_packet", "67108864"},
@@ -205,6 +208,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"updatable_views_with_limit", "YES"},
         {"version", mylite_version()},
         {"version_comment", "MyLite"},
+        {"wait_timeout", "28800"},
     };
     const char *const expected_sql_log_rows[sql_log_variable_row_count][variable_column_count] = {
         {"sql_log_bin", "ON"},

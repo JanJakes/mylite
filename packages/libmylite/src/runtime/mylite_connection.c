@@ -351,6 +351,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->auto_increment_increment = 1U;
     session->auto_increment_offset = 1U;
     session->sql_select_limit = UINT64_MAX;
+    session->wait_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
+    session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->user_transaction_active = false;

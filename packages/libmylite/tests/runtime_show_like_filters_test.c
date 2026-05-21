@@ -15,6 +15,7 @@
 
 enum {
     test_path_capacity = 1024,
+    show_full_tables_column_count = 2,
     show_columns_column_count = 6,
     decimal_base = 10,
     mysql_error_parse = 1064,
@@ -24,6 +25,7 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_unknown_column = 1054,
 };
 
 struct expected_sql_error {
@@ -47,6 +49,11 @@ static const char *const show_columns_names[show_columns_column_count] = {
     "Key",
     "Default",
     "Extra",
+};
+
+static const char *const show_full_tables_names[show_full_tables_column_count] = {
+    "Tables_in_app",
+    "Table_type",
 };
 
 static const char *const columns_i_percent[][show_columns_column_count] = {
@@ -102,6 +109,13 @@ static int expect_show_columns_result(
     size_t expected_row_count,
     const char *context
 );
+static int expect_show_full_tables_result(
+    mylite_db *database,
+    const char *sql,
+    const char *const expected_rows[][show_full_tables_column_count],
+    size_t expected_row_count,
+    const char *context
+);
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -144,6 +158,24 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
     static const char *const table_beta[] = {"beta"};
     static const char *const table_other_alpha[] = {"other_alpha"};
     static const char *const table_renamed_alpha[] = {"renamed_alpha"};
+    static const char *const tables_alpha_beta[] = {"alpha", "beta"};
+    static const char *const table_alpha[] = {"alpha"};
+    static const char *const tables_not_alpha[] = {"a%b", "a\\b", "a_b", "beta"};
+    static const char *const tables_not_beta[] = {"a%b", "a\\b", "a_b", "alpha"};
+    static const char *const tables_before_alpha[] = {"a%b", "a\\b", "a_b"};
+    static const char *const tables_le_a_underscore_b[] = {"a%b", "a\\b", "a_b"};
+    static const char *const tables_after_a_underscore_b[] = {"alpha", "beta"};
+    static const char *const tables_from_alpha[] = {"alpha", "beta"};
+    static const char *const full_table_alpha[][show_full_tables_column_count] = {
+        {"alpha", "BASE TABLE"},
+    };
+    static const char *const full_base_tables[][show_full_tables_column_count] = {
+        {"a%b", "BASE TABLE"},
+        {"a\\b", "BASE TABLE"},
+        {"a_b", "BASE TABLE"},
+        {"alpha", "BASE TABLE"},
+        {"beta", "BASE TABLE"},
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -271,6 +303,172 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
             .context = "show tables in schema",
         }
     );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE 'a%'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_a_percent,
+            .expected_row_count = sizeof(tables_a_percent) / sizeof(tables_a_percent[0]),
+            .context = "show tables where like",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app IN ('alpha', 'beta')",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_alpha_beta,
+            .expected_row_count = sizeof(tables_alpha_beta) / sizeof(tables_alpha_beta[0]),
+            .context = "show tables where in",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app = 'alpha' OR Tables_in_app = 'beta'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_alpha_beta,
+            .expected_row_count = sizeof(tables_alpha_beta) / sizeof(tables_alpha_beta[0]),
+            .context = "show tables where or",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app <=> 'alpha'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = table_alpha,
+            .expected_row_count = sizeof(table_alpha) / sizeof(table_alpha[0]),
+            .context = "show tables where null-safe equal",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app != 'alpha'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_not_alpha,
+            .expected_row_count = sizeof(tables_not_alpha) / sizeof(tables_not_alpha[0]),
+            .context = "show tables where not equal bang",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app <> 'beta'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_not_beta,
+            .expected_row_count = sizeof(tables_not_beta) / sizeof(tables_not_beta[0]),
+            .context = "show tables where not equal angle",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app < 'alpha'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_before_alpha,
+            .expected_row_count = sizeof(tables_before_alpha) / sizeof(tables_before_alpha[0]),
+            .context = "show tables where less than",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app <= 'a_b'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_le_a_underscore_b,
+            .expected_row_count =
+                sizeof(tables_le_a_underscore_b) / sizeof(tables_le_a_underscore_b[0]),
+            .context = "show tables where less equal",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app > 'a_b'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_after_a_underscore_b,
+            .expected_row_count =
+                sizeof(tables_after_a_underscore_b) / sizeof(tables_after_a_underscore_b[0]),
+            .context = "show tables where greater than",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app >= 'alpha'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_from_alpha,
+            .expected_row_count = sizeof(tables_from_alpha) / sizeof(tables_from_alpha[0]),
+            .context = "show tables where greater equal",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE NOT Tables_in_app = 'beta'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_a_percent,
+            .expected_row_count = sizeof(tables_a_percent) / sizeof(tables_a_percent[0]),
+            .context = "show tables where not",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app REGEXP '^a'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = tables_a_percent,
+            .expected_row_count = sizeof(tables_a_percent) / sizeof(tables_a_percent[0]),
+            .context = "show tables where regexp",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app RLIKE '^b'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = table_beta,
+            .expected_row_count = sizeof(table_beta) / sizeof(table_beta[0]),
+            .context = "show tables where rlike",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE tables_in_app = 'ALPHA'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = table_alpha,
+            .expected_row_count = sizeof(table_alpha) / sizeof(table_alpha[0]),
+            .context = "show tables where case-insensitive output column",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app IS NULL",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "show tables where is null",
+        }
+    );
+    failures += expect_show_full_tables_result(
+        database,
+        "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' AND Tables_in_app = 'alpha'",
+        full_table_alpha,
+        sizeof(full_table_alpha) / sizeof(full_table_alpha[0]),
+        "show full tables where table type"
+    );
+    failures += expect_show_full_tables_result(
+        database,
+        "SHOW FULL TABLES WHERE Table_type IS NOT NULL",
+        full_base_tables,
+        sizeof(full_base_tables) / sizeof(full_base_tables[0]),
+        "show full tables where type not null"
+    );
 
     failures += expect_show_columns_result(
         database,
@@ -375,6 +573,16 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
             .context = "renamed table show like",
         }
     );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE 'renamed%'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = table_renamed_alpha,
+            .expected_row_count = sizeof(table_renamed_alpha) / sizeof(table_renamed_alpha[0]),
+            .context = "renamed table show where",
+        }
+    );
     failures += execute_statement_ok(database, "DROP TABLE renamed_alpha");
     failures += expect_single_column_result(
         database,
@@ -384,6 +592,16 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
             .expected_rows = NULL,
             .expected_row_count = 0U,
             .context = "dropped table show like",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE 'renamed%'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "dropped table show where",
         }
     );
 
@@ -416,6 +634,15 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SHOW TABLES WHERE Tables_in_app LIKE 'a%'",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
         "SHOW TABLES FROM missing_schema LIKE 'a%'",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
@@ -425,7 +652,25 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SHOW TABLES FROM missing_schema WHERE Tables_in_missing_schema = 'alpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SHOW TABLES FROM _mylite_reserved LIKE 'a%'",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES FROM _mylite_reserved WHERE Tables_in__mylite_reserved = 'alpha'",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -499,7 +744,97 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW TABLES WHERE Tables_in_app LIKE 'a%'",
+        "SHOW TABLES WHERE Missing_column = 'alpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'Missing_column' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Table_type = 'BASE TABLE'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'Table_type' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE app.Tables_in_app = 'alpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'app.Tables_in_app' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE LOWER(Tables_in_app) = 'alpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app = 'a' + 'lpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLES WHERE supports only string literal predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app IN (1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SHOW TABLES WHERE IN supports only string and NULL literals",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app REGEXP 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES LIKE 'a%' WHERE Tables_in_app = 'alpha'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app = 'alpha' ORDER BY 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SHOW TABLES WHERE Tables_in_app = 'alpha' LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -576,21 +911,21 @@ static int test_independent_show_like_handles(void) {
     failures += expect_single_column_result(
         first,
         (struct single_column_result_expectation){
-            .sql = "SHOW TABLES LIKE '%'",
-            .expected_column_name = "Tables_in_app (%)",
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE '%'",
+            .expected_column_name = "Tables_in_app",
             .expected_rows = first_rows,
             .expected_row_count = sizeof(first_rows) / sizeof(first_rows[0]),
-            .context = "first handle show like",
+            .context = "first handle show tables where",
         }
     );
     failures += expect_single_column_result(
         second,
         (struct single_column_result_expectation){
-            .sql = "SHOW TABLES LIKE '%'",
-            .expected_column_name = "Tables_in_app (%)",
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE '%'",
+            .expected_column_name = "Tables_in_app",
             .expected_rows = second_rows,
             .expected_row_count = sizeof(second_rows) / sizeof(second_rows[0]),
-            .context = "second handle show like",
+            .context = "second handle show tables where",
         }
     );
 
@@ -659,6 +994,49 @@ static int expect_single_column_result(
             expectation.expected_rows[row_index],
             expectation.context
         );
+    }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_full_tables_result(
+    mylite_db *database,
+    const char *sql,
+    const char *const expected_rows[][show_full_tables_column_count],
+    size_t expected_row_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += execute_ok(database, sql, &result);
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures +=
+        expect_size(mylite_result_column_count(result), show_full_tables_column_count, context);
+    failures += expect_size(mylite_result_row_count(result), expected_row_count, context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    for (size_t column_index = 0U; column_index < show_full_tables_column_count; ++column_index) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, column_index),
+            show_full_tables_names[column_index],
+            context
+        );
+    }
+    for (size_t row_index = 0U; row_index < expected_row_count; ++row_index) {
+        for (size_t column_index = 0U; column_index < show_full_tables_column_count;
+             ++column_index) {
+            failures += expect_text_or_null(
+                mylite_result_value_text(result, row_index, column_index),
+                expected_rows[row_index][column_index],
+                context
+            );
+        }
     }
 
     mylite_result_free(result);

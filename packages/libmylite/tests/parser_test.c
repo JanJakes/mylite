@@ -9737,6 +9737,26 @@ static int test_table_lifecycle_statements(void) {
     failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "schema like pattern");
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SHOW TABLES WHERE Tables_in_app LIKE 'a%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables where");
+    failures += expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE, "tables where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW TABLES FROM app WHERE Tables_in_app = 'alpha';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables schema where");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show tables where schema");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_WHERE_CLAUSE, "tables schema where");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SHOW TABLE STATUS;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(
@@ -11099,10 +11119,17 @@ static int test_show_full_tables_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SHOW FULL TABLES WHERE Tables_in_app = 'simple_lifecycle';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "SHOW FULL TABLES WHERE Table_type = 'BASE TABLE';",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_show_tables_is_full(statement),
+        "show full tables where full flag"
+    );
+    failures +=
+        expect_node(child_at(statement, 0U), MYLITE_SQL_AST_WHERE_CLAUSE, "full tables where");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

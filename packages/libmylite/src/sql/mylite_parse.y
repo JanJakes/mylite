@@ -1090,13 +1090,13 @@ truncate_table_statement(A) ::= TRUNCATE(T) TABLE table_name(N). {
     A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) show_like_clause_opt(L). {
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, NULL, L);
 }
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) FROM identifier(D) show_like_clause_opt(L). {
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) FROM identifier(D) show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
 }
-show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) IN identifier(D) show_like_clause_opt(L). {
+show_tables_statement(A) ::= SHOW(S) show_full_opt(F) TABLES(T) IN identifier(D) show_tables_filter_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, F, D, L);
 }
 
@@ -1105,6 +1105,16 @@ show_full_opt(A) ::= . {
 }
 show_full_opt(A) ::= FULL. {
     A = 1;
+}
+
+show_tables_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_tables_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_tables_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) show_table_status_filter_opt(F). {

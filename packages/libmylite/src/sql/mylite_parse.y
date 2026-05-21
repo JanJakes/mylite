@@ -2348,7 +2348,7 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL)
     table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
-    order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O,
         L, K);
@@ -2356,7 +2356,7 @@ select_statement(A) ::=
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) join_operator(JO)
     table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
-    having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
@@ -2374,7 +2374,7 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_name(N) table_alias_opt(AL)
     table_index_hints_opt(IH) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
-    order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table(state, F, N, AL, IH), W, G, H, O, L, K);
@@ -2382,7 +2382,7 @@ select_statement(A) ::=
 select_statement(A) ::=
     SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) join_operator(JO)
     table_source(RT) join_condition_opt(J) where_clause_opt(W) group_clause_opt(G)
-    having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    having_clause_opt(H) select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
@@ -3233,6 +3233,40 @@ order_clause_opt(A) ::= . {
 }
 order_clause_opt(A) ::= ORDER(O) BY qualified_identifier(K) order_direction_opt(D). {
     A = mylite_sql_parser_make_order_by_clause(state, O, K, D);
+}
+
+select_order_clause_opt(A) ::= . {
+    A = NULL;
+}
+select_order_clause_opt(A) ::=
+    ORDER(O) BY qualified_identifier(K) order_direction_opt(D) select_order_tail_opt(T). {
+    A = mylite_sql_parser_make_select_order_by_clause(
+        state,
+        O,
+        (struct mylite_sql_parser_select_order_by_parts){
+            .first_order_key = K,
+            .first_direction = D,
+            .tail_items = T,
+        }
+    );
+}
+
+select_order_tail_opt(A) ::= . {
+    A = NULL;
+}
+select_order_tail_opt(A) ::= COMMA select_order_item_list(L). {
+    A = L;
+}
+
+select_order_item_list(A) ::= select_order_item(I). {
+    A = mylite_sql_parser_make_order_by_item_list(state, I);
+}
+select_order_item_list(A) ::= select_order_item_list(L) COMMA select_order_item(I). {
+    A = mylite_sql_parser_append_order_by_item(state, L, I);
+}
+
+select_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_item(state, K, D);
 }
 
 order_direction_opt(A) ::= . {

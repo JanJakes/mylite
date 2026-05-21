@@ -126,6 +126,11 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     static const char *const all_ids[] = {"1", "2", "3", "4"};
     static const char *const offset_two[] = {"2", "3"};
     static const char *const single_three[] = {"3"};
+    static const char *const multi_n_nn_desc[] = {"3", "1", "4", "2"};
+    static const char *const multi_n_desc_id_desc[] = {"4", "2", "3", "1"};
+    static const char *const multi_n_id_desc_limit[] = {"3", "1", "4"};
+    static const char *const multi_bool_id[] = {"4", "2", "3", "1"};
+    static const char *const multi_copy_ids[] = {"1", "3", "4"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -484,6 +489,42 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .context = "integer unsigned alias ordering",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY n, nn DESC",
+            .values = multi_n_nn_desc,
+            .value_count = sizeof(multi_n_nn_desc) / sizeof(multi_n_nn_desc[0]),
+            .context = "multi-key nullable and descending later key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY n DESC, id DESC",
+            .values = multi_n_desc_id_desc,
+            .value_count = sizeof(multi_n_desc_id_desc) / sizeof(multi_n_desc_id_desc[0]),
+            .context = "multi-key descending null ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY n ASC, id DESC LIMIT 3",
+            .values = multi_n_id_desc_limit,
+            .value_count = sizeof(multi_n_id_desc_limit) / sizeof(multi_n_id_desc_limit[0]),
+            .context = "multi-key order before limit",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY bool_col, id",
+            .values = multi_bool_id,
+            .value_count = sizeof(multi_bool_id) / sizeof(multi_bool_id[0]),
+            .context = "multi-key boolean ordering",
+        }
+    );
 
     failures += execute_ok(database, "SELECT * FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
     failures += expect_size(
@@ -757,6 +798,64 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             "ordered select leaves SQLite schema generation"
         );
     }
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE multi_order_copy AS "
+        "SELECT id FROM ordered_numbers ORDER BY n ASC, id DESC LIMIT 3",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM multi_order_copy ORDER BY id",
+            .values = multi_copy_ids,
+            .value_count = sizeof(multi_copy_ids) / sizeof(multi_copy_ids[0]),
+            .context = "ctas multi-key source order limit",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE multi_order_inserted (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO multi_order_inserted "
+        "SELECT id FROM ordered_numbers ORDER BY n ASC, id DESC LIMIT 3",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM multi_order_inserted ORDER BY id",
+            .values = multi_copy_ids,
+            .value_count = sizeof(multi_copy_ids) / sizeof(multi_copy_ids[0]),
+            .context = "insert-select multi-key source order limit",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE multi_order_replaced (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO multi_order_replaced "
+        "SELECT id FROM ordered_numbers ORDER BY n ASC, id DESC LIMIT 3",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM multi_order_replaced ORDER BY id",
+            .values = multi_copy_ids,
+            .value_count = sizeof(multi_copy_ids) / sizeof(multi_copy_ids[0]),
+            .context = "replace-select multi-key source order limit",
+        }
+    );
 
     failures +=
         execute_ok(database, "ALTER TABLE ordered_numbers ALTER COLUMN nn SET INVISIBLE", &result);
@@ -1252,6 +1351,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM ordered_numbers ORDER BY id, missing LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT ALL id FROM ordered_numbers ORDER BY missing LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -1343,6 +1451,15 @@ static int test_order_limit_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT DISTINCTROW n FROM ordered_numbers ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports ORDER BY only on the selected column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM ordered_numbers ORDER BY n, nn",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1484,15 +1601,12 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT id FROM ordered_numbers ORDER BY id, nn LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures +=
+        execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY id, nn LIMIT 1", &result);
+    failures += expect_size(mylite_result_row_count(result), 1U, "multi-key limit row count");
+    failures += expect_result_value(result, 0U, 0U, "1", "multi-key limit first row");
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM ordered_numbers ORDER BY 1 LIMIT 1",

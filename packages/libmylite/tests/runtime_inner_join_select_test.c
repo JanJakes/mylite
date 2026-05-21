@@ -123,6 +123,7 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     static const char *const limited_cartesian_rows[] = {"1", "7", "1", "8"};
     static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9"};
     static const char *const alias_order_rows[] = {"1", "8", "1", "7"};
+    static const char *const multi_order_rows[] = {"1", "8", "1", "7"};
     static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
     static const char *const row_count_rows[] = {"-1"};
     char path[test_path_capacity];
@@ -223,6 +224,17 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "order by selected alias",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id FROM lefts AS l JOIN rights AS r ON l.k = r.k "
+                   "ORDER BY l.k, r.id DESC, l.id",
+            .values = multi_order_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "joined multi-key qualified order",
         }
     );
     failures += expect_query_values(

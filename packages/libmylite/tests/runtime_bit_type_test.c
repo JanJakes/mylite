@@ -203,6 +203,7 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
     };
     static const char *const predicate_ids[] = {"1", "3"};
     static const char *const remaining_predicate_ids[] = {"3", "4"};
+    static const char *const bit_multi_order_ids[] = {"1", "2", "4", "3", "5"};
     static const char *const ordered_limited_ids[] = {"1", "2"};
     static const char *const ordered_desc_id[] = {"5"};
     static const char *const tie_update_count[] = {"1"};
@@ -793,6 +794,16 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
         "INSERT INTO order_bits VALUES "
         "(1,NULL,0),(2,b'001',0),(3,b'010',0),(4,b'010',0),(5,b'111',0)",
         order_bit_inserted_row_count
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM order_bits ORDER BY b, id DESC",
+            .values = bit_multi_order_ids,
+            .column_count = 1U,
+            .row_count = (size_t)order_bit_inserted_row_count,
+            .context = "BIT multi-key order",
+        }
     );
     failures +=
         expect_dml_ok(database, "UPDATE order_bits SET marker = b'111' ORDER BY b LIMIT 2", 2);

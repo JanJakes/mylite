@@ -183,6 +183,7 @@ static int test_date_success_metadata_dml_and_persistence(void) {
         "4",
         "0000-00-00",
     };
+    static const char *const ordered_date_multi_rows[] = {"1", "2", "4", "3"};
     static const char *const ordered_limit_rows[] = {"1", "1", "2", "1", "3", "0", "4", "0"};
     static const char *const updated_count_rows[] = {"1"};
     static const char *const delete_order_rows[] = {"2", "2024-01-01"};
@@ -476,6 +477,16 @@ static int test_date_success_metadata_dml_and_persistence(void) {
         "INSERT INTO ordered VALUES "
         "(1, NULL, 0), (2, '2024-01-01', 0), (3, '2025-01-01', 0), (4, '2025-01-01', 0)",
         4
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered ORDER BY d, id DESC",
+            .values = ordered_date_multi_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .context = "date multi-column order",
+        }
     );
     failures += expect_dml_ok(database, "UPDATE ordered SET flag = 1 ORDER BY d LIMIT 2", 2);
     failures += expect_query_values(

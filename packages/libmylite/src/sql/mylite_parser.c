@@ -4541,6 +4541,50 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     return order_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_order_by_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_parser_select_order_by_parts parts
+) {
+    struct mylite_sql_source_span span = span_from_token(&order_token);
+    struct mylite_sql_ast_node *first_item = NULL;
+    struct mylite_sql_ast_node *list = NULL;
+    struct mylite_sql_ast_node *order_clause = NULL;
+    struct mylite_sql_ast_node *item = NULL;
+
+    if (parts.tail_items == NULL) {
+        return mylite_sql_parser_make_order_by_clause(
+            state,
+            order_token,
+            parts.first_order_key,
+            parts.first_direction
+        );
+    }
+
+    first_item =
+        mylite_sql_parser_make_order_by_item(state, parts.first_order_key, parts.first_direction);
+    list = mylite_sql_parser_make_order_by_item_list(state, first_item);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    item = parts.tail_items->first_child;
+    while (item != NULL) {
+        struct mylite_sql_ast_node *next = item->next_sibling;
+        mylite_sql_parser_append_order_by_item(state, list, item);
+        item = next;
+    }
+
+    span = span_join(span, list->span);
+    order_clause = make_node(state, MYLITE_SQL_AST_ORDER_BY_CLAUSE, span);
+    if (order_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(order_clause, list);
+    return order_clause;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *item

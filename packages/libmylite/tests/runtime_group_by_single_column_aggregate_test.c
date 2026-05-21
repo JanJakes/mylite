@@ -1014,6 +1014,24 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g, COUNT(*)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g, n",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports only one grouped ORDER BY column",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING missing > 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,

@@ -1304,6 +1304,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_ast_node *order_key,
     struct mylite_sql_ast_node *direction
 );
+
+struct mylite_sql_parser_select_order_by_parts {
+    struct mylite_sql_ast_node *first_order_key;
+    struct mylite_sql_ast_node *first_direction;
+    struct mylite_sql_ast_node *tail_items;
+};
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_order_by_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_parser_select_order_by_parts parts
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *item

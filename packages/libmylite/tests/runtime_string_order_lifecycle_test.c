@@ -113,6 +113,18 @@ static int test_string_order_selects(void) {
         "abc  ",
     };
     static const char *const char_ascending[] = {"1", NULL, "3", "A", "5", "aa", "7", "abc"};
+    static const char *const varchar_multi_order[] = {
+        "1",
+        NULL,
+        "3",
+        "A",
+        "5",
+        "aa",
+        "7",
+        "abc  ",
+        "2",
+        "b",
+    };
     static const char *const alias_order[] = {NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -158,6 +170,16 @@ static int test_string_order_selects(void) {
             .column_count = 2U,
             .row_count = 4U,
             .context = "char canonical string order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, k FROM strings ORDER BY k, id DESC LIMIT 5",
+            .values = varchar_multi_order,
+            .column_count = 2U,
+            .row_count = (size_t)five_row_update_count,
+            .context = "varchar multi-key string order",
         }
     );
     failures += expect_query_values(
@@ -444,6 +466,16 @@ static int test_string_order_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT id FROM diag ORDER BY d",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, "
+                            "TIMESTAMP, or nonbinary string descriptor columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM diag ORDER BY id, d",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

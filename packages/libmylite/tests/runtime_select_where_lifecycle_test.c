@@ -679,13 +679,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE i = 1 ORDER BY nn, i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_single_value_query){
+            .sql = "SELECT i FROM numbers WHERE i = 1 ORDER BY nn, i",
+            .expected = "1",
+            .context = "filtered multi-column order",
         }
     );
     failures += execute_error(

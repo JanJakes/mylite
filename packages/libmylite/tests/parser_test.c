@@ -19480,6 +19480,8 @@ static int test_select_order_limit_clauses(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *order_item = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
     int failures = 0;
 
@@ -19532,6 +19534,36 @@ static int test_select_order_limit_clauses(void) {
     );
     failures += expect_span_text(child_at(limit_clause, 0U), "2", "comma limit row count");
     failures += expect_span_text(child_at(limit_clause, 1U), "1", "comma limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle ORDER BY n DESC, id ASC, nn LIMIT 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    order_items = child_at(order_clause, 0U);
+    failures += expect_node(order_items, MYLITE_SQL_AST_ORDER_BY_ITEM_LIST, "multi-key order list");
+    order_item = child_at(order_items, 0U);
+    failures += expect_span_text(child_at(order_item, 0U), "n", "first multi-key order key");
+    failures += expect_order_direction(
+        child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "first multi-key direction"
+    );
+    order_item = child_at(order_items, 1U);
+    failures += expect_span_text(child_at(order_item, 0U), "id", "second multi-key order key");
+    failures += expect_order_direction(
+        child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "second multi-key direction"
+    );
+    order_item = child_at(order_items, 2U);
+    failures += expect_span_text(child_at(order_item, 0U), "nn", "third multi-key order key");
+    failures += expect_true(child_at(order_item, 1U) == NULL, "third multi-key default direction");
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_span_text(child_at(limit_clause, 0U), "3", "multi-key limit row count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT id FROM simple_lifecycle LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
@@ -24047,11 +24079,8 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "SELECT id FROM t WHERE id = 1 ORDER BY nn, id;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id = 1 ORDER BY nn, id;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

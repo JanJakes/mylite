@@ -167,6 +167,7 @@ static int test_table_backed_concat(void) {
     static const char *const values_one_argument[] = {"1", "a", "x"};
     static const char *const columns_limited[] = {"CONCAT(v, ':', id)"};
     static const char *const values_limited[] = {":3", "b:2"};
+    static const char *const values_multi_order[] = {":3", "a:1", "b:2"};
     static const char *const columns_labels[] = {"CONCAT(v, '-', id)", "alias_name"};
     static const char *const values_labels[] = {"a-1", "xapp"};
     char path[test_path_capacity];
@@ -247,6 +248,17 @@ static int test_table_backed_concat(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table concat where order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONCAT(v, ':', id) FROM t WHERE id >= 1 ORDER BY v, id DESC",
+            .columns = columns_limited,
+            .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
+            .values = values_multi_order,
+            .row_count = 3U,
+            .context = "table concat multi-key order",
         }
     );
     failures += expect_query(

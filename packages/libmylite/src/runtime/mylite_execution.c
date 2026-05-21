@@ -2485,12 +2485,25 @@ struct predicate_sql_work_item {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+struct planned_select_order_item {
+    enum planned_select_order_direction direction;
+    struct mylite_catalog_column_descriptor column;
+    size_t column_source_index;
+};
+
 struct planned_select_order {
     bool has_order;
     enum planned_select_order_direction direction;
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
     bool qualify_column_reference;
+    struct planned_select_order_item *items;
+    size_t item_count;
+};
+
+struct select_order_ast_item_nodes {
+    const struct mylite_sql_ast_node *order_key;
+    const struct mylite_sql_ast_node *direction;
 };
 
 struct planned_select_limit {
@@ -11575,6 +11588,7 @@ static int append_select_column_from_source(
     size_t source_index,
     const struct mylite_sql_ast_node *alias
 );
+static void planned_select_order_deinit(struct planned_select_order *order);
 static void planned_select_deinit(struct planned_select *plan);
 static int execute_select_from_plan(
     struct mylite_db *database,
@@ -11891,6 +11905,7 @@ static int plan_grouped_aggregate_order(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static bool grouped_order_clause_uses_item_list(const struct mylite_sql_ast_node *order_clause);
 static int order_identifier_matches_alias(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -19682,6 +19697,19 @@ static int plan_select_order(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_order *out_order
+);
+static int plan_select_order_ast_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order_item *out_item
+);
+static int append_planned_select_order_item(
+    struct planned_select_order *order,
+    struct planned_select_order_item item
 );
 static int resolve_order_alias(
     struct mylite_db *database,
@@ -65900,6 +65928,7 @@ static void planned_update_deinit(struct planned_update *plan) {
     }
     free(plan->assignments);
     free(plan->columns);
+    planned_select_order_deinit(&plan->order);
     loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     *plan = (struct planned_update){0};
 }
@@ -67805,13 +67834,15 @@ static int plan_select(
     if (rc == MYLITE_OK && out_plan->requires_source_alias) {
         out_plan->order.qualify_column_reference = true;
     }
-    if (rc == MYLITE_OK && out_plan->is_distinct && out_plan->order.has_order &&
-        out_plan->order.column.column_id != out_plan->columns[0].column_id) {
-        set_unsupported_error(
-            database,
-            "SELECT DISTINCT supports ORDER BY only on the selected column"
-        );
-        rc = MYLITE_ERROR;
+    if (rc == MYLITE_OK && out_plan->is_distinct && out_plan->order.has_order) {
+        if (out_plan->order.item_count != 1U ||
+            out_plan->order.column.column_id != out_plan->columns[0].column_id) {
+            set_unsupported_error(
+                database,
+                "SELECT DISTINCT supports ORDER BY only on the selected column"
+            );
+            rc = MYLITE_ERROR;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
@@ -68395,6 +68426,15 @@ static bool join_condition_column_is_integer_family(
     return strcmp(column->physical_type, "INTEGER") == 0;
 }
 
+static void planned_select_order_deinit(struct planned_select_order *order) {
+    if (order == NULL) {
+        return;
+    }
+
+    free(order->items);
+    memset(order, 0, sizeof(*order));
+}
+
 static void planned_select_deinit(struct planned_select *plan) {
     if (plan == NULL) {
         return;
@@ -68408,6 +68448,7 @@ static void planned_select_deinit(struct planned_select *plan) {
     free((void *)plan->column_aliases);
     free(plan->column_source_indexes);
     planned_select_predicate_deinit(&plan->predicate);
+    planned_select_order_deinit(&plan->order);
     *plan = (struct planned_select){0};
 }
 
@@ -68682,6 +68723,7 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
         planned_exists_subquery_deinit(&plan->tableless_filter.subquery);
     }
     planned_select_predicate_deinit(&plan->predicate);
+    planned_select_order_deinit(&plan->order);
     *plan = (struct planned_row_scalar_select){false};
 }
 
@@ -68813,12 +68855,14 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
         free(plan->sources[source_index].columns);
     }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);
         planned_value_deinit(&plan->aggregates[aggregate_index].separator);
     }
     free(plan->aggregates);
     free(plan->sources);
     planned_select_predicate_deinit(&plan->predicate);
     planned_value_deinit(&plan->having.value);
+    planned_select_order_deinit(&plan->order);
     *plan = (struct planned_grouped_aggregate){0};
 }
 
@@ -71492,6 +71536,10 @@ static int plan_grouped_aggregate_order(
     }
 
     order_key = child_at(order_clause, 0U);
+    if (grouped_order_clause_uses_item_list(order_clause)) {
+        set_unsupported_error(database, "GROUP BY supports only one grouped ORDER BY column");
+        return MYLITE_ERROR;
+    }
     rc = order_identifier_matches_alias(
         database,
         order_key,
@@ -71569,6 +71617,15 @@ static int plan_grouped_aggregate_order(
     }
 
     return MYLITE_OK;
+}
+
+static bool grouped_order_clause_uses_item_list(const struct mylite_sql_ast_node *order_clause) {
+    const struct mylite_sql_ast_node *order_key = child_at(order_clause, 0U);
+
+    if (order_key == NULL) {
+        return false;
+    }
+    return order_key->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST;
 }
 
 static int find_grouped_order_aggregate_alias(
@@ -73033,6 +73090,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
     }
 
     planned_select_predicate_deinit(&plan->predicate);
+    planned_select_order_deinit(&plan->aggregate_order);
     planned_value_deinit(&plan->separator);
     *plan = (struct planned_column_aggregate){0};
 }
@@ -96570,6 +96628,7 @@ static void planned_delete_deinit(struct planned_delete *plan) {
     }
     free(plan->sources);
     planned_select_predicate_deinit(&plan->predicate);
+    planned_select_order_deinit(&plan->order);
     *plan = (struct planned_delete){0};
 }
 
@@ -127224,85 +127283,176 @@ static int plan_select_order(
     size_t table_column_count,
     struct planned_select_order *out_order
 ) {
-    const struct mylite_sql_ast_node *direction = NULL;
-    bool resolved_alias = false;
+    const struct mylite_sql_ast_node *order_items = NULL;
     int rc = MYLITE_OK;
 
-    out_order->has_order = false;
-    out_order->column = (struct mylite_catalog_column_descriptor){0};
-    out_order->column_source_index = 0U;
-    out_order->direction = PLANNED_SELECT_ORDER_DEFAULT;
-    out_order->qualify_column_reference = select_source_context_is_joined(source_context);
+    *out_order = (struct planned_select_order){
+        .has_order = false,
+        .direction = PLANNED_SELECT_ORDER_DEFAULT,
+        .column_source_index = 0U,
+        .qualify_column_reference = select_source_context_is_joined(source_context),
+    };
     if (order_clause == NULL) {
         return MYLITE_OK;
     }
     if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-        set_unsupported_error(database, "SELECT supports only one descriptor ORDER BY column");
+        set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
         return MYLITE_ERROR;
     }
 
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = order_items->first_child;
+
+        while (rc == MYLITE_OK && item != NULL) {
+            struct planned_select_order_item planned_item = {0};
+
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+                set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
+                return MYLITE_ERROR;
+            }
+            rc = plan_select_order_ast_item(
+                database,
+                (struct select_order_ast_item_nodes){
+                    .order_key = child_at(item, 0U),
+                    .direction = child_at(item, 1U),
+                },
+                source_context,
+                select_plan,
+                table_columns,
+                table_column_count,
+                &planned_item
+            );
+            if (rc == MYLITE_OK) {
+                rc = append_planned_select_order_item(out_order, planned_item);
+            }
+            item = item->next_sibling;
+        }
+    } else {
+        struct planned_select_order_item planned_item = {0};
+
+        rc = plan_select_order_ast_item(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(order_clause, 0U),
+                .direction = child_at(order_clause, 1U),
+            },
+            source_context,
+            select_plan,
+            table_columns,
+            table_column_count,
+            &planned_item
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_planned_select_order_item(out_order, planned_item);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (out_order->item_count > 0U) {
+        out_order->has_order = true;
+        out_order->column = out_order->items[0U].column;
+        out_order->column_source_index = out_order->items[0U].column_source_index;
+        out_order->direction = out_order->items[0U].direction;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_select_order_ast_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order_item *out_item
+) {
+    bool resolved_alias = false;
+    int rc = MYLITE_OK;
+
+    *out_item = (struct planned_select_order_item){
+        .direction = PLANNED_SELECT_ORDER_ASC,
+        .column_source_index = 0U,
+    };
+
     rc = resolve_order_alias(
         database,
-        child_at(order_clause, 0U),
+        item_nodes.order_key,
         select_plan,
-        &out_order->column,
-        &out_order->column_source_index,
+        &out_item->column,
+        &out_item->column_source_index,
         &resolved_alias
     );
     if (rc == MYLITE_OK && !resolved_alias) {
         rc = resolve_order_column(
             database,
-            child_at(order_clause, 0U),
+            item_nodes.order_key,
             source_context,
             table_columns,
             table_column_count,
-            &out_order->column,
-            &out_order->column_source_index
+            &out_item->column,
+            &out_item->column_source_index
         );
     }
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (column_descriptor_is_set(&out_order->column)) {
+    if (column_descriptor_is_set(&out_item->column)) {
         set_unsupported_error(database, "ORDER BY does not yet support SET columns");
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_string_family(&out_order->column)) {
-        out_order->has_order = true;
-        out_order->direction = PLANNED_SELECT_ORDER_ASC;
-        direction = child_at(order_clause, 1U);
-        if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-            out_order->direction = PLANNED_SELECT_ORDER_DESC;
-        }
-        return MYLITE_OK;
-    }
-    if (rc == MYLITE_OK && !column_descriptor_is_date(&out_order->column) &&
-        !column_descriptor_is_time(&out_order->column) &&
-        !column_descriptor_is_datetime(&out_order->column) &&
-        !column_descriptor_is_timestamp(&out_order->column) &&
-        !column_descriptor_is_year(&out_order->column) &&
-        !column_descriptor_is_bit(&out_order->column)) {
+    if (!column_descriptor_is_string_family(&out_item->column) &&
+        !column_descriptor_is_date(&out_item->column) &&
+        !column_descriptor_is_time(&out_item->column) &&
+        !column_descriptor_is_datetime(&out_item->column) &&
+        !column_descriptor_is_timestamp(&out_item->column) &&
+        !column_descriptor_is_year(&out_item->column) &&
+        !column_descriptor_is_bit(&out_item->column)) {
         struct integer_column_range range = {0};
 
         rc = integer_range_for_column(
             database,
-            &out_order->column,
+            &out_item->column,
             "ORDER BY supports only integer, BIT, YEAR, DATE, TIME, DATETIME, TIMESTAMP, or "
             "nonbinary string descriptor columns",
             &range
         );
-    }
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
-    out_order->has_order = true;
-    out_order->direction = PLANNED_SELECT_ORDER_ASC;
-    direction = child_at(order_clause, 1U);
-    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-        out_order->direction = PLANNED_SELECT_ORDER_DESC;
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
 
+    if (mylite_sql_ast_node_order_direction(item_nodes.direction) ==
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+        out_item->direction = PLANNED_SELECT_ORDER_DESC;
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_planned_select_order_item(
+    struct planned_select_order *order,
+    struct planned_select_order_item item
+) {
+    struct planned_select_order_item *items = NULL;
+    size_t required_count = 0U;
+
+    if (order->item_count >= SIZE_MAX / sizeof(*items)) {
+        return MYLITE_NOMEM;
+    }
+    required_count = order->item_count + 1U;
+
+    items = realloc(order->items, required_count * sizeof(*items));
+    if (items == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    order->items = items;
+    order->items[order->item_count] = item;
+    order->item_count = required_count;
     return MYLITE_OK;
 }
 
@@ -140021,19 +140171,45 @@ static int append_select_order_sql(
     }
 
     rc = dynamic_string_append(string, " ORDER BY ");
-    if (rc == MYLITE_OK) {
-        rc = append_descriptor_value_sql_for_source(
-            string,
-            &order->column,
-            order->column_source_index,
-            order->qualify_column_reference
-        );
+    if (order->item_count == 0U) {
+        if (rc == MYLITE_OK) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &order->column,
+                order->column_source_index,
+                order->qualify_column_reference
+            );
+        }
+        if (rc == MYLITE_OK) {
+            if (order->direction == PLANNED_SELECT_ORDER_DESC) {
+                rc = dynamic_string_append(string, " DESC");
+            } else {
+                rc = dynamic_string_append(string, " ASC");
+            }
+        }
+        return rc;
     }
-    if (rc == MYLITE_OK) {
-        if (order->direction == PLANNED_SELECT_ORDER_DESC) {
-            rc = dynamic_string_append(string, " DESC");
-        } else {
-            rc = dynamic_string_append(string, " ASC");
+
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < order->item_count; ++item_index) {
+        const struct planned_select_order_item *item = &order->items[item_index];
+
+        if (item_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &item->column,
+                item->column_source_index,
+                order->qualify_column_reference
+            );
+        }
+        if (rc == MYLITE_OK) {
+            if (item->direction == PLANNED_SELECT_ORDER_DESC) {
+                rc = dynamic_string_append(string, " DESC");
+            } else {
+                rc = dynamic_string_append(string, " ASC");
+            }
         }
     }
 

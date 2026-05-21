@@ -9,6 +9,16 @@ schema, table, index, rename, truncate, and single-table DML statements that
 target `information_schema` fail with `1044 / 42000` access denied diagnostics.
 MyLite does not implement a privilege engine or writable system views.
 
+The query surface is synthetic and limited. Supported `SELECT` forms can filter
+one metadata table source with descriptor-defined metadata columns using
+comparisons, `IS [NOT] NULL`, `LIKE` string patterns, literal-list `IN`,
+`BETWEEN`, `NOT`, `AND`, `OR`, `XOR`, and parentheses. Predicate evaluation uses
+MySQL-shaped true/false/unknown filtering over MyLite-built metadata rows and
+honors the current `NO_BACKSLASH_ESCAPES` mode for admitted `LIKE` patterns.
+There are no physical SQLite `information_schema` tables, predicate subqueries,
+explicit `ESCAPE`, arbitrary expressions, joins, privilege filtering, or full
+metadata-lock semantics.
+
 | Table | Status | Notes |
 | --- | --- | --- |
 | `INFORMATION_SCHEMA.ADMINISTRABLE_ROLE_AUTHORIZATIONS` | ❌ | Grantable users or roles for current user or role |

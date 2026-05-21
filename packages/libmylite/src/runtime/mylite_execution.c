@@ -3079,6 +3079,7 @@ struct show_like_pattern_item_request {
     size_t pattern_index;
     char value_byte;
     bool case_sensitive;
+    bool backslash_escapes;
 };
 
 struct load_columns_context {
@@ -3435,6 +3436,12 @@ enum information_schema_predicate_eval_action {
     INFORMATION_SCHEMA_PREDICATE_EVALUATE = 1,
 };
 
+enum information_schema_truth_value {
+    INFORMATION_SCHEMA_TRUTH_FALSE = 0,
+    INFORMATION_SCHEMA_TRUTH_TRUE = 1,
+    INFORMATION_SCHEMA_TRUTH_UNKNOWN = 2,
+};
+
 struct information_schema_predicate_eval_frame {
     const struct mylite_sql_ast_node *node;
     enum information_schema_predicate_eval_action action;
@@ -3446,8 +3453,8 @@ struct information_schema_predicate_frame_stack {
     size_t capacity;
 };
 
-struct information_schema_bool_stack {
-    bool *items;
+struct information_schema_truth_stack {
+    enum information_schema_truth_value *items;
     size_t count;
     size_t capacity;
 };
@@ -8966,6 +8973,16 @@ static int information_schema_validate_is_null_predicate(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node
 );
+static int information_schema_validate_between_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int information_schema_validate_in_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+);
 static int information_schema_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
@@ -8985,15 +9002,15 @@ static bool information_schema_predicate_frame_stack_pop(
     struct information_schema_predicate_frame_stack *stack,
     struct information_schema_predicate_eval_frame *out_frame
 );
-static void information_schema_bool_stack_deinit(struct information_schema_bool_stack *stack);
-static int information_schema_bool_stack_push(
+static void information_schema_truth_stack_deinit(struct information_schema_truth_stack *stack);
+static int information_schema_truth_stack_push(
     struct mylite_db *database,
-    struct information_schema_bool_stack *stack,
-    bool value
+    struct information_schema_truth_stack *stack,
+    enum information_schema_truth_value value
 );
-static bool information_schema_bool_stack_pop(
-    struct information_schema_bool_stack *stack,
-    bool *out_value
+static bool information_schema_truth_stack_pop(
+    struct information_schema_truth_stack *stack,
+    enum information_schema_truth_value *out_value
 );
 static int information_schema_visit_predicate(
     struct mylite_db *database,
@@ -9005,27 +9022,119 @@ static int information_schema_evaluate_predicate(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
-    struct information_schema_bool_stack *bool_stack
+    struct information_schema_truth_stack *truth_stack
 );
 static int information_schema_is_null_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
-    bool *out_matches
+    enum information_schema_truth_value *out_truth
 );
 static int information_schema_compound_predicate_matches(
     struct mylite_db *database,
     enum mylite_sql_ast_node_kind predicate_kind,
-    struct information_schema_bool_stack *bool_stack,
-    bool *out_matches
+    struct information_schema_truth_stack *truth_stack,
+    enum information_schema_truth_value *out_truth
 );
-static bool information_schema_bool_from_int(int condition);
+static enum information_schema_truth_value information_schema_truth_from_bool(bool condition);
+static bool information_schema_truth_is_true(enum information_schema_truth_value truth);
 static int information_schema_comparison_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_comparison_predicate_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    enum mylite_sql_ast_operator operator_kind,
+    size_t *out_column_index,
+    struct information_schema_predicate_value *out_right
+);
+static int information_schema_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_like_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_null_safe_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_regular_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_nonnull_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_like_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_column_definition *column,
+    const char *left_text,
+    const char *right_text,
+    bool *out_matches
+);
+static int information_schema_between_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_in_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    enum information_schema_truth_value *out_truth
+);
+static int information_schema_compare_nonnull_value_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    bool *out_matches
+);
+static int information_schema_between_bound_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
     bool *out_matches
 );
 static int information_schema_numeric_comparison_matches(
@@ -9045,6 +9154,16 @@ static int information_schema_text_comparison_matches(
     bool *out_matches
 );
 static int information_schema_predicate_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+);
+static int information_schema_predicate_literal_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+);
+static int information_schema_predicate_like_pattern_text(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct information_schema_predicate_value *out_value
@@ -23869,6 +23988,14 @@ static bool show_like_pattern_matches(
     size_t value_length,
     bool case_sensitive
 );
+static bool show_like_pattern_matches_with_escape(
+    const char *pattern,
+    size_t pattern_length,
+    const char *value,
+    size_t value_length,
+    bool case_sensitive,
+    bool backslash_escapes
+);
 static size_t show_like_skip_percent_run(
     const char *pattern,
     size_t pattern_length,
@@ -36717,6 +36844,12 @@ static int information_schema_validate_predicate(
         case MYLITE_SQL_AST_IS_NULL_PREDICATE:
             rc = information_schema_validate_is_null_predicate(database, query, current);
             break;
+        case MYLITE_SQL_AST_BETWEEN_PREDICATE:
+            rc = information_schema_validate_between_predicate(database, query, current);
+            break;
+        case MYLITE_SQL_AST_IN_PREDICATE:
+            rc = information_schema_validate_in_predicate(database, query, current);
+            break;
         default:
             set_unsupported_error(
                 database,
@@ -36752,8 +36885,21 @@ static int information_schema_validate_comparison_predicate(
 
     (void)column_index;
     if (rc == MYLITE_OK) {
-        rc =
-            information_schema_predicate_value_text(database, child_at(predicate_node, 1U), &right);
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
+            rc = information_schema_predicate_like_pattern_text(
+                database,
+                child_at(predicate_node, 1U),
+                &right
+            );
+        } else {
+            rc = information_schema_predicate_value_text(
+                database,
+                child_at(predicate_node, 1U),
+                &right
+            );
+        }
     }
     free(right.text);
     return rc;
@@ -36775,6 +36921,82 @@ static int information_schema_validate_is_null_predicate(
     );
 }
 
+static int information_schema_validate_between_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    struct information_schema_predicate_value lower = {0};
+    struct information_schema_predicate_value upper = {0};
+    size_t column_index = 0U;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    (void)column_index;
+    if (rc == MYLITE_OK) {
+        rc = information_schema_predicate_literal_value_text(
+            database,
+            child_at(predicate_node, 1U),
+            &lower
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_predicate_literal_value_text(
+            database,
+            child_at(predicate_node, 2U),
+            &upper
+        );
+    }
+    free(lower.text);
+    free(upper.text);
+    return rc;
+}
+
+static int information_schema_validate_in_predicate(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *values = child_at(predicate_node, 1U);
+    const struct mylite_sql_ast_node *value = NULL;
+    size_t column_index = 0U;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    (void)column_index;
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (values == NULL || values->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE does not support IN subqueries");
+        return MYLITE_ERROR;
+    }
+    if (values->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE supports literal IN lists");
+        return MYLITE_ERROR;
+    }
+
+    value = child_at(values, 0U);
+    while (rc == MYLITE_OK && value != NULL) {
+        struct information_schema_predicate_value item = {0};
+
+        rc = information_schema_predicate_literal_value_text(database, value, &item);
+        free(item.text);
+        value = value->next_sibling;
+    }
+    return rc;
+}
+
 static int information_schema_predicate_matches(
     struct mylite_db *database,
     const struct information_schema_query *query,
@@ -36783,7 +37005,7 @@ static int information_schema_predicate_matches(
     bool *out_matches
 ) {
     struct information_schema_predicate_frame_stack frame_stack = {0};
-    struct information_schema_bool_stack bool_stack = {0};
+    struct information_schema_truth_stack truth_stack = {0};
     struct information_schema_predicate_eval_frame frame = {
         .node = predicate_node,
         .action = INFORMATION_SCHEMA_PREDICATE_VISIT,
@@ -36803,18 +37025,21 @@ static int information_schema_predicate_matches(
         } else if (frame.action == INFORMATION_SCHEMA_PREDICATE_VISIT) {
             rc = information_schema_visit_predicate(database, &frame_stack, current);
         } else {
-            rc = information_schema_evaluate_predicate(database, query, current, row, &bool_stack);
+            rc = information_schema_evaluate_predicate(database, query, current, row, &truth_stack);
         }
     }
     if (rc == MYLITE_OK) {
-        if (bool_stack.count != 1U ||
-            !information_schema_bool_stack_pop(&bool_stack, out_matches)) {
+        enum information_schema_truth_value truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+
+        if (truth_stack.count != 1U || !information_schema_truth_stack_pop(&truth_stack, &truth)) {
             set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate state");
             rc = MYLITE_ERROR;
+        } else {
+            *out_matches = information_schema_truth_is_true(truth);
         }
     }
 
-    information_schema_bool_stack_deinit(&bool_stack);
+    information_schema_truth_stack_deinit(&truth_stack);
     information_schema_predicate_frame_stack_deinit(&frame_stack);
     return rc;
 }
@@ -36871,20 +37096,20 @@ static bool information_schema_predicate_frame_stack_pop(
     return true;
 }
 
-static void information_schema_bool_stack_deinit(struct information_schema_bool_stack *stack) {
+static void information_schema_truth_stack_deinit(struct information_schema_truth_stack *stack) {
     if (stack == NULL) {
         return;
     }
     free(stack->items);
-    *stack = (struct information_schema_bool_stack){0};
+    *stack = (struct information_schema_truth_stack){0};
 }
 
-static int information_schema_bool_stack_push(
+static int information_schema_truth_stack_push(
     struct mylite_db *database,
-    struct information_schema_bool_stack *stack,
-    bool value
+    struct information_schema_truth_stack *stack,
+    enum information_schema_truth_value value
 ) {
-    bool *grown_items = NULL;
+    enum information_schema_truth_value *grown_items = NULL;
     size_t new_capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
 
     if (stack->count < stack->capacity) {
@@ -36909,9 +37134,9 @@ static int information_schema_bool_stack_push(
     return MYLITE_OK;
 }
 
-static bool information_schema_bool_stack_pop(
-    struct information_schema_bool_stack *stack,
-    bool *out_value
+static bool information_schema_truth_stack_pop(
+    struct information_schema_truth_stack *stack,
+    enum information_schema_truth_value *out_value
 ) {
     if (stack == NULL || stack->count == 0U) {
         return false;
@@ -36978,32 +37203,38 @@ static int information_schema_evaluate_predicate(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
-    struct information_schema_bool_stack *bool_stack
+    struct information_schema_truth_stack *truth_stack
 ) {
-    bool matches = false;
+    enum information_schema_truth_value truth = INFORMATION_SCHEMA_TRUTH_FALSE;
     int rc = MYLITE_OK;
 
     if (predicate_node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        rc = information_schema_comparison_matches(database, query, predicate_node, row, &matches);
+        rc = information_schema_comparison_matches(database, query, predicate_node, row, &truth);
     } else if (predicate_node->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
         rc = information_schema_is_null_predicate_matches(
             database,
             query,
             predicate_node,
             row,
-            &matches
+            &truth
         );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
+        rc = information_schema_between_matches(database, query, predicate_node, row, &truth);
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IN_PREDICATE) {
+        rc = information_schema_in_matches(database, query, predicate_node, row, &truth);
     } else if (predicate_node->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
-        bool child_matches = false;
+        enum information_schema_truth_value child_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
 
-        if (!information_schema_bool_stack_pop(bool_stack, &child_matches)) {
+        if (!information_schema_truth_stack_pop(truth_stack, &child_truth)) {
             set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate stack");
             return MYLITE_ERROR;
         }
-        if (child_matches) {
-            matches = false;
+        if (child_truth == INFORMATION_SCHEMA_TRUTH_TRUE) {
+            truth = INFORMATION_SCHEMA_TRUTH_FALSE;
+        } else if (child_truth == INFORMATION_SCHEMA_TRUTH_FALSE) {
+            truth = INFORMATION_SCHEMA_TRUTH_TRUE;
         } else {
-            matches = true;
+            truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         }
     } else if (
         predicate_node->kind == MYLITE_SQL_AST_AND_PREDICATE ||
@@ -37013,8 +37244,8 @@ static int information_schema_evaluate_predicate(
         rc = information_schema_compound_predicate_matches(
             database,
             predicate_node->kind,
-            bool_stack,
-            &matches
+            truth_stack,
+            &truth
         );
     } else {
         set_unsupported_error(database, "INFORMATION_SCHEMA WHERE supports metadata predicates");
@@ -37022,7 +37253,7 @@ static int information_schema_evaluate_predicate(
     }
 
     if (rc == MYLITE_OK) {
-        rc = information_schema_bool_stack_push(database, bool_stack, matches);
+        rc = information_schema_truth_stack_push(database, truth_stack, truth);
     }
     return rc;
 }
@@ -37032,7 +37263,7 @@ static int information_schema_is_null_predicate_matches(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
-    bool *out_matches
+    enum information_schema_truth_value *out_truth
 ) {
     size_t column_index = 0U;
     int rc = information_schema_resolve_column_reference(
@@ -37047,12 +37278,12 @@ static int information_schema_is_null_predicate_matches(
         bool is_null = row[column_index] == NULL;
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
 
-        *out_matches = is_null;
+        *out_truth = information_schema_truth_from_bool(is_null);
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NULL) {
             if (is_null) {
-                *out_matches = false;
+                *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
             } else {
-                *out_matches = true;
+                *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
             }
         }
     }
@@ -37062,40 +37293,61 @@ static int information_schema_is_null_predicate_matches(
 static int information_schema_compound_predicate_matches(
     struct mylite_db *database,
     enum mylite_sql_ast_node_kind predicate_kind,
-    struct information_schema_bool_stack *bool_stack,
-    bool *out_matches
+    struct information_schema_truth_stack *truth_stack,
+    enum information_schema_truth_value *out_truth
 ) {
-    bool right_matches = false;
-    bool left_matches = false;
+    enum information_schema_truth_value right_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+    enum information_schema_truth_value left_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
 
-    if (!information_schema_bool_stack_pop(bool_stack, &right_matches) ||
-        !information_schema_bool_stack_pop(bool_stack, &left_matches)) {
+    if (!information_schema_truth_stack_pop(truth_stack, &right_truth) ||
+        !information_schema_truth_stack_pop(truth_stack, &left_truth)) {
         set_runtime_error(database, "invalid INFORMATION_SCHEMA predicate stack");
         return MYLITE_ERROR;
     }
     if (predicate_kind == MYLITE_SQL_AST_AND_PREDICATE) {
-        if (left_matches) {
-            *out_matches = right_matches;
+        if (left_truth == INFORMATION_SCHEMA_TRUTH_FALSE ||
+            right_truth == INFORMATION_SCHEMA_TRUTH_FALSE) {
+            *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
+        } else if (
+            left_truth == INFORMATION_SCHEMA_TRUTH_TRUE &&
+            right_truth == INFORMATION_SCHEMA_TRUTH_TRUE
+        ) {
+            *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
         } else {
-            *out_matches = false;
+            *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         }
     } else if (predicate_kind == MYLITE_SQL_AST_OR_PREDICATE) {
-        if (left_matches) {
-            *out_matches = true;
+        if (left_truth == INFORMATION_SCHEMA_TRUTH_TRUE ||
+            right_truth == INFORMATION_SCHEMA_TRUTH_TRUE) {
+            *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
+        } else if (
+            left_truth == INFORMATION_SCHEMA_TRUTH_FALSE &&
+            right_truth == INFORMATION_SCHEMA_TRUTH_FALSE
+        ) {
+            *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
         } else {
-            *out_matches = right_matches;
+            *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         }
+    } else if (
+        left_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN ||
+        right_truth == INFORMATION_SCHEMA_TRUTH_UNKNOWN
+    ) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
     } else {
-        *out_matches = information_schema_bool_from_int(left_matches != right_matches);
+        *out_truth = information_schema_truth_from_bool(left_truth != right_truth);
     }
     return MYLITE_OK;
 }
 
-static bool information_schema_bool_from_int(int condition) {
-    if (condition != 0) {
-        return true;
+static enum information_schema_truth_value information_schema_truth_from_bool(bool condition) {
+    if (condition) {
+        return INFORMATION_SCHEMA_TRUTH_TRUE;
     }
-    return false;
+    return INFORMATION_SCHEMA_TRUTH_FALSE;
+}
+
+static bool information_schema_truth_is_true(enum information_schema_truth_value truth) {
+    return truth == INFORMATION_SCHEMA_TRUTH_TRUE;
 }
 
 static int information_schema_comparison_matches(
@@ -37103,7 +37355,7 @@ static int information_schema_comparison_matches(
     const struct information_schema_query *query,
     const struct mylite_sql_ast_node *predicate_node,
     char **row,
-    bool *out_matches
+    enum information_schema_truth_value *out_truth
 ) {
     size_t column_index = 0U;
     struct information_schema_predicate_value right = {
@@ -37113,6 +37365,286 @@ static int information_schema_comparison_matches(
     };
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
     const char *left_text = NULL;
+    int rc = information_schema_comparison_predicate_value(
+        database,
+        query,
+        predicate_node,
+        operator_kind,
+        &column_index,
+        &right
+    );
+
+    if (rc != MYLITE_OK) {
+        free(right.text);
+        return rc;
+    }
+
+    left_text = row[column_index];
+    rc = information_schema_comparison_truth(
+        database,
+        query,
+        column_index,
+        left_text,
+        &right,
+        operator_kind,
+        out_truth
+    );
+
+    free(right.text);
+    return rc;
+}
+
+static int information_schema_comparison_predicate_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    enum mylite_sql_ast_operator operator_kind,
+    size_t *out_column_index,
+    struct information_schema_predicate_value *out_right
+) {
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        out_column_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        return information_schema_predicate_like_pattern_text(
+            database,
+            child_at(predicate_node, 1U),
+            out_right
+        );
+    }
+    return information_schema_predicate_value_text(
+        database,
+        child_at(predicate_node, 1U),
+        out_right
+    );
+}
+
+static int information_schema_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+) {
+    *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
+        return information_schema_like_comparison_truth(
+            database,
+            query,
+            column_index,
+            left_text,
+            right,
+            out_truth
+        );
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        return information_schema_null_safe_comparison_truth(
+            database,
+            query,
+            column_index,
+            left_text,
+            right,
+            operator_kind,
+            out_truth
+        );
+    }
+    return information_schema_regular_comparison_truth(
+        database,
+        query,
+        column_index,
+        left_text,
+        right,
+        operator_kind,
+        out_truth
+    );
+}
+
+static int information_schema_like_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum information_schema_truth_value *out_truth
+) {
+    bool like_matches = false;
+    int rc = MYLITE_OK;
+
+    if (left_text == NULL || right->is_null) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+        return MYLITE_OK;
+    }
+
+    rc = information_schema_like_comparison_matches(
+        database,
+        &query->definition->columns[column_index],
+        left_text,
+        right->text,
+        &like_matches
+    );
+    if (rc == MYLITE_OK) {
+        *out_truth = information_schema_truth_from_bool(like_matches);
+    }
+    return rc;
+}
+
+static int information_schema_null_safe_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+) {
+    if (left_text == NULL || right->is_null) {
+        bool both_null = ((left_text == NULL) && right->is_null) != 0;
+
+        *out_truth = information_schema_truth_from_bool(both_null);
+        return MYLITE_OK;
+    }
+
+    return information_schema_nonnull_comparison_truth(
+        database,
+        query,
+        column_index,
+        left_text,
+        right,
+        operator_kind,
+        out_truth
+    );
+}
+
+static int information_schema_regular_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+) {
+    if (left_text == NULL || right->is_null) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+        return MYLITE_OK;
+    }
+
+    return information_schema_nonnull_comparison_truth(
+        database,
+        query,
+        column_index,
+        left_text,
+        right,
+        operator_kind,
+        out_truth
+    );
+}
+
+static int information_schema_nonnull_comparison_truth(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    enum information_schema_truth_value *out_truth
+) {
+    bool comparison_matches = false;
+    int rc = information_schema_compare_nonnull_value_matches(
+        database,
+        query,
+        column_index,
+        left_text,
+        right,
+        operator_kind,
+        &comparison_matches
+    );
+
+    if (rc == MYLITE_OK) {
+        *out_truth = information_schema_truth_from_bool(comparison_matches);
+    }
+    return rc;
+}
+
+static int information_schema_like_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_column_definition *column,
+    const char *left_text,
+    const char *right_text,
+    bool *out_matches
+) {
+    bool case_sensitive = true;
+    bool backslash_escapes = true;
+
+    if (information_schema_column_uses_case_insensitive_collation(column)) {
+        case_sensitive = false;
+    }
+    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+        backslash_escapes = false;
+    }
+
+    *out_matches = show_like_pattern_matches_with_escape(
+        right_text,
+        strlen(right_text),
+        left_text,
+        strlen(left_text),
+        case_sensitive,
+        backslash_escapes
+    );
+    return MYLITE_OK;
+}
+
+static int information_schema_compare_nonnull_value_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    bool *out_matches
+) {
+    if (information_schema_column_is_numeric(query->definition, column_index)) {
+        return information_schema_numeric_comparison_matches(
+            database,
+            operator_kind,
+            left_text,
+            right->text,
+            out_matches
+        );
+    }
+
+    return information_schema_text_comparison_matches(
+        database,
+        &query->definition->columns[column_index],
+        operator_kind,
+        left_text,
+        right->text,
+        right->is_numeric,
+        out_matches
+    );
+}
+
+static int information_schema_between_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    enum information_schema_truth_value *out_truth
+) {
+    struct information_schema_predicate_value lower = {0};
+    struct information_schema_predicate_value upper = {0};
+    size_t column_index = 0U;
+    const char *left_text = NULL;
     int rc = information_schema_resolve_column_reference(
         database,
         query,
@@ -37121,70 +37653,173 @@ static int information_schema_comparison_matches(
         &column_index
     );
 
+    *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
     if (rc == MYLITE_OK) {
-        rc =
-            information_schema_predicate_value_text(database, child_at(predicate_node, 1U), &right);
+        rc = information_schema_predicate_literal_value_text(
+            database,
+            child_at(predicate_node, 1U),
+            &lower
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_predicate_literal_value_text(
+            database,
+            child_at(predicate_node, 2U),
+            &upper
+        );
     }
     if (rc != MYLITE_OK) {
-        free(right.text);
+        free(lower.text);
+        free(upper.text);
         return rc;
     }
 
     left_text = row[column_index];
-    *out_matches = false;
-    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-        if (left_text == NULL || right.is_null) {
-            *out_matches = false;
-            if (left_text == NULL && right.is_null) {
-                *out_matches = true;
-            }
-        } else if (information_schema_column_is_numeric(query->definition, column_index)) {
-            rc = information_schema_numeric_comparison_matches(
+    if (left_text == NULL || lower.is_null || upper.is_null) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+    } else {
+        bool lower_matches = false;
+        bool upper_matches = false;
+
+        rc = information_schema_between_bound_matches(
+            database,
+            query,
+            column_index,
+            left_text,
+            &lower,
+            MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+            &lower_matches
+        );
+        if (rc == MYLITE_OK) {
+            rc = information_schema_between_bound_matches(
                 database,
-                operator_kind,
+                query,
+                column_index,
                 left_text,
-                right.text,
-                out_matches
-            );
-        } else {
-            *out_matches = information_schema_bool_from_int(
-                information_schema_compare_text(
-                    query->definition,
-                    column_index,
-                    left_text,
-                    right.text
-                ) == 0
+                &upper,
+                MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+                &upper_matches
             );
         }
-        free(right.text);
+        if (rc == MYLITE_OK) {
+            *out_truth = information_schema_truth_from_bool((lower_matches && upper_matches) != 0);
+        }
+    }
+
+    free(lower.text);
+    free(upper.text);
+    return rc;
+}
+
+static int information_schema_between_bound_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    size_t column_index,
+    const char *left_text,
+    const struct information_schema_predicate_value *right,
+    enum mylite_sql_ast_operator operator_kind,
+    bool *out_matches
+) {
+    int comparison = 0;
+
+    if (information_schema_column_is_numeric(query->definition, column_index)) {
+        return information_schema_numeric_comparison_matches(
+            database,
+            operator_kind,
+            left_text,
+            right->text,
+            out_matches
+        );
+    }
+
+    comparison = information_schema_compare_column_text(
+        &query->definition->columns[column_index],
+        left_text,
+        right->text
+    );
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL) {
+        *out_matches = ((comparison <= 0) != 0);
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL) {
+        *out_matches = ((comparison >= 0) != 0);
+    } else {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE BETWEEN supports bound ordering");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_in_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *predicate_node,
+    char **row,
+    enum information_schema_truth_value *out_truth
+) {
+    const struct mylite_sql_ast_node *values = child_at(predicate_node, 1U);
+    const struct mylite_sql_ast_node *value = NULL;
+    size_t column_index = 0U;
+    const char *left_text = NULL;
+    bool saw_null = false;
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate_node, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+
+    *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
+    if (rc != MYLITE_OK) {
         return rc;
     }
-    if (left_text == NULL || right.is_null) {
-        free(right.text);
+    if (values == NULL || values->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE does not support IN subqueries");
+        return MYLITE_ERROR;
+    }
+    if (values->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA WHERE supports literal IN lists");
+        return MYLITE_ERROR;
+    }
+
+    left_text = row[column_index];
+    if (left_text == NULL) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
         return MYLITE_OK;
     }
 
-    if (information_schema_column_is_numeric(query->definition, column_index)) {
-        rc = information_schema_numeric_comparison_matches(
-            database,
-            operator_kind,
-            left_text,
-            right.text,
-            out_matches
-        );
-    } else {
-        rc = information_schema_text_comparison_matches(
-            database,
-            &query->definition->columns[column_index],
-            operator_kind,
-            left_text,
-            right.text,
-            right.is_numeric,
-            out_matches
-        );
-    }
+    value = child_at(values, 0U);
+    while (rc == MYLITE_OK && value != NULL) {
+        struct information_schema_predicate_value item = {0};
 
-    free(right.text);
+        rc = information_schema_predicate_literal_value_text(database, value, &item);
+        if (rc == MYLITE_OK) {
+            if (item.is_null) {
+                saw_null = true;
+            } else {
+                bool item_matches = false;
+
+                rc = information_schema_compare_nonnull_value_matches(
+                    database,
+                    query,
+                    column_index,
+                    left_text,
+                    &item,
+                    MYLITE_SQL_AST_OPERATOR_EQUAL,
+                    &item_matches
+                );
+                if (rc == MYLITE_OK && item_matches) {
+                    *out_truth = INFORMATION_SCHEMA_TRUTH_TRUE;
+                    free(item.text);
+                    return MYLITE_OK;
+                }
+            }
+        }
+        free(item.text);
+        value = value->next_sibling;
+    }
+    if (rc == MYLITE_OK && saw_null) {
+        *out_truth = INFORMATION_SCHEMA_TRUTH_UNKNOWN;
+    }
     return rc;
 }
 
@@ -37208,17 +37843,17 @@ static int information_schema_numeric_comparison_matches(
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-        *out_matches = information_schema_bool_from_int(left_value == right_value);
+        *out_matches = ((left_value == right_value) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
-        *out_matches = information_schema_bool_from_int(left_value != right_value);
+        *out_matches = ((left_value != right_value) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS) {
-        *out_matches = information_schema_bool_from_int(left_value < right_value);
+        *out_matches = ((left_value < right_value) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL) {
-        *out_matches = information_schema_bool_from_int(left_value <= right_value);
+        *out_matches = ((left_value <= right_value) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER) {
-        *out_matches = information_schema_bool_from_int(left_value > right_value);
+        *out_matches = ((left_value > right_value) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL) {
-        *out_matches = information_schema_bool_from_int(left_value >= right_value);
+        *out_matches = ((left_value >= right_value) != 0);
     } else {
         set_unsupported_error(
             database,
@@ -37240,16 +37875,13 @@ static int information_schema_text_comparison_matches(
 ) {
     int comparison = 0;
 
-    if (operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL) {
-        *out_matches = information_schema_bool_from_int(
-            information_schema_compare_column_text(column, left_text, right_text) == 0
-        );
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        *out_matches = information_schema_compare_column_text(column, left_text, right_text) == 0;
         return MYLITE_OK;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
-        *out_matches = information_schema_bool_from_int(
-            information_schema_compare_column_text(column, left_text, right_text) != 0
-        );
+        *out_matches = information_schema_compare_column_text(column, left_text, right_text) != 0;
         return MYLITE_OK;
     }
     if (!right_is_numeric) {
@@ -37262,13 +37894,19 @@ static int information_schema_text_comparison_matches(
 
     comparison = information_schema_compare_column_text(column, left_text, right_text);
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS) {
-        *out_matches = information_schema_bool_from_int(comparison < 0);
+        *out_matches = ((comparison < 0) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL) {
-        *out_matches = information_schema_bool_from_int(comparison <= 0);
+        *out_matches = ((comparison <= 0) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER) {
-        *out_matches = information_schema_bool_from_int(comparison > 0);
+        *out_matches = ((comparison > 0) != 0);
     } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL) {
-        *out_matches = information_schema_bool_from_int(comparison >= 0);
+        *out_matches = ((comparison >= 0) != 0);
+    } else {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE comparison supports equality and ordering operators"
+        );
+        return MYLITE_ERROR;
     }
     return MYLITE_OK;
 }
@@ -37295,6 +37933,11 @@ static int information_schema_predicate_value_text(
         return information_schema_predicate_function_value(database, value_node, out_value);
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_value->is_null = true;
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
         size_t text_length = 0U;
 
@@ -37309,6 +37952,68 @@ static int information_schema_predicate_value_text(
     }
 
     return information_schema_predicate_integer_value_text(database, value_node, out_value);
+}
+
+static int information_schema_predicate_literal_value_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+) {
+    if (value_node != NULL && (value_node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+                               value_node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION)) {
+        *out_value = (struct information_schema_predicate_value){0};
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE IN and BETWEEN support only literal values"
+        );
+        return MYLITE_ERROR;
+    }
+    return information_schema_predicate_value_text(database, value_node, out_value);
+}
+
+static int information_schema_predicate_like_pattern_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct information_schema_predicate_value *out_value
+) {
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    *out_value = (struct information_schema_predicate_value){
+        .text = NULL,
+        .is_null = false,
+        .is_numeric = false,
+    };
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE LIKE supports only string pattern literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "INFORMATION_SCHEMA WHERE LIKE supports only string pattern literals",
+        "INFORMATION_SCHEMA WHERE LIKE pattern literals do not support NUL bytes",
+        &out_value->text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_value_is_supported_string_key(out_value->text, text_length)) {
+        free(out_value->text);
+        *out_value = (struct information_schema_predicate_value){0};
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA WHERE LIKE pattern literals support only ASCII text"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int information_schema_predicate_function_value(
@@ -132301,6 +133006,24 @@ static bool show_like_pattern_matches(
     size_t value_length,
     bool case_sensitive
 ) {
+    return show_like_pattern_matches_with_escape(
+        pattern,
+        pattern_length,
+        value,
+        value_length,
+        case_sensitive,
+        true
+    );
+}
+
+static bool show_like_pattern_matches_with_escape(
+    const char *pattern,
+    size_t pattern_length,
+    const char *value,
+    size_t value_length,
+    bool case_sensitive,
+    bool backslash_escapes
+) {
     const size_t no_retry_pattern = SIZE_MAX;
     size_t pattern_index = 0U;
     size_t value_index = 0U;
@@ -132326,6 +133049,7 @@ static bool show_like_pattern_matches(
                     .pattern_index = pattern_index,
                     .value_byte = value[value_index],
                     .case_sensitive = case_sensitive,
+                    .backslash_escapes = backslash_escapes,
                 },
                 &next_pattern_index
             )) {
@@ -132373,7 +133097,8 @@ static bool show_like_pattern_item_matches(
         *out_next_pattern_index = request.pattern_index + 1U;
         return true;
     }
-    if (pattern_byte == '\\' && request.pattern_index + 1U < request.pattern_length) {
+    if (request.backslash_escapes && pattern_byte == '\\' &&
+        request.pattern_index + 1U < request.pattern_length) {
         ++next_pattern_index;
         pattern_byte = request.pattern[next_pattern_index];
     }

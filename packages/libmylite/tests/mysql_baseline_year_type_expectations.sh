@@ -2,7 +2,9 @@
 
 set -eu
 
+MYSQL_BIN="${MYLITE_MYSQL_BIN:-mysql}"
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
 DATABASE="mylite_year_type_expectations_$$"
 
 fail() {
@@ -13,8 +15,15 @@ fail() {
 run_mysql() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw --skip-column-names "$@"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        printf '%s\n' "$sql" \
+            | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" \
+                -uroot --batch --raw --skip-column-names "$@"
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql \
+                -uroot --batch --raw --skip-column-names "$@"
+    fi
 }
 
 expect_output() {
@@ -462,10 +471,67 @@ expect_error \
     "$DATABASE"
 
 expect_output \
-    "year expression default is accepted upstream but deferred in mylite" \
-    "2001" \
-    "CREATE TABLE expr_default (y YEAR DEFAULT (2000 + 1)); "\
-"INSERT INTO expr_default () VALUES (); SELECT y + 0 FROM expr_default;" \
+    "year expression defaults render and materialize" \
+    "$(cat <<\EXPECTED
+y	year	YES		(2000 + 1)	DEFAULT_GENERATED
+m	year	YES		(2071 % 100)	DEFAULT_GENERATED
+n	year	YES		NULL	DEFAULT_GENERATED
+nn	year	NO		NULL	DEFAULT_GENERATED
+year_expr	CREATE TABLE `year_expr` (
+  `id` int DEFAULT NULL,
+  `y` year DEFAULT ((2000 + 1)),
+  `m` year DEFAULT ((2071 % 100)),
+  `n` year DEFAULT (NULL),
+  `nn` year NOT NULL DEFAULT (NULL)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+y	(2000 + 1)	DEFAULT_GENERATED
+m	(2071 % 100)	DEFAULT_GENERATED
+n	NULL	DEFAULT_GENERATED
+nn	NULL	DEFAULT_GENERATED
+1	2001	2001	1971	1971	1	2002	2002
+y	year	YES		(1999 + 1)	DEFAULT_GENERATED
+1	2001	2001	2002
+2	2000	2000	2001
+1	2000	2000	1971	1971	1	2002	2002
+4	2000	2000	1971	1971	1	2004	2004
+5	2000	2000	1971	1971	1	2005	2005
+EXPECTED
+)" \
+    "CREATE TABLE year_expr (id INT, y YEAR DEFAULT (2000 + 1), "\
+"m YEAR DEFAULT (MOD(2071,100)), n YEAR DEFAULT (NULL), "\
+"nn YEAR NOT NULL DEFAULT (NULL)); "\
+"SHOW COLUMNS FROM year_expr WHERE Field <> 'id'; "\
+"SHOW CREATE TABLE year_expr; "\
+"SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='year_expr' "\
+"AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION; "\
+"INSERT INTO year_expr (id, nn) VALUES (1, 2002); "\
+"SELECT id, y, y + 0, m, m + 0, n IS NULL, nn, nn + 0 FROM year_expr; "\
+"ALTER TABLE year_expr ALTER COLUMN y SET DEFAULT (1999 + 1); "\
+"SHOW COLUMNS FROM year_expr LIKE 'y'; "\
+"INSERT INTO year_expr (id, nn) VALUES (2, 2001); "\
+"SELECT id, y, y + 0, nn + 0 FROM year_expr ORDER BY id; "\
+"UPDATE year_expr SET y = DEFAULT, m = DEFAULT, n = DEFAULT WHERE id = 1; "\
+"INSERT INTO year_expr (id, y, m, n, nn) "\
+"VALUES (4, DEFAULT, DEFAULT, DEFAULT, 2004); "\
+"REPLACE INTO year_expr (id, y, m, n, nn) "\
+"VALUES (5, DEFAULT, DEFAULT, DEFAULT, 2005); "\
+"SELECT id, y, y + 0, m, m + 0, n IS NULL, nn, nn + 0 FROM year_expr "\
+"WHERE id IN (1, 4, 5) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "MySQL accepts out-of-range year expression default at DDL time" \
+    "y	year	YES		2156	DEFAULT_GENERATED" \
+    "CREATE TABLE year_range (y YEAR DEFAULT (2156)); SHOW COLUMNS FROM year_range;" \
+    "$DATABASE"
+
+expect_error \
+    "MySQL rejects out-of-range year expression default on materialization" \
+    1264 \
+    "22003" \
+    "Out of range value for column 'y' at row 1" \
+    "INSERT INTO year_range () VALUES ();" \
     "$DATABASE"
 
 expect_upstream_accepts \

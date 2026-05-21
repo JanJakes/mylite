@@ -2,7 +2,9 @@
 
 set -eu
 
+MYSQL_BIN="${MYLITE_MYSQL_BIN:-mysql}"
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
 DATABASE="mylite_bit_type_expectations_$$"
 
 fail() {
@@ -13,9 +15,15 @@ fail() {
 run_mysql() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql \
-            -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        printf '%s\n' "$sql" \
+            | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" \
+                -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql \
+                -uroot --batch --raw --skip-column-names --binary-as-hex=1 "$@"
+    fi
 }
 
 expect_output() {
@@ -369,14 +377,74 @@ expect_error \
     "CREATE TABLE bad_default (b BIT(6) DEFAULT b'1000000');" \
     "$DATABASE"
 
-expect_upstream_accepts \
-    "mysql accepts deferred fractional bit width" \
-    "CREATE TABLE upstream_fractional_bit_width (b BIT(1.2));" \
+bit_expression_defaults_expected=$(cat <<\EXPECTED
+b	bit(6)	YES		(1 + 2)	DEFAULT_GENERATED
+m	bit(6)	YES		(7 % 4)	DEFAULT_GENERATED
+n	bit(6)	YES		NULL	DEFAULT_GENERATED
+nn	bit(6)	NO		NULL	DEFAULT_GENERATED
+bit_expr	CREATE TABLE `bit_expr` (
+  `id` int DEFAULT NULL,
+  `b` bit(6) DEFAULT ((1 + 2)),
+  `m` bit(6) DEFAULT ((7 % 4)),
+  `n` bit(6) DEFAULT (NULL),
+  `nn` bit(6) NOT NULL DEFAULT (NULL)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+b	(1 + 2)	DEFAULT_GENERATED
+m	(7 % 4)	DEFAULT_GENERATED
+n	NULL	DEFAULT_GENERATED
+nn	NULL	DEFAULT_GENERATED
+1	0x03	3	0x03	3	1	0x07	7
+b	bit(6)	YES		(2 * 5)	DEFAULT_GENERATED
+1	0x03	3	7
+2	0x0A	10	1
+1	0x0A	10	0x03	3	1	0x07	7
+4	0x0A	10	0x03	3	1	0x02	2
+5	0x0A	10	0x03	3	1	0x05	5
+EXPECTED
+)
+expect_output \
+    "bit expression defaults render and materialize" \
+    "$bit_expression_defaults_expected" \
+    "CREATE TABLE bit_expr (id INT, b BIT(6) DEFAULT (1 + 2), "\
+"m BIT(6) DEFAULT (MOD(7,4)), n BIT(6) DEFAULT (NULL), "\
+"nn BIT(6) NOT NULL DEFAULT (NULL)); "\
+"SHOW COLUMNS FROM bit_expr WHERE Field <> 'id'; "\
+"SHOW CREATE TABLE bit_expr; "\
+"SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA='${DATABASE}' AND TABLE_NAME='bit_expr' "\
+"AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION; "\
+"INSERT INTO bit_expr (id, nn) VALUES (1, b'111'); "\
+"SELECT id, b, b+0, m, m+0, n IS NULL, nn, nn+0 FROM bit_expr; "\
+"ALTER TABLE bit_expr ALTER COLUMN b SET DEFAULT (2 * 5); "\
+"SHOW COLUMNS FROM bit_expr LIKE 'b'; "\
+"INSERT INTO bit_expr (id, nn) VALUES (2, b'001'); "\
+"SELECT id, b, b+0, nn+0 FROM bit_expr ORDER BY id; "\
+"UPDATE bit_expr SET b = DEFAULT, m = DEFAULT, n = DEFAULT WHERE id = 1; "\
+"INSERT INTO bit_expr (id, b, m, n, nn) "\
+"VALUES (4, DEFAULT, DEFAULT, DEFAULT, b'010'); "\
+"REPLACE INTO bit_expr (id, b, m, n, nn) "\
+"VALUES (5, DEFAULT, DEFAULT, DEFAULT, b'101'); "\
+"SELECT id, b, b+0, m, m+0, n IS NULL, nn, nn+0 FROM bit_expr "\
+"WHERE id IN (1, 4, 5) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "MySQL accepts out-of-range bit expression default at DDL time" \
+    "b	bit(6)	YES		64	DEFAULT_GENERATED" \
+    "CREATE TABLE bit_range (b BIT(6) DEFAULT (64)); SHOW COLUMNS FROM bit_range;" \
+    "$DATABASE"
+
+expect_error \
+    "MySQL rejects out-of-range bit expression default on materialization" \
+    1406 \
+    22001 \
+    "Data too long for column 'b' at row 1" \
+    "INSERT INTO bit_range () VALUES ();" \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "mysql accepts deferred bit expression default" \
-    "CREATE TABLE upstream_expression_default (b BIT(6) DEFAULT (1 + 2));" \
+    "mysql accepts deferred fractional bit width" \
+    "CREATE TABLE upstream_fractional_bit_width (b BIT(1.2));" \
     "$DATABASE"
 
 expect_upstream_accepts \

@@ -204,4 +204,12 @@ expect_error \
     "SELECT REVERSE;" \
     "$DATABASE"
 
+expect_error \
+    "unknown no-source reverse argument" \
+    1054 \
+    42S22 \
+    "Unknown column 'missing' in 'field list'" \
+    "SELECT REVERSE(missing);" \
+    "$DATABASE"
+
 printf '%s\n' "mysql_baseline_reverse_function_expectations: ok"

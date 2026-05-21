@@ -230,6 +230,9 @@ Supported successful calls return no warnings.
 Diagnostics follow existing MyLite statement-context policies:
 
 - malformed `REVERSE()` syntax, including zero or two arguments: syntax error;
+- bare `REVERSE` without `()` is not admitted by this baseline's scalar
+  projection envelope and returns the existing MyLite unsupported no-source
+  select diagnostic, although MySQL reports it as an unknown column;
 - unsupported scalar argument kinds: deterministic MyLite unsupported-feature
   diagnostic;
 - unknown no-source identifier argument: MySQL-compatible unknown-column

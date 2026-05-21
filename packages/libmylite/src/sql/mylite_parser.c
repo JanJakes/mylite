@@ -7008,6 +7008,7 @@ static bool map_keyword_token(
         {"MONTH", MYLITE_SQL_PARSE_MONTH},
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
         {"REPEAT", MYLITE_SQL_PARSE_REPEAT},
+        {"REVERSE", MYLITE_SQL_PARSE_REVERSE},
         {"RPAD", MYLITE_SQL_PARSE_RPAD},
         {"INSTR", MYLITE_SQL_PARSE_INSTR},
         {"LOWER", MYLITE_SQL_PARSE_LOWER},

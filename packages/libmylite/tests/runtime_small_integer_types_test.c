@@ -2258,7 +2258,7 @@ static int test_boolean_literal_lifecycle(void) {
     );
     failures += execute_error(
         database,
-        "UPDATE flags SET i = TRUE + 1",
+        "UPDATE flags SET i = TRUE / 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

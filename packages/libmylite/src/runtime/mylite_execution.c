@@ -15454,6 +15454,11 @@ static int append_update_assignment_adjustment_warning(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 );
+static int append_update_constant_arithmetic_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int append_update_string_truncation_diagnostic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -19759,6 +19764,31 @@ static int plan_update_arithmetic_assignment(
     size_t table_column_count,
     struct planned_update *out_plan
 );
+static int update_value_is_constant_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_is_constant
+);
+static int update_constant_arithmetic_visit_node(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *value_node,
+    bool *in_out_admitted
+);
+static bool update_constant_arithmetic_literal_is_admitted(
+    enum mylite_sql_ast_literal_kind literal_kind
+);
+static bool update_constant_arithmetic_unary_operator_is_admitted(
+    enum mylite_sql_ast_operator operator_kind
+);
+static bool update_constant_arithmetic_binary_operator_is_admitted(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int update_constant_arithmetic_stack_push(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *value_node
+);
 static int validate_update_arithmetic_assignment_target(
     struct mylite_db *database,
     const struct planned_update *plan
@@ -19806,6 +19836,16 @@ static int convert_update_value_for_column(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
+);
+static int convert_update_constant_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int validate_update_constant_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
 );
 static int convert_update_column_value(
     struct mylite_db *database,
@@ -66123,6 +66163,9 @@ static int append_update_assignment_adjustment_warning(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 ) {
+    bool is_constant_arithmetic = false;
+    int rc = MYLITE_OK;
+
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL || column == NULL) {
         return MYLITE_OK;
@@ -66158,6 +66201,17 @@ static int append_update_assignment_adjustment_warning(
     if (session_sql_mode_is_strict(database)) {
         return MYLITE_OK;
     }
+    rc = update_value_is_constant_arithmetic_expression(
+        database,
+        value_node,
+        &is_constant_arithmetic
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_constant_arithmetic) {
+        return append_update_constant_arithmetic_adjustment_warning(database, value_node, column);
+    }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
@@ -66183,6 +66237,21 @@ static int append_update_assignment_adjustment_warning(
     }
 
     return MYLITE_OK;
+}
+
+static int append_update_constant_arithmetic_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = evaluate_scalar_arithmetic_expression(database, value_node, &value);
+
+    if (rc != MYLITE_OK || !value.is_null || column->is_nullable) {
+        return rc;
+    }
+
+    return append_bad_null_warning(database, column->name);
 }
 
 static int append_update_integer_string_adjustment_diagnostic(
@@ -127561,10 +127630,22 @@ static int plan_update_arithmetic_assignment(
     enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
     char source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t source_index = 0U;
+    bool is_constant_arithmetic = false;
     int rc = MYLITE_OK;
 
     value_node = unwrap_parenthesized_expression(out_plan->assignment_value_node);
     if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return MYLITE_OK;
+    }
+    rc = update_value_is_constant_arithmetic_expression(
+        database,
+        value_node,
+        &is_constant_arithmetic
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_constant_arithmetic) {
         return MYLITE_OK;
     }
 
@@ -127603,6 +127684,143 @@ static int plan_update_arithmetic_assignment(
     out_plan->arithmetic_delta_node = delta;
 
     return validate_update_arithmetic_assignment_target(database, out_plan);
+}
+
+static int update_value_is_constant_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_is_constant
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    const struct mylite_sql_ast_node *current = NULL;
+    bool admitted = true;
+    int rc = MYLITE_OK;
+
+    if (out_is_constant == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    *out_is_constant = false;
+
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return MYLITE_OK;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, value_node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (stack.count != 0U && admitted) {
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        rc = update_constant_arithmetic_visit_node(database, &stack, current, &admitted);
+        if (rc != MYLITE_OK) {
+            goto done;
+        }
+    }
+
+    *out_is_constant = admitted;
+
+done:
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int update_constant_arithmetic_visit_node(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *value_node,
+    bool *in_out_admitted
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL) {
+        *in_out_admitted = false;
+        return MYLITE_OK;
+    }
+
+    switch (value_node->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        *in_out_admitted = update_constant_arithmetic_literal_is_admitted(
+            mylite_sql_ast_node_literal_kind(value_node)
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        operator_kind = mylite_sql_ast_node_operator(value_node);
+        if (!update_constant_arithmetic_unary_operator_is_admitted(operator_kind)) {
+            *in_out_admitted = false;
+            return MYLITE_OK;
+        }
+        return update_constant_arithmetic_stack_push(database, stack, child_at(value_node, 0U));
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        operator_kind = mylite_sql_ast_node_operator(value_node);
+        if (!update_constant_arithmetic_binary_operator_is_admitted(operator_kind)) {
+            *in_out_admitted = false;
+            return MYLITE_OK;
+        }
+        rc = update_constant_arithmetic_stack_push(database, stack, child_at(value_node, 0U));
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return update_constant_arithmetic_stack_push(database, stack, child_at(value_node, 1U));
+    default:
+        *in_out_admitted = false;
+        return MYLITE_OK;
+    }
+}
+
+static bool update_constant_arithmetic_literal_is_admitted(
+    enum mylite_sql_ast_literal_kind literal_kind
+) {
+    switch (literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool update_constant_arithmetic_unary_operator_is_admitted(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool update_constant_arithmetic_binary_operator_is_admitted(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static int update_constant_arithmetic_stack_push(
+    struct mylite_db *database,
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *value_node
+) {
+    if (!scalar_arithmetic_node_stack_push(stack, value_node)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_update_arithmetic_assignment_target(
@@ -127939,6 +128157,7 @@ static int convert_update_value_for_column(
 ) {
     bool handled = false;
     bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    bool is_constant_arithmetic = false;
     int rc = MYLITE_OK;
 
     value_node = unwrap_parenthesized_expression(value_node);
@@ -127975,8 +128194,119 @@ static int convert_update_value_for_column(
         }
         return MYLITE_OK;
     }
+    rc = update_value_is_constant_arithmetic_expression(
+        database,
+        value_node,
+        &is_constant_arithmetic
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_constant_arithmetic) {
+        return convert_update_constant_arithmetic_value(database, value_node, column, out_value);
+    }
 
     return convert_update_column_value(database, value_node, column, out_value);
+}
+
+static int convert_update_constant_arithmetic_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    static const uint64_t int64_min_magnitude = 9223372036854775808ULL;
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    bool is_constant_arithmetic = false;
+    bool adjust_missing_default = dml_allows_missing_default_adjustment(database, false);
+    int rc = MYLITE_OK;
+
+    rc = update_value_is_constant_arithmetic_expression(
+        database,
+        value_node,
+        &is_constant_arithmetic
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!is_constant_arithmetic) {
+        set_unsupported_error(
+            database,
+            "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_update_constant_arithmetic_assignment_target(database, column);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = evaluate_scalar_arithmetic_expression(database, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value.division_by_zero_warning_count != 0U) {
+        set_unsupported_error(
+            database,
+            "UPDATE constant arithmetic assignment does not support division"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value.is_null) {
+        if (!column->is_nullable) {
+            if (!adjust_missing_default) {
+                set_bad_null_error(database, column->name);
+                return MYLITE_ERROR;
+            }
+            rc = append_bad_null_warning(database, column->name);
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            return make_insert_ignore_implicit_value(database, column, out_value);
+        }
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
+
+    if (value.integer < 0) {
+        is_negative = true;
+        if (value.integer == INT64_MIN) {
+            magnitude = int64_min_magnitude;
+        } else {
+            magnitude = (uint64_t)-value.integer;
+        }
+    } else {
+        magnitude = (uint64_t)value.integer;
+    }
+
+    out_value->is_null = false;
+    return convert_integer_for_column(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        1U,
+        &out_value->integer
+    );
+}
+
+static int validate_update_constant_arithmetic_assignment_target(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        column,
+        "UPDATE constant arithmetic assignment supports only integer columns",
+        &range
+    );
+
+    (void)range;
+    return rc;
 }
 
 static int convert_statement_time_value_for_column(

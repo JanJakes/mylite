@@ -707,7 +707,7 @@ static int test_update_diagnostics(void) {
 
     failures += execute_error(
         database,
-        "UPDATE numbers SET i = 1 + 2",
+        "UPDATE numbers SET i = 1 / 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

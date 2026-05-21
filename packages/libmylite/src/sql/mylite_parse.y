@@ -2239,6 +2239,9 @@ update_value(A) ::= arithmetic_update_source_column(B) MINUS(T) INTEGER(C). {
         state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
         mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
+update_value(A) ::= update_constant_arithmetic_value(B). {
+    A = B;
+}
 update_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
 }
@@ -2248,6 +2251,87 @@ arithmetic_update_source_column(A) ::= IDENTIFIER(T). {
 }
 arithmetic_update_source_column(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+update_constant_arithmetic_value(A) ::= update_constant_arithmetic_expr(B). {
+    A = B;
+}
+update_constant_arithmetic_value(A) ::= update_constant_arithmetic_multiplicative(B). {
+    A = B;
+}
+update_constant_arithmetic_value(A) ::= LPAREN(L) update_constant_arithmetic_expr(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+update_constant_arithmetic_value(A) ::= LPAREN(L) update_constant_arithmetic_multiplicative(B)
+    RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+update_constant_arithmetic_expr(A) ::= update_constant_arithmetic_expr(B) PLUS(T)
+    update_constant_arithmetic_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+update_constant_arithmetic_expr(A) ::= update_constant_arithmetic_operand(B) PLUS(T)
+    update_constant_arithmetic_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+update_constant_arithmetic_expr(A) ::= update_constant_arithmetic_expr(B) MINUS(T)
+    update_constant_arithmetic_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+update_constant_arithmetic_expr(A) ::= update_constant_arithmetic_operand(B) MINUS(T)
+    update_constant_arithmetic_operand(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+
+update_constant_arithmetic_operand(A) ::= update_constant_arithmetic_multiplicative(B). {
+    A = B;
+}
+update_constant_arithmetic_operand(A) ::= update_constant_arithmetic_factor(B). {
+    A = B;
+}
+
+update_constant_arithmetic_multiplicative(A) ::=
+    update_constant_arithmetic_multiplicative(B) STAR(T) update_constant_arithmetic_factor(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+update_constant_arithmetic_multiplicative(A) ::=
+    update_constant_arithmetic_factor(B) STAR(T) update_constant_arithmetic_factor(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+
+update_constant_arithmetic_factor(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+update_constant_arithmetic_factor(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+update_constant_arithmetic_factor(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+update_constant_arithmetic_factor(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+update_constant_arithmetic_factor(A) ::= PLUS(P) update_constant_arithmetic_factor(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+}
+update_constant_arithmetic_factor(A) ::= MINUS(M) update_constant_arithmetic_factor(B). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
+update_constant_arithmetic_factor(A) ::= LPAREN(L) update_constant_arithmetic_expr(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+update_constant_arithmetic_factor(A) ::= LPAREN(L) update_constant_arithmetic_multiplicative(B)
+    RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)

@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -22,6 +24,8 @@ enum {
     information_schema_column_count = 7,
     mysql_error_parse = 1064,
     mysql_error_invalid_default = 1067,
+    mysql_error_bad_null = 1048,
+    mysql_error_data_too_long = 1406,
     mysql_error_no_default = 1364,
 };
 
@@ -45,6 +49,8 @@ struct expected_dml_result {
 };
 
 static int test_string_defaults_success_persistence_and_introspection(void);
+static int test_character_expression_defaults(void);
+static int test_catalog_v28_character_expression_migration(void);
 static int test_string_defaults_diagnostics(void);
 static int test_string_defaults_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -69,6 +75,7 @@ static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
+static int execute_sql(sqlite3 *connection, const char *sql);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
@@ -86,6 +93,8 @@ int main(void) {
     int failures = 0;
 
     failures += test_string_defaults_success_persistence_and_introspection();
+    failures += test_character_expression_defaults();
+    failures += test_catalog_v28_character_expression_migration();
     failures += test_string_defaults_diagnostics();
     failures += test_string_defaults_independent_handles();
 
@@ -450,6 +459,385 @@ static int test_string_defaults_success_persistence_and_introspection(void) {
     return failures;
 }
 
+static int test_character_expression_defaults(void) {
+    enum {
+        character_expression_column_count = 6,
+        character_expression_metadata_column_count = 3,
+    };
+
+    static const char *const show_columns_rows[] = {
+        "id", "int",        "NO",  "", NULL,           "",
+        "c",  "char(4)",    "YES", "", "_utf8mb4'ab'", "DEFAULT_GENERATED",
+        "vc", "varchar(4)", "YES", "", "_utf8mb4'xy'", "DEFAULT_GENERATED",
+        "ce", "char(4)",    "YES", "", "_utf8mb4''",   "DEFAULT_GENERATED",
+        "v0", "varchar(0)", "YES", "", "_utf8mb4''",   "DEFAULT_GENERATED",
+        "vn", "varchar(4)", "YES", "", "NULL",         "DEFAULT_GENERATED",
+    };
+    static const char *const show_create_rows[] = {
+        "character_expr",
+        "CREATE TABLE `character_expr` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `c` char(4) DEFAULT (_utf8mb4'ab'),\n"
+        "  `vc` varchar(4) DEFAULT (_utf8mb4'xy'),\n"
+        "  `ce` char(4) DEFAULT (_utf8mb4''),\n"
+        "  `v0` varchar(0) DEFAULT (_utf8mb4''),\n"
+        "  `vn` varchar(4) DEFAULT (NULL)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_rows[] = {
+        "id",
+        NULL,
+        "",
+        "c",
+        "_utf8mb4'ab'",
+        "DEFAULT_GENERATED",
+        "vc",
+        "_utf8mb4'xy'",
+        "DEFAULT_GENERATED",
+        "ce",
+        "_utf8mb4''",
+        "DEFAULT_GENERATED",
+        "v0",
+        "_utf8mb4''",
+        "DEFAULT_GENERATED",
+        "vn",
+        "NULL",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const default_rows[] = {
+        "1",
+        "ab",
+        "xy",
+        "",
+        "",
+        NULL,
+        "2",
+        "ab",
+        "xy",
+        "",
+        "",
+        NULL,
+    };
+    static const char *const added_rows[] = {"1", "add"};
+    static const char *const altered_rows[] = {
+        "1",
+        "base",
+        "add",
+        "2",
+        "mod",
+        "chg",
+    };
+    static const char *const alter_set_rows[] = {"v", "varchar(5)", "YES", "", "set", ""};
+    static const char *const alter_set_show_create_rows[] = {
+        "alter_set_character",
+        "CREATE TABLE `alter_set_character` (\n"
+        "  `v` varchar(5) DEFAULT 'set'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const like_show_create_rows[] = {
+        "character_like",
+        "CREATE TABLE `character_like` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `c` char(4) DEFAULT (_utf8mb4'ab'),\n"
+        "  `vc` varchar(4) DEFAULT (_utf8mb4'xy'),\n"
+        "  `ce` char(4) DEFAULT (_utf8mb4''),\n"
+        "  `v0` varchar(0) DEFAULT (_utf8mb4''),\n"
+        "  `vn` varchar(4) DEFAULT (NULL)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const reopened_rows[] = {"3", "ab", "xy"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "character-expression") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open character defaults");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE character_expr (id INT NOT NULL, c CHAR(4) DEFAULT ('ab'), "
+        "vc VARCHAR(4) DEFAULT ('xy'), ce CHAR(4) DEFAULT (''), "
+        "v0 VARCHAR(0) DEFAULT (''), vn VARCHAR(4) DEFAULT (NULL))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM character_expr",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = character_expression_column_count,
+            .context = "character expression defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE character_expr",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "character expression defaults SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA='app' AND TABLE_NAME='character_expr' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = character_expression_metadata_column_count,
+            .row_count = character_expression_column_count,
+            .context = "character expression defaults information schema",
+        }
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO character_expr (id) VALUES (1)", 1);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO character_expr VALUES (2, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, c, vc, ce, v0, vn FROM character_expr ORDER BY id",
+            .values = default_rows,
+            .column_count = character_expression_column_count,
+            .row_count = 2U,
+            .context = "character expression defaults materialization",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE character_expr SET c='ab', vc='xy'", 0);
+    failures += expect_dml_ok(database, "UPDATE character_expr SET c=DEFAULT, vc=DEFAULT", 0);
+    failures += expect_dml_ok(database, "REPLACE INTO character_expr (id) VALUES (3)", 1);
+
+    failures += expect_statement_ok(database, "CREATE TABLE character_like LIKE character_expr");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE character_like",
+            .values = like_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "character expression defaults CREATE LIKE",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE alter_character (id INT, v VARCHAR(5) DEFAULT ('base'))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_character (id) VALUES (1)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_character ADD COLUMN added VARCHAR(5) DEFAULT ('add')"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM alter_character ORDER BY id",
+            .values = added_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "character expression defaults ALTER ADD",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_character MODIFY COLUMN v VARCHAR(5) DEFAULT ('mod')"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_character CHANGE COLUMN added changed VARCHAR(5) DEFAULT ('chg')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_character (id) VALUES (2)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, changed FROM alter_character ORDER BY id",
+            .values = altered_rows,
+            .column_count = character_expression_metadata_column_count,
+            .row_count = 2U,
+            .context = "character expression defaults ALTER column definitions",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE alter_set_character (v VARCHAR(5))");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE alter_set_character ALTER COLUMN v SET DEFAULT ('set')"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM alter_set_character",
+            .values = alter_set_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "character expression defaults ALTER SET ordinary metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE alter_set_character",
+            .values = alter_set_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "character expression defaults ALTER SET ordinary show create",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE bad_generated_null (v VARCHAR(3) NOT NULL DEFAULT (NULL))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO bad_generated_null () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "cannot be null",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE generated_overlength (v VARCHAR(3) DEFAULT ('abcd'), c CHAR(3) DEFAULT "
+        "('abcd'))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO generated_overlength () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_numeric_generated (v VARCHAR(3) DEFAULT (1 + 2))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_hex_generated (v VARCHAR(3) DEFAULT (0x41))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'v'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_function_generated (v VARCHAR(3) DEFAULT (CONCAT('a','b')))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'v'",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read character expression preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "character expression preamble preserved"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen character defaults");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, c, vc FROM character_expr WHERE id=3",
+            .values = reopened_rows,
+            .column_count = character_expression_metadata_column_count,
+            .row_count = 1U,
+            .context = "character expression defaults reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_catalog_v28_character_expression_migration(void) {
+    static const char *const generated_rows[] = {
+        "v",
+        "varchar(3)",
+        "YES",
+        "",
+        "_utf8mb4'ok'",
+        "DEFAULT_GENERATED",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "character-expression-migration") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v28 migration file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE existing_defaults (id INT)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += execute_sql(
+        sqlite,
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 28, minimum_reader_schema_version = 28"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen v28 migration file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE generated_after_migration (v VARCHAR(3) DEFAULT ('ok'))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM generated_after_migration",
+            .values = generated_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "v28 migration admits generated character defaults",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_string_defaults_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
@@ -511,15 +899,8 @@ static int test_string_defaults_diagnostics(void) {
             .message_part = "Invalid default value for 't'",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_expression (v VARCHAR(3) DEFAULT ('a'))",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'v'",
-        }
-    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE generated_ok (v VARCHAR(3) DEFAULT ('a'))");
     failures += execute_error(
         database,
         "ALTER TABLE diag ALTER COLUMN vc SET DEFAULT 'abcd'",
@@ -788,6 +1169,26 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
         return 1;
     }
 
+    return 0;
+}
+
+static int execute_sql(sqlite3 *connection, const char *sql) {
+    char *message = NULL;
+    int rc = sqlite3_exec(connection, sql, NULL, NULL, &message);
+
+    if (rc != SQLITE_OK) {
+        fprintf(
+            stderr,
+            "sqlite execute failed: rc=%d sql=%s message=%s\n",
+            rc,
+            sql,
+            message == NULL ? "(null)" : message
+        );
+        sqlite3_free(message);
+        return 1;
+    }
+
+    sqlite3_free(message);
     return 0;
 }
 

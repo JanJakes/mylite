@@ -21,6 +21,7 @@ enum {
 
 static void string_search_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void find_in_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void strcmp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int locate_ascii_ci_position(
     struct mylite_db *database,
     const char *needle,
@@ -36,6 +37,13 @@ static int find_in_set_ascii_ci_position(
     const char *list,
     size_t list_length,
     int64_t *out_position
+);
+static int strcmp_ascii_ci_result(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_result
 );
 static bool ascii_text_contains_comma(const char *text, size_t text_length);
 static bool ascii_text_segment_equals_ci(
@@ -101,6 +109,27 @@ int mylite_string_search_find_in_set_ascii_ci_value(
     return find_in_set_ascii_ci_position(search, search_length, list, list_length, out_position);
 }
 
+int mylite_string_search_strcmp_ascii_ci_value(
+    struct mylite_db *database,
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_result
+) {
+    if (left == NULL || right == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = 0;
+    if (!ascii_text_is_supported(left, left_length) ||
+        !ascii_text_is_supported(right, right_length)) {
+        set_string_search_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return strcmp_ascii_ci_result(left, left_length, right, right_length, out_result);
+}
+
 int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -123,6 +152,19 @@ int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = find_in_set_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_strcmp_ascii_ci",
+            .argument_count = 2,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = strcmp_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -243,6 +285,55 @@ static void find_in_set_sqlite_callback(sqlite3_context *context, int argc, sqli
     sqlite3_result_int64(context, (sqlite3_int64)result);
 }
 
+static void strcmp_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct mylite_db *database = NULL;
+    const unsigned char *left = NULL;
+    const unsigned char *right = NULL;
+    int left_length = 0;
+    int right_length = 0;
+    int64_t result = 0;
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite STRCMP callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    database = mylite_sqlite_bootstrap_owner_from_context(context);
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite STRCMP owner", -1);
+        return;
+    }
+
+    left = sqlite3_value_text(argv[0]);
+    right = sqlite3_value_text(argv[1]);
+    left_length = sqlite3_value_bytes(argv[0]);
+    right_length = sqlite3_value_bytes(argv[1]);
+    if (left == NULL || right == NULL || left_length < 0 || right_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_string_search_strcmp_ascii_ci_value(
+        database,
+        (const char *)left,
+        (size_t)left_length,
+        (const char *)right,
+        (size_t)right_length,
+        &result
+    );
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "MyLite STRCMP failed", -1);
+        return;
+    }
+
+    sqlite3_result_int64(context, (sqlite3_int64)result);
+}
+
 static int locate_ascii_ci_position(
     struct mylite_db *database,
     const char *needle,
@@ -330,6 +421,40 @@ static int find_in_set_ascii_ci_position(
         }
     }
 
+    return MYLITE_OK;
+}
+
+static int strcmp_ascii_ci_result(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_result
+) {
+    size_t common_length = left_length < right_length ? left_length : right_length;
+
+    if (left == NULL || right == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = 0;
+    for (size_t index = 0U; index < common_length; ++index) {
+        unsigned char folded_left = ascii_fold((unsigned char)left[index]);
+        unsigned char folded_right = ascii_fold((unsigned char)right[index]);
+
+        if (folded_left < folded_right) {
+            *out_result = -1;
+            return MYLITE_OK;
+        }
+        if (folded_left > folded_right) {
+            *out_result = 1;
+            return MYLITE_OK;
+        }
+    }
+    if (left_length < right_length) {
+        *out_result = -1;
+    } else if (left_length > right_length) {
+        *out_result = 1;
+    }
     return MYLITE_OK;
 }
 

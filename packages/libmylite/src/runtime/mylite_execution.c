@@ -2651,6 +2651,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND = 39,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE = 40,
     PLANNED_ROW_SCALAR_EXPRESSION_CHAR = 41,
+    PLANNED_ROW_SCALAR_EXPRESSION_STRCMP = 42,
 };
 
 enum planned_row_scalar_field_domain {
@@ -12989,12 +12990,26 @@ static int find_in_set_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int strcmp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int regexp_like_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
 static int evaluate_find_in_set_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_strcmp_text_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *inout_cell,
@@ -14944,6 +14959,7 @@ static bool is_string_case_projection_expression(const struct mylite_sql_ast_nod
 static bool is_string_trim_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_slice_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_replace_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_reverse_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -20582,6 +20598,37 @@ static bool find_in_set_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_strcmp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_strcmp_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_strcmp_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool strcmp_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_regexp_like_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22644,6 +22691,11 @@ static int append_row_scalar_find_in_set_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_strcmp_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_regexp_like_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -23812,6 +23864,11 @@ static int bind_row_scalar_substring_index_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_find_in_set_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_strcmp_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -25299,6 +25356,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+    case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
@@ -44338,6 +44397,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_POSITION_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+    case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
@@ -75871,6 +75932,8 @@ static const char *argument_count_error_node_function_name(
         return "JSON_UNQUOTE";
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
         return "FIND_IN_SET";
+    case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
+        return "STRCMP";
     case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
         return "SUBSTRING_INDEX";
     case MYLITE_SQL_AST_LPAD_ARGUMENT_COUNT_ERROR:
@@ -76061,6 +76124,8 @@ static int session_scalar_value(
         return string_search_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
         return find_in_set_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+        return strcmp_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
         return substring_index_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
@@ -76328,6 +76393,9 @@ static int session_scalar_value(
         return greatest_least_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FIND_IN_SET");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "STRCMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "SUBSTRING_INDEX");
@@ -81539,6 +81607,82 @@ static int find_in_set_function_value(
     return rc;
 }
 
+static int strcmp_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell left_cell = {0};
+    struct session_scalar_cell right_cell = {0};
+    char *owned_left = NULL;
+    char *owned_right = NULL;
+    const char *left = NULL;
+    const char *right = NULL;
+    size_t left_length = 0U;
+    size_t right_length = 0U;
+    int64_t result = 0;
+    bool left_is_null = false;
+    bool right_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_STRCMP_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "STRCMP");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_strcmp_text_argument(
+        database,
+        child_at(expression, 0U),
+        &left_cell,
+        &owned_left,
+        &left,
+        &left_length,
+        &left_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = evaluate_strcmp_text_argument(
+            database,
+            child_at(expression, 1U),
+            &right_cell,
+            &owned_right,
+            &right,
+            &right_length,
+            &right_is_null
+        );
+    }
+    if (rc != MYLITE_OK || left_is_null || right_is_null) {
+        free(owned_left);
+        free(owned_right);
+        session_scalar_cell_deinit(&left_cell);
+        session_scalar_cell_deinit(&right_cell);
+        return rc;
+    }
+
+    rc = mylite_string_search_strcmp_ascii_ci_value(
+        database,
+        left,
+        left_length,
+        right,
+        right_length,
+        &result
+    );
+    if (rc == MYLITE_OK) {
+        rc = format_string_search_result(database, result, out_cell);
+    }
+
+    free(owned_left);
+    free(owned_right);
+    session_scalar_cell_deinit(&left_cell);
+    session_scalar_cell_deinit(&right_cell);
+    return rc;
+}
+
 static int regexp_like_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -81701,6 +81845,73 @@ static int evaluate_find_in_set_text_argument(
                 expression,
                 "FIND_IN_SET() supports only string literals",
                 "FIND_IN_SET() arguments do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int evaluate_strcmp_text_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "STRCMP() supports only string, integer, boolean, NULL, session scalar, "
+            "and system variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "STRCMP() supports only string literals",
+                "STRCMP() arguments do not support NUL bytes",
                 out_owned_text,
                 out_text_length
             );
@@ -96244,6 +96455,16 @@ static bool is_find_in_set_projection_expression(const struct mylite_sql_ast_nod
             string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))) != 0;
 }
 
+static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_STRCMP_FUNCTION) {
+        return false;
+    }
+    return (mylite_sql_ast_node_child_count(expression) == 2U &&
+            string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
+            string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))) != 0;
+}
+
 static bool is_substring_index_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION) {
@@ -96378,6 +96599,9 @@ static bool is_string_metadata_projection_expression(const struct mylite_sql_ast
         return true;
     }
     if (is_find_in_set_projection_expression(expression)) {
+        return true;
+    }
+    if (is_strcmp_projection_expression(expression)) {
         return true;
     }
     if (is_substring_index_projection_expression(expression)) {
@@ -113442,6 +113666,7 @@ static bool row_scalar_expression_is_string_function(enum mylite_sql_ast_node_ki
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
     case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
     case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
         return true;
     default:
@@ -113577,6 +113802,17 @@ static int plan_row_scalar_string_expression(
             table_columns,
             table_column_count,
             COLUMN_REFERENCE_FIELD,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_STRCMP_FUNCTION) {
+        return plan_row_scalar_strcmp_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             out_expression
         );
     }
@@ -116215,6 +116451,193 @@ static bool find_in_set_column_descriptor_is_supported(
         database,
         "FIND_IN_SET() supports only integer, DECIMAL, nonbinary string, ENUM, YEAR, "
         "and temporal columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_strcmp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_STRCMP_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, "STRCMP");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_STRCMP;
+    out_expression->argument_count = 2U;
+
+    rc = plan_row_scalar_strcmp_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "STRCMP() supports only string, integer, boolean, NULL, session scalar, system variable, "
+        "and descriptor column left arguments",
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_strcmp_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            "STRCMP() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, and descriptor column right arguments",
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_strcmp_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_strcmp_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "STRCMP() does not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!string_slice_scalar_text_argument_is_admitted(expression)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_strcmp_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT STRCMP() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!strcmp_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool strcmp_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_datetime(column) ||
+        column_descriptor_is_timestamp(column) || column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_time(column)) {
+        set_unsupported_error(database, "STRCMP() does not support TIME columns");
+        return false;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "STRCMP() does not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(database, "STRCMP() does not support approximate columns");
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "STRCMP() supports only integer, DECIMAL, nonbinary string, YEAR, DATE, DATETIME, "
+        "and TIMESTAMP columns"
     );
     return false;
 }
@@ -119624,6 +120047,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -122310,6 +122734,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_REVERSE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_STRCMP_FUNCTION ||
             current->kind == MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_VALID_FUNCTION ||
@@ -136427,6 +136852,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -137276,6 +137702,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_substring_index_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
         return append_row_scalar_find_in_set_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+        return append_row_scalar_strcmp_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
         return append_row_scalar_regexp_like_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
@@ -137365,6 +137793,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -138293,6 +138722,36 @@ static int append_row_scalar_find_in_set_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_strcmp_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_strcmp_ascii_ci(");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_regexp_like_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -138480,6 +138939,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -138666,6 +139126,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -138727,6 +139188,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -139121,6 +139583,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -139186,6 +139649,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -144960,6 +145424,8 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+        return bind_row_scalar_strcmp_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
         return bind_row_scalar_regexp_like_expression_parameters(
             statement,
@@ -145065,6 +145531,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -145446,6 +145913,26 @@ static int bind_row_scalar_find_in_set_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_strcmp_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_regexp_like_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -145567,6 +146054,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -145738,6 +146226,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -145794,6 +146283,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:

@@ -973,6 +973,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"STORAGE", 0U},
         {"STORED", MYLITE_SQL_KEYWORD_RESERVED},
         {"STRAIGHT_JOIN", MYLITE_SQL_KEYWORD_RESERVED},
+        {"STRCMP", 0U},
         {"STREAM", 0U},
         {"STRING", 0U},
         {"SUBCLASS_ORIGIN", 0U},

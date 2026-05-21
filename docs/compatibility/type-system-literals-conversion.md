@@ -41,6 +41,14 @@ strings within the current physical range. General expression coercion, broad
 selected-row conversion, quoted decimal/approximate defaults, and full unsigned
 `BIGINT` storage above MyLite's signed-64 physical range remain deferred.
 
+Baseline `STRCMP()` uses the same admitted scalar literal envelope as the
+current string-search functions: ASCII, `NUL`-free ordinary string literals,
+signed-64 decimal integer literals, `TRUE`, `FALSE`, and `NULL`, plus
+descriptor-backed text-convertible row values in its row-scalar projection
+slice, except for `TIME` descriptor columns whose direct MySQL `STRCMP()`
+coercion is deferred. It does not add binary, non-ASCII collation, approximate
+numeric, parameter, or arbitrary expression conversion.
+
 ## Numeric types
 
 | Feature | Status | Notes |

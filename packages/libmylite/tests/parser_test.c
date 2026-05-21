@@ -85,6 +85,7 @@ static int test_string_slice_functions(void);
 static int test_string_padding_functions(void);
 static int test_string_search_functions(void);
 static int test_find_in_set_function(void);
+static int test_strcmp_function(void);
 static int test_regexp_like_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
@@ -385,6 +386,7 @@ int main(void) {
     failures += test_string_padding_functions();
     failures += test_string_search_functions();
     failures += test_find_in_set_function();
+    failures += test_strcmp_function();
     failures += test_regexp_like_function();
     failures += test_pi_function();
     failures += test_rand_function();
@@ -6100,6 +6102,86 @@ static int test_find_in_set_function(void) {
         MYLITE_SQL_AST_DELETE_STATEMENT,
         "find delete predicate"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_strcmp_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT STRCMP('a', 'b'), strcmp(v, 'x') AS cmp FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_STRCMP_FUNCTION, "strcmp function");
+    failures += expect_child_count(expression, 2U, "strcmp arity");
+    failures += expect_span_text(expression, "STRCMP('a', 'b')", "strcmp span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_STRCMP_FUNCTION, "lower strcmp");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "strcmp column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "strcmp alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT STRCMP ('b','a') AS cmp FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_STRCMP_FUNCTION, "spaced strcmp");
+    failures += expect_span_text(expression, "STRCMP ('b','a')", "spaced strcmp span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT STRCMP();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR,
+        "strcmp zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT STRCMP('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR,
+        "strcmp one argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT STRCMP('a','b','c');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR,
+        "strcmp many argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO STRCMP('x', 'x'), STRCMP(NULL, 'a');", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "strcmp do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_STRCMP_FUNCTION, "do strcmp");
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_STRCMP_FUNCTION,
+        "do null strcmp"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE strcmp_words (strcmp INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "strcmp identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

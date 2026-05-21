@@ -2,12 +2,14 @@
 
 Core query expression, SELECT, set operation, ordering, limiting, locking, modifier, and result metadata compatibility.
 
-The limited row-scalar string-search and regex family includes `FIND_IN_SET()`
-and `REGEXP_LIKE()` for no-source, `DUAL`, `DO`, single-table row-scalar
-projections, and descriptor `WHERE` predicates. It is ASCII-only, does not yet
-implement MySQL's `SET` column member-ordinal behavior for `FIND_IN_SET()`, and
-does not yet implement full ICU regular-expression semantics for
-`REGEXP_LIKE()`.
+The limited row-scalar string-search, string-comparison, and regex family
+includes `FIND_IN_SET()`, `STRCMP()`, and `REGEXP_LIKE()` for no-source,
+`DUAL`, `DO`, and single-table row-scalar projections, while only
+`FIND_IN_SET()` and `REGEXP_LIKE()` currently participate in descriptor
+`WHERE` predicates. It is ASCII-only, does not yet implement MySQL's `SET`
+column member-ordinal behavior for `FIND_IN_SET()`, does not yet implement
+non-ASCII collation parity for `STRCMP()`, and does not yet implement full ICU
+regular-expression semantics for `REGEXP_LIKE()`.
 
 The limited row-scalar control-flow family includes `IF()`, `IFNULL()`,
 `COALESCE()`, `NULLIF()`, and `ISNULL()` in single-table projection lists over

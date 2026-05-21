@@ -111,6 +111,7 @@ static int test_keywords(void) {
     failures += expect_keyword("rpad", 0U);
     failures += expect_keyword("rtrim", 0U);
     failures += expect_keyword("space", 0U);
+    failures += expect_keyword("strcmp", 0U);
     failures += expect_keyword("trim", 0U);
     failures += expect_keyword("ucase", 0U);
     failures += expect_keyword("upper", 0U);

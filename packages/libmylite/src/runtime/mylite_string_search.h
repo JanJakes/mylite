@@ -25,6 +25,14 @@ int mylite_string_search_find_in_set_ascii_ci_value(
     size_t list_length,
     int64_t *out_position
 );
+int mylite_string_search_strcmp_ascii_ci_value(
+    struct mylite_db *database,
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_result
+);
 int mylite_sqlite_register_string_search_functions(sqlite3 *sqlite);
 
 #endif

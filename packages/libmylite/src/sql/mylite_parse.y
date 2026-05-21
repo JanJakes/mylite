@@ -3743,6 +3743,10 @@ find_in_set_expression(A) ::= FIND_IN_SET(T) LPAREN expression(B) COMMA expressi
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_FIND_IN_SET_FUNCTION, B, C, R);
 }
+expression(A) ::= STRCMP(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_STRCMP_FUNCTION, B, C, R);
+}
 expression(A) ::= regexp_like_expression(B). {
     A = B;
 }
@@ -4357,6 +4361,22 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= STRCMP(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= STRCMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    STRCMP(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D)
+    RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= SUBSTRING_INDEX(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -5601,6 +5621,9 @@ identifier(A) ::= MID(T). {
     A = mylite_sql_parser_make_ignore_space_sensitive_identifier(state, T);
 }
 identifier(A) ::= SUBSTRING_INDEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STRCMP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOCATE(T). {

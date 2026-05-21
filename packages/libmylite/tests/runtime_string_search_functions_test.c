@@ -39,6 +39,8 @@ static int test_no_source_dual_and_do_string_searches(void);
 static int test_table_backed_string_searches_and_reopen(void);
 static int test_no_source_dual_and_do_find_in_set(void);
 static int test_table_backed_find_in_set_predicates_and_dml(void);
+static int test_no_source_dual_and_do_strcmp(void);
+static int test_table_backed_strcmp_and_reopen(void);
 static int test_string_search_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -80,6 +82,8 @@ int main(void) {
     failures += test_table_backed_string_searches_and_reopen();
     failures += test_no_source_dual_and_do_find_in_set();
     failures += test_table_backed_find_in_set_predicates_and_dml();
+    failures += test_no_source_dual_and_do_strcmp();
+    failures += test_table_backed_strcmp_and_reopen();
     failures += test_string_search_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -644,6 +648,254 @@ static int test_table_backed_find_in_set_predicates_and_dml(void) {
     return failures;
 }
 
+static int test_no_source_dual_and_do_strcmp(void) {
+    static const char *const columns_no_source[] = {
+        "lt",
+        "gt",
+        "eq",
+        "n1",
+        "n2",
+        "case_fold",
+        "empty0",
+        "empty_lt",
+        "empty_gt",
+        "trail_gt",
+        "trail_lt",
+        "num_lt",
+        "num_gt",
+        "bool_t",
+        "bool_f",
+        "negative",
+        "warn",
+    };
+    static const char *const values_no_source[] = {
+        "-1",
+        "1",
+        "0",
+        NULL,
+        NULL,
+        "0",
+        "0",
+        "-1",
+        "1",
+        "1",
+        "-1",
+        "-1",
+        "1",
+        "0",
+        "0",
+        "-1",
+        "0",
+    };
+    static const char *const columns_dual[] = {"c", "STRCMP('b','a')"};
+    static const char *const values_dual[] = {"1", "1"};
+    static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_after_select[] = {"-1", "0"};
+    static const char *const values_after_do[] = {"0", "0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "strcmp-no-source", path, sizeof(path));
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STRCMP('text','text2') AS lt, STRCMP('text2','text') AS gt, "
+                   "STRCMP('text','text') AS eq, STRCMP(NULL,'a') AS n1, "
+                   "STRCMP('a',NULL) AS n2, STRCMP('abc','ABC') AS case_fold, "
+                   "STRCMP('', '') AS empty0, STRCMP('', 'a') AS empty_lt, "
+                   "STRCMP('a', '') AS empty_gt, STRCMP('a ', 'a') AS trail_gt, "
+                   "STRCMP('a', 'a ') AS trail_lt, STRCMP(10, '2') AS num_lt, "
+                   "STRCMP('9', 10) AS num_gt, STRCMP(TRUE, '1') AS bool_t, "
+                   "STRCMP(FALSE, '0') AS bool_f, STRCMP(-1, '-2') AS negative, "
+                   "@@warning_count AS warn",
+            .columns = columns_no_source,
+            .column_count = sizeof(columns_no_source) / sizeof(columns_no_source[0]),
+            .values = values_no_source,
+            .row_count = 1U,
+            .context = "no-source strcmp values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STRCMP ('b','a') AS c, STRCMP('b','a') FROM DUAL",
+            .columns = columns_dual,
+            .column_count = sizeof(columns_dual) / sizeof(columns_dual[0]),
+            .values = values_dual,
+            .row_count = 1U,
+            .context = "dual strcmp whitespace",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_select,
+            .row_count = 1U,
+            .context = "row count after strcmp select",
+        }
+    );
+
+    failures += execute_ok(database, "DO STRCMP('x','x'), STRCMP(NULL,'a')", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "strcmp do columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "strcmp do rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "strcmp do affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "strcmp do warnings");
+    }
+    mylite_result_free(result);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_row_status,
+            .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
+            .values = values_after_do,
+            .row_count = 1U,
+            .context = "row count after strcmp do",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_table_backed_strcmp_and_reopen(void) {
+    static const char *const columns_table[] = {
+        "id",
+        "v_cmp",
+        "text_cmp",
+        "int_cmp",
+        "year_cmp",
+        "date_cmp",
+    };
+    static const char *const values_table[] = {
+        "1",
+        "0",
+        "-1",
+        "-1",
+        "0",
+        "0",
+        "2",
+        "0",
+        "0",
+        "0",
+        "-1",
+        "-1",
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const columns_limited[] = {"id", "cmp"};
+    static const char *const values_limited[] = {"3", NULL, "2", "0"};
+    static const char *const columns_type_coverage[] = {
+        "dec_cmp",
+        "datetime_cmp",
+        "timestamp_cmp",
+    };
+    static const char *const values_type_coverage[] = {"0", "0", "0"};
+    static const char *const columns_reopen[] = {"id", "cmp"};
+    static const char *const values_reopen[] = {"1", "0", "2", "0"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    mylite_file_preamble_init(expected_preamble);
+    failures += open_app_database(&database, "strcmp-table", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE s("
+        "id INT, v VARCHAR(10), t TEXT, n INT, y YEAR, d DATE, dec_col DECIMAL(6,2), "
+        "ti TIME, dt DATETIME, ts TIMESTAMP)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO s VALUES "
+        "(1, 'abc', 'alpha', 10, 2024, '2024-01-02', -12.30, '03:04:05', "
+        "'2024-01-02 03:04:05', '2024-01-02 03:04:06'), "
+        "(2, 'ABC', 'Beta', 2, 2000, '2000-02-03', NULL, NULL, NULL, NULL), "
+        "(3, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, STRCMP(v, 'abc') AS v_cmp, "
+                   "STRCMP(t, 'beta') AS text_cmp, STRCMP(n, '2') AS int_cmp, "
+                   "STRCMP(y, '2024') AS year_cmp, STRCMP(d, '2024-01-02') AS date_cmp "
+                   "FROM s ORDER BY id",
+            .columns = columns_table,
+            .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
+            .values = values_table,
+            .row_count = 3U,
+            .context = "table strcmp descriptor values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, STRCMP(v, 'abc') AS cmp FROM s WHERE id >= 1 "
+                   "ORDER BY id DESC LIMIT 2",
+            .columns = columns_limited,
+            .column_count = sizeof(columns_limited) / sizeof(columns_limited[0]),
+            .values = values_limited,
+            .row_count = 2U,
+            .context = "table strcmp row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STRCMP(dec_col, '-12.30') AS dec_cmp, "
+                   "STRCMP(dt, '2024-01-02 03:04:05') AS datetime_cmp, "
+                   "STRCMP(ts, '2024-01-02 03:04:06') AS timestamp_cmp "
+                   "FROM s WHERE id = 1",
+            .columns = columns_type_coverage,
+            .column_count = sizeof(columns_type_coverage) / sizeof(columns_type_coverage[0]),
+            .values = values_type_coverage,
+            .row_count = 1U,
+            .context = "table strcmp descriptor type coverage",
+        }
+    );
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(actual_preamble),
+        "strcmp preamble unchanged"
+    );
+
+    mylite_close(database);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen strcmp file");
+    failures += execute_ok(database, "USE app", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, STRCMP(v, 'abc') AS cmp FROM s WHERE id <= 2 ORDER BY id",
+            .columns = columns_reopen,
+            .column_count = sizeof(columns_reopen) / sizeof(columns_reopen[0]),
+            .values = values_reopen,
+            .row_count = 2U,
+            .context = "strcmp reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_string_search_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -652,11 +904,13 @@ static int test_string_search_diagnostics(void) {
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
     failures += execute_ok(
         database,
-        "CREATE TABLE t(id INT, v VARCHAR(20), f FLOAT, b VARBINARY(10))",
+        "CREATE TABLE t(id INT, v VARCHAR(20), f FLOAT, b VARBINARY(10), ti TIME)",
         NULL
     );
-    failures += execute_ok(database, "INSERT INTO t VALUES (1, 'abc', 1.5, X'61')", NULL);
-    failures += execute_ok(database, "INSERT INTO t VALUES (2, '\xC3\xA9', 1.5, X'62')", NULL);
+    failures +=
+        execute_ok(database, "INSERT INTO t VALUES (1, 'abc', 1.5, X'61', '03:04:05')", NULL);
+    failures +=
+        execute_ok(database, "INSERT INTO t VALUES (2, '\xC3\xA9', 1.5, X'62', NULL)", NULL);
     failures += execute_error(
         database,
         "SELECT LOCATE('a')",
@@ -942,6 +1196,141 @@ static int test_string_search_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT FIND_IN_SET(?, 'abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP()",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'STRCMP'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'STRCMP'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a','b','c')",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_argument_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function 'STRCMP'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a', missing) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a', f) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "STRCMP() does not support approximate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a', b) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "STRCMP() does not support binary columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a', ti) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "STRCMP() does not support TIME columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP(LOCATE('a', v), v) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "STRCMP() supports only string",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('\xC3\xA9', '\xC3\xA9')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string search functions support only ASCII text values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP('a', v) FROM t WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string search functions support only ASCII text values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE STRCMP('a', v) = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM t ORDER BY STRCMP('a', v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE t SET v = STRCMP('a', v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "near 'STRCMP'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP(X'61', 'abc')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "STRCMP() supports only string",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STRCMP(?, 'abc')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

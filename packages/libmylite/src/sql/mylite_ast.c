@@ -856,6 +856,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "adddate_function";
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
         return "subdate_function";
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+        return "addtime_function";
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+        return "addtime_argument_count_error";
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+        return "subtime_function";
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
+        return "subtime_argument_count_error";
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
         return "date_format_function";
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:

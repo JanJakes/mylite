@@ -60,6 +60,7 @@ static int test_json_construction_functions(void);
 static int test_json_introspection_functions(void);
 static int test_cast_binary_expression(void);
 static int test_date_add_second_function(void);
+static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
 static int test_datediff_function(void);
 static int test_unix_timestamp_function(void);
@@ -359,6 +360,7 @@ int main(void) {
     failures += test_json_introspection_functions();
     failures += test_cast_binary_expression();
     failures += test_date_add_second_function();
+    failures += test_addtime_subtime_functions();
     failures += test_date_format_function();
     failures += test_datediff_function();
     failures += test_unix_timestamp_function();
@@ -3251,6 +3253,139 @@ static int test_date_add_second_function(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("CREATE TABLE interval (interval INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_addtime_subtime_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT ADDTIME('01:02:03', '00:00:01'), "
+        "SubTime('2008-01-02 13:29:17', '-00:00:01') AS shifted FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_ADDTIME_FUNCTION, "addtime function");
+    failures +=
+        expect_span_text(first_expression, "ADDTIME('01:02:03', '00:00:01')", "addtime span");
+    failures += expect_child_count(first_expression, 2U, "addtime child count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "addtime left"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "addtime right"
+    );
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_SUBTIME_FUNCTION, "mixed-case subtime");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "addtime dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DO ADDTIME(NULL, 'bad'), SUBTIME('01:02:03', NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "addtime do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_ADDTIME_FUNCTION, "do addtime");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_SUBTIME_FUNCTION, "do subtime");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ADDTIME(), ADDTIME('01:02:03'), ADDTIME('01:02:03', '00:00:01', 'x');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR,
+        "addtime no arg count"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR,
+        "addtime one arg count"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR,
+        "addtime three arg count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SUBTIME(), SUBTIME('01:02:03'), SUBTIME('01:02:03', '00:00:01', 'x');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR,
+        "subtime no arg count"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR,
+        "subtime one arg count"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR,
+        "subtime three arg count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ADDTIME ('01:02:03', '00:00:01'), SUBTIME ('01:02:03', '00:00:01');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql_with_ignore_space(
+        "SELECT ADDTIME ('01:02:03', '00:00:01'), SUBTIME ('01:02:03', '00:00:01');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE addtime(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE subtime(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("CREATE TABLE addtime(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql_with_ignore_space("CREATE TABLE subtime(id INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

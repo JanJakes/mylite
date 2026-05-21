@@ -6847,6 +6847,18 @@ struct date_add_day_second {
     int64_t day_seconds;
 };
 
+enum scalar_time_arithmetic_input_kind {
+    SCALAR_TIME_ARITHMETIC_INPUT_NULL = 0,
+    SCALAR_TIME_ARITHMETIC_INPUT_TIME = 1,
+    SCALAR_TIME_ARITHMETIC_INPUT_DATETIME = 2,
+};
+
+struct scalar_time_arithmetic_input {
+    enum scalar_time_arithmetic_input_kind kind;
+    int64_t time_seconds;
+    struct date_add_datetime_parts datetime;
+};
+
 struct scalar_arithmetic_value {
     bool is_null;
     int64_t integer;
@@ -13587,6 +13599,11 @@ static int date_interval_second_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int addtime_subtime_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int date_format_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -13640,6 +13657,61 @@ static bool date_interval_second_message(
     const char *function_name,
     const char *suffix
 );
+static bool is_time_arithmetic_function_kind(enum mylite_sql_ast_node_kind kind);
+static const char *time_arithmetic_function_name(enum mylite_sql_ast_node_kind kind);
+static bool time_arithmetic_function_subtracts(enum mylite_sql_ast_node_kind kind);
+static int set_time_arithmetic_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *suffix
+);
+static bool time_arithmetic_message(
+    char *buffer,
+    size_t buffer_size,
+    const char *function_name,
+    const char *suffix
+);
+static int time_arithmetic_first_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_time_arithmetic_input *out_input
+);
+static int time_arithmetic_second_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_time_arithmetic_input *out_input
+);
+static int time_arithmetic_decode_string_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_suffix,
+    char **out_text,
+    size_t *out_text_length
+);
+static int time_arithmetic_apply_datetime(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct scalar_time_arithmetic_input *first,
+    int64_t second_seconds,
+    struct session_scalar_cell *out_cell
+);
+static int time_arithmetic_apply_time(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct scalar_time_arithmetic_input *first,
+    int64_t second_seconds,
+    struct session_scalar_cell *out_cell
+);
+static int time_arithmetic_format_time(
+    struct mylite_db *database,
+    const char *function_name,
+    int64_t seconds,
+    struct session_scalar_cell *out_cell
+);
+static bool time_arithmetic_seconds_in_range(int64_t seconds);
 static int date_interval_second_temporal_argument(
     struct mylite_db *database,
     const char *function_name,
@@ -14723,6 +14795,7 @@ static bool is_convert_using_charset_projection_expression(
 static bool is_date_interval_second_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
+static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_field_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -24666,6 +24739,10 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
@@ -43124,6 +43201,10 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
@@ -75080,6 +75161,15 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
         return date_interval_second_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+        return addtime_subtime_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ADDTIME");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "SUBTIME");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DATE_FORMAT");
         return MYLITE_ERROR;
@@ -88417,6 +88507,417 @@ static int date_interval_second_format(
     return MYLITE_OK;
 }
 
+static int addtime_subtime_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_time_arithmetic_input first = {0};
+    struct scalar_time_arithmetic_input second = {0};
+    const char *function_name = "ADDTIME";
+    int64_t second_seconds = 0;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || !is_time_arithmetic_function_kind(expression->kind) ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    function_name = time_arithmetic_function_name(expression->kind);
+
+    rc = time_arithmetic_first_argument(database, function_name, child_at(expression, 0U), &first);
+    if (rc != MYLITE_OK || first.kind == SCALAR_TIME_ARITHMETIC_INPUT_NULL) {
+        return rc;
+    }
+    rc =
+        time_arithmetic_second_argument(database, function_name, child_at(expression, 1U), &second);
+    if (rc != MYLITE_OK || second.kind == SCALAR_TIME_ARITHMETIC_INPUT_NULL) {
+        return rc;
+    }
+
+    second_seconds = second.time_seconds;
+    if (time_arithmetic_function_subtracts(expression->kind) &&
+        checked_int64_negate(second_seconds, &second_seconds)) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "result is outside the supported time or datetime range"
+        );
+    }
+    if (first.kind == SCALAR_TIME_ARITHMETIC_INPUT_DATETIME) {
+        return time_arithmetic_apply_datetime(
+            database,
+            function_name,
+            &first,
+            second_seconds,
+            out_cell
+        );
+    }
+    return time_arithmetic_apply_time(database, function_name, &first, second_seconds, out_cell);
+}
+
+static bool is_time_arithmetic_function_kind(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static const char *time_arithmetic_function_name(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+        return "SUBTIME";
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    default:
+        return "ADDTIME";
+    }
+}
+
+static bool time_arithmetic_function_subtracts(enum mylite_sql_ast_node_kind kind) {
+    return kind == MYLITE_SQL_AST_SUBTIME_FUNCTION;
+}
+
+static int set_time_arithmetic_unsupported_error(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *suffix
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+
+    if (!time_arithmetic_message(message, sizeof(message), function_name, suffix)) {
+        set_runtime_error(database, "failed to format time arithmetic diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static bool time_arithmetic_message(
+    char *buffer,
+    size_t buffer_size,
+    const char *function_name,
+    const char *suffix
+) {
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U || function_name == NULL || suffix == NULL) {
+        return false;
+    }
+    written = snprintf(buffer, buffer_size, "%s() %s", function_name, suffix);
+    return (written >= 0 && (size_t)written < buffer_size) != 0;
+}
+
+static int time_arithmetic_first_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_time_arithmetic_input *out_input
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_input == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input = (struct scalar_time_arithmetic_input){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "supports only canonical datetime string literals, canonical time string literals, "
+            "and NULL"
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "supports only canonical datetime string literals, canonical time string literals, "
+            "and NULL"
+        );
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_NULL;
+        return MYLITE_OK;
+    }
+
+    rc = time_arithmetic_decode_string_argument(
+        database,
+        function_name,
+        expression,
+        "supports only canonical datetime string literals, canonical time string literals, "
+        "and NULL",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && datetime_text_is_canonical_valid(text, text_length) &&
+        date_add_parse_datetime_text(text, text_length, &out_input->datetime)) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_DATETIME;
+    } else if (
+        rc == MYLITE_OK && time_text_to_seconds(text, text_length, &out_input->time_seconds)
+    ) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_TIME;
+    } else if (rc == MYLITE_OK) {
+        rc = set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "supports only canonical YYYY-MM-DD HH:MM:SS datetime or canonical [-]HH:MM:SS time "
+            "values"
+        );
+    }
+
+    free(text);
+    return rc;
+}
+
+static int time_arithmetic_second_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_time_arithmetic_input *out_input
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_input == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input = (struct scalar_time_arithmetic_input){0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "time argument supports only canonical time string literals and NULL"
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "time argument supports only canonical time string literals and NULL"
+        );
+    }
+    if (mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_NULL;
+        return MYLITE_OK;
+    }
+
+    rc = time_arithmetic_decode_string_argument(
+        database,
+        function_name,
+        expression,
+        "time argument supports only canonical time string literals and NULL",
+        &text,
+        &text_length
+    );
+    if (rc == MYLITE_OK && time_text_to_seconds(text, text_length, &out_input->time_seconds)) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_TIME;
+    } else if (rc == MYLITE_OK) {
+        rc = set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "time argument supports only canonical [-]HH:MM:SS time values"
+        );
+    }
+
+    free(text);
+    return rc;
+}
+
+static int time_arithmetic_decode_string_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_suffix,
+    char **out_text,
+    size_t *out_text_length
+) {
+    char unsupported_message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    char nul_message[date_interval_nul_diagnostic_capacity];
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(expression) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return set_time_arithmetic_unsupported_error(database, function_name, unsupported_suffix);
+    }
+    if (!time_arithmetic_message(
+            unsupported_message,
+            sizeof(unsupported_message),
+            function_name,
+            unsupported_suffix
+        ) ||
+        !time_arithmetic_message(
+            nul_message,
+            sizeof(nul_message),
+            function_name,
+            "time literals do not support NUL bytes"
+        )) {
+        set_runtime_error(database, "failed to format time arithmetic diagnostic");
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        unsupported_message,
+        nul_message,
+        out_text,
+        out_text_length
+    );
+    if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, nul_message);
+        free(*out_text);
+        *out_text = NULL;
+        *out_text_length = 0U;
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int time_arithmetic_apply_datetime(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct scalar_time_arithmetic_input *first,
+    int64_t second_seconds,
+    struct session_scalar_cell *out_cell
+) {
+    struct date_add_datetime_parts output = {0};
+    int rc = MYLITE_OK;
+
+    if (first == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = date_interval_second_apply(
+        database,
+        function_name,
+        &first->datetime,
+        second_seconds,
+        &output
+    );
+    if (rc != MYLITE_OK) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "result is outside the supported time or datetime range"
+        );
+    }
+    return date_interval_second_format(database, function_name, &output, out_cell);
+}
+
+static int time_arithmetic_apply_time(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct scalar_time_arithmetic_input *first,
+    int64_t second_seconds,
+    struct session_scalar_cell *out_cell
+) {
+    int64_t result_seconds = 0;
+
+    if (first == NULL || out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (checked_int64_add(first->time_seconds, second_seconds, &result_seconds) ||
+        !time_arithmetic_seconds_in_range(result_seconds)) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "result is outside the supported time or datetime range"
+        );
+    }
+    return time_arithmetic_format_time(database, function_name, result_seconds, out_cell);
+}
+
+static int time_arithmetic_format_time(
+    struct mylite_db *database,
+    const char *function_name,
+    int64_t seconds,
+    struct session_scalar_cell *out_cell
+) {
+    char buffer[sizeof("-838:59:59")];
+    bool is_negative = seconds < 0;
+    int64_t magnitude = seconds;
+    int64_t hour = 0;
+    int64_t minute = 0;
+    int64_t second = 0;
+    int written = 0;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (is_negative) {
+        magnitude = -magnitude;
+    }
+    hour = magnitude / time_second_per_hour;
+    magnitude %= time_second_per_hour;
+    minute = magnitude / time_second_per_minute;
+    second = magnitude % time_second_per_minute;
+    written = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%s%02" PRId64 ":%02" PRId64 ":%02" PRId64,
+        is_negative ? "-" : "",
+        hour,
+        minute,
+        second
+    );
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        char message[date_interval_format_diagnostic_capacity];
+
+        written = snprintf(message, sizeof(message), "failed to format %s() result", function_name);
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            set_runtime_error(database, "failed to format time arithmetic result");
+            return MYLITE_ERROR;
+        }
+        set_runtime_error(database, message);
+        return MYLITE_ERROR;
+    }
+
+    out_cell->owned_text = (char *)malloc((size_t)written + 1U);
+    if (out_cell->owned_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(out_cell->owned_text, buffer, (size_t)written + 1U);
+    out_cell->value = out_cell->owned_text;
+    return MYLITE_OK;
+}
+
+static bool time_arithmetic_seconds_in_range(int64_t seconds) {
+    const int64_t maximum = ((int64_t)time_maximum_hour * time_second_per_hour) +
+                            ((int64_t)time_maximum_minute_or_second * time_second_per_minute) +
+                            (int64_t)time_maximum_minute_or_second;
+
+    return (seconds >= -maximum && seconds <= maximum) != 0;
+}
+
 static bool date_add_parse_datetime_text(
     const char *text,
     size_t text_length,
@@ -93996,6 +94497,9 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     if (is_date_interval_second_projection_expression(expression)) {
         return true;
     }
+    if (is_time_arithmetic_projection_expression(expression)) {
+        return true;
+    }
     if (is_date_format_projection_expression(expression)) {
         return true;
     }
@@ -94876,6 +95380,22 @@ static bool is_date_interval_second_projection_expression(
     return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
 }
 
+static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression != NULL && (expression->kind == MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR ||
+                               expression->kind == MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR)) {
+        return true;
+    }
+    if (expression == NULL || !is_time_arithmetic_function_kind(expression->kind)) {
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return false;
+    }
+    return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
+}
+
 static bool is_date_format_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -95464,6 +95984,10 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_DATE_SUB_FUNCTION:
     case MYLITE_SQL_AST_ADDDATE_FUNCTION:
     case MYLITE_SQL_AST_SUBDATE_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:

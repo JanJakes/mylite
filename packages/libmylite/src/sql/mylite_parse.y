@@ -3315,6 +3315,14 @@ expression(A) ::= SUBDATE(T) LPAREN(L) expression(V) COMMA INTERVAL expression(I
     A = mylite_sql_parser_make_no_space_two_argument_function(
         state, T, L, MYLITE_SQL_AST_SUBDATE_FUNCTION, V, I, R);
 }
+expression(A) ::= ADDTIME(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ADDTIME_FUNCTION, B, C, R);
+}
+expression(A) ::= SUBTIME(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SUBTIME_FUNCTION, B, C, R);
+}
 expression(A) ::= DATE_FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATE_FORMAT_FUNCTION, B, C, R);
@@ -4284,6 +4292,36 @@ expression(A) ::=
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR, D, R);
 }
+expression(A) ::= ADDTIME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ADDTIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    ADDTIME(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= SUBTIME(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SUBTIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    SUBTIME(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR, D, R);
+}
 expression(A) ::=
     UNIX_TIMESTAMP(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
     (void)B;
@@ -5238,6 +5276,12 @@ identifier(A) ::= ADDDATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SUBDATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ADDTIME(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SUBTIME(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {

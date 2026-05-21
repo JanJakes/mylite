@@ -52,6 +52,7 @@ static int test_independent_update_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_numbers_table(mylite_db *database, const char *table_name);
 static int create_null_order_table(mylite_db *database, const char *table_name);
+static int create_string_order_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_update_ok(mylite_db *database, const char *sql, int64_t affected_rows);
@@ -113,6 +114,48 @@ static int test_update_success_persistence_rename_and_drop(void) {
     static const char *const bigint_minimum[] = {"-9223372036854775808"};
     static const char *const null_order_asc[] = {"1", "10", "2", "0", "3", "0", "4", "0"};
     static const char *const null_order_desc[] = {"1", "0", "2", "0", "3", "0", "4", "10"};
+    static const char *const string_where_order[] = {
+        "1",
+        "b",
+        "old",
+        "2",
+        "a",
+        "x",
+        "3",
+        "c",
+        "old",
+        "4",
+        NULL,
+        "old",
+    };
+    static const char *const string_order_asc[] = {
+        "1",
+        "b",
+        "old",
+        "2",
+        "a",
+        "old",
+        "3",
+        "c",
+        "old",
+        "4",
+        NULL,
+        "first",
+    };
+    static const char *const string_order_desc[] = {
+        "1",
+        "b",
+        "old",
+        "2",
+        "a",
+        "old",
+        "3",
+        "c",
+        "last",
+        "4",
+        NULL,
+        "old",
+    };
     static const char *const persisted_i[] = {"42"};
     static const char *const rename_i[] = {"33"};
     char path[test_path_capacity];
@@ -335,6 +378,57 @@ static int test_update_success_persistence_rename_and_drop(void) {
             .column_count = 1U,
             .row_count = 4U,
             .context = "order without limit update",
+        }
+    );
+
+    failures += create_string_order_table(database, "upd_string_where_order");
+    failures += expect_update_ok(
+        database,
+        "UPDATE upd_string_where_order SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, k, v FROM upd_string_where_order ORDER BY id",
+            .values = string_where_order,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "string WHERE ORDER BY LIMIT update",
+        }
+    );
+
+    failures += create_string_order_table(database, "upd_string_order_asc");
+    failures += expect_update_ok(
+        database,
+        "UPDATE upd_string_order_asc SET v = 'first' ORDER BY k ASC LIMIT 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, k, v FROM upd_string_order_asc ORDER BY id",
+            .values = string_order_asc,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "nullable string ascending order limited update",
+        }
+    );
+
+    failures += create_string_order_table(database, "upd_string_order_desc");
+    failures += expect_update_ok(
+        database,
+        "UPDATE upd_string_order_desc SET v = 'last' ORDER BY k DESC LIMIT 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, k, v FROM upd_string_order_desc ORDER BY id",
+            .values = string_order_desc,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "nullable string descending order limited update",
         }
     );
 
@@ -1108,6 +1202,42 @@ static int create_null_order_table(mylite_db *database, const char *table_name) 
     );
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         fprintf(stderr, "insert NULL-order SQL is too long for %s\n", table_name);
+        return failures + 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_string_order_table(mylite_db *database, const char *table_name) {
+    char sql[sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "CREATE TABLE %s (id INT NOT NULL, k VARCHAR(16) NULL, v VARCHAR(16) NULL)",
+        table_name
+    );
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create string-order table SQL is too long for %s\n", table_name);
+        return 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "INSERT INTO %s VALUES (1, 'b', 'old'), (2, 'a', 'old'), "
+        "(3, 'c', 'old'), (4, NULL, 'old')",
+        table_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "insert string-order SQL is too long for %s\n", table_name);
         return failures + 1;
     }
     failures += execute_ok(database, sql, &result);

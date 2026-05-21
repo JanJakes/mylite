@@ -70,6 +70,15 @@ reset_numbers() {
         "$DATABASE" >/dev/null
 }
 
+reset_strings() {
+    run_mysql \
+        "DROP TABLE IF EXISTS strings; "\
+"CREATE TABLE strings (id INT NOT NULL, k VARCHAR(16) NULL, v VARCHAR(16) NULL); "\
+"INSERT INTO strings VALUES (1, 'b', 'old'), (2, 'a', 'old'), "\
+"(3, 'c', 'old'), (4, NULL, 'old');" \
+        "$DATABASE" >/dev/null
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
     run_mysql "DROP DATABASE IF EXISTS ${OTHER_DATABASE};" >/dev/null 2>&1 || true
@@ -225,6 +234,36 @@ expect_output \
     "4	0	1:100,2:100,3:100,4:100" \
     "UPDATE numbers SET i = 100 ORDER BY i; "\
 "SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', i) ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_strings
+expect_output \
+    "string where order limit" \
+    "1	0	1:b:old,2:a:x,3:c:old,4:N:old" \
+    "UPDATE strings SET v = 'x' WHERE k = 'a' ORDER BY k LIMIT 1; "\
+"SELECT ROW_COUNT(), @@warning_count, "\
+"GROUP_CONCAT(CONCAT(id, ':', IFNULL(k, 'N'), ':', IFNULL(v, 'N')) ORDER BY id) "\
+"FROM strings;" \
+    "$DATABASE"
+
+reset_strings
+expect_output \
+    "nullable string ascending order limit" \
+    "1	0	1:b:old,2:a:old,3:c:old,4:N:first" \
+    "UPDATE strings SET v = 'first' ORDER BY k ASC LIMIT 1; "\
+"SELECT ROW_COUNT(), @@warning_count, "\
+"GROUP_CONCAT(CONCAT(id, ':', IFNULL(k, 'N'), ':', IFNULL(v, 'N')) ORDER BY id) "\
+"FROM strings;" \
+    "$DATABASE"
+
+reset_strings
+expect_output \
+    "nullable string descending order limit" \
+    "1	0	1:b:old,2:a:old,3:c:last,4:N:old" \
+    "UPDATE strings SET v = 'last' ORDER BY k DESC LIMIT 1; "\
+"SELECT ROW_COUNT(), @@warning_count, "\
+"GROUP_CONCAT(CONCAT(id, ':', IFNULL(k, 'N'), ':', IFNULL(v, 'N')) ORDER BY id) "\
+"FROM strings;" \
     "$DATABASE"
 
 reset_numbers

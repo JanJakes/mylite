@@ -501,6 +501,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION = 492,
     MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT = 493,
     MYLITE_SQL_AST_REVERSE_FUNCTION = 494,
+    MYLITE_SQL_AST_CHAR_FUNCTION = 495,
 };
 
 enum mylite_sql_ast_literal_kind {

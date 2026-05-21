@@ -3542,6 +3542,10 @@ expression(A) ::= CONCAT_WS(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, B, R);
 }
+expression(A) ::= CHAR(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CHAR_FUNCTION, B, R);
+}
 expression(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
                   COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_three_argument_function(

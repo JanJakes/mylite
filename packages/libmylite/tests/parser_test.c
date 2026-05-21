@@ -36,6 +36,7 @@ enum {
     exp_log_power_power_index = 6,
     exp_log_power_wrong_arity_power_index = 7,
     exp_log_power_identifier_count = 7,
+    char_function_variadic_argument_count = 5,
     reverse_table_option_count = 5,
 };
 
@@ -74,6 +75,7 @@ static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
 static int test_unhex_function(void);
+static int test_char_function(void);
 static int test_charset_collation_functions(void);
 static int test_string_length_functions(void);
 static int test_string_case_functions(void);
@@ -372,6 +374,7 @@ int main(void) {
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
     failures += test_unhex_function();
+    failures += test_char_function();
     failures += test_charset_collation_functions();
     failures += test_string_length_functions();
     failures += test_string_case_functions();
@@ -4792,6 +4795,82 @@ static int test_unhex_function(void) {
     failures += parse_sql("CREATE TABLE unhex_names (unhex INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "unhex identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_char_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CHAR(65), CHAR(77, 121, 83, 81, 76), CHAR(+1), CHAR(n) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char integer function");
+    failures += expect_span_text(expression, "CHAR(65)", "char integer span");
+    arguments = child_at(expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "char args");
+    failures += expect_child_count(arguments, 1U, "char one argument");
+    failures += expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "char int");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char variadic function");
+    arguments = child_at(expression, 0U);
+    failures +=
+        expect_child_count(arguments, char_function_variadic_argument_count, "char five arguments");
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char signed function");
+    arguments = child_at(expression, 0U);
+    failures += expect_operator(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "char positive argument"
+    );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char column function");
+    arguments = child_at(expression, 0U);
+    failures += expect_node(child_at(arguments, 0U), MYLITE_SQL_AST_IDENTIFIER, "char column");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "char from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CHAR (NULL), (CHAR(TRUE,FALSE)) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "spaced char");
+    failures += expect_span_text(expression, "CHAR (NULL)", "spaced char span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized char");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_CHAR_FUNCTION, "wrapped char");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO CHAR(65), CHAR(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "char do");
+    failures += expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_CHAR_FUNCTION, "do char");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_CHAR_FUNCTION, "do null char");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CHAR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CHAR(65 USING utf8mb4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

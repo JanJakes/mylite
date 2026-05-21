@@ -12,6 +12,7 @@
 #include "mylite_string_codepoint.h"
 #include "mylite_string_concat.h"
 #include "mylite_string_padding.h"
+#include "mylite_string_quote.h"
 #include "mylite_string_replace.h"
 #include "mylite_string_reverse.h"
 #include "mylite_string_search.h"
@@ -236,6 +237,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_padding_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_quote_function(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_replace_function(sqlite);

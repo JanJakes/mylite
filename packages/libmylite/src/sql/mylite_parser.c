@@ -7072,6 +7072,7 @@ static bool map_keyword_token(
         {"RIGHT", MYLITE_SQL_PARSE_RIGHT},
         {"REPEAT", MYLITE_SQL_PARSE_REPEAT},
         {"REVERSE", MYLITE_SQL_PARSE_REVERSE},
+        {"QUOTE", MYLITE_SQL_PARSE_QUOTE},
         {"RPAD", MYLITE_SQL_PARSE_RPAD},
         {"INSTR", MYLITE_SQL_PARSE_INSTR},
         {"LOWER", MYLITE_SQL_PARSE_LOWER},

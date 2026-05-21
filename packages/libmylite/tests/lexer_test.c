@@ -108,6 +108,7 @@ static int test_keywords(void) {
     failures += expect_keyword("ltrim", 0U);
     failures += expect_keyword("repeat", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_keyword("right", MYLITE_SQL_KEYWORD_RESERVED);
+    failures += expect_keyword("quote", 0U);
     failures += expect_keyword("rpad", 0U);
     failures += expect_keyword("rtrim", 0U);
     failures += expect_keyword("space", 0U);

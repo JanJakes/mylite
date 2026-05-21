@@ -53,6 +53,7 @@ static int test_concat_function(void);
 static int test_concat_ws_function(void);
 static int test_replace_function(void);
 static int test_reverse_function(void);
+static int test_quote_function(void);
 static int test_field_function(void);
 static int test_json_valid_function(void);
 static int test_json_extract_functions(void);
@@ -354,6 +355,7 @@ int main(void) {
     failures += test_concat_ws_function();
     failures += test_replace_function();
     failures += test_reverse_function();
+    failures += test_quote_function();
     failures += test_field_function();
     failures += test_json_valid_function();
     failures += test_json_extract_functions();
@@ -2188,6 +2190,81 @@ static int test_reverse_function(void) {
     failures += parse_sql("SELECT REVERSE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("SELECT REVERSE('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("CREATE TABLE reverse(id INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_quote_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT QUOTE('abc'), quote(v) AS label FROM t ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_QUOTE_FUNCTION, "quote function");
+    failures += expect_span_text(expression, "QUOTE('abc')", "quote span");
+    failures += expect_child_count(expression, 1U, "quote one child");
+    failures +=
+        expect_literal(child_at(expression, 0U), MYLITE_SQL_AST_LITERAL_STRING, "quote str");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_QUOTE_FUNCTION, "lower quote");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "quote column");
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "quote alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DO QUOTE('abc'), QUOTE(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "quote do");
+    failures +=
+        expect_node(child_at(expression_list, 0U), MYLITE_SQL_AST_QUOTE_FUNCTION, "do quote");
+    failures +=
+        expect_node(child_at(expression_list, 1U), MYLITE_SQL_AST_QUOTE_FUNCTION, "do null quote");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT QUOTE ('abc'), (QUOTE(1.50)) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_QUOTE_FUNCTION, "spaced quote");
+    failures += expect_span_text(expression, "QUOTE ('abc')", "spaced quote span");
+    expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "wrapped quote");
+    failures += expect_node(child_at(expression, 0U), MYLITE_SQL_AST_QUOTE_FUNCTION, "inner quote");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT QUOTE();", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR,
+        "quote zero argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT QUOTE('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR,
+        "quote two argument error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE quote_words (quote INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "quote identifier");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -787,6 +787,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"QUARTER", 0U},
         {"QUERY", 0U},
         {"QUICK", 0U},
+        {"QUOTE", 0U},
         {"RADIANS", 0U},
         {"RAND", 0U},
         {"RANDOM", 0U},

@@ -1334,6 +1334,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "strcmp_function";
     case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
         return "strcmp_argument_count_error";
+    case MYLITE_SQL_AST_QUOTE_FUNCTION:
+        return "quote_function";
+    case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
+        return "quote_argument_count_error";
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
         return "scalar_subquery";
     case MYLITE_SQL_AST_PI_FUNCTION:

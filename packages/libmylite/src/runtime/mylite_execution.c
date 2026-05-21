@@ -358,6 +358,7 @@ enum {
     information_schema_events_column_count = 24,
     information_schema_keywords_column_count = 2,
     information_schema_parameters_column_count = 16,
+    information_schema_partitions_column_count = 25,
     information_schema_processlist_column_count = 8,
     information_schema_processlist_db_column = 3,
     information_schema_processlist_info_column = 7,
@@ -3244,6 +3245,7 @@ enum information_schema_table_kind {
     INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES = 21,
     INFORMATION_SCHEMA_TABLE_KEYWORDS = 22,
     INFORMATION_SCHEMA_TABLE_VIEW_TABLE_USAGE = 23,
+    INFORMATION_SCHEMA_TABLE_PARTITIONS = 24,
 };
 
 struct information_schema_column_definition {
@@ -5249,6 +5251,265 @@ static const struct information_schema_column_definition information_schema_para
      information_schema_parameters_routine_type_column_type},
 };
 
+static const struct information_schema_column_definition information_schema_partitions_columns[] = {
+    {"TABLE_CATALOG",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"TABLE_SCHEMA",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"TABLE_NAME",
+     NULL,
+     "NO",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"PARTITION_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"SUBPARTITION_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "64",
+     "192",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_tolower_ci",
+     "varchar(64)"},
+    {"PARTITION_ORDINAL_POSITION",
+     NULL,
+     "YES",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+    {"SUBPARTITION_ORDINAL_POSITION",
+     NULL,
+     "YES",
+     "int",
+     NULL,
+     NULL,
+     "10",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "int unsigned"},
+    {"PARTITION_METHOD",
+     NULL,
+     "YES",
+     "varchar",
+     "13",
+     "39",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(13)"},
+    {"SUBPARTITION_METHOD",
+     NULL,
+     "YES",
+     "varchar",
+     "13",
+     "39",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(13)"},
+    {"PARTITION_EXPRESSION",
+     NULL,
+     "YES",
+     "varchar",
+     "2048",
+     "6144",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(2048)"},
+    {"SUBPARTITION_EXPRESSION",
+     NULL,
+     "YES",
+     "varchar",
+     "2048",
+     "6144",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(2048)"},
+    {"PARTITION_DESCRIPTION",
+     NULL,
+     "YES",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+    {"TABLE_ROWS",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"AVG_ROW_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"DATA_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"MAX_DATA_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"INDEX_LENGTH",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"DATA_FREE",
+     NULL,
+     "YES",
+     "bigint",
+     NULL,
+     NULL,
+     "20",
+     "0",
+     NULL,
+     NULL,
+     NULL,
+     "bigint unsigned"},
+    {"CREATE_TIME", NULL, "NO", "timestamp", NULL, NULL, NULL, NULL, "0", NULL, NULL, "timestamp"},
+    {"UPDATE_TIME", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"CHECK_TIME", NULL, "YES", "datetime", NULL, NULL, NULL, NULL, "0", NULL, NULL, "datetime"},
+    {"CHECKSUM", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+    {"PARTITION_COMMENT",
+     NULL,
+     "NO",
+     "text",
+     "65535",
+     "65535",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "text"},
+    {"NODEGROUP",
+     NULL,
+     "YES",
+     "varchar",
+     "256",
+     "768",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(256)"},
+    {"TABLESPACE_NAME",
+     NULL,
+     "YES",
+     "varchar",
+     "268",
+     "804",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_bin",
+     "varchar(268)"},
+};
+
 static const struct information_schema_column_definition information_schema_processlist_columns[] =
     {
         {"ID", "", "NO", "bigint", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "bigint unsigned"},
@@ -6351,6 +6612,10 @@ static const struct information_schema_table_definition information_schema_table
      "PARAMETERS",
      information_schema_parameters_columns,
      information_schema_parameters_column_count},
+    {INFORMATION_SCHEMA_TABLE_PARTITIONS,
+     "PARTITIONS",
+     information_schema_partitions_columns,
+     information_schema_partitions_column_count},
     {INFORMATION_SCHEMA_TABLE_PROCESSLIST,
      "PROCESSLIST",
      information_schema_processlist_columns,
@@ -8367,11 +8632,21 @@ static int copy_information_schema_processlist_info(
     const struct mylite_statement_context *context,
     char **out_info
 );
+static int append_information_schema_partitions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
 static int append_information_schema_tables_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+);
+static int append_information_schema_partitions_base_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,
     const struct mylite_catalog_schema_descriptor *schema,
@@ -33576,6 +33851,8 @@ static int append_information_schema_system_rows(
         return append_information_schema_keywords_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_USER_PRIVILEGES:
         return append_information_schema_user_privileges_system_rows(database, rows);
+    case INFORMATION_SCHEMA_TABLE_PARTITIONS:
+        return append_information_schema_partitions_system_rows(database, rows);
     case INFORMATION_SCHEMA_TABLE_EVENTS:
     case INFORMATION_SCHEMA_TABLE_PARAMETERS:
     case INFORMATION_SCHEMA_TABLE_PROCESSLIST:
@@ -33633,6 +33910,7 @@ static int append_information_schema_catalog_rows(
     case INFORMATION_SCHEMA_TABLE_TABLE_CONSTRAINTS:
     case INFORMATION_SCHEMA_TABLE_KEY_COLUMN_USAGE:
     case INFORMATION_SCHEMA_TABLE_STATISTICS:
+    case INFORMATION_SCHEMA_TABLE_PARTITIONS:
     case INFORMATION_SCHEMA_TABLE_REFERENTIAL_CONSTRAINTS:
         break;
     }
@@ -33725,6 +34003,14 @@ static int append_information_schema_catalog_table(
     }
     if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_STATISTICS) {
         return append_information_schema_statistics_base_rows(
+            context->database,
+            context->rows,
+            context->schema,
+            table
+        );
+    }
+    if (context->rows->definition->kind == INFORMATION_SCHEMA_TABLE_PARTITIONS) {
+        return append_information_schema_partitions_base_row(
             context->database,
             context->rows,
             context->schema,
@@ -34048,6 +34334,52 @@ static int copy_information_schema_processlist_info(
     return MYLITE_OK;
 }
 
+static int append_information_schema_partitions_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t table_index = 0U;
+         rc == MYLITE_OK && table_index < sizeof(information_schema_table_definitions) /
+                                              sizeof(information_schema_table_definitions[0]);
+         ++table_index) {
+        const struct information_schema_table_definition *definition =
+            &information_schema_table_definitions[table_index];
+        const char *values[information_schema_partitions_column_count] = {
+            "def",
+            "information_schema",
+            definition->name,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            "",
+            "",
+            NULL,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+
+    return rc;
+}
+
 static int append_information_schema_tables_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -34126,6 +34458,49 @@ static int append_information_schema_tables_base_row(
         "",
         table->comment,
     };
+
+    return append_information_schema_row(database, rows, values);
+}
+
+static int append_information_schema_partitions_base_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const struct mylite_catalog_schema_descriptor *schema,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct table_status_values status = {0};
+    int rc = load_table_status_values(database, table, &status);
+    const char *values[information_schema_partitions_column_count] = {
+        "def",
+        schema->name,
+        table->name,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        status.row_count_text,
+        status.average_row_length_text,
+        "16384",
+        "0",
+        status.index_length,
+        "0",
+        status.create_time,
+        status.update_time,
+        NULL,
+        NULL,
+        "",
+        "",
+        NULL,
+    };
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     return append_information_schema_row(database, rows, values);
 }
@@ -35557,6 +35932,7 @@ static int information_schema_append_result_rows(
     size_t *indexes = NULL;
     size_t index_count = 0U;
     size_t visible_count = 0U;
+    const char **values = NULL;
     int rc = information_schema_matching_row_indexes(
         database,
         statement,
@@ -35572,8 +35948,15 @@ static int information_schema_append_result_rows(
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
     }
+    if (rc == MYLITE_OK && query->projection_count != 0U) {
+        values = (const char **)calloc(query->projection_count, sizeof(*values));
+        if (values == NULL) {
+            free(indexes);
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+    }
     for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
-        const char *values[information_schema_columns_column_count];
         size_t row_index = indexes[output_index];
 
         if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
@@ -35588,6 +35971,7 @@ static int information_schema_append_result_rows(
         }
         ++visible_count;
     }
+    free((void *)values);
     if (rc == MYLITE_OK && out_read_row_count != NULL) {
         *out_read_row_count = visible_count;
     }

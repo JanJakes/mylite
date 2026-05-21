@@ -19,8 +19,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 50,
-    global_variable_row_count = 46,
+    session_variable_row_count = 51,
+    global_variable_row_count = 47,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 5,
@@ -126,6 +126,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"collation_server", "utf8mb4_0900_ai_ci"},
         {"default_storage_engine", "InnoDB"},
         {"error_count", "0"},
+        {"explicit_defaults_for_timestamp", "ON"},
         {"foreign_key_checks", "ON"},
         {"gtid_executed", ""},
         {"gtid_mode", "OFF"},
@@ -177,6 +178,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"collation_database", "utf8mb4_0900_ai_ci"},
         {"collation_server", "utf8mb4_0900_ai_ci"},
         {"default_storage_engine", "InnoDB"},
+        {"explicit_defaults_for_timestamp", "ON"},
         {"foreign_key_checks", "ON"},
         {"gtid_executed", ""},
         {"gtid_mode", "OFF"},
@@ -364,6 +366,24 @@ static int test_show_variables_values_scopes_and_filters(void) {
             .value = "67108864",
         },
         "show global variables max allowed packet"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW VARIABLES LIKE 'explicit_defaults_for_timestamp'",
+        (struct expected_variable_row){
+            .name = "explicit_defaults_for_timestamp",
+            .value = "ON",
+        },
+        "show variables explicit defaults for timestamp"
+    );
+    failures += expect_single_row(
+        database,
+        "SHOW GLOBAL VARIABLES WHERE Variable_name = 'explicit_defaults_for_timestamp'",
+        (struct expected_variable_row){
+            .name = "explicit_defaults_for_timestamp",
+            .value = "ON",
+        },
+        "show global variables explicit defaults for timestamp"
     );
     failures += expect_single_row(
         database,

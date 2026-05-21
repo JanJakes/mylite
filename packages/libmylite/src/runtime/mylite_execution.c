@@ -7109,6 +7109,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET = 48,
     SESSION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT = 49,
     SESSION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 50,
+    SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP = 51,
 };
 
 struct system_variable_component {
@@ -7195,6 +7196,10 @@ static const struct system_variable_descriptor system_variable_descriptors[] = {
     {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER, true, true},
     {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
     {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
+    {"explicit_defaults_for_timestamp",
+     SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP,
+     true,
+     true},
     {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS, true, true},
     {"gtid_executed", SESSION_SYSTEM_VARIABLE_GTID_EXECUTED, true, true},
     {"gtid_mode", SESSION_SYSTEM_VARIABLE_GTID_MODE, true, true},
@@ -29076,6 +29081,7 @@ static bool set_system_variable_fixed_boolean_value(
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
         *out_value = true;
@@ -86425,6 +86431,7 @@ static int hex_numeric_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
         out_value->integer = 1U;
         return MYLITE_OK;
@@ -93692,6 +93699,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
         rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
@@ -94135,6 +94143,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
     case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
+    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case SESSION_SYSTEM_VARIABLE_SQL_MODE:
@@ -94299,6 +94308,7 @@ static int show_system_variable_value(
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
         *out_value = "ON";
         return MYLITE_OK;

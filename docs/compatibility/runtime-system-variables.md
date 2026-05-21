@@ -191,7 +191,7 @@ Performance Schema variable tables remain unsupported.
 | `event_scheduler` | ❌ | Value, scope, SET, diagnostics |
 | `explain_format` | ❌ | Value, scope, SET, diagnostics |
 | `explain_json_format_version` | ❌ | Value, scope, SET, diagnostics |
-| `explicit_defaults_for_timestamp` | ❌ | Value, scope, SET, diagnostics |
+| `explicit_defaults_for_timestamp` | 🟡 | Limited scalar `SELECT @@explicit_defaults_for_timestamp` with no scope, `session`, `local`, or `global`; returns MyLite's fixed modern timestamp-default value `1`; limited `SHOW VARIABLES` rows report `ON`; limited fixed no-op `SET` forms may preserve `ON`; no deprecated `OFF` timestamp semantics, mutable global/session state, startup options, implicit first-`TIMESTAMP` defaults, automatic legacy timestamp updates, changed temporal DDL/DML behavior, or Performance Schema variable tables |
 | `external_user` | ❌ | Value, scope, SET, diagnostics |
 | `flush` | ❌ | Value, scope, SET, diagnostics |
 | `flush_time` | ❌ | Value, scope, SET, diagnostics |

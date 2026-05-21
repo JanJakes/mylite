@@ -15,7 +15,7 @@
 
 enum {
     test_path_capacity = 1024,
-    fixed_variable_column_count = 18,
+    fixed_variable_column_count = 19,
     diagnostics_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
@@ -87,44 +87,13 @@ int main(void) {
 
 static int test_set_fixed_system_variables_success_and_file_safety(void) {
     static const char *const fixed_values[] = {
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        default_sql_mode,
-        "0",
-        "0",
-        "0",
+        "1", "1", "1", "1", "1", "1", "1", "1", "0", "0", "0", "0", "0", "0", "0", default_sql_mode,
+        "0", "0", "0",
     };
     static const char *const reopened_values[] = {
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "1",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        default_sql_mode,
-        "0",
-        "0",
-        "-1",
+        "1", "1", "1",  "1", "1", "1", "1", "1",
+        "0", "0", "0",  "0", "0", "0", "0", default_sql_mode,
+        "0", "0", "-1",
     };
     static const char *const warning_count_values[] = {"0"};
     char path[test_path_capacity];
@@ -156,6 +125,9 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
     failures += expect_set_ok(database, "SET @@session.sql_notes = 1");
     failures += expect_set_ok(database, "SET sql_quote_show_create = DEFAULT");
     failures += expect_set_ok(database, "SET sql_big_selects = 1");
+    failures += expect_set_ok(database, "SET explicit_defaults_for_timestamp = DEFAULT");
+    failures += expect_set_ok(database, "SET SESSION explicit_defaults_for_timestamp = ON");
+    failures += expect_set_ok(database, "SET LOCAL explicit_defaults_for_timestamp = TRUE");
     failures += expect_set_ok(database, "SET sql_log_bin = ON");
     failures += expect_set_ok(database, "SET foreign_key_checks = TRUE");
     failures += expect_set_ok(database, "SET unique_checks = ON");
@@ -179,7 +151,8 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         (struct expected_query){
             .sql = "SELECT @@autocommit, @@foreign_key_checks, @@unique_checks, "
                    "@@sql_quote_show_create, @@sql_notes, @@sql_big_selects, @@sql_log_bin, "
-                   "@@sql_safe_updates, @@sql_warnings, @@sql_buffer_result, @@sql_auto_is_null, "
+                   "@@explicit_defaults_for_timestamp, @@sql_safe_updates, @@sql_warnings, "
+                   "@@sql_buffer_result, @@sql_auto_is_null, "
                    "@@sql_generate_invisible_primary_key, @@sql_log_off, "
                    "@@sql_require_primary_key, @@sql_mode, @@warning_count, @@error_count, "
                    "ROW_COUNT()",
@@ -234,7 +207,8 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
         (struct expected_query){
             .sql = "SELECT @@autocommit, @@foreign_key_checks, @@unique_checks, "
                    "@@sql_quote_show_create, @@sql_notes, @@sql_big_selects, @@sql_log_bin, "
-                   "@@sql_safe_updates, @@sql_warnings, @@sql_buffer_result, @@sql_auto_is_null, "
+                   "@@explicit_defaults_for_timestamp, @@sql_safe_updates, @@sql_warnings, "
+                   "@@sql_buffer_result, @@sql_auto_is_null, "
                    "@@sql_generate_invisible_primary_key, @@sql_log_off, "
                    "@@sql_require_primary_key, @@sql_mode, @@warning_count, @@error_count, "
                    "ROW_COUNT()",
@@ -473,6 +447,24 @@ static int test_set_fixed_system_variables_diagnostics(void) {
     failures += execute_error(
         database,
         "SET sql_warnings = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET explicit_defaults_for_timestamp = OFF",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET explicit_defaults_for_timestamp = 0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

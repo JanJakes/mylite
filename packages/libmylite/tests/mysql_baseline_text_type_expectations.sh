@@ -3,6 +3,8 @@
 set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MYSQL_BIN="${MYLITE_MYSQL_BIN:-}"
+MYSQL_SOCKET="${MYLITE_MYSQL_SOCKET:-}"
 DATABASE="mylite_text_type_expectations_$$"
 
 fail() {
@@ -13,8 +15,21 @@ fail() {
 run_mysql() {
     sql=$1
     shift
-    printf '%s\n' "$sql" \
-        | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw --skip-column-names "$@"
+    if [ -n "$MYSQL_BIN" ]; then
+        if [ -n "$MYSQL_SOCKET" ]; then
+            printf '%s\n' "$sql" \
+                | "$MYSQL_BIN" --protocol=SOCKET --socket="$MYSQL_SOCKET" -uroot \
+                    --batch --raw --skip-column-names --default-character-set=utf8mb4 "$@"
+        else
+            printf '%s\n' "$sql" \
+                | "$MYSQL_BIN" --protocol=TCP -h127.0.0.1 -uroot \
+                    --batch --raw --skip-column-names --default-character-set=utf8mb4 "$@"
+        fi
+    else
+        printf '%s\n' "$sql" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql -uroot \
+                --batch --raw --skip-column-names --default-character-set=utf8mb4 "$@"
+    fi
 }
 
 expect_output() {
@@ -220,6 +235,93 @@ expect_output \
     "INSERT INTO text_family VALUES "\
 "(11, CONCAT(REPEAT('x', 255), ' '), 'ok', 'ok', 'ok', 'ok'); "\
 "SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 11;" \
+    "$DATABASE"
+
+nonstrict_text_truncation_expected=$(printf "%b" \
+    "1\t3\t255\ta\t65535\tb\t65535\tc")
+expect_output \
+    "nonstrict insert truncates text family overlength values" \
+    "$nonstrict_text_truncation_expected" \
+"SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family (id, tt, t, mt, lt, nn) VALUES "\
+"(1, REPEAT('a', 256), REPEAT('b', 65536), 'ok', 'ok', REPEAT('c', 65536)); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1), LENGTH(t), RIGHT(t, 1), "\
+"LENGTH(nn), RIGHT(nn, 1) FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+nonstrict_text_truncation_warnings_expected=$(printf "%b" \
+    "Warning\t1265\tData truncated for column 'tt' at row 1\n"\
+"Warning\t1265\tData truncated for column 't' at row 1\n"\
+"Warning\t1265\tData truncated for column 'nn' at row 1")
+expect_output \
+    "nonstrict insert text family truncation warnings" \
+    "$nonstrict_text_truncation_warnings_expected" \
+"SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family (id, tt, t, mt, lt, nn) VALUES "\
+"(1, REPEAT('a', 256), REPEAT('b', 65536), 'ok', 'ok', REPEAT('c', 65536)); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+utf8_text_truncation_expected=$(printf "%b" \
+    "1\t1\t255\t85\tE282AC")
+expect_output \
+    "nonstrict text truncation preserves UTF-8 character boundary" \
+    "$utf8_text_truncation_expected" \
+    "SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family (id, tt, nn) VALUES "\
+"(1, CONCAT(REPEAT(CONVERT(0xE282AC USING utf8mb4), 85), 'x'), 'ok'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), CHAR_LENGTH(tt), HEX(RIGHT(tt, 1)) "\
+"FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+ignore_text_truncation_expected=$(printf "%b" \
+    "1\t1\t255\ti")
+expect_output \
+    "insert ignore truncates text family overlength values" \
+    "$ignore_text_truncation_expected" \
+    "TRUNCATE text_family; "\
+"INSERT IGNORE INTO text_family (id, tt, nn) VALUES "\
+"(1, CONCAT(REPEAT('i', 255), 'j'), 'ok'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+nonstrict_text_update_expected=$(printf "%b" \
+    "2\t2\n1:255:q,2:255:q\n0\t1")
+expect_output \
+    "nonstrict update truncates text family values per matched row" \
+    "$nonstrict_text_update_expected" \
+    "SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family (id, tt, nn) VALUES (1, 'a', 'ok'), (2, 'b', 'ok'); "\
+"UPDATE text_family SET tt = CONCAT(REPEAT('q', 255), 'z') ORDER BY id; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', LENGTH(tt), ':', RIGHT(tt, 1)) ORDER BY id) FROM text_family; "\
+"UPDATE text_family SET tt = CONCAT(REPEAT('q', 255), 'z') WHERE id = 1; "\
+"SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+text_insert_select_expected=$(printf "%b" \
+    "2\t2\n1:255:s,2:255:t")
+expect_output \
+    "nonstrict insert select truncates text family values" \
+    "$text_insert_select_expected" \
+    "DROP TABLE IF EXISTS text_src; DROP TABLE IF EXISTS text_dst; SET sql_mode = ''; "\
+"CREATE TABLE text_src (id INT, t TEXT); CREATE TABLE text_dst (id INT, tt TINYTEXT); "\
+"INSERT INTO text_src VALUES (1, CONCAT(REPEAT('s', 255), 'x')), "\
+"(2, CONCAT(REPEAT('t', 255), ' ')); "\
+"INSERT INTO text_dst SELECT id, t FROM text_src ORDER BY id; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', LENGTH(tt), ':', RIGHT(tt, 1)) ORDER BY id) FROM text_dst;" \
+    "$DATABASE"
+
+expect_error \
+    "strict insert select rejects table-backed overlength text values" \
+    1406 \
+    22001 \
+    "Data too long for column 'tt' at row 1" \
+    "DROP TABLE IF EXISTS text_src; DROP TABLE IF EXISTS text_dst; "\
+"CREATE TABLE text_src (id INT, t TEXT); CREATE TABLE text_dst (id INT, tt TINYTEXT); "\
+"INSERT INTO text_src VALUES (1, CONCAT(REPEAT('s', 255), ' ')); "\
+"INSERT INTO text_dst SELECT id, t FROM text_src;" \
     "$DATABASE"
 
 expect_error \

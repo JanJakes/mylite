@@ -34,8 +34,12 @@ The representative WordPress core setup shapes in
 `docs/specs/baseline-wordpress-remaining-core-ddl-fixtures/specs.md`, are
 covered as combined fixture paths over the current limited `CREATE TABLE`,
 default, charset/collation, auto-increment, text, zero-temporal, and
-prefix/composite primary, unique, and secondary index metadata surfaces. This
-is not a full WordPress schema or `dbDelta()` compatibility claim.
+prefix/composite primary, unique, and secondary index metadata surfaces. A
+narrow dbDelta-style introspection fixture also covers representative
+`DESCRIBE`, `SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, and
+selected `INFORMATION_SCHEMA` reads for `wp_options` and `wp_postmeta`. This is
+not a full WordPress schema, `dbDelta()` implementation, or full WordPress
+query-suite compatibility claim.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

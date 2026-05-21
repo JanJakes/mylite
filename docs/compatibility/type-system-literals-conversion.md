@@ -10,12 +10,15 @@ to no-default columns adjust with warnings. Descriptor-backed `INSERT ...
 SELECT` additionally adjusts omitted no-default targets, selected `NULL` into
 `NOT NULL` targets, selected integer range violations for compatible
 integer-family targets, and selected overlength `CHAR` / `VARCHAR` values for
-compatible string descriptors. Omitted `AUTO_INCREMENT` columns continue to
-generate values. Explicit `NULL` in ordinary `INSERT` / `REPLACE` `VALUES` and
-`SET` forms remains an error outside `IGNORE`, and broader non-strict string,
-numeric, temporal, range, and expression coercions remain outside the current
-subset. Ordinary non-strict `INSERT` / `REPLACE` and matched single-table
-`UPDATE` plus `INSERT IGNORE ... VALUES` / `SET` truncate overlength `CHAR` /
+compatible string descriptors. Supported duplicate-key update assignments
+additionally adjust no-default `DEFAULT`, character truncation, and multi-row
+literal `NULL` assignments to integer `NOT NULL` targets. Omitted
+`AUTO_INCREMENT` columns continue to generate values. Explicit `NULL` in
+ordinary `INSERT` / `REPLACE` `VALUES` and `SET` forms remains an error outside
+`IGNORE`, and broader non-strict string, numeric, temporal, range, and
+expression coercions remain outside the current subset. Ordinary non-strict
+`INSERT` / `REPLACE`, matched single-table `UPDATE`, supported duplicate-key
+updates, and `INSERT IGNORE ... VALUES` / `SET` truncate overlength `CHAR` /
 `VARCHAR` string literals with MySQL-compatible
 diagnostics; `VARCHAR` values whose only excess characters are trailing spaces
 record notes, while `CHAR` keeps the current silent default-mode trailing-space

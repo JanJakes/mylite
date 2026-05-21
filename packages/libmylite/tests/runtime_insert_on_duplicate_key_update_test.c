@@ -22,6 +22,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_field_no_default = 1364,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_data_too_long = 1406,
 };
 
 struct expected_sql_error {
@@ -173,6 +174,24 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     };
     static const char *const default_rows[] = {"1", "7", NULL};
     static const char *const multi_default_rows[] = {"1", "7", NULL};
+    static const char *const nonstrict_default_rows[] = {"1", "0"};
+    static const char *const nonstrict_string_rows[] = {"1", "ab"};
+    static const char *const nonstrict_null_rows[] = {"1", "0", "2", "20"};
+    static const char *const no_default_warning_rows[] = {
+        "Warning",
+        "1364",
+        "Field 'v' doesn't have a default value",
+    };
+    static const char *const string_truncation_warning_rows[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 's' at row 1",
+    };
+    static const char *const bad_null_warning_rows[] = {
+        "Warning",
+        "1048",
+        "Column 'v' cannot be null",
+    };
     static const char *const auto_increment_rows[] = {"1", "10", "200", "3", "20", "300"};
     static const char *const auto_increment_primary_unique_rows[] = {
         "1",
@@ -865,6 +884,99 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         }
     );
 
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ns_default(id INT PRIMARY KEY, v INT NOT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO ns_default VALUES (1, 10)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ns_default VALUES (1, 20) ON DUPLICATE KEY UPDATE v = DEFAULT",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = no_default_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict duplicate default warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM ns_default",
+            .values = nonstrict_default_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "nonstrict duplicate default row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ns_string(id INT PRIMARY KEY, s VARCHAR(2) NOT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO ns_string VALUES (1, 'aa')");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ns_string VALUES (1, 'bb') ON DUPLICATE KEY UPDATE s = 'abcd'",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = string_truncation_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict duplicate string warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, s FROM ns_string",
+            .values = nonstrict_string_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "nonstrict duplicate string row",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE ns_null(id INT PRIMARY KEY, v INT NOT NULL)");
+    failures += expect_statement_ok(database, "INSERT INTO ns_null VALUES (1, 10)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ns_null VALUES (2, 20), (1, 30) ON DUPLICATE KEY UPDATE v = NULL",
+        (struct expected_dml){.affected_rows = 3, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = bad_null_warning_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "nonstrict duplicate null warning",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM ns_null ORDER BY id",
+            .values = nonstrict_null_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "nonstrict duplicate null rows",
+        }
+    );
+    failures += expect_statement_ok(database, "SET sql_mode = DEFAULT");
+
     failures += expect_statement_ok(
         database,
         "CREATE TABLE auto_t(id INT AUTO_INCREMENT, email INT UNIQUE, v INT, KEY(id))"
@@ -1216,6 +1328,31 @@ static int test_duplicate_update_diagnostics(void) {
             .code = mysql_error_field_no_default,
             .sqlstate = "HY000",
             .message_part = "Field 'v' doesn't have a default value",
+        }
+    );
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'v' cannot be null",
+        }
+    );
+    failures += expect_statement_ok(database, "SET sql_mode = DEFAULT");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE strict_string(id INT PRIMARY KEY, s VARCHAR(2) NOT NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO strict_string VALUES (1, 'aa')");
+    failures += execute_error(
+        database,
+        "INSERT INTO strict_string VALUES (1, 'bb') ON DUPLICATE KEY UPDATE s = 'abcd'",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 's' at row 1",
         }
     );
     failures += execute_error(

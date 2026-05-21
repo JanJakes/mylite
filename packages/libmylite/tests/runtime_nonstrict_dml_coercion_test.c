@@ -1733,15 +1733,12 @@ static int test_nonstrict_guardrails(void) {
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
         "seed duplicate string guardrail table"
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
         "INSERT INTO duplicate_string_t VALUES (1, 'ok') "
         "ON DUPLICATE KEY UPDATE v = 'abcd'",
-        (struct expected_sql_error){
-            .code = mysql_error_data_too_long,
-            .sqlstate = "22001",
-            .message_part = "Data too long for column 'v' at row 1",
-        }
+        (struct expected_statement){.affected_rows = 0, .warning_count = 1U},
+        "nonstrict duplicate string assignment truncates to unchanged value"
     );
     failures += expect_query_values(
         database,

@@ -23389,6 +23389,11 @@ static int convert_insert_duplicate_update_value(
     const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
     struct planned_value *out_value
 );
+static bool insert_duplicate_update_allows_null_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int convert_insert_duplicate_update_values(
     struct mylite_db *database,
     const struct planned_insert *plan,
@@ -142507,6 +142512,13 @@ static int convert_insert_duplicate_update_value(
     const struct planned_insert_duplicate_update_assignment *duplicate_assignment,
     struct planned_value *out_value
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+    const struct mylite_catalog_column_descriptor *column = NULL;
+
+    if (plan == NULL || duplicate_assignment == NULL || out_value == NULL) {
+        set_runtime_error(database, "invalid insert duplicate assignment plan");
+        return MYLITE_ERROR;
+    }
     if (duplicate_assignment->value_kind ==
         PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE) {
         return copy_planned_value(
@@ -142516,16 +142528,48 @@ static int convert_insert_duplicate_update_value(
         );
     }
 
+    value_node = unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
+    column = &plan->columns[duplicate_assignment->assignment_column_index];
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    planned_value_deinit(out_value);
+    *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        return convert_null_insert_value(
+            database,
+            column,
+            insert_duplicate_update_allows_null_adjustment(database, plan, column),
+            out_value
+        );
+    }
+
     return convert_insert_value_for_plan(
         database,
         plan,
-        duplicate_assignment->assignment_value_node,
-        &plan->columns[duplicate_assignment->assignment_column_index],
+        value_node,
+        column,
         row_index + 1U,
         false,
-        false,
+        dml_allows_string_truncation_adjustment(database, false),
         out_value
     );
+}
+
+static bool insert_duplicate_update_allows_null_adjustment(
+    const struct mylite_db *database,
+    const struct planned_insert *plan,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (database == NULL || plan == NULL || column == NULL) {
+        return false;
+    }
+    if (plan->row_count <= 1U || session_sql_mode_is_strict(database)) {
+        return false;
+    }
+    return strcmp(column->physical_type, "INTEGER") == 0;
 }
 
 static int convert_insert_duplicate_update_values(

@@ -647,6 +647,7 @@ static bool catalog_logical_type_accepts_current_date(const char *logical_type);
 static bool catalog_logical_type_accepts_current_time(const char *logical_type);
 static bool catalog_logical_type_accepts_text_default(const char *logical_type);
 static bool catalog_logical_type_accepts_binary_default(const char *logical_type);
+static bool catalog_logical_type_is_binary_blob_family(const char *logical_type);
 static bool catalog_default_text_is_hex(const char *text, size_t text_length);
 static bool catalog_logical_type_is_bit(const char *logical_type);
 static bool catalog_logical_type_is_text_family(const char *logical_type);
@@ -8737,7 +8738,8 @@ static int validate_catalog_text_default_value(
     }
     if (values->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         if ((!catalog_logical_type_accepts_integer_expression_default(values->logical_type) &&
-             !catalog_logical_type_is_text_family(values->logical_type)) ||
+             !catalog_logical_type_is_text_family(values->logical_type) &&
+             !catalog_logical_type_is_binary_blob_family(values->logical_type)) ||
             strcmp(values->default_text, "NULL") != 0) {
             return MYLITE_MISUSE;
         }
@@ -8836,7 +8838,15 @@ static bool catalog_logical_type_accepts_text_default(const char *logical_type) 
 
 static bool catalog_logical_type_accepts_binary_default(const char *logical_type) {
     return (text_has_ascii_case_insensitive_prefix(logical_type, "BINARY(") ||
-            text_has_ascii_case_insensitive_prefix(logical_type, "VARBINARY(")) != 0;
+            text_has_ascii_case_insensitive_prefix(logical_type, "VARBINARY(") ||
+            catalog_logical_type_is_binary_blob_family(logical_type)) != 0;
+}
+
+static bool catalog_logical_type_is_binary_blob_family(const char *logical_type) {
+    return (catalog_logical_type_equals(logical_type, "TINYBLOB") ||
+            catalog_logical_type_equals(logical_type, "BLOB") ||
+            catalog_logical_type_equals(logical_type, "MEDIUMBLOB") ||
+            catalog_logical_type_equals(logical_type, "LONGBLOB")) != 0;
 }
 
 static bool catalog_default_text_is_hex(const char *text, size_t text_length) {

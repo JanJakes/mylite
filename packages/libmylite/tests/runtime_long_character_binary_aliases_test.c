@@ -190,9 +190,18 @@ static int test_alias_success_persistence_and_introspection(void) {
         "  `c` mediumblob NOT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const alias_defaults_show_create_rows[] = {
+        "alias_defaults",
+        "CREATE TABLE `alias_defaults` (\n"
+        "  `a` mediumblob DEFAULT (0x4100),\n"
+        "  `n` mediumblob DEFAULT (NULL)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const unsigned char alias_default[] = {0x41U, 0x00U};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_result *result = NULL;
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -321,6 +330,39 @@ static int test_alias_success_persistence_and_introspection(void) {
             .context = "alias charset attributes",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE alias_defaults (a LONG VARBINARY DEFAULT (X'4100'), "
+        "n LONG VARBINARY DEFAULT (NULL))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE alias_defaults",
+            .values = alias_defaults_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "LONG VARBINARY expression default SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alias_defaults () VALUES ()", 1);
+    failures += execute_ok(database, "SELECT a, n FROM alias_defaults", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = alias_default, .size = sizeof(alias_default)},
+        "LONG VARBINARY expression default materializes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.is_null = true},
+        "LONG VARBINARY NULL expression default materializes"
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     database = NULL;
@@ -413,14 +455,9 @@ static int test_alias_diagnostics(void) {
             .message_part = "Invalid default value for 'a'",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(
         database,
-        "CREATE TABLE bad_long_varbinary_default_expr (a LONG VARBINARY DEFAULT (X'41'))",
-        (struct expected_sql_error){
-            .code = mysql_error_invalid_default,
-            .sqlstate = "42000",
-            .message_part = "Invalid default value for 'a'",
-        }
+        "CREATE TABLE long_varbinary_default_expr (a LONG VARBINARY DEFAULT (X'41'))"
     );
     failures += execute_error(
         database,

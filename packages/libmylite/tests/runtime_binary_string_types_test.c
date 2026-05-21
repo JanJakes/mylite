@@ -31,6 +31,8 @@ enum {
     binary_defaults_column_b_zero = 8,
     binary_defaults_column_v_zero = 9,
     binary_defaults_column_v_ff = 10,
+    blob_defaults_show_columns_row_count = 6,
+    blob_defaults_information_schema_row_count = 5,
     mysql_error_parse = 1064,
     mysql_error_column_length_too_big = 1074,
     mysql_error_row_size_too_large = 1118,
@@ -66,6 +68,7 @@ struct expected_dml_result {
 
 static int test_binary_success_persistence_and_introspection(void);
 static int test_binary_defaults(void);
+static int test_blob_expression_defaults(void);
 static int test_binary_diagnostics(void);
 static int test_binary_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -115,6 +118,7 @@ int main(void) {
 
     failures += test_binary_success_persistence_and_introspection();
     failures += test_binary_defaults();
+    failures += test_blob_expression_defaults();
     failures += test_binary_diagnostics();
     failures += test_binary_independent_handles();
 
@@ -822,6 +826,374 @@ static int test_binary_defaults(void) {
     mylite_result_free(result);
     mylite_close(database);
     remove_related_files(path);
+    return failures;
+}
+
+static int test_blob_expression_defaults(void) {
+    static const char *const show_columns_rows[] = {
+        "id", "int",        "YES", "", NULL,       "",
+        "tb", "tinyblob",   "YES", "", "0x4100FF", "DEFAULT_GENERATED",
+        "b",  "blob",       "YES", "", "0x01",     "DEFAULT_GENERATED",
+        "mb", "mediumblob", "YES", "", "0x0ABC",   "DEFAULT_GENERATED",
+        "lb", "longblob",   "YES", "", "X''",      "DEFAULT_GENERATED",
+        "n",  "blob",       "YES", "", "NULL",     "DEFAULT_GENERATED",
+    };
+    static const char *const show_create_rows[] = {
+        "blob_defaults",
+        "CREATE TABLE `blob_defaults` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `tb` tinyblob DEFAULT (0x4100FF),\n"
+        "  `b` blob DEFAULT (0x01),\n"
+        "  `mb` mediumblob DEFAULT (0x0ABC),\n"
+        "  `lb` longblob DEFAULT (X''),\n"
+        "  `n` blob DEFAULT (NULL)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const information_schema_rows[] = {
+        "tb",
+        "0x4100FF",
+        "DEFAULT_GENERATED",
+        "b",
+        "0x01",
+        "DEFAULT_GENERATED",
+        "mb",
+        "0x0ABC",
+        "DEFAULT_GENERATED",
+        "lb",
+        "X''",
+        "DEFAULT_GENERATED",
+        "n",
+        "NULL",
+        "DEFAULT_GENERATED",
+    };
+    static const unsigned char tb_default[] = {0x41U, 0x00U, 0xffU};
+    static const unsigned char b_default[] = {0x01U};
+    static const unsigned char mb_default[] = {0x0aU, 0xbcU};
+    static const unsigned char replacement_b[] = {0x55U};
+    static const unsigned char added_default[] = {0x42U, 0x00U};
+    static const unsigned char renamed_default[] = {0x44U};
+    static const unsigned char clone_default[] = {0x01U};
+    static const unsigned char first_handle_value[] = {0x11U};
+    static const unsigned char second_handle_value[] = {0x22U};
+    static const char *const tiny_overlength_sql =
+        "CREATE TABLE bad_tinyblob_default (b TINYBLOB DEFAULT "
+        "(0x000102030405060708090A0B0C0D0E0F"
+        "101112131415161718191A1B1C1D1E1F"
+        "202122232425262728292A2B2C2D2E2F"
+        "303132333435363738393A3B3C3D3E3F"
+        "404142434445464748494A4B4C4D4E4F"
+        "505152535455565758595A5B5C5D5E5F"
+        "606162636465666768696A6B6C6D6E6F"
+        "707172737475767778797A7B7C7D7E7F"
+        "808182838485868788898A8B8C8D8E8F"
+        "909192939495969798999A9B9C9D9E9F"
+        "A0A1A2A3A4A5A6A7A8A9AAABACADAEAF"
+        "B0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF"
+        "C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF"
+        "D0D1D2D3D4D5D6D7D8D9DADBDCDDDEDF"
+        "E0E1E2E3E4E5E6E7E8E9EAEBECEDEEEF"
+        "F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF))";
+    char path[test_path_capacity];
+    char first_path[test_path_capacity];
+    char second_path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_result *result = NULL;
+    mylite_db *database = NULL;
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "blob_defaults") != 0 ||
+        make_test_path(first_path, sizeof(first_path), "blob_first") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "blob_second") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    remove_related_files(first_path);
+    remove_related_files(second_path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open blob defaults file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE blob_defaults ("
+        "id INT, "
+        "tb TINYBLOB DEFAULT (X'4100FF'), "
+        "b BLOB DEFAULT (0x1), "
+        "mb MEDIUMBLOB DEFAULT (0xabc), "
+        "lb LONGBLOB DEFAULT (X''), "
+        "n BLOB DEFAULT (NULL))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM blob_defaults",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = blob_defaults_show_columns_row_count,
+            .context = "BLOB expression defaults SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE blob_defaults",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "BLOB expression defaults SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'blob_defaults' "
+                   "AND COLUMN_NAME <> 'id' ORDER BY ORDINAL_POSITION",
+            .values = information_schema_rows,
+            .column_count = 3U,
+            .row_count = blob_defaults_information_schema_row_count,
+            .context = "BLOB expression defaults INFORMATION_SCHEMA.COLUMNS",
+        }
+    );
+
+    failures += expect_dml_ok(database, "INSERT INTO blob_defaults (id) VALUES (1)", 1);
+    failures += execute_ok(database, "SELECT tb, b, mb, lb, n FROM blob_defaults", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = tb_default, .size = sizeof(tb_default)},
+        "TINYBLOB expression default materializes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = b_default, .size = sizeof(b_default)},
+        "BLOB 0x odd expression default materializes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.bytes = mb_default, .size = sizeof(mb_default)},
+        "MEDIUMBLOB odd expression default materializes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = (const unsigned char *)"", .size = 0U},
+        "LONGBLOB empty expression default materializes"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        4U,
+        (struct expected_bytes){.is_null = true},
+        "BLOB NULL expression default materializes"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_dml_ok(database, "UPDATE blob_defaults SET tb = X'99' WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE blob_defaults SET tb = DEFAULT WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "UPDATE blob_defaults SET tb = DEFAULT WHERE id = 1", 0);
+    failures += execute_ok(database, "SELECT tb FROM blob_defaults WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = tb_default, .size = sizeof(tb_default)},
+        "UPDATE DEFAULT restores BLOB expression default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE blob_replace (id INT PRIMARY KEY, b BLOB DEFAULT (X'55'))"
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO blob_replace VALUES (1, X'66')", 1);
+    failures += expect_dml_ok(database, "REPLACE INTO blob_replace (id, b) VALUES (1, DEFAULT)", 2);
+    failures += execute_ok(database, "SELECT b FROM blob_replace WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = replacement_b, .size = sizeof(replacement_b)},
+        "REPLACE DEFAULT materializes BLOB expression default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE blob_alter (id INT, b BLOB)");
+    failures += expect_dml_ok(database, "INSERT INTO blob_alter (id) VALUES (1)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE blob_alter ADD COLUMN added BLOB DEFAULT (X'4200')"
+    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE blob_alter MODIFY COLUMN b BLOB DEFAULT (0x43)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE blob_alter CHANGE COLUMN b renamed BLOB DEFAULT (X'44')"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO blob_alter (id) VALUES (2)", 1);
+    failures += execute_ok(database, "SELECT renamed, added FROM blob_alter ORDER BY id", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.is_null = true},
+        "ALTER MODIFY does not backfill existing BLOB values"
+    );
+    failures += expect_binary_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = added_default, .size = sizeof(added_default)},
+        "ALTER ADD backfills BLOB expression default"
+    );
+    failures += expect_binary_cell(
+        result,
+        1U,
+        0U,
+        (struct expected_bytes){.bytes = renamed_default, .size = sizeof(renamed_default)},
+        "ALTER CHANGE preserves BLOB expression default"
+    );
+    failures += expect_binary_cell(
+        result,
+        1U,
+        1U,
+        (struct expected_bytes){.bytes = added_default, .size = sizeof(added_default)},
+        "ALTER ADD default applies to new BLOB rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE blob_clone LIKE blob_defaults");
+    failures += expect_statement_ok(database, "RENAME TABLE blob_clone TO blob_clone_renamed");
+    failures += expect_dml_ok(database, "INSERT INTO blob_clone_renamed (id) VALUES (2)", 1);
+    failures += execute_ok(database, "SELECT b FROM blob_clone_renamed WHERE id = 2", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = clone_default, .size = sizeof(clone_default)},
+        "CREATE TABLE LIKE preserves BLOB expression default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_statement_ok(database, "DROP TABLE blob_clone_renamed");
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE null_default (b BLOB NOT NULL DEFAULT (NULL))");
+    failures += execute_error(
+        database,
+        "INSERT INTO null_default () VALUES ()",
+        (struct expected_sql_error){mysql_error_bad_null, "23000", "cannot be null"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_blob_default (b BLOB DEFAULT X'41')",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_blob_string_default (b BLOB DEFAULT ('abc'))",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_blob_expression_default (b BLOB DEFAULT (1 + 2))",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_varbinary_expression_default (v VARBINARY(3) DEFAULT (X'41'))",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE bad_alter_default (b BLOB)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE bad_alter_default ALTER COLUMN b SET DEFAULT (X'41')",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        tiny_overlength_sql,
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read BLOB default preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "BLOB defaults file preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen BLOB defaults file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += execute_ok(database, "SELECT b FROM blob_defaults WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = b_default, .size = sizeof(b_default)},
+        "BLOB expression default reopen persistence"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first BLOB handle");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second BLOB handle");
+    failures += expect_statement_ok(first, "CREATE DATABASE app");
+    failures += expect_statement_ok(second, "CREATE DATABASE app");
+    failures += expect_statement_ok(first, "USE app");
+    failures += expect_statement_ok(second, "USE app");
+    failures += expect_statement_ok(first, "CREATE TABLE t (id INT, b BLOB DEFAULT (X'11'))");
+    failures += expect_statement_ok(second, "CREATE TABLE t (id INT, b BLOB DEFAULT (X'22'))");
+    failures += expect_dml_ok(first, "INSERT INTO t (id) VALUES (1)", 1);
+    failures += expect_dml_ok(second, "INSERT INTO t (id) VALUES (1)", 1);
+    failures += execute_ok(first, "SELECT b FROM t WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = first_handle_value, .size = sizeof(first_handle_value)},
+        "first independent BLOB default state"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(second, "SELECT b FROM t WHERE id = 1", &result);
+    failures += expect_binary_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = second_handle_value, .size = sizeof(second_handle_value)},
+        "second independent BLOB default state"
+    );
+    mylite_result_free(result);
+
+    mylite_close(first);
+    mylite_close(second);
+    remove_related_files(path);
+    remove_related_files(first_path);
+    remove_related_files(second_path);
     return failures;
 }
 

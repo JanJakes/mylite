@@ -53,8 +53,10 @@ struct mylite_sql_char_type_tokens {
 
 struct mylite_sql_text_type_tokens {
     struct mylite_sql_token type_token;
+    struct mylite_sql_token length_token;
     struct mylite_sql_token end_token;
     enum mylite_sql_ast_text_type text_type;
+    int has_length;
 };
 
 struct mylite_sql_binary_string_type_tokens {

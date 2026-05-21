@@ -1613,6 +1613,8 @@ struct planned_column {
     bool is_auto_increment;
     bool is_serial_alias;
     bool on_update_current_timestamp;
+    bool has_text_length_argument;
+    uint64_t text_length_argument;
     const struct mylite_sql_ast_node *default_node;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
@@ -15517,6 +15519,16 @@ static int apply_create_table_default_binary_charset_to_column(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *column
 );
+static int normalize_text_length_argument_for_default_charset(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const char *default_charset
+);
+static int apply_default_binary_charset_to_column(
+    struct mylite_db *database,
+    const char *default_charset,
+    struct planned_column *column
+);
 static bool create_table_column_has_explicit_charset_or_collation(
     const struct mylite_sql_ast_node *column_node
 );
@@ -16407,9 +16419,24 @@ static int map_char_type(
 static int append_national_character_set_warning(struct mylite_db *database);
 static int map_text_family_type(
     struct mylite_db *database,
+    const char *column_name,
     const struct mylite_sql_ast_node *type_node,
     struct planned_column *out_column
 );
+static int assign_text_family_descriptor_type(
+    struct mylite_db *database,
+    struct planned_column *out_column,
+    const char *logical_type
+);
+static const char *text_family_logical_type_for_length(
+    uint64_t character_length,
+    uint64_t max_bytes_per_character
+);
+static uint64_t saturating_text_byte_requirement(
+    uint64_t character_length,
+    uint64_t max_bytes_per_character
+);
+static uint64_t max_bytes_per_character_for_charset(const char *charset_name);
 static int map_json_type(struct planned_column *out_column);
 static int map_spatial_type(
     struct mylite_db *database,
@@ -23831,6 +23858,10 @@ static int append_decimal_truncated_note(
     size_t row_number
 );
 static void set_display_width_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
+);
+static void set_text_display_width_out_of_range_error(
     struct mylite_db *database,
     const char *column_name
 );
@@ -43353,10 +43384,24 @@ static int plan_create_table_item(
         }
         rc = plan_column(database, item, &out_plan->columns[current_column_index]);
         if (rc == MYLITE_OK) {
+            rc = normalize_text_length_argument_for_default_charset(
+                database,
+                &out_plan->columns[current_column_index],
+                out_plan->default_charset
+            );
+        }
+        if (rc == MYLITE_OK) {
             rc = apply_create_table_default_binary_charset_to_column(
                 database,
                 out_plan,
                 item,
+                &out_plan->columns[current_column_index]
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_column_default(
+                database,
+                out_plan->columns[current_column_index].default_node,
                 &out_plan->columns[current_column_index]
             );
         }
@@ -43403,8 +43448,6 @@ static int apply_create_table_default_binary_charset_to_column(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *column
 ) {
-    int rc = MYLITE_OK;
-
     if (!planned_create_table_default_charset_is_binary(plan)) {
         return MYLITE_OK;
     }
@@ -43418,7 +43461,61 @@ static int apply_create_table_default_binary_charset_to_column(
         return MYLITE_OK;
     }
 
-    rc = normalize_column_to_binary_string_descriptor(database, column);
+    return apply_default_binary_charset_to_column(database, plan->default_charset, column);
+}
+
+static int normalize_text_length_argument_for_default_charset(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const char *default_charset
+) {
+    const char *effective_charset = default_charset;
+    const char *logical_type = NULL;
+
+    if (column == NULL || !column->has_text_length_argument) {
+        return MYLITE_OK;
+    }
+    if (!planned_column_is_text_family(column)) {
+        return MYLITE_OK;
+    }
+    if (column->character_set_name[0] != '\0') {
+        effective_charset = column->character_set_name;
+    }
+    if (effective_charset == NULL || effective_charset[0] == '\0') {
+        effective_charset = MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+    }
+
+    logical_type = text_family_logical_type_for_length(
+        column->text_length_argument,
+        max_bytes_per_character_for_charset(effective_charset)
+    );
+    return assign_text_family_descriptor_type(database, column, logical_type);
+}
+
+static int apply_default_binary_charset_to_column(
+    struct mylite_db *database,
+    const char *default_charset,
+    struct planned_column *column
+) {
+    int rc = MYLITE_OK;
+
+    if (!charset_name_is_binary(default_charset)) {
+        return MYLITE_OK;
+    }
+    if (column->character_set_name[0] != '\0' || column->collation_name[0] != '\0') {
+        return MYLITE_OK;
+    }
+    if (planned_column_is_national_char_or_varchar(column)) {
+        return MYLITE_OK;
+    }
+    if (!planned_column_allows_charset_collation_attributes(column)) {
+        return MYLITE_OK;
+    }
+
+    rc = normalize_text_length_argument_for_default_charset(database, column, default_charset);
+    if (rc == MYLITE_OK) {
+        rc = normalize_column_to_binary_string_descriptor(database, column);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -51010,9 +51107,6 @@ static int plan_alter_table_add_column(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = finalize_planned_column_default(database, &out_plan->column);
-    }
-    if (rc == MYLITE_OK) {
         rc = mylite_catalog_read_table_by_name(
             database,
             out_plan->target.schema.schema_id,
@@ -51034,6 +51128,26 @@ static int plan_alter_table_add_column(
             "ALTER TABLE ADD COLUMN supports only persistent base tables"
         );
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = normalize_text_length_argument_for_default_charset(
+            database,
+            &out_plan->column,
+            out_plan->table.default_charset
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = apply_default_binary_charset_to_column(
+            database,
+            out_plan->table.default_charset,
+            &out_plan->column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_column_default(database, out_plan->column.default_node, &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
         rc = reject_nonempty_temporal_add_column_without_default(
@@ -57457,9 +57571,6 @@ static int plan_alter_table_modify_column(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = finalize_planned_column_default(database, &out_plan->column);
-    }
-    if (rc == MYLITE_OK) {
         rc = plan_alter_table_modify_column_position(database, child_at(statement, 2U), out_plan);
     }
     if (rc == MYLITE_OK) {
@@ -57530,9 +57641,6 @@ static int plan_alter_table_change_column(
             child_at(statement, 2U),
             "ALTER TABLE CHANGE COLUMN does not support AUTO_INCREMENT"
         );
-    }
-    if (rc == MYLITE_OK) {
-        rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
         rc = plan_alter_table_modify_column_position(database, child_at(statement, 3U), out_plan);
@@ -58630,6 +58738,27 @@ static int resolve_alter_table_column_replacement_plan(
     if (out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
         set_unsupported_error(database, out_plan->unsupported_object_message);
         return MYLITE_ERROR;
+    }
+    rc = normalize_text_length_argument_for_default_charset(
+        database,
+        &out_plan->column,
+        out_plan->table.default_charset
+    );
+    if (rc == MYLITE_OK) {
+        rc = apply_default_binary_charset_to_column(
+            database,
+            out_plan->table.default_charset,
+            &out_plan->column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_column_default(database, out_plan->column.default_node, &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     rc = reject_check_constraint_table_alter(
         database,
@@ -95965,6 +96094,13 @@ static int plan_column(
         rc = apply_column_charset_collation_attributes(database, column_node, out_column);
     }
     if (rc == MYLITE_OK) {
+        rc = normalize_text_length_argument_for_default_charset(
+            database,
+            out_column,
+            MYLITE_CATALOG_DEFAULT_TABLE_CHARSET
+        );
+    }
+    if (rc == MYLITE_OK) {
         out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);
         if (out_column->default_node == NULL) {
             out_column->default_node =
@@ -96248,6 +96384,10 @@ static int apply_column_binary_charset_collation_attributes(
         collation_name
     );
 
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = normalize_text_length_argument_for_default_charset(database, column, "binary");
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -98268,8 +98408,7 @@ static int map_column_type(
         return map_char_type(database, type_node, out_column);
     }
     if (type_node->kind == MYLITE_SQL_AST_TEXT_TYPE) {
-        (void)column_name;
-        return map_text_family_type(database, type_node, out_column);
+        return map_text_family_type(database, column_name, type_node, out_column);
     }
     if (type_node->kind == MYLITE_SQL_AST_JSON_TYPE) {
         (void)database;
@@ -98475,11 +98614,13 @@ static int append_national_character_set_warning(struct mylite_db *database) {
 
 static int map_text_family_type(
     struct mylite_db *database,
+    const char *column_name,
     const struct mylite_sql_ast_node *type_node,
     struct planned_column *out_column
 ) {
     enum mylite_sql_ast_text_type text_type = mylite_sql_ast_node_text_type(type_node);
     const char *logical_type = NULL;
+    int rc = MYLITE_OK;
 
     switch (text_type) {
     case MYLITE_SQL_AST_TEXT_TYPE_NONE:
@@ -98502,21 +98643,106 @@ static int map_text_family_type(
         return MYLITE_ERROR;
     }
 
-    snprintf(
+    rc = assign_text_family_descriptor_type(database, out_column, logical_type);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_sql_ast_node_text_type_has_length(type_node) != 0) {
+        struct mylite_sql_source_span length_span =
+            mylite_sql_ast_node_text_type_length_span(type_node);
+        uint64_t length = 0U;
+
+        rc = parse_unsigned_integer_literal(&length_span, &length);
+        if (rc != MYLITE_OK || length > longtext_max_length) {
+            set_text_display_width_out_of_range_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        out_column->has_text_length_argument = true;
+        out_column->text_length_argument = length;
+    }
+
+    return MYLITE_OK;
+}
+
+static int assign_text_family_descriptor_type(
+    struct mylite_db *database,
+    struct planned_column *out_column,
+    const char *logical_type
+) {
+    int written = snprintf(
         out_column->logical_type_storage,
         sizeof(out_column->logical_type_storage),
         "%s",
-        logical_type
+        logical_type == NULL ? "" : logical_type
     );
-    snprintf(
-        out_column->physical_type_storage,
-        sizeof(out_column->physical_type_storage),
-        "%s",
-        "TEXT"
-    );
+
+    if (written < 0 || (size_t)written >= sizeof(out_column->logical_type_storage)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    snprintf(out_column->physical_type_storage, sizeof(out_column->physical_type_storage), "TEXT");
     out_column->logical_type = out_column->logical_type_storage;
     out_column->physical_type = out_column->physical_type_storage;
     return MYLITE_OK;
+}
+
+static const char *text_family_logical_type_for_length(
+    uint64_t character_length,
+    uint64_t max_bytes_per_character
+) {
+    uint64_t byte_requirement =
+        saturating_text_byte_requirement(character_length, max_bytes_per_character);
+
+    if (byte_requirement <= tinytext_max_length) {
+        return "TINYTEXT";
+    }
+    if (byte_requirement <= text_max_length) {
+        return "TEXT";
+    }
+    if (byte_requirement <= mediumtext_max_length) {
+        return "MEDIUMTEXT";
+    }
+    return "LONGTEXT";
+}
+
+static uint64_t saturating_text_byte_requirement(
+    uint64_t character_length,
+    uint64_t max_bytes_per_character
+) {
+    if (max_bytes_per_character == 0U) {
+        max_bytes_per_character = utf8mb4_max_bytes_per_character;
+    }
+    if (character_length > longtext_max_length / max_bytes_per_character) {
+        return longtext_max_length;
+    }
+    return character_length * max_bytes_per_character;
+}
+
+static uint64_t max_bytes_per_character_for_charset(const char *charset_name) {
+    const struct character_set_descriptor *charset = NULL;
+    struct mylite_sql_source_span maxlen_span = {0};
+    uint64_t maxlen = 0U;
+
+    if (charset_name == NULL || charset_name[0] == '\0') {
+        return utf8mb4_max_bytes_per_character;
+    }
+    if (charset_name_is_binary(charset_name)) {
+        return 1U;
+    }
+
+    charset = character_set_by_name(charset_name);
+    if (charset == NULL) {
+        return utf8mb4_max_bytes_per_character;
+    }
+    maxlen_span = (struct mylite_sql_source_span){
+        .text = charset->maxlen,
+        .length = strlen(charset->maxlen),
+    };
+    if (parse_unsigned_integer_literal(&maxlen_span, &maxlen) == MYLITE_OK && maxlen > 0U) {
+        return maxlen;
+    }
+
+    return utf8mb4_max_bytes_per_character;
 }
 
 static int map_json_type(struct planned_column *out_column) {
@@ -145801,6 +146027,29 @@ static void set_display_width_out_of_range_error(
         message,
         sizeof(message),
         "Display width out of range for column '%s' (max = 255)",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_display_width_out_of_range,
+        "42000",
+        message
+    );
+}
+
+static void set_text_display_width_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Display width out of range for column '%s' (max = 4294967295)",
         column_name
     );
 

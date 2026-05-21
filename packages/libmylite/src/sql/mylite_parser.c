@@ -6363,7 +6363,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_text_type(
         return NULL;
     }
 
-    mylite_sql_ast_node_set_text_type(type, tokens.text_type);
+    mylite_sql_ast_node_set_text_type(
+        type,
+        (struct mylite_sql_ast_text_type_payload){
+            .kind = tokens.text_type,
+            .has_length = tokens.has_length,
+            .length_span = span_from_token(&tokens.length_token),
+        }
+    );
     return type;
 }
 

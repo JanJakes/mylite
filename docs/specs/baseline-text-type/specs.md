@@ -9,11 +9,12 @@ storage path to the four MySQL `TEXT` family types: `TINYTEXT`, `TEXT`,
 
 The feature is intentionally not full MySQL large-object support. It admits
 ordinary UTF-8 non-`NUL` string values, `NULL`, strict byte-length checks,
-descriptor cloning/copying, and descriptor-backed introspection. It does not
-implement `TEXT(M)`, column-level character sets/collations, string defaults,
-expression defaults, binary `BLOB` types, string comparison semantics, string
-ordering/grouping/distinct, full protocol metadata, or streaming large-object
-I/O.
+descriptor cloning/copying, and descriptor-backed introspection. This original
+slice deferred `TEXT(M)`, column-level character sets/collations, string
+defaults, expression defaults, binary `BLOB` types, string comparison
+semantics, string ordering/grouping/distinct, full protocol metadata, and
+streaming large-object I/O. Later `TEXT(M)` normalization is specified in
+`docs/specs/baseline-text-family-length-arguments/specs.md`.
 
 ## Sources
 
@@ -140,8 +141,9 @@ The implementation must add:
 
 This feature must not implement:
 
-- `TEXT(M)`, `TINYTEXT(M)`, `MEDIUMTEXT(M)`, `LONGTEXT(M)`, `LONG`, or
-  `LONG VARCHAR`;
+- `TINYTEXT(M)`, `MEDIUMTEXT(M)`, `LONGTEXT(M)`, or original `TEXT(M)`
+  spelling preservation; `TEXT(M)` normalization is covered by
+  `docs/specs/baseline-text-family-length-arguments/specs.md`;
 - `BLOB`, `TINYBLOB`, `MEDIUMBLOB`, `LONGBLOB`, `BINARY`, `VARBINARY`, `CHAR`,
   `ENUM`, `SET`, `JSON`, or other deferred string/binary types;
 - `TEXT` family primary keys, secondary indexes, prefix indexes, `FULLTEXT`
@@ -211,8 +213,11 @@ column_type:
   | LONGTEXT
 ```
 
-`TEXT(M)` and family-specific length arguments are not admitted in this slice.
-Column-level charset, collation, and `BINARY` attributes are not admitted.
+`TEXT(M)` and family-specific length arguments were not admitted in this
+original slice. `TEXT(M)` normalization is covered by
+`docs/specs/baseline-text-family-length-arguments/specs.md`. Column-level
+charset, collation, and `BINARY` attributes are not admitted by this original
+text-family slice.
 `TEXT` remains a nonreserved keyword in MyLite's keyword catalog and is still
 admitted anywhere the current identifier grammar admits nonreserved keywords.
 `TINYTEXT`, `MEDIUMTEXT`, and `LONGTEXT` remain reserved.
@@ -349,8 +354,9 @@ wrapper/planner logic. It does not need a targeted SQLite fork patch.
 
 The implementation must provide deterministic diagnostics for:
 
-- syntax errors and unsupported grammar forms such as `TEXT(M)`,
-  `TINYTEXT(M)`, explicit charset/collation attributes, and `BINARY`;
+- syntax errors and unsupported grammar forms from this original slice such as
+  `TEXT(M)`, `TINYTEXT(M)`, explicit charset/collation attributes, and
+  `BINARY`; later `TEXT(M)` normalization is specified separately;
 - missing default schema, unknown schema, unknown table, and reserved
   `_mylite_*` target names through existing table-resolution policy;
 - unsupported object kinds once non-base-table descriptors exist;
@@ -372,9 +378,9 @@ The implementation must provide deterministic diagnostics for:
 
 Update `COMPATIBILITY.md` and detailed compatibility docs to mark only the
 limited `TINYTEXT`, `TEXT`, `MEDIUMTEXT`, and `LONGTEXT` baseline as supported
-with gaps. Do not overclaim `BLOB`, `TEXT(M)`, string defaults, string
-collations, string ordering, indexes, protocol metadata, or general expression
-support.
+with gaps. Do not overclaim `BLOB`, string defaults, string collations, string
+ordering, indexes, protocol metadata, or general expression support; later
+`TEXT(M)` normalization is specified separately.
 
 ## Test Plan
 
@@ -392,9 +398,9 @@ Add MySQL-runtime expectation coverage for:
 - `UPDATE` changed-row counts, no-op updates, `NULL` assignment, filtered
   updates, and integer `ORDER BY ... LIMIT` updates over tables containing
   `TEXT` columns;
-- unsupported MySQL-accepted forms that MyLite deliberately defers, including
-  `TEXT(M)`, expression defaults, column charset/collation attributes, and
-  `LONG` / `LONG VARCHAR`.
+- unsupported MySQL-accepted forms that this original slice deliberately
+  defers, including `TEXT(M)`, expression defaults, column charset/collation
+  attributes, and `LONG` / `LONG VARCHAR`.
 
 Add fast C tests under `packages/libmylite/tests/`, preferably
 `runtime_text_type_test.c`, registered as `libmylite.runtime.text_type`. Cover:

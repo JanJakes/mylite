@@ -21,12 +21,15 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_no_default = 1364,
     mysql_error_data_too_long = 1406,
+    mysql_error_display_width_out_of_range = 1439,
     mysql_error_incorrect_column_specifier = 1063,
     text_family_row_count = 3,
     text_family_column_count = 6,
     text_expression_default_column_count = 8,
     information_schema_text_column_count = 11,
     text_expression_default_metadata_column_count = 3,
+    text_length_metadata_column_count = 7,
+    text_length_utf8_variant_count = 8,
     tinytext_overlength_byte_count = 256,
 };
 
@@ -50,6 +53,7 @@ struct expected_dml_result {
 };
 
 static int test_text_success_persistence_and_introspection(void);
+static int test_text_length_arguments(void);
 static int test_text_parenthesized_defaults(void);
 static int test_text_diagnostics(void);
 static int test_text_independent_handles(void);
@@ -92,6 +96,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_text_success_persistence_and_introspection();
+    failures += test_text_length_arguments();
     failures += test_text_parenthesized_defaults();
     failures += test_text_diagnostics();
     failures += test_text_independent_handles();
@@ -407,6 +412,331 @@ static int test_text_success_persistence_and_introspection(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "text persisted after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_text_length_arguments(void) {
+    static const char *const utf8_information_schema_rows[] = {
+        "u0",
+        "tinytext",
+        "255",
+        "255",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "tinytext",
+        "u63",
+        "tinytext",
+        "255",
+        "255",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "tinytext",
+        "u64",
+        "text",
+        "65535",
+        "65535",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "text",
+        "u16383",
+        "text",
+        "65535",
+        "65535",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "text",
+        "u16384",
+        "mediumtext",
+        "16777215",
+        "16777215",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "mediumtext",
+        "u4194303",
+        "mediumtext",
+        "16777215",
+        "16777215",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "mediumtext",
+        "u4194304",
+        "longtext",
+        "4294967295",
+        "4294967295",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "longtext",
+        "u4294967295",
+        "longtext",
+        "4294967295",
+        "4294967295",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "longtext",
+    };
+    static const char *const show_create_rows[] = {
+        "utf8_len",
+        "CREATE TABLE `utf8_len` (\n"
+        "  `u0` tinytext,\n"
+        "  `u63` tinytext,\n"
+        "  `u64` text,\n"
+        "  `u16383` text,\n"
+        "  `u16384` mediumtext,\n"
+        "  `u4194303` mediumtext,\n"
+        "  `u4194304` longtext,\n"
+        "  `u4294967295` longtext\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const ascii_information_schema_rows[] = {
+        "a255",   "tinytext",   "255",      "255",      "ascii", "ascii_general_ci", "tinytext",
+        "a256",   "text",       "65535",    "65535",    "ascii", "ascii_general_ci", "text",
+        "a65535", "text",       "65535",    "65535",    "ascii", "ascii_general_ci", "text",
+        "a65536", "mediumtext", "16777215", "16777215", "ascii", "ascii_general_ci", "mediumtext",
+    };
+    static const char *const binary_information_schema_rows[] = {
+        "b255",   "tinyblob",   "255",      "255",      NULL, NULL, "tinyblob",
+        "b256",   "blob",       "65535",    "65535",    NULL, NULL, "blob",
+        "b65535", "blob",       "65535",    "65535",    NULL, NULL, "blob",
+        "b65536", "mediumblob", "16777215", "16777215", NULL, NULL, "mediumblob",
+    };
+    static const char *const collate_binary_information_schema_rows[] = {
+        "c255",   "tinyblob",   "255",      "255",      NULL, NULL, "tinyblob",
+        "c256",   "blob",       "65535",    "65535",    NULL, NULL, "blob",
+        "c65536", "mediumblob", "16777215", "16777215", NULL, NULL, "mediumblob",
+    };
+    static const char *const table_binary_information_schema_rows[] = {
+        "t255",   "tinyblob",   "255",      "255",      NULL, NULL, "tinyblob",
+        "t256",   "blob",       "65535",    "65535",    NULL, NULL, "blob",
+        "t65536", "mediumblob", "16777215", "16777215", NULL, NULL, "mediumblob",
+    };
+    static const char *const alter_rows[] = {
+        "id",
+        "int",
+        "changed",
+        "mediumtext",
+        "added",
+        "text",
+    };
+    static const char *const clone_rows[] = {
+        "u0",
+        "tinytext",
+        "u63",
+        "tinytext",
+        "u64",
+        "text",
+        "u16383",
+        "text",
+        "u16384",
+        "mediumtext",
+        "u4194303",
+        "mediumtext",
+        "u4194304",
+        "longtext",
+        "u4294967295",
+        "longtext",
+    };
+    static const char *const row_values[] = {"1", "alpha", "beta"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "text-length") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text length file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE utf8_len (u0 TEXT(0), u63 TEXT(63), u64 TEXT(64), "
+        "u16383 TEXT(16383), u16384 TEXT(16384), u4194303 TEXT(4194303), "
+        "u4194304 TEXT(4194304), u4294967295 TEXT(4294967295))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'utf8_len' ORDER BY ORDINAL_POSITION",
+            .values = utf8_information_schema_rows,
+            .column_count = text_length_metadata_column_count,
+            .row_count = text_length_utf8_variant_count,
+            .context = "TEXT(M) utf8mb4 information schema",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE utf8_len",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "TEXT(M) normalized SHOW CREATE",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ascii_len (a255 TEXT(255) CHARACTER SET ascii, "
+        "a256 TEXT(256) CHARACTER SET ascii, a65535 TEXT(65535) CHARACTER SET ascii, "
+        "a65536 TEXT(65536) CHARACTER SET ascii)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'ascii_len' ORDER BY ORDINAL_POSITION",
+            .values = ascii_information_schema_rows,
+            .column_count = text_length_metadata_column_count,
+            .row_count = 4U,
+            .context = "TEXT(M) ascii information schema",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE binary_len (b255 TEXT(255) CHARACTER SET binary, "
+        "b256 TEXT(256) CHARACTER SET binary, b65535 TEXT(65535) CHARACTER SET binary, "
+        "b65536 TEXT(65536) CHARACTER SET binary)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'binary_len' ORDER BY ORDINAL_POSITION",
+            .values = binary_information_schema_rows,
+            .column_count = text_length_metadata_column_count,
+            .row_count = 4U,
+            .context = "TEXT(M) binary information schema",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE collate_binary_len (c255 TEXT(255) COLLATE binary, "
+        "c256 TEXT(256) COLLATE binary, c65536 TEXT(65536) COLLATE binary)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'collate_binary_len' ORDER BY ORDINAL_POSITION",
+            .values = collate_binary_information_schema_rows,
+            .column_count = text_length_metadata_column_count,
+            .row_count = 3U,
+            .context = "TEXT(M) collate binary information schema",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE table_binary_len (t255 TEXT(255), t256 TEXT(256), "
+        "t65536 TEXT(65536)) DEFAULT CHARSET=binary"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, "
+                   "CHARACTER_OCTET_LENGTH, CHARACTER_SET_NAME, COLLATION_NAME, "
+                   "COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'table_binary_len' ORDER BY ORDINAL_POSITION",
+            .values = table_binary_information_schema_rows,
+            .column_count = text_length_metadata_column_count,
+            .row_count = 3U,
+            .context = "TEXT(M) table default binary information schema",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE alter_len (id INT, body TEXT(63)) DEFAULT CHARSET=ascii"
+    );
+    failures += expect_statement_ok(database, "ALTER TABLE alter_len ADD COLUMN added TEXT(256)");
+    failures += expect_statement_ok(database, "ALTER TABLE alter_len MODIFY body TEXT(65536)");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_len CHANGE body changed TEXT(65536)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'alter_len' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = alter_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "TEXT(M) ALTER normalization",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE clone_len LIKE utf8_len");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'clone_len' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = clone_rows,
+            .column_count = 2U,
+            .row_count = text_length_utf8_variant_count,
+            .context = "TEXT(M) CREATE TABLE LIKE descriptors",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE row_len (id INT, a TEXT(1), b TEXT(255) CHARACTER SET ascii)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO row_len VALUES (1, 'alpha', 'beta')", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM row_len",
+            .values = row_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "TEXT(M) row readback",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE too_large (too_big TEXT(4294967296))",
+        (struct expected_sql_error){
+            .code = mysql_error_display_width_out_of_range,
+            .sqlstate = "42000",
+            .message_part = "Display width out of range for column 'too_big' (max = 4294967295)",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "TEXT(M) preserves preamble"
+    );
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen text length file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, b FROM row_len",
+            .values = row_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "TEXT(M) persisted row readback",
         }
     );
 

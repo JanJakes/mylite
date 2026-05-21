@@ -274,6 +274,11 @@ static int expect_text_type(
     enum mylite_sql_ast_text_type expected,
     const char *context
 );
+static int expect_text_type_length(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+);
 static int expect_binary_string_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_binary_string_type expected,
@@ -12576,6 +12581,28 @@ static int test_text_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE text_lengths (a TEXT(0), b TEXT(63), c TEXT(4294967295));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 3U, "text length column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_TEXT, "text(0) type");
+    failures += expect_span_text(column_type, "TEXT(0)", "text(0) span");
+    failures += expect_text_type_length(column_type, "0", "text(0) length");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type(column_type, MYLITE_SQL_AST_TEXT_TYPE_TEXT, "text(63) type");
+    failures += expect_text_type_length(column_type, "63", "text(63) length");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type_length(column_type, "4294967295", "text maximum length");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle ADD COLUMN body TEXT NOT NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -12633,7 +12660,70 @@ static int test_text_type_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE invalid_text_length (body TEXT(10));",
+        "ALTER TABLE simple_lifecycle ADD COLUMN body TEXT(255) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type_length(column_type, "255", "alter add text length");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY body TEXT(65536) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type_length(column_type, "65536", "alter modify text length");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_body new_body TEXT(16777216) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_text_type_length(column_type, "16777216", "alter change text length");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE invalid_text_signed_length (body TEXT(+10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_text_quoted_length (body TEXT('10'));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_text_expression_length (body TEXT(1 + 2));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_tinytext_length (body TINYTEXT(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_mediumtext_length (body MEDIUMTEXT(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "CREATE TABLE invalid_longtext_length (body LONGTEXT(10));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -24289,6 +24379,45 @@ static int expect_text_type(
             context,
             mylite_sql_ast_text_type_name(expected),
             mylite_sql_ast_text_type_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_text_type_length(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_length,
+    const char *context
+) {
+    struct mylite_sql_source_span span;
+
+    if (expect_node(node, MYLITE_SQL_AST_TEXT_TYPE, context) != 0) {
+        return 1;
+    }
+    if (expected_length == NULL) {
+        if (mylite_sql_ast_node_text_type_has_length(node) != 0) {
+            fprintf(stderr, "%s: expected no text length\n", context);
+            return 1;
+        }
+        return 0;
+    }
+    if (mylite_sql_ast_node_text_type_has_length(node) == 0) {
+        fprintf(stderr, "%s: expected text length %s\n", context, expected_length);
+        return 1;
+    }
+
+    span = mylite_sql_ast_node_text_type_length_span(node);
+    if (span.text == NULL || strlen(expected_length) != span.length ||
+        strncmp(span.text, expected_length, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected text length %s, got %.*s\n",
+            context,
+            expected_length,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
         );
         return 1;
     }

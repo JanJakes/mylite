@@ -727,6 +727,8 @@ struct mylite_sql_ast_char_type_payload {
 
 struct mylite_sql_ast_text_type_payload {
     enum mylite_sql_ast_text_type kind;
+    int has_length;
+    struct mylite_sql_source_span length_span;
 };
 
 struct mylite_sql_ast_binary_string_type_payload {
@@ -885,7 +887,7 @@ void mylite_sql_ast_node_set_char_type(
 );
 void mylite_sql_ast_node_set_text_type(
     struct mylite_sql_ast_node *node,
-    enum mylite_sql_ast_text_type text_type
+    struct mylite_sql_ast_text_type_payload payload
 );
 void mylite_sql_ast_node_set_binary_string_type(
     struct mylite_sql_ast_node *node,
@@ -967,6 +969,10 @@ struct mylite_sql_source_span mylite_sql_ast_node_char_type_length_span(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_text_type mylite_sql_ast_node_text_type(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_text_type_has_length(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_text_type_length_span(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_binary_string_type mylite_sql_ast_node_binary_string_type(
     const struct mylite_sql_ast_node *node
 );

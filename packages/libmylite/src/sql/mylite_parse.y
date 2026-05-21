@@ -6417,34 +6417,50 @@ char_type(A) ::= NATIONAL(T) CHARACTER LPAREN INTEGER(L) RPAREN(R). {
 text_type(A) ::= text_type_name(T). {
     A = mylite_sql_parser_make_text_type(state, T);
 }
+text_type(A) ::= TEXT(T) LPAREN INTEGER(L) RPAREN(R). {
+    A = mylite_sql_parser_make_text_type(
+        state,
+        (struct mylite_sql_text_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = R,
+            .text_type = MYLITE_SQL_AST_TEXT_TYPE_TEXT,
+            .has_length = 1,
+        });
+}
 
 text_type_name(A) ::= TINYTEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
+        .end_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_TINYTEXT,
     };
 }
 text_type_name(A) ::= TEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
+        .end_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_TEXT,
     };
 }
 text_type_name(A) ::= MEDIUMTEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
+        .end_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
     };
 }
 text_type_name(A) ::= LONGTEXT(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
+        .end_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_LONGTEXT,
     };
 }
 text_type_name(A) ::= LONG(T). {
     A = (struct mylite_sql_text_type_tokens){
         .type_token = T,
+        .end_token = T,
         .text_type = MYLITE_SQL_AST_TEXT_TYPE_MEDIUMTEXT,
     };
 }

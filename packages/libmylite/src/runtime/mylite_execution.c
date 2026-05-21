@@ -15629,6 +15629,10 @@ static int append_update_assignment_adjustment_warning(
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number
 );
+static int append_update_default_assignment_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int append_update_constant_arithmetic_adjustment_warning(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -17083,6 +17087,9 @@ static bool column_descriptor_is_json(const struct mylite_catalog_column_descrip
 static bool column_descriptor_is_spatial(const struct mylite_catalog_column_descriptor *column);
 static bool spatial_logical_type_display_text(const char *logical_type, const char **out_type_text);
 static bool column_descriptor_is_enum(const struct mylite_catalog_column_descriptor *column);
+static bool column_descriptor_uses_enum_implicit_missing_default(
+    const struct mylite_catalog_column_descriptor *column
+);
 static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column);
 static bool column_descriptor_is_binary_string_family(
     const struct mylite_catalog_column_descriptor *column
@@ -18625,6 +18632,7 @@ static int assign_text_value(
     struct planned_value *out_value
 );
 static int make_json_null_value(struct mylite_db *database, struct planned_value *out_value);
+static int make_empty_blob_value(struct mylite_db *database, struct planned_value *out_value);
 static int convert_json_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -67194,17 +67202,27 @@ static int append_update_assignment_adjustment_warning(
     if (value_node->kind != MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
         return MYLITE_OK;
     }
+
+    return append_update_default_assignment_adjustment_warning(database, column);
+}
+
+static int append_update_default_assignment_adjustment_warning(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION) {
         if (!column->is_nullable) {
             return append_bad_null_warning(database, column->name);
         }
         return MYLITE_OK;
     }
+    if (column_descriptor_uses_enum_implicit_missing_default(column)) {
+        return MYLITE_OK;
+    }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT) {
         return append_no_default_warning(database, column->name);
     }
-    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && !column->is_nullable &&
-        !column_descriptor_is_enum(column)) {
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && !column->is_nullable) {
         return append_no_default_warning(database, column->name);
     }
 
@@ -103157,6 +103175,16 @@ static bool column_descriptor_is_enum(const struct mylite_catalog_column_descrip
             strcmp(column->physical_type, "TEXT") == 0) != 0;
 }
 
+static bool column_descriptor_uses_enum_implicit_missing_default(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (!column_descriptor_is_enum(column) || column->is_nullable) {
+        return false;
+    }
+    return (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE ||
+            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT) != 0;
+}
+
 static bool column_descriptor_is_set(const struct mylite_catalog_column_descriptor *column) {
     if (column == NULL || column->logical_type[0] == '\0' || column->physical_type[0] == '\0') {
         return false;
@@ -106570,6 +106598,7 @@ static int check_insert_omitted_columns(
         }
         if (!column_is_targeted &&
             !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
+            !column_descriptor_uses_enum_implicit_missing_default(&plan->columns[column_index]) &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
@@ -106737,6 +106766,7 @@ static int append_insert_omitted_column_warnings(
         } else if (
             !column_is_targeted &&
             !column_descriptor_is_auto_increment(&plan->columns[column_index]) &&
+            !column_descriptor_uses_enum_implicit_missing_default(&plan->columns[column_index]) &&
             (plan->columns[column_index].default_kind ==
                  MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT ||
              (!plan->columns[column_index].is_nullable &&
@@ -106901,6 +106931,9 @@ static int allocate_insert_column_value(
         }
         return make_insert_ignore_implicit_value(database, column, out_value);
     }
+    if (column_descriptor_uses_enum_implicit_missing_default(column)) {
+        return make_enum_first_label_value(database, column, out_value);
+    }
     if (!adjust_implicit_default || column->is_nullable) {
         out_value->is_null = true;
         return MYLITE_OK;
@@ -106917,8 +106950,14 @@ static int make_insert_ignore_implicit_value(
     if (column_descriptor_is_string_family(column) || column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
     }
+    if (column_descriptor_is_enum(column)) {
+        return make_enum_first_label_value(database, column, out_value);
+    }
     if (column_descriptor_is_json(column)) {
         return make_json_null_value(database, out_value);
+    }
+    if (column_descriptor_is_binary_blob_family(column)) {
+        return make_empty_blob_value(database, out_value);
     }
     if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
@@ -107296,10 +107335,13 @@ static int convert_null_insert_value(
         return make_json_null_value(database, out_value);
     }
     if (column_descriptor_is_enum(column)) {
-        return make_enum_first_label_value(database, column, out_value);
+        return make_empty_text_value(database, out_value);
     }
     if (column_descriptor_is_set(column)) {
         return make_empty_text_value(database, out_value);
+    }
+    if (column_descriptor_is_binary_blob_family(column)) {
+        return make_empty_blob_value(database, out_value);
     }
     if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
@@ -107394,8 +107436,7 @@ static int materialize_dml_default_value(
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_TEXT) {
         return copy_text_value(database, column->default_text, out_value);
     }
-    if (column_descriptor_is_enum(column) &&
-        column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && !column->is_nullable) {
+    if (column_descriptor_uses_enum_implicit_missing_default(column)) {
         return make_enum_first_label_value(database, column, out_value);
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
@@ -107742,8 +107783,12 @@ static int materialize_dml_missing_default_value(
     const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 ) {
-    int rc = append_no_default_warning(database, column->name);
+    int rc = MYLITE_OK;
 
+    if (column_descriptor_uses_enum_implicit_missing_default(column)) {
+        return make_enum_first_label_value(database, column, out_value);
+    }
+    rc = append_no_default_warning(database, column->name);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -107755,6 +107800,8 @@ static int materialize_dml_missing_default_value(
         return make_json_null_value(database, out_value);
     } else if (column_descriptor_is_enum(column)) {
         return make_enum_first_label_value(database, column, out_value);
+    } else if (column_descriptor_is_binary_blob_family(column)) {
+        return make_empty_blob_value(database, out_value);
     } else if (column_descriptor_is_binary_string_family(column)) {
         return make_implicit_binary_value(database, column, out_value);
     } else if (column_descriptor_is_bit(column)) {
@@ -111599,6 +111646,10 @@ static int assign_text_value(
 
 static int make_json_null_value(struct mylite_db *database, struct planned_value *out_value) {
     return copy_text_value(database, "null", out_value);
+}
+
+static int make_empty_blob_value(struct mylite_db *database, struct planned_value *out_value) {
+    return copy_blob_value(database, NULL, 0U, out_value);
 }
 
 static int convert_json_literal(
@@ -129283,11 +129334,7 @@ static int convert_update_value_for_column(
                 set_bad_null_error(database, column->name);
                 return MYLITE_ERROR;
             }
-            rc = append_bad_null_warning(database, column->name);
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            return make_insert_ignore_implicit_value(database, column, out_value);
+            return convert_null_insert_value(database, column, true, out_value);
         }
         return MYLITE_OK;
     }

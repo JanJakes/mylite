@@ -4,9 +4,12 @@ Ordinary non-strict DML currently has a narrow MySQL-compatible adjustment
 surface: when neither `STRICT_TRANS_TABLES` nor `STRICT_ALL_TABLES` is active,
 omitted no-explicit-default non-`AUTO_INCREMENT` `INSERT` / `REPLACE` target
 columns and explicit `DEFAULT` values for no-default columns use the same
-implicit descriptor values as the existing `INSERT IGNORE` subset, and matched
-single-table `UPDATE` assignments of `NULL` to `NOT NULL` columns or `DEFAULT`
-to no-default columns adjust with warnings. Descriptor-backed `INSERT ...
+implicit descriptor values as the existing `INSERT IGNORE` subset, except that
+no-explicit-default `ENUM NOT NULL` omitted/default values use the first label
+without warning, and matched single-table `UPDATE` assignments of `NULL` to
+`NOT NULL` columns or `DEFAULT` to no-default columns adjust with warnings.
+Adjusted explicit `NULL` into `ENUM NOT NULL` stores the empty enum error value.
+Descriptor-backed `INSERT ...
 SELECT` additionally adjusts omitted no-default targets, selected `NULL` into
 `NOT NULL` targets, selected integer range violations for compatible
 integer-family targets, and selected overlength `CHAR` / `VARCHAR` values for
@@ -99,7 +102,7 @@ selected-row conversion, quoted decimal/approximate defaults, and full unsigned
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `ENUM` | 🟡 | Limited descriptor-owned `ENUM('label'[, ...])` columns with valid non-`NUL` UTF-8 labels, trailing-space normalization at definition time, ASCII case-insensitive duplicate detection and label matching, physical `TEXT` storage of the canonical definition label, string-label defaults, nullable `NULL` defaults, omitted/default `NOT NULL` first-label behavior, strict `INSERT`/`REPLACE`/supported `UPDATE` assignment conversion from matching labels, in-range decimal ordinal literals, quoted ordinal fallback when no label matches, `NULL`, and `DEFAULT`, descriptor-backed `=`, `<=>`, `<>`, `!=`, `<=> NULL`, `IS NULL`, and `IS NOT NULL` predicates, `SHOW` / `INFORMATION_SCHEMA.COLUMNS` / result-column metadata, and descriptor cloning. No compact ordinal storage, invalid index-0 storage, non-strict or `IGNORE` invalid-value demotion, enum sorting/grouping/distinct, enum keys/indexes, enum foreign keys, expression conversion, `ALTER MODIFY`/`CHANGE`, `INSERT ... SELECT`, scalar subquery assignment, full collation semantics, or 65,535-label envelope |
+| `ENUM` | 🟡 | Limited descriptor-owned `ENUM('label'[, ...])` columns with valid non-`NUL` UTF-8 labels, trailing-space normalization at definition time, ASCII case-insensitive duplicate detection and label matching, physical `TEXT` storage of the canonical definition label, string-label defaults, nullable `NULL` defaults, omitted/default no-explicit-default `NOT NULL` first-label behavior without warning, adjusted explicit `NULL` to the empty enum error value in current non-strict/`IGNORE` paths, strict `INSERT`/`REPLACE`/supported `UPDATE` assignment conversion from matching labels, in-range decimal ordinal literals, quoted ordinal fallback when no label matches, `NULL`, and `DEFAULT`, descriptor-backed `=`, `<=>`, `<>`, `!=`, `<=> NULL`, `IS NULL`, and `IS NOT NULL` predicates, `SHOW` / `INFORMATION_SCHEMA.COLUMNS` / result-column metadata, and descriptor cloning. No compact ordinal storage, invalid index-0 storage beyond the adjusted explicit-`NULL` empty enum value, non-strict or `IGNORE` invalid-value demotion, enum sorting/grouping/distinct, enum keys/indexes, enum foreign keys, expression conversion, `ALTER MODIFY`/`CHANGE`, `INSERT ... SELECT`, scalar subquery assignment, full collation semantics, or 65,535-label envelope |
 | `SET` | 🟡 | Limited descriptor-owned `SET('member'[, ...])` columns with nonempty valid non-`NUL` UTF-8 members, trailing-space normalization at definition time, comma-containing member rejection, ASCII case-insensitive duplicate detection and member matching, physical `TEXT` storage of the canonical comma-separated definition-order display string, string-list defaults, nullable `NULL` defaults, catalog-only `ALTER COLUMN SET DEFAULT` and `ALTER COLUMN DROP DEFAULT`, strict `INSERT`/`REPLACE`/supported `UPDATE` assignment conversion from matching member lists, nonnegative decimal bitmap literals, quoted-bitmap fallback when no member matches, `NULL`, and `DEFAULT`, descriptor-backed `=`, `<=>`, `<>`, `!=`, `<=> NULL`, `IS NULL`, and `IS NOT NULL` predicates, `SHOW` / `INFORMATION_SCHEMA.COLUMNS` / result-column metadata, and descriptor cloning. No compact bitmap storage, empty-string set members, invalid value warning demotion, set sorting/grouping/distinct, set keys/indexes, set foreign keys, expression conversion, `ALTER MODIFY`/`CHANGE`, `INSERT ... SELECT`, scalar subquery assignment, full collation semantics, or more than 64 members |
 
 ## Structured and spatial types

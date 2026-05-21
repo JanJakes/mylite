@@ -29,15 +29,18 @@ neither `STRICT_TRANS_TABLES` nor `STRICT_ALL_TABLES` is active, supported
 `INSERT` / `REPLACE` `VALUES` and `SET` statements warn and materialize the
 existing descriptor implicit values for omitted no-explicit-default
 non-`AUTO_INCREMENT` columns and explicit `DEFAULT` values targeting no-default
-columns. Omitted `AUTO_INCREMENT` columns still use generated values. Supported
-single-table `UPDATE` statements warn and materialize those same values for
-matched rows when assigning `NULL` to `NOT NULL` columns or `DEFAULT` to
-no-default columns; no-match updates and `LIMIT 0` do not record these
-conversion warnings. Supported duplicate-key updates additionally apply limited
-non-strict duplicate-assignment adjustment for no-default `DEFAULT`, character
-string truncation, and multi-row literal `NULL` assignments to integer
-`NOT NULL` targets. Explicit `NULL` in ordinary `INSERT` / `REPLACE` still
-errors outside `IGNORE`, and broader non-strict conversion remains deferred.
+columns, with the MySQL `ENUM NOT NULL` exception that omitted/default
+no-explicit-default enum columns use the first label without warning. Omitted
+`AUTO_INCREMENT` columns still use generated values. Supported single-table
+`UPDATE` statements warn and materialize those same values for matched rows
+when assigning `NULL` to `NOT NULL` columns or `DEFAULT` to no-default columns;
+adjusted explicit `NULL` into `ENUM NOT NULL` stores the empty enum error value.
+No-match updates and `LIMIT 0` do not record these conversion warnings.
+Supported duplicate-key updates additionally apply limited non-strict
+duplicate-assignment adjustment for no-default `DEFAULT`, character string
+truncation, and multi-row literal `NULL` assignments to integer `NOT NULL`
+targets. Explicit `NULL` in ordinary `INSERT` / `REPLACE` still errors outside
+`IGNORE`, and broader non-strict conversion remains deferred.
 
 The current numeric DML storage conversion also admits quoted numeric strings
 for descriptor-backed `INSERT`, `REPLACE`, admitted duplicate-key assignment

@@ -14,6 +14,11 @@
 
 enum {
     test_path_capacity = 1024,
+    nonstrict_family_scalar_column_count = 12,
+    nonstrict_family_binary_column_count = 6,
+    nonstrict_family_implicit_warning_count = 14,
+    nonstrict_family_null_warning_count = 15,
+    nonstrict_family_ignore_null_warning_count = 2,
     nonstrict_update_two_row_three_column_warning_count = 6,
     strict_scalar_string_column_count = 7,
     mysql_error_bad_null = 1048,
@@ -44,6 +49,7 @@ struct expected_query {
 
 static int test_nonstrict_insert_replace_defaults_and_persistence(void);
 static int test_nonstrict_update_null_and_default(void);
+static int test_nonstrict_remaining_descriptor_families(void);
 static int test_nonstrict_insert_select_coercion(void);
 static int test_nonstrict_string_truncation(void);
 static int test_nonstrict_guardrails(void);
@@ -58,6 +64,13 @@ static int expect_statement_ok(
     const char *context
 );
 static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_single_bytes(
+    mylite_db *database,
+    const char *sql,
+    const void *expected,
+    size_t expected_size,
+    const char *context
+);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -88,6 +101,7 @@ int main(void) {
 
     failures += test_nonstrict_insert_replace_defaults_and_persistence();
     failures += test_nonstrict_update_null_and_default();
+    failures += test_nonstrict_remaining_descriptor_families();
     failures += test_nonstrict_insert_select_coercion();
     failures += test_nonstrict_string_truncation();
     failures += test_nonstrict_guardrails();
@@ -578,6 +592,465 @@ static int test_nonstrict_update_null_and_default(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "dropped nullable update warning",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_nonstrict_remaining_descriptor_families(void) {
+    static const char *const implicit_warnings[] = {
+        "Warning", "1364", "Field 'deci' doesn't have a default value",
+        "Warning", "1364", "Field 'fl' doesn't have a default value",
+        "Warning", "1364", "Field 'db' doesn't have a default value",
+        "Warning", "1364", "Field 'b' doesn't have a default value",
+        "Warning", "1364", "Field 'vb' doesn't have a default value",
+        "Warning", "1364", "Field 'bl' doesn't have a default value",
+        "Warning", "1364", "Field 'bitv' doesn't have a default value",
+        "Warning", "1364", "Field 'y' doesn't have a default value",
+        "Warning", "1364", "Field 'd' doesn't have a default value",
+        "Warning", "1364", "Field 'tm' doesn't have a default value",
+        "Warning", "1364", "Field 'dt' doesn't have a default value",
+        "Warning", "1364", "Field 'ts' doesn't have a default value",
+        "Warning", "1364", "Field 'st' doesn't have a default value",
+        "Warning", "1364", "Field 'js' doesn't have a default value",
+    };
+    static const char *const null_warnings[] = {
+        "Warning", "1048", "Column 'deci' cannot be null",
+        "Warning", "1048", "Column 'fl' cannot be null",
+        "Warning", "1048", "Column 'db' cannot be null",
+        "Warning", "1048", "Column 'b' cannot be null",
+        "Warning", "1048", "Column 'vb' cannot be null",
+        "Warning", "1048", "Column 'bl' cannot be null",
+        "Warning", "1048", "Column 'bitv' cannot be null",
+        "Warning", "1048", "Column 'y' cannot be null",
+        "Warning", "1048", "Column 'd' cannot be null",
+        "Warning", "1048", "Column 'tm' cannot be null",
+        "Warning", "1048", "Column 'dt' cannot be null",
+        "Warning", "1048", "Column 'ts' cannot be null",
+        "Warning", "1048", "Column 'e' cannot be null",
+        "Warning", "1048", "Column 'st' cannot be null",
+        "Warning", "1048", "Column 'js' cannot be null",
+    };
+    static const char *const ignore_null_warnings[] = {
+        "Warning",
+        "1048",
+        "Column 'bl' cannot be null",
+        "Warning",
+        "1048",
+        "Column 'e' cannot be null",
+    };
+    static const char *const implicit_scalar_row[] = {
+        "1",
+        "0.00",
+        "0",
+        "0",
+        "0000",
+        "0000-00-00",
+        "00:00:00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "a",
+        "",
+        "null",
+    };
+    static const char *const null_scalar_row[] = {
+        "1",
+        "0.00",
+        "0",
+        "0",
+        "0000",
+        "0000-00-00",
+        "00:00:00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "",
+        "",
+        "null",
+    };
+    static const char *const replace_omitted_scalar_row[] = {
+        "2",
+        "0.00",
+        "0",
+        "0",
+        "0000",
+        "0000-00-00",
+        "00:00:00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "a",
+        "",
+        "null",
+    };
+    static const char *const replace_default_scalar_row[] = {
+        "3",
+        "0.00",
+        "0",
+        "0",
+        "0000",
+        "0000-00-00",
+        "00:00:00",
+        "0000-00-00 00:00:00",
+        "0000-00-00 00:00:00",
+        "a",
+        "",
+        "null",
+    };
+    static const char *const binary_row[] = {
+        "000000",
+        "3",
+        "",
+        "0",
+        "",
+        "0",
+    };
+    static const char *const ignore_null_enum_row[] = {""};
+    static const char *const ignore_null_blob_row[] = {"", "0"};
+    const char *const scalar_projection_sql =
+        "SELECT id, deci, fl, db, y, d, tm, dt, ts, e, st, js FROM family_t";
+    const char *const binary_projection_sql =
+        "SELECT HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), LENGTH(bl) FROM family_t";
+    const char *const restore_sql =
+        "UPDATE family_t SET deci = 1.25, fl = 2.5, db = 3.5, b = X'010203', "
+        "vb = X'04', bl = X'0506', bitv = b'10101', y = 2024, d = '2024-01-02', "
+        "tm = '03:04:05', dt = '2024-01-02 03:04:05', ts = '2024-01-02 03:04:05', "
+        "e = 'b', st = 'x,y', js = '{\"a\":1}' WHERE id = 1";
+    char path[test_path_capacity];
+    unsigned char zero_bit = 0U;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "family_defaults") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open family defaults file");
+    failures += seed_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "SET sql_mode=''",
+        (struct expected_statement){0, 0U},
+        "set family defaults sql mode"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE family_t("
+        "id INT PRIMARY KEY, "
+        "deci DECIMAL(5,2) NOT NULL, "
+        "fl FLOAT NOT NULL, "
+        "db DOUBLE NOT NULL, "
+        "b BINARY(3) NOT NULL, "
+        "vb VARBINARY(3) NOT NULL, "
+        "bl BLOB NOT NULL, "
+        "bitv BIT(5) NOT NULL, "
+        "y YEAR NOT NULL, "
+        "d DATE NOT NULL, "
+        "tm TIME NOT NULL, "
+        "dt DATETIME NOT NULL, "
+        "ts TIMESTAMP NOT NULL, "
+        "e ENUM('a','b') NOT NULL, "
+        "st SET('x','y') NOT NULL, "
+        "js JSON NOT NULL)",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U},
+        "create family defaults table"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO family_t(id) VALUES (1)",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_implicit_warning_count,
+        },
+        "nonstrict family omitted defaults"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = implicit_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_implicit_warning_count,
+            .context = "family omitted default warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = scalar_projection_sql,
+            .values = implicit_scalar_row,
+            .column_count = nonstrict_family_scalar_column_count,
+            .row_count = 1U,
+            .context = "family omitted scalar default row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = binary_projection_sql,
+            .values = binary_row,
+            .column_count = nonstrict_family_binary_column_count,
+            .row_count = 1U,
+            .context = "family omitted binary default row",
+        }
+    );
+    failures += expect_single_bytes(
+        database,
+        "SELECT bitv FROM family_t",
+        &zero_bit,
+        sizeof(zero_bit),
+        "family omitted BIT default row"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "UPDATE family_t SET deci = NULL, fl = NULL, db = NULL, b = NULL, vb = NULL, "
+        "bl = NULL, bitv = NULL, y = NULL, d = NULL, tm = NULL, dt = NULL, "
+        "ts = NULL, e = NULL, st = NULL, js = NULL WHERE id = 1",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_null_warning_count,
+        },
+        "nonstrict family null assignments"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = null_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_null_warning_count,
+            .context = "family null assignment warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = scalar_projection_sql,
+            .values = null_scalar_row,
+            .column_count = nonstrict_family_scalar_column_count,
+            .row_count = 1U,
+            .context = "family null scalar assignment row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = binary_projection_sql,
+            .values = binary_row,
+            .column_count = nonstrict_family_binary_column_count,
+            .row_count = 1U,
+            .context = "family null binary assignment row",
+        }
+    );
+    failures += expect_single_bytes(
+        database,
+        "SELECT bitv FROM family_t",
+        &zero_bit,
+        sizeof(zero_bit),
+        "family null BIT assignment row"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        restore_sql,
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
+        "restore family defaults row"
+    );
+    failures += expect_statement_ok(
+        database,
+        "UPDATE family_t SET deci = DEFAULT, fl = DEFAULT, db = DEFAULT, b = DEFAULT, "
+        "vb = DEFAULT, bl = DEFAULT, bitv = DEFAULT, y = DEFAULT, d = DEFAULT, "
+        "tm = DEFAULT, dt = DEFAULT, ts = DEFAULT, e = DEFAULT, st = DEFAULT, "
+        "js = DEFAULT WHERE id = 1",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_implicit_warning_count,
+        },
+        "nonstrict family default assignments"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = implicit_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_implicit_warning_count,
+            .context = "family default assignment warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = scalar_projection_sql,
+            .values = implicit_scalar_row,
+            .column_count = nonstrict_family_scalar_column_count,
+            .row_count = 1U,
+            .context = "family default scalar assignment row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = binary_projection_sql,
+            .values = binary_row,
+            .column_count = nonstrict_family_binary_column_count,
+            .row_count = 1U,
+            .context = "family default binary assignment row",
+        }
+    );
+    failures += expect_single_bytes(
+        database,
+        "SELECT bitv FROM family_t",
+        &zero_bit,
+        sizeof(zero_bit),
+        "family default BIT assignment row"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO family_t(id) VALUES (2)",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_implicit_warning_count,
+        },
+        "nonstrict family replace omitted defaults"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = implicit_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_implicit_warning_count,
+            .context = "family replace omitted default warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, deci, fl, db, y, d, tm, dt, ts, e, st, js FROM family_t "
+                   "WHERE id = 2",
+            .values = replace_omitted_scalar_row,
+            .column_count = nonstrict_family_scalar_column_count,
+            .row_count = 1U,
+            .context = "family replace omitted scalar row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), LENGTH(bl) "
+                   "FROM family_t WHERE id = 2",
+            .values = binary_row,
+            .column_count = nonstrict_family_binary_column_count,
+            .row_count = 1U,
+            .context = "family replace omitted binary row",
+        }
+    );
+    failures += expect_single_bytes(
+        database,
+        "SELECT bitv FROM family_t WHERE id = 2",
+        &zero_bit,
+        sizeof(zero_bit),
+        "family replace omitted BIT row"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "REPLACE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, dt, "
+        "ts, e, st, js) VALUES (3, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, "
+        "DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, "
+        "DEFAULT, DEFAULT)",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_implicit_warning_count,
+        },
+        "nonstrict family replace default values"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = implicit_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_implicit_warning_count,
+            .context = "family replace default warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, deci, fl, db, y, d, tm, dt, ts, e, st, js FROM family_t "
+                   "WHERE id = 3",
+            .values = replace_default_scalar_row,
+            .column_count = nonstrict_family_scalar_column_count,
+            .row_count = 1U,
+            .context = "family replace default scalar row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), LENGTH(bl) "
+                   "FROM family_t WHERE id = 3",
+            .values = binary_row,
+            .column_count = nonstrict_family_binary_column_count,
+            .row_count = 1U,
+            .context = "family replace default binary row",
+        }
+    );
+    failures += expect_single_bytes(
+        database,
+        "SELECT bitv FROM family_t WHERE id = 3",
+        &zero_bit,
+        sizeof(zero_bit),
+        "family replace default BIT row"
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "INSERT IGNORE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, "
+        "dt, ts, e, st, js) VALUES (4, 1.25, 2.5, 3.5, X'010203', X'04', NULL, "
+        "b'10101', 2024, '2024-01-02', '03:04:05', '2024-01-02 03:04:05', "
+        "'2024-01-02 03:04:05', NULL, 'x,y', '{\"a\":1}')",
+        (struct expected_statement){
+            .affected_rows = 1,
+            .warning_count = nonstrict_family_ignore_null_warning_count,
+        },
+        "family insert ignore enum blob null"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = ignore_null_warnings,
+            .column_count = 3U,
+            .row_count = nonstrict_family_ignore_null_warning_count,
+            .context = "family insert ignore enum blob null warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT e FROM family_t WHERE id = 4",
+            .values = ignore_null_enum_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "family insert ignore enum null row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(bl), LENGTH(bl) FROM family_t WHERE id = 4",
+            .values = ignore_null_blob_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "family insert ignore blob null row",
         }
     );
 
@@ -1900,6 +2373,31 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     }
     mylite_result_free(result);
 
+    return failures;
+}
+
+static int expect_single_bytes(
+    mylite_db *database,
+    const char *sql,
+    const void *expected,
+    size_t expected_size,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    const unsigned char *actual = NULL;
+    size_t actual_size = 0U;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 1U, context);
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    actual = (const unsigned char *)mylite_result_value_bytes(result, 0U, 0U);
+    actual_size = mylite_result_value_size(result, 0U, 0U);
+    failures += expect_true(actual != NULL, context);
+    failures += expect_size(actual_size, expected_size, context);
+    if (actual != NULL && actual_size == expected_size) {
+        failures += expect_bytes(actual, expected, expected_size, context);
+    }
+    mylite_result_free(result);
     return failures;
 }
 

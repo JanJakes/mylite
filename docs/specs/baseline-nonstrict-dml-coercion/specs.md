@@ -55,14 +55,16 @@ MySQL 8.4.9 establishes these expectations for this slice:
 - In non-strict mode, `INSERT ... VALUES`, `INSERT ... SET`,
   `REPLACE ... VALUES`, and `REPLACE ... SET` insert implicit type defaults for
   omitted non-`AUTO_INCREMENT` `NOT NULL` columns that have no explicit default
-  and record warning `1364` once per omitted column per statement.
+  and record warning `1364` once per omitted column per statement, except
+  `ENUM NOT NULL`, which uses the first enum label without warning.
 - Omitted `AUTO_INCREMENT` targets keep the existing generated-value path in
   non-strict modes such as `NO_AUTO_VALUE_ON_ZERO`; explicit `0` stores zero
   only because that SQL mode says so, not because of implicit-default
   adjustment.
 - In non-strict mode, DML `DEFAULT` in an `INSERT` or `REPLACE` value position
   stores the implicit type default when the target `NOT NULL` column has no
-  explicit default and records warning `1364`.
+  explicit default and records warning `1364`, except `ENUM NOT NULL`, which
+  uses the first enum label without warning.
 - In non-strict mode, a nullable column whose explicit default was removed with
   `ALTER TABLE ... ALTER column DROP DEFAULT` stores SQL `NULL` for omitted
   insert values or DML `DEFAULT` and records warning `1364`.
@@ -71,7 +73,8 @@ MySQL 8.4.9 establishes these expectations for this slice:
   `IGNORE` remains the path that demotes that insert-side explicit `NULL`.
 - In non-strict mode, a matched `UPDATE ... SET not_null_column = NULL` stores
   the implicit type default and records warning `1048` once per matched row per
-  adjusted assignment target.
+  adjusted assignment target. For `ENUM NOT NULL`, the adjusted explicit
+  `NULL` value is the empty enum error value, not the first label.
 - In non-strict mode, a matched `UPDATE ... SET column = DEFAULT` for a column
   without an explicit default stores the implicit type default, or SQL `NULL`
   for a nullable dropped-default column, and records warning `1364` once per
@@ -115,7 +118,8 @@ MyLite's `INSERT IGNORE` adjustment policy:
 - `BINARY NOT NULL`: zero-padded bytes to the declared fixed width;
 - `VARBINARY` and BLOB-family `NOT NULL`: zero-length bytes;
 - `BIT NOT NULL`: zero-bit value for the descriptor width;
-- `ENUM NOT NULL`: first label;
+- `ENUM NOT NULL`: first label for omitted columns and DML `DEFAULT`, empty
+  enum error value for adjusted explicit `NULL`;
 - `SET NOT NULL`: empty string;
 - `JSON NOT NULL`: JSON `null`;
 - nullable dropped-default columns: SQL `NULL`.
@@ -195,13 +199,15 @@ For `INSERT` and `REPLACE`:
 
 - omitted no-default non-`AUTO_INCREMENT` columns fail as before in strict mode;
 - omitted no-default non-`AUTO_INCREMENT` columns materialize implicit
-  descriptor values in non-strict mode and append warning `1364`;
+  descriptor values in non-strict mode and append warning `1364`, except
+  `ENUM NOT NULL`, which uses the first label without warning;
 - omitted `AUTO_INCREMENT` columns continue to materialize generated values
   through the existing auto-increment planner;
 - warning `1364` is recorded once per omitted column per statement, not once
   per inserted row;
 - explicit DML `DEFAULT` for a no-default column records warning `1364` for
-  each value occurrence that is actually planned;
+  each value occurrence that is actually planned, except `ENUM NOT NULL`, which
+  uses the first label without warning;
 - explicit `NULL` into `NOT NULL` remains an error unless the statement is
   `INSERT IGNORE`, preserving current MySQL behavior and MyLite scope.
 
@@ -212,10 +218,12 @@ For `UPDATE`:
 - strict mode preserves current errors for `NULL` into `NOT NULL` and
   no-default DML `DEFAULT`;
 - non-strict `NULL` into `NOT NULL` appends warning `1048` and stores the
-  implicit descriptor value;
+  implicit descriptor value, with `ENUM NOT NULL` storing the empty enum error
+  value;
 - non-strict DML `DEFAULT` for a no-default column appends warning `1364` and
   stores the implicit descriptor value or SQL `NULL` for nullable
-  dropped-default columns;
+  dropped-default columns, except `ENUM NOT NULL`, which stores the first label
+  without warning;
 - affected rows report rows whose stored values changed after conversion;
 - warnings are still recorded when a matched row converts to the current stored
   value and therefore changes zero rows.

@@ -210,6 +210,202 @@ Warning	1048	Column 'dt' cannot be null" \
     "$DATABASE"
 
 expect_output \
+    "nonstrict remaining descriptor families adjusted rows" \
+    "insert_family	1	14	0
+family_row	1	0.00	0	0	000000	3		0		0	0	0000	0000-00-00	00:00:00	0000-00-00 00:00:00	0000-00-00 00:00:00	a	[]	null
+update_family_null	1	15	0
+family_row	1	0.00	0	0	000000	3		0		0	0	0000	0000-00-00	00:00:00	0000-00-00 00:00:00	0000-00-00 00:00:00		[]	null
+update_family_default	1	14	0
+family_row	1	0.00	0	0	000000	3		0		0	0	0000	0000-00-00	00:00:00	0000-00-00 00:00:00	0000-00-00 00:00:00	a	[]	null
+replace_family_omitted	1	14	0
+family_row	2	0.00	0	0	000000	3		0		0	0	0000	0000-00-00	00:00:00	0000-00-00 00:00:00	0000-00-00 00:00:00	a	[]	null
+replace_family_default	1	14	0
+family_row	3	0.00	0	0	000000	3		0		0	0	0000	0000-00-00	00:00:00	0000-00-00 00:00:00	0000-00-00 00:00:00	a	[]	null" \
+    "SET sql_mode=''; "\
+"DROP TABLE IF EXISTS family_t; "\
+"CREATE TABLE family_t(id INT PRIMARY KEY, deci DECIMAL(5,2) NOT NULL, fl FLOAT NOT NULL, "\
+"db DOUBLE NOT NULL, b BINARY(3) NOT NULL, vb VARBINARY(3) NOT NULL, bl BLOB NOT NULL, "\
+"bitv BIT(5) NOT NULL, y YEAR NOT NULL, d DATE NOT NULL, tm TIME NOT NULL, "\
+"dt DATETIME NOT NULL, ts TIMESTAMP NOT NULL, e ENUM('a','b') NOT NULL, "\
+"st SET('x','y') NOT NULL, js JSON NOT NULL) ENGINE=InnoDB; "\
+"INSERT INTO family_t(id) VALUES (1); "\
+"SELECT 'insert_family', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_row', id, deci, fl, db, HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), "\
+"LENGTH(bl), HEX(bitv), y, d, tm, dt, ts, e, CONCAT('[', st, ']'), js FROM family_t; "\
+"UPDATE family_t SET deci=NULL, fl=NULL, db=NULL, b=NULL, vb=NULL, bl=NULL, bitv=NULL, "\
+"y=NULL, d=NULL, tm=NULL, dt=NULL, ts=NULL, e=NULL, st=NULL, js=NULL WHERE id=1; "\
+"SELECT 'update_family_null', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_row', id, deci, fl, db, HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), "\
+"LENGTH(bl), HEX(bitv), y, d, tm, dt, ts, e, CONCAT('[', st, ']'), js FROM family_t; "\
+"UPDATE family_t SET deci=1.25, fl=2.5, db=3.5, b=X'010203', vb=X'04', bl=X'0506', "\
+"bitv=b'10101', y=2024, d='2024-01-02', tm='03:04:05', dt='2024-01-02 03:04:05', "\
+"ts='2024-01-02 03:04:05', e='b', st='x,y', js='{\"a\":1}' WHERE id=1; "\
+"UPDATE family_t SET deci=DEFAULT, fl=DEFAULT, db=DEFAULT, b=DEFAULT, vb=DEFAULT, "\
+"bl=DEFAULT, bitv=DEFAULT, y=DEFAULT, d=DEFAULT, tm=DEFAULT, dt=DEFAULT, ts=DEFAULT, "\
+"e=DEFAULT, st=DEFAULT, js=DEFAULT WHERE id=1; "\
+"SELECT 'update_family_default', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_row', id, deci, fl, db, HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), "\
+"LENGTH(bl), HEX(bitv), y, d, tm, dt, ts, e, CONCAT('[', st, ']'), js FROM family_t WHERE id=1; "\
+"REPLACE INTO family_t(id) VALUES (2); "\
+"SELECT 'replace_family_omitted', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_row', id, deci, fl, db, HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), "\
+"LENGTH(bl), HEX(bitv), y, d, tm, dt, ts, e, CONCAT('[', st, ']'), js FROM family_t WHERE id=2; "\
+"REPLACE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, dt, ts, e, st, js) "\
+"VALUES (3, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, "\
+"DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT); "\
+"SELECT 'replace_family_default', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_row', id, deci, fl, db, HEX(b), LENGTH(b), HEX(vb), LENGTH(vb), HEX(bl), "\
+"LENGTH(bl), HEX(bitv), y, d, tm, dt, ts, e, CONCAT('[', st, ']'), js FROM family_t WHERE id=3;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict remaining descriptor family missing default warnings" \
+    "Warning	1364	Field 'deci' doesn't have a default value
+Warning	1364	Field 'fl' doesn't have a default value
+Warning	1364	Field 'db' doesn't have a default value
+Warning	1364	Field 'b' doesn't have a default value
+Warning	1364	Field 'vb' doesn't have a default value
+Warning	1364	Field 'bl' doesn't have a default value
+Warning	1364	Field 'bitv' doesn't have a default value
+Warning	1364	Field 'y' doesn't have a default value
+Warning	1364	Field 'd' doesn't have a default value
+Warning	1364	Field 'tm' doesn't have a default value
+Warning	1364	Field 'dt' doesn't have a default value
+Warning	1364	Field 'ts' doesn't have a default value
+Warning	1364	Field 'st' doesn't have a default value
+Warning	1364	Field 'js' doesn't have a default value" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"INSERT INTO family_t(id) VALUES (1); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict remaining descriptor family null warnings" \
+    "Warning	1048	Column 'deci' cannot be null
+Warning	1048	Column 'fl' cannot be null
+Warning	1048	Column 'db' cannot be null
+Warning	1048	Column 'b' cannot be null
+Warning	1048	Column 'vb' cannot be null
+Warning	1048	Column 'bl' cannot be null
+Warning	1048	Column 'bitv' cannot be null
+Warning	1048	Column 'y' cannot be null
+Warning	1048	Column 'd' cannot be null
+Warning	1048	Column 'tm' cannot be null
+Warning	1048	Column 'dt' cannot be null
+Warning	1048	Column 'ts' cannot be null
+Warning	1048	Column 'e' cannot be null
+Warning	1048	Column 'st' cannot be null
+Warning	1048	Column 'js' cannot be null" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"INSERT INTO family_t(id) VALUES (1); "\
+"UPDATE family_t SET deci=NULL, fl=NULL, db=NULL, b=NULL, vb=NULL, bl=NULL, bitv=NULL, "\
+"y=NULL, d=NULL, tm=NULL, dt=NULL, ts=NULL, e=NULL, st=NULL, js=NULL WHERE id=1; "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict remaining descriptor family default warnings" \
+    "Warning	1364	Field 'deci' doesn't have a default value
+Warning	1364	Field 'fl' doesn't have a default value
+Warning	1364	Field 'db' doesn't have a default value
+Warning	1364	Field 'b' doesn't have a default value
+Warning	1364	Field 'vb' doesn't have a default value
+Warning	1364	Field 'bl' doesn't have a default value
+Warning	1364	Field 'bitv' doesn't have a default value
+Warning	1364	Field 'y' doesn't have a default value
+Warning	1364	Field 'd' doesn't have a default value
+Warning	1364	Field 'tm' doesn't have a default value
+Warning	1364	Field 'dt' doesn't have a default value
+Warning	1364	Field 'ts' doesn't have a default value
+Warning	1364	Field 'st' doesn't have a default value
+Warning	1364	Field 'js' doesn't have a default value" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"INSERT INTO family_t VALUES (1, 1.25, 2.5, 3.5, X'010203', X'04', X'0506', b'10101', "\
+"2024, '2024-01-02', '03:04:05', '2024-01-02 03:04:05', '2024-01-02 03:04:05', "\
+"'b', 'x,y', '{\"a\":1}'); "\
+"UPDATE family_t SET deci=DEFAULT, fl=DEFAULT, db=DEFAULT, b=DEFAULT, vb=DEFAULT, "\
+"bl=DEFAULT, bitv=DEFAULT, y=DEFAULT, d=DEFAULT, tm=DEFAULT, dt=DEFAULT, ts=DEFAULT, "\
+"e=DEFAULT, st=DEFAULT, js=DEFAULT WHERE id=1; "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict remaining descriptor family replace omitted warnings" \
+    "Warning	1364	Field 'deci' doesn't have a default value
+Warning	1364	Field 'fl' doesn't have a default value
+Warning	1364	Field 'db' doesn't have a default value
+Warning	1364	Field 'b' doesn't have a default value
+Warning	1364	Field 'vb' doesn't have a default value
+Warning	1364	Field 'bl' doesn't have a default value
+Warning	1364	Field 'bitv' doesn't have a default value
+Warning	1364	Field 'y' doesn't have a default value
+Warning	1364	Field 'd' doesn't have a default value
+Warning	1364	Field 'tm' doesn't have a default value
+Warning	1364	Field 'dt' doesn't have a default value
+Warning	1364	Field 'ts' doesn't have a default value
+Warning	1364	Field 'st' doesn't have a default value
+Warning	1364	Field 'js' doesn't have a default value" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"REPLACE INTO family_t(id) VALUES (2); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict remaining descriptor family replace default warnings" \
+    "Warning	1364	Field 'deci' doesn't have a default value
+Warning	1364	Field 'fl' doesn't have a default value
+Warning	1364	Field 'db' doesn't have a default value
+Warning	1364	Field 'b' doesn't have a default value
+Warning	1364	Field 'vb' doesn't have a default value
+Warning	1364	Field 'bl' doesn't have a default value
+Warning	1364	Field 'bitv' doesn't have a default value
+Warning	1364	Field 'y' doesn't have a default value
+Warning	1364	Field 'd' doesn't have a default value
+Warning	1364	Field 'tm' doesn't have a default value
+Warning	1364	Field 'dt' doesn't have a default value
+Warning	1364	Field 'ts' doesn't have a default value
+Warning	1364	Field 'st' doesn't have a default value
+Warning	1364	Field 'js' doesn't have a default value" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"REPLACE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, dt, ts, e, st, js) "\
+"VALUES (3, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, "\
+"DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict insert ignore explicit null enum blob rows" \
+    "ignore_family_null	1	2	0
+family_ignore_row			0" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"INSERT IGNORE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, dt, "\
+"ts, e, st, js) VALUES (4, 1.25, 2.5, 3.5, X'010203', X'04', NULL, b'10101', "\
+"2024, '2024-01-02', '03:04:05', '2024-01-02 03:04:05', "\
+"'2024-01-02 03:04:05', NULL, 'x,y', '{\"a\":1}'); "\
+"SELECT 'ignore_family_null', ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT 'family_ignore_row', e, HEX(bl), LENGTH(bl) FROM family_t WHERE id=4;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict insert ignore explicit null enum blob warnings" \
+    "Warning	1048	Column 'bl' cannot be null
+Warning	1048	Column 'e' cannot be null" \
+    "SET sql_mode=''; "\
+"TRUNCATE family_t; "\
+"INSERT IGNORE INTO family_t(id, deci, fl, db, b, vb, bl, bitv, y, d, tm, dt, "\
+"ts, e, st, js) VALUES (4, 1.25, 2.5, 3.5, X'010203', X'04', NULL, b'10101', "\
+"2024, '2024-01-02', '03:04:05', '2024-01-02 03:04:05', "\
+"'2024-01-02 03:04:05', NULL, 'x,y', '{\"a\":1}'); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output \
     "nullable dropped default nonstrict rows" \
     "drop_insert	2	1	0
 drop_rows	1	NULL

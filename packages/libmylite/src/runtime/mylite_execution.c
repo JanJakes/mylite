@@ -136,6 +136,7 @@ enum {
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_warning_spatial_index_no_srid = 3674,
     mysql_error_spatial_unique = 3728,
+    mysql_error_spatial_index_type_not_supported = 3729,
     mysql_error_data_too_long = 1406,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
@@ -1600,6 +1601,7 @@ enum planned_index_type_option {
     PLANNED_INDEX_TYPE_DEFAULT = 0,
     PLANNED_INDEX_TYPE_BTREE = 1,
     PLANNED_INDEX_TYPE_HASH = 2,
+    PLANNED_INDEX_TYPE_RTREE = 3,
 };
 
 struct planned_column {
@@ -10058,6 +10060,11 @@ static int collect_index_options(
     struct index_option_nodes nodes,
     struct planned_index_options *out_options
 );
+static int collect_index_type_option(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    enum planned_index_type_option *out_type
+);
 static int apply_single_index_option(
     struct mylite_db *database,
     const char *index_name,
@@ -10092,6 +10099,7 @@ static int validate_hash_index_key_part_order(
     const struct mylite_sql_ast_node *part_list
 );
 static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part);
+static bool index_option_nodes_have_type_option(struct index_option_nodes nodes);
 static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list);
 static size_t planned_create_table_hash_index_warning_count(
     const struct planned_create_table *plan
@@ -10166,6 +10174,7 @@ static int resolve_create_table_secondary_index_first_column(
 static int validate_create_table_secondary_index_kind(
     struct mylite_db *database,
     const struct planned_create_table *plan,
+    struct index_option_nodes options,
     enum mylite_catalog_index_kind index_kind,
     bool is_unique,
     struct create_table_secondary_index_first_part first_part,
@@ -10345,6 +10354,7 @@ static int plan_alter_table_add_index_name_from_parts(
 static int apply_loaded_add_index_spatial_kind_from_parts(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *part_list,
+    struct index_option_nodes options,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct planned_alter_table_add_index *plan
@@ -10352,8 +10362,9 @@ static int apply_loaded_add_index_spatial_kind_from_parts(
 static int validate_loaded_add_index_kind_options(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan,
-    size_t part_count,
-    const struct mylite_sql_ast_node *option_list
+    enum mylite_catalog_index_kind original_kind,
+    struct index_option_nodes options,
+    size_t part_count
 );
 static int generate_alter_table_add_index_name(
     struct mylite_db *database,
@@ -23901,6 +23912,10 @@ static void set_fulltext_column_error(struct mylite_db *database, const char *co
 static void set_spatial_index_non_geometric_error(struct mylite_db *database);
 static void set_spatial_index_must_be_not_null_error(struct mylite_db *database);
 static void set_spatial_unique_error(struct mylite_db *database);
+static void set_spatial_index_type_not_supported_error(
+    struct mylite_db *database,
+    const char *index_type
+);
 static void set_spatial_too_many_key_parts_error(struct mylite_db *database);
 static void set_fulltext_explicit_order_error(struct mylite_db *database);
 static void set_temporary_fulltext_index_error(struct mylite_db *database);
@@ -44135,6 +44150,7 @@ static int apply_create_table_secondary_index_definition(
         rc = validate_create_table_secondary_index_kind(
             database,
             plan,
+            nodes.options,
             index_kind,
             is_unique,
             first_part,
@@ -44158,9 +44174,9 @@ static int apply_create_table_secondary_index_definition(
         snprintf(planned_index.name, sizeof(planned_index.name), "%s", index_name);
     }
     if (rc == MYLITE_OK &&
-        (effective_index_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
-         effective_index_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) &&
-        index_option_list_has_type_option(nodes.options.option_list_node)) {
+        (index_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+         index_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) &&
+        index_option_nodes_have_type_option(nodes.options)) {
         set_parse_error(database, NULL);
         rc = MYLITE_ERROR;
     }
@@ -44255,19 +44271,43 @@ static int resolve_create_table_secondary_index_first_column(
 static int validate_create_table_secondary_index_kind(
     struct mylite_db *database,
     const struct planned_create_table *plan,
+    struct index_option_nodes options,
     enum mylite_catalog_index_kind index_kind,
     bool is_unique,
     struct create_table_secondary_index_first_part first_part,
     enum mylite_catalog_index_kind *out_effective_index_kind
 ) {
+    enum planned_index_type_option requested_type = PLANNED_INDEX_TYPE_DEFAULT;
+    bool first_part_is_spatial = false;
+    int rc = MYLITE_OK;
+
     *out_effective_index_kind = index_kind;
-    if (is_unique && planned_column_is_spatial(&plan->columns[first_part.column_index])) {
-        set_spatial_unique_error(database);
-        return MYLITE_ERROR;
-    }
-    if (!is_unique && index_kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-        planned_column_is_spatial(&plan->columns[first_part.column_index])) {
-        *out_effective_index_kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    first_part_is_spatial = planned_column_is_spatial(&plan->columns[first_part.column_index]);
+
+    if (index_kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        rc = collect_index_type_option(database, options, &requested_type);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_BTREE) {
+            set_spatial_index_type_not_supported_error(database, "BTREE");
+            return MYLITE_ERROR;
+        }
+        if (first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_HASH) {
+            set_spatial_index_type_not_supported_error(database, "HASH");
+            return MYLITE_ERROR;
+        }
+        if (!first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_RTREE) {
+            set_spatial_index_non_geometric_error(database);
+            return MYLITE_ERROR;
+        }
+        if (is_unique && (first_part_is_spatial || requested_type == PLANNED_INDEX_TYPE_RTREE)) {
+            set_spatial_unique_error(database);
+            return MYLITE_ERROR;
+        }
+        if (!is_unique && (first_part_is_spatial || requested_type == PLANNED_INDEX_TYPE_RTREE)) {
+            *out_effective_index_kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+        }
     }
     if (*out_effective_index_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL &&
         first_part.part_count > 1U) {
@@ -52503,6 +52543,7 @@ static int plan_alter_table_add_index(
         rc = apply_loaded_add_index_spatial_kind_from_parts(
             database,
             nodes.part_list,
+            nodes.options,
             columns,
             column_count,
             out_plan
@@ -52512,8 +52553,9 @@ static int plan_alter_table_add_index(
         rc = validate_loaded_add_index_kind_options(
             database,
             out_plan,
-            part_count,
-            nodes.options.option_list_node
+            nodes.kind,
+            nodes.options,
+            part_count
         );
     }
     if (rc == MYLITE_OK) {
@@ -52661,6 +52703,7 @@ static int plan_create_index(
         rc = apply_loaded_add_index_spatial_kind_from_parts(
             database,
             nodes.part_list_node,
+            nodes.options,
             columns,
             column_count,
             out_plan
@@ -52670,8 +52713,9 @@ static int plan_create_index(
         rc = validate_loaded_add_index_kind_options(
             database,
             out_plan,
-            part_count,
-            nodes.options.option_list_node
+            nodes.kind,
+            nodes.options,
+            part_count
         );
     }
     if (rc == MYLITE_OK) {
@@ -52723,6 +52767,7 @@ static int plan_create_index(
 static int apply_loaded_add_index_spatial_kind_from_parts(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *part_list,
+    struct index_option_nodes options,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
     struct planned_alter_table_add_index *plan
@@ -52730,7 +52775,9 @@ static int apply_loaded_add_index_spatial_kind_from_parts(
     const struct mylite_sql_ast_node *first_part = child_at(part_list, 0U);
     const struct mylite_sql_ast_node *first_column = secondary_index_part_column_node(first_part);
     char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    enum planned_index_type_option requested_type = PLANNED_INDEX_TYPE_DEFAULT;
     size_t first_column_index = 0U;
+    bool first_part_is_spatial = false;
     int rc = MYLITE_OK;
 
     if (first_column == NULL || first_column->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -52746,31 +52793,56 @@ static int apply_loaded_add_index_spatial_kind_from_parts(
         sizeof(column_name),
         &first_column_index
     );
-    if (rc == MYLITE_OK && plan->is_unique &&
-        column_descriptor_is_spatial(&columns[first_column_index])) {
-        set_spatial_unique_error(database);
-        return MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && plan->kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY && !plan->is_unique &&
-        column_descriptor_is_spatial(&columns[first_column_index])) {
-        plan->kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
-    return rc;
+    first_part_is_spatial = column_descriptor_is_spatial(&columns[first_column_index]);
+    if (plan->kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY) {
+        rc = collect_index_type_option(database, options, &requested_type);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_BTREE) {
+            set_spatial_index_type_not_supported_error(database, "BTREE");
+            return MYLITE_ERROR;
+        }
+        if (first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_HASH) {
+            set_spatial_index_type_not_supported_error(database, "HASH");
+            return MYLITE_ERROR;
+        }
+        if (!first_part_is_spatial && requested_type == PLANNED_INDEX_TYPE_RTREE) {
+            set_spatial_index_non_geometric_error(database);
+            return MYLITE_ERROR;
+        }
+        if (plan->is_unique &&
+            (first_part_is_spatial || requested_type == PLANNED_INDEX_TYPE_RTREE)) {
+            set_spatial_unique_error(database);
+            return MYLITE_ERROR;
+        }
+        if (!plan->is_unique &&
+            (first_part_is_spatial || requested_type == PLANNED_INDEX_TYPE_RTREE)) {
+            plan->kind = MYLITE_CATALOG_INDEX_KIND_SPATIAL;
+        }
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_loaded_add_index_kind_options(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan,
-    size_t part_count,
-    const struct mylite_sql_ast_node *option_list
+    enum mylite_catalog_index_kind original_kind,
+    struct index_option_nodes options,
+    size_t part_count
 ) {
     if (planned_add_index_is_spatial(plan) && part_count > 1U) {
         set_spatial_too_many_key_parts_error(database);
         return MYLITE_ERROR;
     }
-    if ((planned_add_index_is_fulltext(plan) || planned_add_index_is_spatial(plan)) &&
-        index_option_list_has_type_option(option_list)) {
+    if ((original_kind == MYLITE_CATALOG_INDEX_KIND_FULLTEXT ||
+         original_kind == MYLITE_CATALOG_INDEX_KIND_SPATIAL) &&
+        index_option_nodes_have_type_option(options)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -52864,6 +52936,48 @@ static int collect_index_options(
     return rc;
 }
 
+static int collect_index_type_option(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    enum planned_index_type_option *out_type
+) {
+    const struct mylite_sql_ast_node *option = NULL;
+    struct planned_index_options options = {
+        .type = PLANNED_INDEX_TYPE_DEFAULT,
+        .is_visible = true,
+    };
+    int rc = MYLITE_OK;
+
+    if (out_type == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (nodes.index_type_node != NULL) {
+        rc = apply_index_type_option(database, nodes.index_type_node, &options);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (nodes.option_list_node != NULL) {
+        if (nodes.option_list_node->kind != MYLITE_SQL_AST_INDEX_OPTION_LIST) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+
+        option = child_at(nodes.option_list_node, 0U);
+        while (rc == MYLITE_OK && option != NULL) {
+            if (option->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION) {
+                rc = apply_index_type_option(database, option, &options);
+            }
+            option = option->next_sibling;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_type = options.type;
+    }
+
+    return rc;
+}
+
 static int apply_single_index_option(
     struct mylite_db *database,
     const char *index_name,
@@ -52912,6 +53026,10 @@ static int apply_index_type_option(
     }
     if (text_equals_ascii_case_insensitive(type_name, "HASH")) {
         options->type = PLANNED_INDEX_TYPE_HASH;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(type_name, "RTREE")) {
+        options->type = PLANNED_INDEX_TYPE_RTREE;
         return MYLITE_OK;
     }
 
@@ -53021,6 +53139,14 @@ static int validate_hash_index_key_part_order(
 
 static bool secondary_index_part_has_explicit_direction(const struct mylite_sql_ast_node *part) {
     return secondary_index_part_direction_node(part) != NULL;
+}
+
+static bool index_option_nodes_have_type_option(struct index_option_nodes nodes) {
+    if (nodes.index_type_node != NULL) {
+        return true;
+    }
+
+    return index_option_list_has_type_option(nodes.option_list_node);
 }
 
 static bool index_option_list_has_type_option(const struct mylite_sql_ast_node *option_list) {
@@ -146187,6 +146313,30 @@ static void set_spatial_unique_error(struct mylite_db *database) {
         mysql_error_spatial_unique,
         "HY000",
         "Spatial indexes can't be primary or unique indexes."
+    );
+}
+
+static void set_spatial_index_type_not_supported_error(
+    struct mylite_db *database,
+    const char *index_type
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "The index type %s is not supported for spatial indexes.",
+        index_type
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "spatial index type diagnostic is too long");
+        return;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_spatial_index_type_not_supported,
+        "HY000",
+        message
     );
 }
 

@@ -37,6 +37,7 @@ enum {
     mysql_error_spatial_index_non_geometric = 1687,
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_error_spatial_unique = 3728,
+    mysql_error_spatial_index_type_not_supported = 3729,
 };
 
 struct expected_sql_error {
@@ -55,6 +56,7 @@ struct expected_query {
 
 static int test_spatial_metadata_surface(void);
 static int test_spatial_added_and_implicit_index_forms(void);
+static int test_spatial_index_type_options(void);
 static int test_spatial_create_table_like_metadata(void);
 static int test_spatial_null_dml_and_result_metadata(void);
 static int test_spatial_diagnostics(void);
@@ -98,6 +100,7 @@ int main(void) {
 
     failures += test_spatial_metadata_surface();
     failures += test_spatial_added_and_implicit_index_forms();
+    failures += test_spatial_index_type_options();
     failures += test_spatial_create_table_like_metadata();
     failures += test_spatial_null_dml_and_result_metadata();
     failures += test_spatial_diagnostics();
@@ -317,6 +320,219 @@ static int test_spatial_added_and_implicit_index_forms(void) {
         expect_statement_ok(database, "ALTER TABLE implicit_spatial RENAME INDEX kg TO renamed");
     failures += expect_statement_ok(database, "ALTER TABLE implicit_spatial DROP INDEX renamed");
     failures += expect_physical_index_count(database, 0, "spatial add/drop catalog-only indexes");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_spatial_index_type_options(void) {
+    static const char rtree_leading_show_create[] =
+        "CREATE TABLE `rtree_leading` (\n"
+        "  `g` geometry NOT NULL,\n"
+        "  SPATIAL KEY `kg` (`g`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char rtree_trailing_show_create[] =
+        "CREATE TABLE `rtree_trailing` (\n"
+        "  `g` geometry NOT NULL,\n"
+        "  SPATIAL KEY `kg` (`g`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const rtree_leading_rows[] = {
+        "rtree_leading",
+        rtree_leading_show_create,
+    };
+    static const char *const rtree_trailing_rows[] = {
+        "rtree_trailing",
+        rtree_trailing_show_create,
+    };
+    static const char *const rtree_added_rows[] = {
+        "kg",
+        "SPATIAL",
+        "g",
+        "kp",
+        "SPATIAL",
+        "p",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open transient database");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE rtree_leading (g GEOMETRY NOT NULL, KEY kg USING RTREE (g))",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE rtree_leading",
+            .values = rtree_leading_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "leading RTREE spatial SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE rtree_trailing (g GEOMETRY NOT NULL, KEY kg (g) USING RTREE)",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE rtree_trailing",
+            .values = rtree_trailing_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "trailing RTREE spatial SHOW CREATE TABLE",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE rtree_added (g GEOMETRY NOT NULL, p POINT NOT NULL)"
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE rtree_added ADD INDEX kg USING RTREE (g)",
+        1U
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE INDEX kp ON rtree_added (p) USING RTREE",
+        1U
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, INDEX_TYPE, COLUMN_NAME "
+                   "FROM information_schema.statistics WHERE table_schema = DATABASE() "
+                   "AND table_name = 'rtree_added' ORDER BY INDEX_NAME",
+            .values = rtree_added_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "RTREE spatial metadata",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE ordinary_btree_spatial (g GEOMETRY NOT NULL, KEY kg USING BTREE (g))",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type BTREE is not supported for spatial indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE ordinary_hash_spatial (g GEOMETRY NOT NULL, KEY kg (g) USING HASH)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type HASH is not supported for spatial indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE ordinary_rtree_nonspatial (id INT NOT NULL, KEY kid USING RTREE (id))",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_non_geometric,
+            .sqlstate = "42000",
+            .message_part = "A SPATIAL index may only contain a geometrical type column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unique_rtree_spatial (g GEOMETRY NOT NULL, UNIQUE KEY ug USING RTREE (g))",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_unique,
+            .sqlstate = "HY000",
+            .message_part = "Spatial indexes can't be primary or unique indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE explicit_spatial_rtree (g GEOMETRY NOT NULL, SPATIAL KEY sg (g) "
+        "USING RTREE)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE standalone_rtree (g GEOMETRY NOT NULL)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE standalone_rtree ADD INDEX bad_btree USING BTREE (g)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type BTREE is not supported for spatial indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE standalone_rtree ADD INDEX bad_hash (g) USING HASH",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type HASH is not supported for spatial indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE INDEX bad_create_btree USING BTREE ON standalone_rtree (g)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type BTREE is not supported for spatial indexes.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE INDEX bad_create_hash ON standalone_rtree (g) USING HASH",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_type_not_supported,
+            .sqlstate = "HY000",
+            .message_part = "The index type HASH is not supported for spatial indexes.",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE standalone_nonspatial (id INT NOT NULL)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE standalone_nonspatial ADD INDEX bad_rtree USING RTREE (id)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_non_geometric,
+            .sqlstate = "42000",
+            .message_part = "A SPATIAL index may only contain a geometrical type column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE INDEX bad_create_rtree USING RTREE ON standalone_nonspatial (id)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_non_geometric,
+            .sqlstate = "42000",
+            .message_part = "A SPATIAL index may only contain a geometrical type column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE SPATIAL INDEX sg ON standalone_rtree (g) USING RTREE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        }
+    );
+    failures += expect_physical_index_count(database, 0, "RTREE spatial catalog-only indexes");
 
     mylite_close(database);
     return failures;

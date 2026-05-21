@@ -241,6 +241,8 @@ enum {
     literal_projection_text_capacity = literal_projection_max_significant_digits + 2,
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     generated_default_display_text_capacity = (MYLITE_CATALOG_DEFAULT_TEXT_CAPACITY * 2) + 16,
+    integer_expression_default_text_initial_capacity = 16,
+    integer_expression_default_text_growth_factor = 2,
     decimal_default_precision = 10,
     decimal_default_scale = 0,
     decimal_max_precision = 65,
@@ -2179,6 +2181,23 @@ struct planned_value {
     double real;
     char *text;
     size_t text_length;
+};
+
+enum integer_expression_default_text_work_item_kind {
+    INTEGER_EXPRESSION_DEFAULT_TEXT_NODE = 0,
+    INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES = 1,
+};
+
+struct integer_expression_default_text_work_item {
+    enum integer_expression_default_text_work_item_kind kind;
+    const struct mylite_sql_ast_node *expression;
+    const char *text;
+};
+
+struct integer_expression_default_text_stack {
+    struct integer_expression_default_text_work_item *items;
+    size_t count;
+    size_t capacity;
 };
 
 struct bit_blob_value {
@@ -16233,6 +16252,16 @@ static int finalize_planned_column_integer_expression_default(
     struct planned_column *column,
     const struct mylite_sql_ast_node *value_node
 );
+static int finalize_planned_column_bit_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
+static int finalize_planned_column_year_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+);
 static int finalize_planned_column_text_expression_default(
     struct mylite_db *database,
     struct planned_column *column,
@@ -16284,10 +16313,53 @@ static int copy_planned_default_approximate_text(
     struct planned_column *column,
     const struct planned_value *value
 );
-static int copy_planned_expression_default_text(
+static int copy_planned_integer_expression_default_text(
     struct mylite_db *database,
     struct planned_column *column,
-    const struct mylite_sql_source_span *span
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_text(
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_text_item(
+    struct dynamic_string *string,
+    struct integer_expression_default_text_stack *stack,
+    const struct integer_expression_default_text_work_item *item
+);
+static int append_integer_expression_default_node_text(
+    struct dynamic_string *string,
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_parenthesized_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_unary_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_binary_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_integer_expression_default_mod_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static const char *integer_expression_default_binary_operator_text(
+    enum mylite_sql_ast_operator operator_kind
+);
+static int push_integer_expression_default_text_item(
+    struct integer_expression_default_text_stack *stack,
+    enum integer_expression_default_text_work_item_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    const char *text
+);
+static int append_integer_expression_default_literal_text(
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
 );
 static int convert_integer_expression_default_result(
     struct mylite_db *database,
@@ -16295,6 +16367,13 @@ static int convert_integer_expression_default_result(
     int64_t value,
     int64_t *out_value
 );
+static int convert_bit_expression_default_result(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t value,
+    int64_t *out_value
+);
+static int convert_year_expression_default_result(int64_t value, int64_t *out_value);
 static int convert_column_default_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -17465,6 +17544,16 @@ static int materialize_dml_default_value(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     bool adjust_missing_default,
+    struct planned_value *out_value
+);
+static int materialize_integer_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int materialize_bit_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
     struct planned_value *out_value
 );
 static int materialize_character_expression_default_value(
@@ -21631,6 +21720,16 @@ static int append_alter_table_add_column_character_expression_default(
     const struct planned_alter_table_add_column *plan
 );
 static int append_alter_table_add_column_enum_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_bit_expression_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+);
+static int append_alter_table_add_column_year_expression_default(
     struct mylite_db *database,
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
@@ -96913,8 +97012,13 @@ static int finalize_planned_column_parenthesized_default(
     if (planned_column_is_binary_blob_family(column)) {
         return finalize_planned_column_binary_blob_expression_default(database, column, value_node);
     }
-    if (planned_column_is_bit(column) || planned_column_is_year(column) ||
-        planned_column_is_enum(column) || planned_column_is_set(column) ||
+    if (planned_column_is_bit(column)) {
+        return finalize_planned_column_bit_expression_default(database, column, value_node);
+    }
+    if (planned_column_is_year(column)) {
+        return finalize_planned_column_year_expression_default(database, column, value_node);
+    }
+    if (planned_column_is_enum(column) || planned_column_is_set(column) ||
         planned_column_is_json(column) || planned_column_is_spatial(column)) {
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
@@ -97014,7 +97118,86 @@ static int finalize_planned_column_integer_expression_default(
         set_invalid_default_error(database, column->name);
         return MYLITE_ERROR;
     }
-    rc = copy_planned_expression_default_text(database, column, &value_node->span);
+    rc = copy_planned_integer_expression_default_text(database, column, value_node);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION;
+    column->default_integer = default_integer;
+
+    return MYLITE_OK;
+}
+
+static int finalize_planned_column_bit_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    struct scalar_arithmetic_value expression_value = {.is_null = false, .integer = 0};
+    int64_t default_integer = 0;
+    int rc = evaluate_integer_default_expression(database, value_node, &expression_value);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            return rc;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (expression_value.is_null) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION;
+        snprintf(column->default_text, sizeof(column->default_text), "NULL");
+        return MYLITE_OK;
+    }
+
+    rc = convert_bit_expression_default_result(
+        database,
+        column,
+        expression_value.integer,
+        &default_integer
+    );
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = copy_planned_integer_expression_default_text(database, column, value_node);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION;
+    column->default_integer = default_integer;
+
+    return MYLITE_OK;
+}
+
+static int finalize_planned_column_year_expression_default(
+    struct mylite_db *database,
+    struct planned_column *column,
+    const struct mylite_sql_ast_node *value_node
+) {
+    struct scalar_arithmetic_value expression_value = {.is_null = false, .integer = 0};
+    int64_t default_integer = 0;
+    int rc = evaluate_integer_default_expression(database, value_node, &expression_value);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            return rc;
+        }
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    if (expression_value.is_null) {
+        column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NULL_EXPRESSION;
+        snprintf(column->default_text, sizeof(column->default_text), "NULL");
+        return MYLITE_OK;
+    }
+
+    rc = convert_year_expression_default_result(expression_value.integer, &default_integer);
+    if (rc != MYLITE_OK) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+    rc = copy_planned_integer_expression_default_text(database, column, value_node);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -97796,20 +97979,296 @@ static int copy_planned_default_approximate_text(
     return rc;
 }
 
-static int copy_planned_expression_default_text(
+static int copy_planned_integer_expression_default_text(
     struct mylite_db *database,
     struct planned_column *column,
-    const struct mylite_sql_source_span *span
+    const struct mylite_sql_ast_node *expression
 ) {
-    if (span == NULL || span->text == NULL || span->length == 0U ||
-        span->length >= sizeof(column->default_text)) {
+    struct dynamic_string text = {0};
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&text);
+    rc = append_integer_expression_default_text(&text, expression);
+    if (rc == MYLITE_OK && (text.length == 0U || text.length >= sizeof(column->default_text))) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        memcpy(column->default_text, text.text, text.length);
+        column->default_text[text.length] = '\0';
+    } else if (rc != MYLITE_NOMEM) {
         set_invalid_default_error(database, column->name);
+        rc = MYLITE_ERROR;
+    }
+
+    dynamic_string_deinit(&text);
+    return rc;
+}
+
+static int append_integer_expression_default_text(
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct integer_expression_default_text_stack stack = {
+        .items = NULL,
+        .count = 0U,
+        .capacity = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    if (expression == NULL) {
         return MYLITE_ERROR;
     }
 
-    memcpy(column->default_text, span->text, span->length);
-    column->default_text[span->length] = '\0';
+    rc = push_integer_expression_default_text_item(
+        &stack,
+        INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+        expression,
+        NULL
+    );
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        struct integer_expression_default_text_work_item item = stack.items[--stack.count];
+
+        rc = append_integer_expression_default_text_item(string, &stack, &item);
+    }
+
+    free(stack.items);
+    return rc;
+}
+
+static int append_integer_expression_default_text_item(
+    struct dynamic_string *string,
+    struct integer_expression_default_text_stack *stack,
+    const struct integer_expression_default_text_work_item *item
+) {
+    if (item->kind == INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES) {
+        return dynamic_string_append(string, item->text);
+    }
+    if (item->kind == INTEGER_EXPRESSION_DEFAULT_TEXT_NODE) {
+        return append_integer_expression_default_node_text(string, stack, item->expression);
+    }
+    return MYLITE_ERROR;
+}
+
+static int append_integer_expression_default_node_text(
+    struct dynamic_string *string,
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return append_integer_expression_default_literal_text(string, expression);
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+        return append_integer_expression_default_parenthesized_text(stack, expression);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        return append_integer_expression_default_unary_text(stack, expression);
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        return append_integer_expression_default_binary_text(stack, expression);
+    case MYLITE_SQL_AST_MOD_FUNCTION:
+        return append_integer_expression_default_mod_text(stack, expression);
+    default:
+        return MYLITE_ERROR;
+    }
+}
+
+static int append_integer_expression_default_parenthesized_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    int rc = push_integer_expression_default_text_item(
+        stack,
+        INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES,
+        NULL,
+        ")"
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+            child_at(expression, 0U),
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES,
+            NULL,
+            "("
+        );
+    }
+    return rc;
+}
+
+static int append_integer_expression_default_unary_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    const char *operator_text = NULL;
+    int rc = MYLITE_OK;
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        operator_text = "+";
+    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        operator_text = "-";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = push_integer_expression_default_text_item(
+        stack,
+        INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+        child_at(expression, 0U),
+        NULL
+    );
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES,
+            NULL,
+            operator_text
+        );
+    }
+    return rc;
+}
+
+static int append_integer_expression_default_binary_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    const char *operator_text =
+        integer_expression_default_binary_operator_text(mylite_sql_ast_node_operator(expression));
+    int rc = MYLITE_OK;
+
+    if (operator_text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = push_integer_expression_default_text_item(
+        stack,
+        INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+        child_at(expression, 1U),
+        NULL
+    );
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES,
+            NULL,
+            operator_text
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+            child_at(expression, 0U),
+            NULL
+        );
+    }
+    return rc;
+}
+
+static int append_integer_expression_default_mod_text(
+    struct integer_expression_default_text_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_child_count(expression) != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = push_integer_expression_default_text_item(
+        stack,
+        INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+        child_at(expression, 1U),
+        NULL
+    );
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_BYTES,
+            NULL,
+            " % "
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = push_integer_expression_default_text_item(
+            stack,
+            INTEGER_EXPRESSION_DEFAULT_TEXT_NODE,
+            child_at(expression, 0U),
+            NULL
+        );
+    }
+    return rc;
+}
+
+static const char *integer_expression_default_binary_operator_text(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return " + ";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return " - ";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return " * ";
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        return " DIV ";
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return " % ";
+    default:
+        return NULL;
+    }
+}
+
+static int push_integer_expression_default_text_item(
+    struct integer_expression_default_text_stack *stack,
+    enum integer_expression_default_text_work_item_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    const char *text
+) {
+    struct integer_expression_default_text_work_item *grown_items = NULL;
+    size_t new_capacity = 0U;
+
+    if (stack->count == stack->capacity) {
+        new_capacity = stack->capacity == 0U
+                           ? integer_expression_default_text_initial_capacity
+                           : stack->capacity * integer_expression_default_text_growth_factor;
+        if (new_capacity < stack->capacity || new_capacity > SIZE_MAX / sizeof(*stack->items)) {
+            return MYLITE_NOMEM;
+        }
+        grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+        if (grown_items == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->items = grown_items;
+        stack->capacity = new_capacity;
+    }
+
+    stack->items[stack->count] = (struct integer_expression_default_text_work_item){
+        .kind = kind,
+        .expression = expression,
+        .text = text,
+    };
+    ++stack->count;
     return MYLITE_OK;
+}
+
+static int append_integer_expression_default_literal_text(
+    struct dynamic_string *string,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL || expression->span.text == NULL || expression->span.length == 0U) {
+        return MYLITE_ERROR;
+    }
+    return dynamic_string_append_bytes(string, expression->span.text, expression->span.length);
 }
 
 static int convert_integer_expression_default_result(
@@ -97849,6 +98308,51 @@ static int convert_integer_expression_default_result(
     }
 
     *out_value = value;
+    return MYLITE_OK;
+}
+
+static int convert_bit_expression_default_result(
+    struct mylite_db *database,
+    const struct planned_column *column,
+    int64_t value,
+    int64_t *out_value
+) {
+    uint64_t width = 0U;
+    uint64_t magnitude = 0U;
+    int rc = bit_width_for_logical_type(column == NULL ? NULL : column->logical_type, &width);
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (rc != MYLITE_OK || value < 0) {
+        return MYLITE_ERROR;
+    }
+
+    magnitude = (uint64_t)value;
+    if (magnitude > bit_width_max_value(width)) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = value;
+    (void)database;
+    return MYLITE_OK;
+}
+
+static int convert_year_expression_default_result(int64_t value, int64_t *out_value) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    uint64_t magnitude = 0U;
+    uint32_t year = 0U;
+    bool is_negative = value < 0;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    magnitude = value == INT64_MIN ? bigint_signed_negative_abs_max : (uint64_t)llabs(value);
+    if (!convert_year_numeric_magnitude(magnitude, is_negative, &year)) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)year;
     return MYLITE_OK;
 }
 
@@ -103983,10 +104487,15 @@ static int allocate_insert_column_value(
     bool adjust_implicit_default = (insert_allows_implicit_default_adjustment(database, plan) &&
                                     !column_descriptor_is_auto_increment(column)) != 0;
 
-    if (column_default_kind_has_integer_value(column->default_kind)) {
-        out_value->is_null = false;
-        out_value->is_text = false;
-        out_value->integer = column->default_integer;
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
+        return materialize_integer_expression_default_value(database, column, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        *out_value = (struct planned_value){
+            .is_null = false,
+            .is_text = false,
+            .integer = column->default_integer,
+        };
         return MYLITE_OK;
     }
     if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_DECIMAL) {
@@ -104483,7 +104992,10 @@ static int materialize_dml_default_value(
     bool adjust_missing_default,
     struct planned_value *out_value
 ) {
-    if (column_default_kind_has_integer_value(column->default_kind)) {
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
+        return materialize_integer_expression_default_value(database, column, out_value);
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         *out_value = (struct planned_value){
             .is_null = false,
             .is_text = false,
@@ -104552,6 +105064,50 @@ static int materialize_dml_default_value(
         return MYLITE_ERROR;
     }
     return materialize_dml_missing_default_value(database, column, out_value);
+}
+
+static int materialize_integer_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    if (column_descriptor_is_bit(column)) {
+        return materialize_bit_expression_default_value(database, column, out_value);
+    }
+    if (column_descriptor_is_year(column)) {
+        return make_year_value(database, (uint32_t)column->default_integer, out_value);
+    }
+
+    *out_value = (struct planned_value){
+        .is_null = false,
+        .is_text = false,
+        .integer = column->default_integer,
+    };
+    return MYLITE_OK;
+}
+
+static int materialize_bit_expression_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    uint64_t width = 0U;
+    uint64_t magnitude = 0U;
+    int rc = bit_width_for_logical_type(column == NULL ? NULL : column->logical_type, &width);
+
+    if (rc != MYLITE_OK || column->default_integer < 0) {
+        return MYLITE_MISUSE;
+    }
+    magnitude = (uint64_t)column->default_integer;
+    if (magnitude > bit_width_max_value(width)) {
+        return MYLITE_MISUSE;
+    }
+
+    return make_bit_blob_value(
+        database,
+        &(struct bit_blob_value){.width = width, .magnitude = magnitude},
+        out_value
+    );
 }
 
 static int materialize_character_expression_default_value(
@@ -131023,6 +131579,14 @@ static int append_alter_table_add_column_explicit_default(
     struct dynamic_string *string,
     const struct planned_alter_table_add_column *plan
 ) {
+    if (planned_column_is_bit(&plan->column) &&
+        plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
+        return append_alter_table_add_column_bit_expression_default(database, string, plan);
+    }
+    if (planned_column_is_year(&plan->column) &&
+        plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER_EXPRESSION) {
+        return append_alter_table_add_column_year_expression_default(database, string, plan);
+    }
     if (column_default_kind_has_integer_value(plan->column.default_kind)) {
         char default_text[integer_text_capacity];
         int written = snprintf(
@@ -131139,6 +131703,59 @@ static int append_alter_table_add_column_character_expression_default(
         plan->column.default_text
     );
     rc = materialize_character_expression_default_value(database, &descriptor, false, &value);
+    if (rc == MYLITE_OK) {
+        rc = append_quoted_sql_text(string, value.text);
+    }
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int append_alter_table_add_column_bit_expression_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = MYLITE_OK;
+
+    planned_column_descriptor_for_default(&plan->column, &descriptor);
+    descriptor.default_kind = plan->column.default_kind;
+    descriptor.default_integer = plan->column.default_integer;
+    rc = materialize_bit_expression_default_value(database, &descriptor, &value);
+    if (rc == MYLITE_OK) {
+        rc = append_sqlite_blob_default(string, value.text, value.text_length);
+    }
+    planned_value_deinit(&value);
+    return rc;
+}
+
+static int append_alter_table_add_column_year_expression_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct planned_alter_table_add_column *plan
+) {
+    struct planned_value value = {
+        .is_null = false,
+        .is_text = false,
+        .is_blob = false,
+        .is_real = false,
+        .integer = 0,
+        .real = 0.0,
+        .text = NULL,
+        .text_length = 0U,
+    };
+    int rc = make_year_value(database, (uint32_t)plan->column.default_integer, &value);
+
     if (rc == MYLITE_OK) {
         rc = append_quoted_sql_text(string, value.text);
     }

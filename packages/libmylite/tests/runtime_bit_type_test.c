@@ -129,8 +129,12 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
     static const unsigned char one_bit[] = {0x01U};
     static const unsigned char zero_bit[] = {0x00U};
     static const unsigned char bit_six_max_bit[] = {0x20U};
+    static const unsigned char bit_six_one[] = {0x01U};
+    static const unsigned char bit_six_two[] = {0x02U};
+    static const unsigned char bit_six_three[] = {0x03U};
     static const unsigned char bit_six_five[] = {0x05U};
     static const unsigned char bit_six_seven[] = {0x07U};
+    static const unsigned char bit_six_ten[] = {0x0AU};
     static const unsigned char bit_eight_a[] = {0x41U};
     static const unsigned char bit_nine_257[] = {0x01U, 0x01U};
     static const unsigned char bit_nine_one[] = {0x00U, 0x01U};
@@ -168,6 +172,34 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
         "b9",   "bit", "bit(9)", "9", NULL, "YES", "b64",  "bit", "bit(64)", "64", NULL, "YES",
         "nn",   "bit", "bit(6)", "6", NULL, "NO",  "defi", "bit", "bit(6)",  "6",  NULL, "YES",
         "deft", "bit", "bit(1)", "1", NULL, "YES", "deff", "bit", "bit(1)",  "1",  NULL, "YES",
+    };
+    static const char *const expression_show_columns_rows[] = {
+        "b",  "bit(6)", "YES", "", "(1 + 2)", "DEFAULT_GENERATED",
+        "m",  "bit(6)", "YES", "", "(7 % 4)", "DEFAULT_GENERATED",
+        "n",  "bit(6)", "YES", "", "NULL",    "DEFAULT_GENERATED",
+        "nn", "bit(6)", "NO",  "", "NULL",    "DEFAULT_GENERATED",
+    };
+    static const char *const expression_information_schema_rows[] = {
+        "b",
+        "(1 + 2)",
+        "DEFAULT_GENERATED",
+        "m",
+        "(7 % 4)",
+        "DEFAULT_GENERATED",
+        "n",
+        "NULL",
+        "DEFAULT_GENERATED",
+        "nn",
+        "NULL",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const expression_altered_default_rows[] = {
+        "b",
+        "bit(6)",
+        "YES",
+        "",
+        "(2 * 5)",
+        "DEFAULT_GENERATED",
     };
     static const char *const predicate_ids[] = {"1", "3"};
     static const char *const remaining_predicate_ids[] = {"3", "4"};
@@ -227,6 +259,258 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
             .context = "BIT INFORMATION_SCHEMA.COLUMNS",
         }
     );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE bit_expr (id INT, b BIT(6) DEFAULT (1 + 2), "
+        "m BIT(6) DEFAULT (MOD(7,4)), n BIT(6) DEFAULT (NULL), "
+        "nn BIT(6) NOT NULL DEFAULT (NULL))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM bit_expr WHERE Field <> 'id'",
+            .values = expression_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 4U,
+            .context = "BIT expression default SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_contains(
+        database,
+        "SHOW CREATE TABLE bit_expr",
+        0U,
+        1U,
+        "`b` bit(6) DEFAULT ((1 + 2))",
+        "BIT expression default SHOW CREATE b"
+    );
+    failures += expect_query_contains(
+        database,
+        "SHOW CREATE TABLE bit_expr",
+        0U,
+        1U,
+        "`nn` bit(6) NOT NULL DEFAULT (NULL)",
+        "BIT NULL expression default SHOW CREATE"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA "
+                   "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'bit_expr' AND COLUMN_NAME <> 'id' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = expression_information_schema_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "BIT expression default information schema",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO bit_expr (id, nn) VALUES (1, b'111')", 1);
+    failures += execute_ok(database, "SELECT b, m, n, nn FROM bit_expr WHERE id = 1", &result);
+    failures += expect_bit_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT expression default b"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT expression default MOD"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.is_null = true},
+        "BIT NULL expression default"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = bit_six_seven, .size = sizeof(bit_six_seven)},
+        "BIT NOT NULL explicit value with NULL expression default"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE bit_expr ALTER COLUMN b SET DEFAULT (2 * 5)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM bit_expr LIKE 'b'",
+            .values = expression_altered_default_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "BIT expression altered default SHOW COLUMNS",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO bit_expr (id, nn) VALUES (2, b'001')", 1);
+    failures += execute_ok(database, "SELECT b, nn FROM bit_expr WHERE id = 2", &result);
+    failures += expect_bit_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_ten, .size = sizeof(bit_six_ten)},
+        "BIT expression altered default value"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_one, .size = sizeof(bit_six_one)},
+        "BIT expression altered default explicit NOT NULL value"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_dml_ok(
+        database,
+        "UPDATE bit_expr SET b = DEFAULT, m = DEFAULT, n = DEFAULT WHERE id = 1",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO bit_expr (id, b, m, n, nn) "
+        "VALUES (4, DEFAULT, DEFAULT, DEFAULT, b'010')",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO bit_expr (id, b, m, n, nn) "
+        "VALUES (5, DEFAULT, DEFAULT, DEFAULT, b'101')",
+        1
+    );
+    failures += execute_ok(
+        database,
+        "SELECT b, m, n, nn FROM bit_expr WHERE id IN (1, 4, 5) ORDER BY id",
+        &result
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_ten, .size = sizeof(bit_six_ten)},
+        "BIT UPDATE DEFAULT expression b"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT UPDATE DEFAULT expression m"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.is_null = true},
+        "BIT UPDATE DEFAULT expression NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = bit_six_seven, .size = sizeof(bit_six_seven)},
+        "BIT UPDATE DEFAULT expression preserves explicit NOT NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        1U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_ten, .size = sizeof(bit_six_ten)},
+        "BIT INSERT explicit DEFAULT expression b"
+    );
+    failures += expect_bit_cell(
+        result,
+        1U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT INSERT explicit DEFAULT expression m"
+    );
+    failures += expect_bit_cell(
+        result,
+        1U,
+        2U,
+        (struct expected_bytes){.is_null = true},
+        "BIT INSERT explicit DEFAULT expression NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        1U,
+        3U,
+        (struct expected_bytes){.bytes = bit_six_two, .size = sizeof(bit_six_two)},
+        "BIT INSERT explicit DEFAULT expression explicit NOT NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        2U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_ten, .size = sizeof(bit_six_ten)},
+        "BIT REPLACE explicit DEFAULT expression b"
+    );
+    failures += expect_bit_cell(
+        result,
+        2U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT REPLACE explicit DEFAULT expression m"
+    );
+    failures += expect_bit_cell(
+        result,
+        2U,
+        2U,
+        (struct expected_bytes){.is_null = true},
+        "BIT REPLACE explicit DEFAULT expression NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        2U,
+        3U,
+        (struct expected_bytes){.bytes = bit_six_five, .size = sizeof(bit_six_five)},
+        "BIT REPLACE explicit DEFAULT expression explicit NOT NULL"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(database, "CREATE TABLE bit_expr_like LIKE bit_expr");
+    failures += expect_dml_ok(database, "INSERT INTO bit_expr_like (id, nn) VALUES (3, b'011')", 1);
+    failures += execute_ok(database, "SELECT b, m, n, nn FROM bit_expr_like WHERE id = 3", &result);
+    failures += expect_bit_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_ten, .size = sizeof(bit_six_ten)},
+        "BIT expression default CREATE LIKE b"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        1U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT expression default CREATE LIKE m"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        2U,
+        (struct expected_bytes){.is_null = true},
+        "BIT expression default CREATE LIKE NULL"
+    );
+    failures += expect_bit_cell(
+        result,
+        0U,
+        3U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "BIT expression default CREATE LIKE explicit NOT NULL value"
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     failures += expect_dml_ok(
         database,
@@ -414,6 +698,21 @@ static int test_bit_success_persistence_and_descriptor_copy(void) {
         0U,
         (struct expected_bytes){.bytes = bit_six_five, .size = sizeof(bit_six_five)},
         "ALTER ADD BIT default backfill"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE bits ADD COLUMN expr_added BIT(6) DEFAULT (1 + 2)"
+    );
+    failures += execute_ok(database, "SELECT expr_added FROM bits WHERE id = 1", &result);
+    failures += expect_bit_cell(
+        result,
+        0U,
+        0U,
+        (struct expected_bytes){.bytes = bit_six_three, .size = sizeof(bit_six_three)},
+        "ALTER ADD BIT expression default backfill"
     );
     mylite_result_free(result);
     result = NULL;
@@ -615,6 +914,55 @@ static int test_bit_diagnostics(void) {
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",
             .message_part = "Invalid default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_default (b BIT(6) DEFAULT (64))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_negative_default (b BIT(6) DEFAULT (-1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_div_zero (b BIT(6) DEFAULT (1 DIV 0))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_string (b BIT(6) DEFAULT ('1'))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE null_expr_bits (b BIT(1) NOT NULL DEFAULT (NULL))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO null_expr_bits () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "cannot be null",
         }
     );
     failures +=

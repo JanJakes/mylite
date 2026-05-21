@@ -8859,7 +8859,9 @@ static bool catalog_logical_type_accepts_integer_expression_default(const char *
             catalog_logical_type_equals(logical_type, "INT") ||
             catalog_logical_type_equals(logical_type, "INT UNSIGNED") ||
             catalog_logical_type_equals(logical_type, "BIGINT") ||
-            catalog_logical_type_equals(logical_type, "BIGINT UNSIGNED")) != 0;
+            catalog_logical_type_equals(logical_type, "BIGINT UNSIGNED") ||
+            catalog_logical_type_equals(logical_type, "YEAR") ||
+            text_has_ascii_case_insensitive_prefix(logical_type, "BIT(")) != 0;
 }
 
 static bool catalog_logical_type_accepts_text_expression_default(const char *logical_type) {

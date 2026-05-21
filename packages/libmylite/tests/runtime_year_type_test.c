@@ -25,6 +25,7 @@ enum {
     year_order_row_count = 6,
     year_replace_row_count = 4,
     year_index_row_count = 5,
+    year_expression_default_column_count = 5,
     mysql_error_bad_null = 1048,
     mysql_error_invalid_default = 1067,
     mysql_error_parse = 1064,
@@ -137,6 +138,74 @@ static int test_year_success_metadata_dml_and_persistence(void) {
         "YES", "0000", NULL,   NULL,  NULL,   NULL,   "yzs", "year", "year", "YES", "2000", NULL,
         NULL,  NULL,   NULL,   "yt",  "year", "year", "YES", "2001", NULL,   NULL,  NULL,   NULL,
         "yf",  "year", "year", "YES", "0000", NULL,   NULL,  NULL,   NULL,
+    };
+    static const char *const expression_show_columns_rows[] = {
+        "y",  "year", "YES", "", "(2000 + 1)",   "DEFAULT_GENERATED",
+        "m",  "year", "YES", "", "(2071 % 100)", "DEFAULT_GENERATED",
+        "n",  "year", "YES", "", "NULL",         "DEFAULT_GENERATED",
+        "nn", "year", "NO",  "", "NULL",         "DEFAULT_GENERATED",
+    };
+    static const char *const expression_show_create_rows[] = {
+        "year_expr",
+        "CREATE TABLE `year_expr` (\n"
+        "  `id` int DEFAULT NULL,\n"
+        "  `y` year DEFAULT ((2000 + 1)),\n"
+        "  `m` year DEFAULT ((2071 % 100)),\n"
+        "  `n` year DEFAULT (NULL),\n"
+        "  `nn` year NOT NULL DEFAULT (NULL)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const expression_information_schema_rows[] = {
+        "y",
+        "(2000 + 1)",
+        "DEFAULT_GENERATED",
+        "m",
+        "(2071 % 100)",
+        "DEFAULT_GENERATED",
+        "n",
+        "NULL",
+        "DEFAULT_GENERATED",
+        "nn",
+        "NULL",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const expression_rows[] = {
+        "1",
+        "2001",
+        "1971",
+        NULL,
+        "2002",
+        "2",
+        "2000",
+        "1971",
+        NULL,
+        "2001",
+    };
+    static const char *const expression_altered_default_rows[] = {
+        "y",
+        "year",
+        "YES",
+        "",
+        "(1999 + 1)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const expression_like_rows[] = {"3", "2000", "1971", NULL, "2003"};
+    static const char *const expression_default_dml_rows[] = {
+        "1",
+        "2000",
+        "1971",
+        NULL,
+        "2002",
+        "4",
+        "2000",
+        "1971",
+        NULL,
+        "2004",
+        "5",
+        "2000",
+        "1971",
+        NULL,
+        "2005",
     };
     static const char *const dml_rows[] = {
         "1",    "0000", "0000", "2",    "2000", "2000", "3",    "2001", "2001", "4",    "2069",
@@ -274,6 +343,111 @@ static int test_year_success_metadata_dml_and_persistence(void) {
             .column_count = information_schema_column_count,
             .row_count = year_information_schema_row_count,
             .context = "year information schema",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE year_expr (id INT, y YEAR DEFAULT (2000 + 1), "
+        "m YEAR DEFAULT (MOD(2071,100)), n YEAR DEFAULT (NULL), "
+        "nn YEAR NOT NULL DEFAULT (NULL))"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM year_expr WHERE Field <> 'id'",
+            .values = expression_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 4U,
+            .context = "year expression default SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE year_expr",
+            .values = expression_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "year expression default SHOW CREATE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA "
+                   "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'year_expr' AND COLUMN_NAME <> 'id' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = expression_information_schema_rows,
+            .column_count = 3U,
+            .row_count = 4U,
+            .context = "year expression default information schema",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO year_expr (id, nn) VALUES (1, 2002)", 1);
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE year_expr ALTER COLUMN y SET DEFAULT (1999 + 1)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM year_expr LIKE 'y'",
+            .values = expression_altered_default_rows,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "year expression altered default SHOW COLUMNS",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO year_expr (id, nn) VALUES (2, 2001)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, y, m, n, nn FROM year_expr ORDER BY id",
+            .values = expression_rows,
+            .column_count = year_expression_default_column_count,
+            .row_count = 2U,
+            .context = "year expression default rows",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE year_expr SET y = DEFAULT, m = DEFAULT, n = DEFAULT WHERE id = 1",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO year_expr (id, y, m, n, nn) VALUES "
+        "(4, DEFAULT, DEFAULT, DEFAULT, 2004)",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO year_expr (id, y, m, n, nn) VALUES "
+        "(5, DEFAULT, DEFAULT, DEFAULT, 2005)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, y, m, n, nn FROM year_expr WHERE id IN (1, 4, 5) ORDER BY id",
+            .values = expression_default_dml_rows,
+            .column_count = year_expression_default_column_count,
+            .row_count = 3U,
+            .context = "year expression default explicit DML",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE year_expr_like LIKE year_expr");
+    failures += expect_dml_ok(database, "INSERT INTO year_expr_like (id, nn) VALUES (3, 2003)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, y, m, n, nn FROM year_expr_like",
+            .values = expression_like_rows,
+            .column_count = year_expression_default_column_count,
+            .row_count = 1U,
+            .context = "year expression default CREATE LIKE",
         }
     );
 
@@ -445,6 +619,18 @@ static int test_year_success_metadata_dml_and_persistence(void) {
             .context = "year alter set default",
         }
     );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE alter_t ADD yexpr YEAR DEFAULT (2000 + 1)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, yexpr FROM alter_t WHERE id = 1",
+            .values = (const char *const[]){"1", "2001"},
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "year alter add expression default",
+        }
+    );
 
     failures += expect_statement_ok(
         database,
@@ -606,11 +792,51 @@ static int test_year_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE bad_expression_default (y YEAR DEFAULT (2000 + 1))",
+        "CREATE TABLE bad_expression_default (y YEAR DEFAULT (2156))",
         (struct expected_sql_error){
             .code = mysql_error_invalid_default,
             .sqlstate = "42000",
             .message_part = "Invalid default value for 'y'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_negative_default (y YEAR DEFAULT (-1))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'y'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_div_zero (y YEAR DEFAULT (1 DIV 0))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'y'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_expression_string (y YEAR DEFAULT ('2001'))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'y'",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE null_expr_year (y YEAR NOT NULL DEFAULT (NULL))"
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO null_expr_year () VALUES ()",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'y' cannot be null",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE err_insert (id INT, y YEAR NOT NULL)");

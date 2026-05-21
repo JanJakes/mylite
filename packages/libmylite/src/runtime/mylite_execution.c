@@ -2204,6 +2204,12 @@ struct utf8_prefix_request {
     size_t character_limit;
 };
 
+struct utf8_byte_prefix_request {
+    const char *text;
+    size_t text_length;
+    size_t byte_limit;
+};
+
 struct insert_select_string_validation {
     const struct mylite_catalog_column_descriptor *source_column;
     const struct mylite_catalog_column_descriptor *target_column;
@@ -11175,6 +11181,7 @@ static int materialize_insert_select_selected_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     int selected_column_index,
+    const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
     bool adjust_value,
@@ -11193,6 +11200,7 @@ static int materialize_insert_select_string_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     int selected_column_index,
+    const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
     bool adjust_value,
@@ -11273,6 +11281,12 @@ static int validate_insert_select_convertible_varchar_value(
     struct insert_select_string_validation validation
 );
 static int validate_insert_select_convertible_char_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct insert_select_string_validation validation
+);
+static int validate_insert_select_convertible_text_family_value(
     struct mylite_db *database,
     const char *text,
     size_t text_length,
@@ -17771,6 +17785,8 @@ static int convert_text_family_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
+    bool warn_on_trailing_space_truncation,
     struct planned_value *out_value
 );
 static int convert_decimal_literal(
@@ -18426,6 +18442,17 @@ static int validate_text_family_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     struct varchar_text_validation validation
+);
+static int convert_text_family_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation,
+    bool warn_on_trailing_space_truncation
+);
+static int utf8_prefix_byte_length_for_byte_limit(
+    struct utf8_byte_prefix_request request,
+    size_t *out_prefix_length
 );
 static int validate_canonical_decimal_text(
     struct mylite_db *database,
@@ -63237,18 +63264,30 @@ static int materialize_insert_select_row_values(
         size_t target_position = 0U;
 
         if (find_insert_select_target_position(plan, column_index, &target_position)) {
+            const struct mylite_catalog_column_descriptor *source_column = NULL;
+
             if (target_position >= (size_t)INT_MAX) {
                 return MYLITE_ERROR;
             }
-            rc = materialize_insert_select_selected_value(
+            rc = insert_select_source_column_for_position(
                 database,
                 select_statement,
-                (int)target_position,
-                &plan->target.columns[column_index],
-                row_number,
-                adjust_value,
-                &values[column_index]
+                plan,
+                target_position,
+                &source_column
             );
+            if (rc == MYLITE_OK) {
+                rc = materialize_insert_select_selected_value(
+                    database,
+                    select_statement,
+                    (int)target_position,
+                    source_column,
+                    &plan->target.columns[column_index],
+                    row_number,
+                    adjust_value,
+                    &values[column_index]
+                );
+            }
         } else {
             rc = materialize_insert_select_omitted_value(
                 database,
@@ -63266,6 +63305,7 @@ static int materialize_insert_select_selected_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     int selected_column_index,
+    const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
     bool adjust_value,
@@ -63305,11 +63345,12 @@ static int materialize_insert_select_selected_value(
             out_value
         );
     }
-    if (column_descriptor_is_char(target_column) || column_descriptor_is_varchar(target_column)) {
+    if (column_descriptor_is_string_family(target_column)) {
         return materialize_insert_select_string_value(
             database,
             statement,
             selected_column_index,
+            source_column,
             target_column,
             row_number,
             adjust_value,
@@ -63376,6 +63417,7 @@ static int materialize_insert_select_string_value(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     int selected_column_index,
+    const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column,
     size_t row_number,
     bool adjust_value,
@@ -63418,8 +63460,16 @@ static int materialize_insert_select_string_value(
     };
     if (column_descriptor_is_char(target_column)) {
         rc = convert_char_text(database, target_column, &conversion, adjust_value);
-    } else {
+    } else if (column_descriptor_is_varchar(target_column)) {
         rc = convert_varchar_text(database, target_column, &conversion, adjust_value);
+    } else {
+        rc = convert_text_family_text(
+            database,
+            target_column,
+            &conversion,
+            adjust_value,
+            source_column != NULL
+        );
     }
     if (rc != MYLITE_OK) {
         free(copy);
@@ -64016,16 +64066,20 @@ static int validate_insert_select_convertible_string_value(
             validation
         );
     }
+    if (column_descriptor_is_text_family(validation.target_column)) {
+        return validate_insert_select_convertible_text_family_value(
+            database,
+            (const char *)text,
+            text_length,
+            validation
+        );
+    }
 
-    return validate_text_family_text(
+    set_unsupported_error(
         database,
-        validation.target_column,
-        (struct varchar_text_validation){
-            .text = (const char *)text,
-            .text_length = text_length,
-            .row_number = validation.row_number,
-        }
+        "INSERT ... SELECT does not support implicit string conversion"
     );
+    return MYLITE_ERROR;
 }
 
 static int validate_insert_select_convertible_varchar_value(
@@ -64111,6 +64165,72 @@ static int validate_insert_select_convertible_char_value(
     if (validation.adjust_value) {
         return MYLITE_OK;
     }
+    set_data_too_long_error(database, validation.target_column->name, validation.row_number);
+    return MYLITE_ERROR;
+}
+
+static int validate_insert_select_convertible_text_family_value(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct insert_select_string_validation validation
+) {
+    const struct text_family_type_info *info = NULL;
+    size_t character_count = 0U;
+    size_t truncated_length = 0U;
+    int rc = MYLITE_OK;
+
+    rc = validate_utf8_text(text, text_length, &character_count);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "TEXT values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+    (void)character_count;
+    info = text_family_type_info_for_logical_type(validation.target_column->logical_type);
+    if (info == NULL) {
+        set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+    if (text_length <= info->maximum_length || validation.adjust_value) {
+        return MYLITE_OK;
+    }
+    if (validation.source_column != NULL) {
+        if (column_descriptor_is_text_family(validation.source_column)) {
+            set_data_too_long_error(
+                database,
+                validation.target_column->name,
+                validation.row_number
+            );
+            return MYLITE_ERROR;
+        }
+
+        return validate_text_family_text(
+            database,
+            validation.target_column,
+            (struct varchar_text_validation){
+                .text = text,
+                .text_length = text_length,
+                .row_number = validation.row_number,
+            }
+        );
+    }
+
+    rc = utf8_prefix_byte_length_for_byte_limit(
+        (struct utf8_byte_prefix_request){
+            .text = text,
+            .text_length = text_length,
+            .byte_limit = (size_t)info->maximum_length,
+        },
+        &truncated_length
+    );
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "TEXT values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+    if (text_is_ascii_spaces(text + truncated_length, text_length - truncated_length)) {
+        return MYLITE_OK;
+    }
+
     set_data_too_long_error(database, validation.target_column->name, validation.row_number);
     return MYLITE_ERROR;
 }
@@ -65477,7 +65597,7 @@ static int append_update_string_truncation_diagnostic(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (!column_descriptor_is_char(column) && !column_descriptor_is_varchar(column)) {
+    if (!column_descriptor_is_string_family(column)) {
         return MYLITE_OK;
     }
 
@@ -65499,8 +65619,16 @@ static int append_update_string_truncation_diagnostic(
 
         if (column_descriptor_is_char(column)) {
             rc = convert_char_text(database, column, &conversion, allow_nonspace_truncation);
-        } else {
+        } else if (column_descriptor_is_varchar(column)) {
             rc = convert_varchar_text(database, column, &conversion, allow_nonspace_truncation);
+        } else {
+            rc = convert_text_family_text(
+                database,
+                column,
+                &conversion,
+                allow_nonspace_truncation,
+                false
+            );
         }
     }
 
@@ -96927,7 +97055,7 @@ static int finalize_planned_column_text_expression_default(
     }
 
     planned_column_descriptor_for_default(column, &descriptor);
-    rc = convert_text_family_literal(database, expression, &descriptor, 1U, &value);
+    rc = convert_text_family_literal(database, expression, &descriptor, 1U, false, false, &value);
     if (rc != MYLITE_OK) {
         set_invalid_default_error(database, column->name);
     }
@@ -104114,7 +104242,15 @@ static int convert_insert_value_by_descriptor(
         );
     }
     if (column_descriptor_is_text_family(column)) {
-        return convert_text_family_literal(database, value_node, column, row_number, out_value);
+        return convert_text_family_literal(
+            database,
+            value_node,
+            column,
+            row_number,
+            allow_string_truncation_adjustment,
+            false,
+            out_value
+        );
     }
     if (column_descriptor_is_json(column)) {
         (void)row_number;
@@ -106334,6 +106470,8 @@ static int convert_text_family_literal(
     const struct mylite_sql_ast_node *value_node,
     const struct mylite_catalog_column_descriptor *column,
     size_t row_number,
+    bool allow_nonspace_truncation,
+    bool warn_on_trailing_space_truncation,
     struct planned_value *out_value
 ) {
     char *text = NULL;
@@ -106358,15 +106496,22 @@ static int convert_text_family_literal(
         &text_length
     );
     if (rc == MYLITE_OK) {
-        rc = validate_text_family_text(
+        struct char_text_conversion conversion = {
+            .text = text,
+            .text_length = text_length,
+            .row_number = row_number,
+        };
+
+        rc = convert_text_family_text(
             database,
             column,
-            (struct varchar_text_validation){
-                .text = text,
-                .text_length = text_length,
-                .row_number = row_number,
-            }
+            &conversion,
+            allow_nonspace_truncation,
+            warn_on_trailing_space_truncation
         );
+        if (rc == MYLITE_OK) {
+            text_length = conversion.text_length;
+        }
     }
     if (rc != MYLITE_OK) {
         free(text);
@@ -109215,6 +109360,91 @@ static int validate_text_family_text(
     return MYLITE_OK;
 }
 
+static int convert_text_family_text(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    struct char_text_conversion *conversion,
+    bool allow_nonspace_truncation,
+    bool warn_on_trailing_space_truncation
+) {
+    const struct text_family_type_info *info = NULL;
+    size_t character_count = 0U;
+    size_t truncated_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (conversion == NULL || conversion->text == NULL) {
+        set_runtime_error(database, "invalid TEXT value");
+        return MYLITE_ERROR;
+    }
+    if (conversion->text_length > (size_t)INT_MAX) {
+        set_unsupported_error(database, "TEXT values are too large for this build");
+        return MYLITE_ERROR;
+    }
+    if (memchr(conversion->text, '\0', conversion->text_length) != NULL) {
+        set_unsupported_error(database, "TEXT values do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    if (column == NULL || !column_descriptor_is_text_family(column)) {
+        set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_utf8_text(conversion->text, conversion->text_length, &character_count);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "TEXT values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+    (void)character_count;
+    info = text_family_type_info_for_logical_type(column->logical_type);
+    if (info == NULL) {
+        set_unsupported_error(database, "statement supports only baseline TEXT descriptors");
+        return MYLITE_ERROR;
+    }
+    if (conversion->text_length <= info->maximum_length) {
+        return MYLITE_OK;
+    }
+    if (info->maximum_length > SIZE_MAX) {
+        set_unsupported_error(database, "TEXT values are too large for this build");
+        return MYLITE_ERROR;
+    }
+
+    rc = utf8_prefix_byte_length_for_byte_limit(
+        (struct utf8_byte_prefix_request){
+            .text = conversion->text,
+            .text_length = conversion->text_length,
+            .byte_limit = (size_t)info->maximum_length,
+        },
+        &truncated_length
+    );
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "TEXT values must be valid UTF-8");
+        return MYLITE_ERROR;
+    }
+
+    if (text_is_ascii_spaces(
+            conversion->text + truncated_length,
+            conversion->text_length - truncated_length
+        )) {
+        if (warn_on_trailing_space_truncation) {
+            rc = append_data_truncated_warning(database, column->name, conversion->row_number);
+        } else {
+            rc = append_data_truncated_note(database, column->name, conversion->row_number);
+        }
+    } else if (allow_nonspace_truncation) {
+        rc = append_data_truncated_warning(database, column->name, conversion->row_number);
+    } else {
+        set_data_too_long_error(database, column->name, conversion->row_number);
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    conversion->text[truncated_length] = '\0';
+    conversion->text_length = truncated_length;
+    return MYLITE_OK;
+}
+
 static int validate_canonical_decimal_text(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -109327,6 +109557,37 @@ static int utf8_prefix_byte_length_for_character_count(
     }
     *out_prefix_length = prefix_length;
     *out_character_count = character_count;
+    return MYLITE_OK;
+}
+
+static int utf8_prefix_byte_length_for_byte_limit(
+    struct utf8_byte_prefix_request request,
+    size_t *out_prefix_length
+) {
+    size_t index = 0U;
+    size_t prefix_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (request.text == NULL || out_prefix_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    while (index < request.text_length) {
+        size_t width = 0U;
+
+        rc = utf8_sequence_width(request.text, request.text_length, index, &width);
+        if (rc != MYLITE_OK) {
+            return MYLITE_ERROR;
+        }
+        if (index > request.byte_limit || width > request.byte_limit - index) {
+            break;
+        }
+
+        prefix_length = index + width;
+        index += width;
+    }
+
+    *out_prefix_length = prefix_length;
     return MYLITE_OK;
 }
 
@@ -125743,7 +126004,15 @@ static int convert_update_column_value(
         );
     }
     if (column_descriptor_is_text_family(column)) {
-        return convert_text_family_literal(database, value_node, column, 1U, out_value);
+        return convert_text_family_literal(
+            database,
+            value_node,
+            column,
+            1U,
+            dml_allows_string_truncation_adjustment(database, false),
+            false,
+            out_value
+        );
     }
     if (column_descriptor_is_json(column)) {
         return convert_json_literal(database, value_node, column, out_value);
@@ -138564,6 +138833,7 @@ static int fetch_insert_duplicate_current_row_values(
                     database,
                     statement,
                     (int)column_index,
+                    &plan->columns[column_index],
                     &plan->columns[column_index],
                     row_index + 1U,
                     false,

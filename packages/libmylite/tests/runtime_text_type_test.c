@@ -31,6 +31,9 @@ enum {
     text_length_metadata_column_count = 7,
     text_length_utf8_variant_count = 8,
     tinytext_overlength_byte_count = 256,
+    tinytext_utf8_euro_repeat_count = 85,
+    text_overlength_byte_count = 65536,
+    text_truncation_nonstrict_insert_column_count = 6,
 };
 
 struct expected_sql_error {
@@ -56,6 +59,9 @@ static int test_text_success_persistence_and_introspection(void);
 static int test_text_length_arguments(void);
 static int test_text_parenthesized_defaults(void);
 static int test_text_diagnostics(void);
+static int test_text_dml_truncation(void);
+static int test_text_literal_dml_truncation(void);
+static int test_text_insert_select_dml_truncation(void);
 static int test_text_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -91,6 +97,13 @@ static int expect_bytes(
     size_t size,
     const char *context
 );
+static char *make_repeated_chunk_sql(
+    const char *prefix,
+    const char *chunk,
+    size_t chunk_length,
+    size_t repeat_count,
+    const char *suffix
+);
 
 int main(void) {
     int failures = 0;
@@ -99,6 +112,7 @@ int main(void) {
     failures += test_text_length_arguments();
     failures += test_text_parenthesized_defaults();
     failures += test_text_diagnostics();
+    failures += test_text_dml_truncation();
     failures += test_text_independent_handles();
 
     return failures == 0 ? 0 : 1;
@@ -1372,6 +1386,609 @@ static int test_text_diagnostics(void) {
     return failures;
 }
 
+static int test_text_dml_truncation(void) {
+    int failures = 0;
+
+    failures += test_text_literal_dml_truncation();
+    failures += test_text_insert_select_dml_truncation();
+
+    return failures;
+}
+
+static int test_text_literal_dml_truncation(void) {
+    static const char euro[] = "\xE2\x82\xAC";
+    static const char *const strict_trailing_warning[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'tt' at row 1",
+    };
+    static const char *const nonstrict_warning[] = {
+        "Warning",
+        "1265",
+        "Data truncated for column 'tt' at row 1",
+    };
+    static const char *const tinytext_x_row[] = {"255", "x"};
+    static const char *const tinytext_n_row[] = {"255", "n"};
+    static const char *const nonstrict_insert_row[] = {"255", "a", "65535", "b", "65535", "c"};
+    static const char *const utf8_row[] = {"255", "85"};
+    static const char *const ignore_row[] = {"255", "i"};
+    static const char *const ignore_trailing_row[] = {"255", "h"};
+    static const char *const replace_rows[] = {"10", "255", "r", "11", "255", "z"};
+    static const char *const update_rows[] = {"1", "255", "q", "2", "255", "q"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    char *sql = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "dml_truncation") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text truncation file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE text_family (id INT NOT NULL, tt TINYTEXT, t TEXT, nn TEXT NOT NULL)"
+    );
+
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_family (id, tt, nn) VALUES (1, '",
+        "x",
+        1U,
+        tinytext_overlength_byte_count,
+        "', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += execute_error(
+            database,
+            sql,
+            (struct expected_sql_error){
+                .code = mysql_error_data_too_long,
+                .sqlstate = "22001",
+                .message_part = "Data too long for column 'tt' at row 1",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_family (id, tt, nn) VALUES (1, '",
+        "x",
+        1U,
+        tinytext_overlength_byte_count - 1U,
+        " ', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW WARNINGS",
+                .values = strict_trailing_warning,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "strict trailing text warning",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1",
+                .values = tinytext_x_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "strict trailing text row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_family (id, tt, nn) VALUES (1, '",
+        "n",
+        1U,
+        tinytext_overlength_byte_count - 1U,
+        " ', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW WARNINGS",
+                .values = strict_trailing_warning,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "nonstrict trailing text note",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1",
+                .values = tinytext_n_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "nonstrict trailing text row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_family (id, tt, t, nn) VALUES (1, '",
+        "a",
+        1U,
+        tinytext_overlength_byte_count,
+        "', '"
+    );
+    if (sql != NULL) {
+        char *with_text = make_repeated_chunk_sql(sql, "b", 1U, text_overlength_byte_count, "', '");
+
+        free(sql);
+        sql = with_text;
+    }
+    if (sql != NULL) {
+        char *with_nn = make_repeated_chunk_sql(sql, "c", 1U, text_overlength_byte_count, "')");
+
+        free(sql);
+        sql = with_nn;
+    }
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 3U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1), LENGTH(t), RIGHT(t, 1), "
+                       "LENGTH(nn), RIGHT(nn, 1) FROM text_family WHERE id = 1",
+                .values = nonstrict_insert_row,
+                .column_count = text_truncation_nonstrict_insert_column_count,
+                .row_count = 1U,
+                .context = "nonstrict inserted text truncation row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "REPLACE INTO text_family (id, tt, nn) VALUES (10, '",
+        "r",
+        1U,
+        tinytext_overlength_byte_count,
+        "', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+    }
+    free(sql);
+    sql = make_repeated_chunk_sql(
+        "REPLACE INTO text_family SET id = 11, tt = '",
+        "z",
+        1U,
+        tinytext_overlength_byte_count,
+        "', nn = 'ok'"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT id, LENGTH(tt), RIGHT(tt, 1) FROM text_family ORDER BY id",
+                .values = replace_rows,
+                .column_count = 3U,
+                .row_count = 2U,
+                .context = "nonstrict replace text truncation rows",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_family (id, tt, nn) VALUES (1, '",
+        euro,
+        sizeof(euro) - 1U,
+        tinytext_utf8_euro_repeat_count,
+        "x', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), CHAR_LENGTH(tt) FROM text_family WHERE id = 1",
+                .values = utf8_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "text truncation UTF-8 boundary",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    {
+        mylite_result *set_result = NULL;
+
+        failures += execute_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'", &set_result);
+        mylite_result_free(set_result);
+    }
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "INSERT IGNORE INTO text_family (id, tt, nn) VALUES (1, '",
+        "i",
+        1U,
+        tinytext_overlength_byte_count,
+        "', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW WARNINGS",
+                .values = nonstrict_warning,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "insert ignore text truncation warning",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1",
+                .values = ignore_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "insert ignore text truncation row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    sql = make_repeated_chunk_sql(
+        "INSERT IGNORE INTO text_family (id, tt, nn) VALUES (1, '",
+        "h",
+        1U,
+        tinytext_overlength_byte_count - 1U,
+        " ', 'ok')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW WARNINGS",
+                .values = strict_trailing_warning,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "insert ignore trailing text note",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1",
+                .values = ignore_trailing_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "insert ignore trailing text row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(database, "TRUNCATE text_family");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO text_family (id, tt, nn) VALUES (1, 'a', 'ok'), (2, 'b', 'ok')",
+        2
+    );
+    sql = make_repeated_chunk_sql(
+        "UPDATE text_family SET tt = '",
+        "q",
+        1U,
+        tinytext_overlength_byte_count,
+        "' ORDER BY id"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT id, LENGTH(tt), RIGHT(tt, 1) FROM text_family ORDER BY id",
+                .values = update_rows,
+                .column_count = 3U,
+                .row_count = 2U,
+                .context = "nonstrict update text truncation rows",
+            }
+        );
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 0, .warning_count = 2U}
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_text_insert_select_dml_truncation(void) {
+    static const char *const strict_trailing_warning[] = {
+        "Note",
+        "1265",
+        "Data truncated for column 'tt' at row 1",
+    };
+    static const char *const insert_select_rows[] = {"1", "255", "s", "2", "255", "t"};
+    static const char *const scalar_insert_select_row[] = {"255", "v"};
+    static const char *const scalar_insert_select_nonstrict_row[] = {"255", "y"};
+    static const char *const empty_count[] = {"0"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    char *sql = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "dml_insert_select_truncation") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open text insert select file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    failures += expect_statement_ok(database, "CREATE TABLE text_src (id INT, t TEXT)");
+    failures += expect_statement_ok(database, "CREATE TABLE text_dst (id INT, tt TINYTEXT)");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_src VALUES (1, '",
+        "s",
+        1U,
+        tinytext_overlength_byte_count,
+        "')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_ok(database, sql, 1);
+    }
+    free(sql);
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_src VALUES (2, '",
+        "t",
+        1U,
+        tinytext_overlength_byte_count - 1U,
+        " ')"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_ok(database, sql, 1);
+    }
+    free(sql);
+    sql = NULL;
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO text_dst SELECT id, t FROM text_src ORDER BY id",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LENGTH(tt), RIGHT(tt, 1) FROM text_dst ORDER BY id",
+            .values = insert_select_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "nonstrict insert select text truncation rows",
+        }
+    );
+
+    {
+        mylite_result *set_result = NULL;
+
+        failures += execute_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'", &set_result);
+        mylite_result_free(set_result);
+    }
+    failures += expect_statement_ok(database, "CREATE TABLE text_scalar (tt TINYTEXT)");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_scalar SELECT '",
+        "v",
+        1U,
+        tinytext_overlength_byte_count - 1U,
+        " '"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SHOW WARNINGS",
+                .values = strict_trailing_warning,
+                .column_count = 3U,
+                .row_count = 1U,
+                .context = "strict scalar insert select trailing text warning",
+            }
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_scalar",
+                .values = scalar_insert_select_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "strict scalar insert select trailing text row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+    failures += expect_statement_ok(database, "TRUNCATE text_scalar");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_scalar SELECT '",
+        "u",
+        1U,
+        tinytext_overlength_byte_count,
+        "'"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += execute_error(
+            database,
+            sql,
+            (struct expected_sql_error){
+                .code = mysql_error_data_too_long,
+                .sqlstate = "22001",
+                .message_part = "Data too long for column 'tt' at row 1",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+    failures += expect_statement_ok(database, "SET sql_mode = ''");
+    sql = make_repeated_chunk_sql(
+        "INSERT INTO text_scalar SELECT '",
+        "y",
+        1U,
+        tinytext_overlength_byte_count,
+        "'"
+    );
+    if (sql == NULL) {
+        failures += 1;
+    } else {
+        failures += expect_dml_result(
+            database,
+            sql,
+            (struct expected_dml_result){.affected_rows = 1, .warning_count = 1U}
+        );
+        failures += expect_query_values(
+            database,
+            (struct expected_query){
+                .sql = "SELECT LENGTH(tt), RIGHT(tt, 1) FROM text_scalar",
+                .values = scalar_insert_select_nonstrict_row,
+                .column_count = 2U,
+                .row_count = 1U,
+                .context = "nonstrict scalar insert select text row",
+            }
+        );
+    }
+    free(sql);
+    sql = NULL;
+
+    {
+        mylite_result *set_result = NULL;
+
+        failures += execute_ok(database, "SET sql_mode = 'STRICT_TRANS_TABLES'", &set_result);
+        mylite_result_free(set_result);
+    }
+    failures += expect_statement_ok(database, "TRUNCATE text_dst");
+    failures += execute_error(
+        database,
+        "INSERT INTO text_dst SELECT id, t FROM text_src WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_data_too_long,
+            .sqlstate = "22001",
+            .message_part = "Data too long for column 'tt' at row 1",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM text_dst",
+            .values = empty_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "strict failed insert select leaves destination empty",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_text_independent_handles(void) {
     static const char *const first_expected[] = {"one"};
     static const char *const second_expected[] = {"two"};
@@ -1541,6 +2158,45 @@ static int expect_result_value(
     }
 
     return expect_text(actual, expected, context);
+}
+
+static char *make_repeated_chunk_sql(
+    const char *prefix,
+    const char *chunk,
+    size_t chunk_length,
+    size_t repeat_count,
+    const char *suffix
+) {
+    size_t prefix_length = strlen(prefix);
+    size_t suffix_length = strlen(suffix);
+    size_t repeated_length = 0U;
+    size_t total_length = 0U;
+    char *sql = NULL;
+    char *cursor = NULL;
+
+    if (chunk_length != 0U && repeat_count > (SIZE_MAX - prefix_length) / chunk_length) {
+        return NULL;
+    }
+    repeated_length = chunk_length * repeat_count;
+    if (prefix_length > SIZE_MAX - repeated_length ||
+        prefix_length + repeated_length > SIZE_MAX - suffix_length - 1U) {
+        return NULL;
+    }
+    total_length = prefix_length + repeated_length + suffix_length;
+    sql = malloc(total_length + 1U);
+    if (sql == NULL) {
+        return NULL;
+    }
+
+    memcpy(sql, prefix, prefix_length);
+    cursor = sql + prefix_length;
+    for (size_t index = 0U; index < repeat_count; ++index) {
+        memcpy(cursor, chunk, chunk_length);
+        cursor += chunk_length;
+    }
+    memcpy(cursor, suffix, suffix_length);
+    cursor[suffix_length] = '\0';
+    return sql;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

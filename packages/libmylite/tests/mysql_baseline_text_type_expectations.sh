@@ -237,6 +237,38 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 11;" \
     "$DATABASE"
 
+trailing_space_warning_expected=$(printf "%b" \
+    "Note\t1265\tData truncated for column 'tt' at row 1")
+expect_output \
+    "strict trailing-space tinytext truncation records note" \
+    "$trailing_space_warning_expected" \
+    "TRUNCATE text_family; "\
+"INSERT INTO text_family VALUES "\
+"(1, CONCAT(REPEAT('x', 255), ' '), 'ok', 'ok', 'ok', 'ok'); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+nonstrict_trailing_space_expected=$(printf "%b" \
+    "1\t1\t255\tn")
+expect_output \
+    "nonstrict trailing-space tinytext truncation stores prefix" \
+    "$nonstrict_trailing_space_expected" \
+    "SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family VALUES "\
+"(1, CONCAT(REPEAT('n', 255), ' '), 'ok', 'ok', 'ok', 'ok'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) "\
+"FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "nonstrict trailing-space tinytext truncation records note" \
+    "$trailing_space_warning_expected" \
+    "SET sql_mode = ''; TRUNCATE text_family; "\
+"INSERT INTO text_family VALUES "\
+"(1, CONCAT(REPEAT('n', 255), ' '), 'ok', 'ok', 'ok', 'ok'); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
 nonstrict_text_truncation_expected=$(printf "%b" \
     "1\t3\t255\ta\t65535\tb\t65535\tc")
 expect_output \
@@ -262,6 +294,22 @@ expect_output \
 "SHOW WARNINGS;" \
     "$DATABASE"
 
+replace_text_truncation_expected=$(printf "%b" \
+    "1\t1\t255\tr\n1\t1\n10:255:r,11:255:z")
+expect_output \
+    "nonstrict replace truncates text family values" \
+    "$replace_text_truncation_expected" \
+"SET sql_mode = ''; TRUNCATE text_family; "\
+"REPLACE INTO text_family (id, tt, nn) VALUES "\
+"(10, CONCAT(REPEAT('r', 255), 'x'), 'ok'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) "\
+"FROM text_family WHERE id = 10; "\
+"REPLACE INTO text_family SET id = 11, tt = CONCAT(REPEAT('z', 255), 'x'), nn = 'ok'; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', LENGTH(tt), ':', RIGHT(tt, 1)) ORDER BY id) "\
+"FROM text_family;" \
+    "$DATABASE"
+
 utf8_text_truncation_expected=$(printf "%b" \
     "1\t1\t255\t85\tE282AC")
 expect_output \
@@ -279,10 +327,41 @@ ignore_text_truncation_expected=$(printf "%b" \
 expect_output \
     "insert ignore truncates text family overlength values" \
     "$ignore_text_truncation_expected" \
-    "TRUNCATE text_family; "\
+    "SET sql_mode = 'STRICT_TRANS_TABLES'; TRUNCATE text_family; "\
 "INSERT IGNORE INTO text_family (id, tt, nn) VALUES "\
 "(1, CONCAT(REPEAT('i', 255), 'j'), 'ok'); "\
 "SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+ignore_text_truncation_warnings_expected=$(printf "%b" \
+    "Warning\t1265\tData truncated for column 'tt' at row 1")
+expect_output \
+    "insert ignore nonspace text truncation records warning" \
+    "$ignore_text_truncation_warnings_expected" \
+    "SET sql_mode = 'STRICT_TRANS_TABLES'; TRUNCATE text_family; "\
+"INSERT IGNORE INTO text_family (id, tt, nn) VALUES "\
+"(1, CONCAT(REPEAT('i', 255), 'j'), 'ok'); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
+ignore_trailing_text_truncation_expected=$(printf "%b" \
+    "1\t1\t255\th")
+expect_output \
+    "insert ignore trailing-space text truncation stores prefix" \
+    "$ignore_trailing_text_truncation_expected" \
+    "SET sql_mode = 'STRICT_TRANS_TABLES'; TRUNCATE text_family; "\
+"INSERT IGNORE INTO text_family (id, tt, nn) VALUES "\
+"(1, CONCAT(REPEAT('h', 255), ' '), 'ok'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_family WHERE id = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "insert ignore trailing-space text truncation records note" \
+    "$trailing_space_warning_expected" \
+    "SET sql_mode = 'STRICT_TRANS_TABLES'; TRUNCATE text_family; "\
+"INSERT IGNORE INTO text_family (id, tt, nn) VALUES "\
+"(1, CONCAT(REPEAT('h', 255), ' '), 'ok'); "\
+"SHOW WARNINGS;" \
     "$DATABASE"
 
 nonstrict_text_update_expected=$(printf "%b" \
@@ -322,6 +401,36 @@ expect_error \
 "CREATE TABLE text_src (id INT, t TEXT); CREATE TABLE text_dst (id INT, tt TINYTEXT); "\
 "INSERT INTO text_src VALUES (1, CONCAT(REPEAT('s', 255), ' ')); "\
 "INSERT INTO text_dst SELECT id, t FROM text_src;" \
+    "$DATABASE"
+
+strict_scalar_text_insert_select_expected=$(printf "%b" \
+    "1\t1\t255\tv")
+expect_output \
+    "strict scalar insert select accepts trailing-space text truncation with note" \
+    "$strict_scalar_text_insert_select_expected" \
+    "DROP TABLE IF EXISTS text_scalar; CREATE TABLE text_scalar (tt TINYTEXT); "\
+"INSERT INTO text_scalar SELECT CONCAT(REPEAT('v', 255), ' '); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_scalar;" \
+    "$DATABASE"
+
+expect_error \
+    "strict scalar insert select rejects nonspace overlength text value" \
+    1406 \
+    22001 \
+    "Data too long for column 'tt' at row 1" \
+    "DROP TABLE IF EXISTS text_scalar; CREATE TABLE text_scalar (tt TINYTEXT); "\
+"INSERT INTO text_scalar SELECT CONCAT(REPEAT('u', 255), 'x');" \
+    "$DATABASE"
+
+nonstrict_scalar_text_insert_select_expected=$(printf "%b" \
+    "1\t1\t255\ty")
+expect_output \
+    "nonstrict scalar insert select truncates text family value" \
+    "$nonstrict_scalar_text_insert_select_expected" \
+    "DROP TABLE IF EXISTS text_scalar; CREATE TABLE text_scalar (tt TINYTEXT); "\
+"SET sql_mode = ''; "\
+"INSERT INTO text_scalar SELECT CONCAT(REPEAT('y', 255), 'x'); "\
+"SELECT ROW_COUNT(), @@warning_count, LENGTH(tt), RIGHT(tt, 1) FROM text_scalar;" \
     "$DATABASE"
 
 expect_error \

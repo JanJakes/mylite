@@ -5942,8 +5942,10 @@ create_table_item(A) ::= check_constraint_definition(B). {
     A = B;
 }
 
-primary_key_definition(A) ::= PRIMARY(P) KEY LPAREN primary_key_part_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_primary_key_definition(state, P, L, R);
+primary_key_definition(A) ::=
+    PRIMARY(P) KEY index_type_opt(Y) LPAREN primary_key_part_list(L) RPAREN(R)
+    index_option_list_opt(O). {
+    A = mylite_sql_parser_make_primary_key_definition(state, P, Y, L, R, O);
 }
 
 primary_key_part_list(A) ::= primary_key_part(B). {

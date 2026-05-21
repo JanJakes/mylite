@@ -15046,9 +15046,22 @@ static int test_create_table_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_pk_using (id INT, PRIMARY KEY USING BTREE (id));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE pk_using (id INT, PRIMARY KEY USING BTREE (id) COMMENT 'pk');",
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    primary_key = child_at(child_at(child_at(result.root, 0U), 1U), 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_node(key_parts, MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST, "pk using parts");
+    failures += expect_node(
+        child_at(primary_key, 1U),
+        MYLITE_SQL_AST_INDEX_TYPE_OPTION,
+        "primary key type option"
+    );
+    failures += expect_node(
+        child_at(primary_key, 2U),
+        MYLITE_SQL_AST_INDEX_OPTION_LIST,
+        "primary key option list"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -15343,10 +15356,24 @@ static int test_alter_table_add_primary_key_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE add_pk ADD PRIMARY KEY USING BTREE (id);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "ALTER TABLE add_pk ADD PRIMARY KEY USING BTREE (id) COMMENT 'pk';",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    primary_key = child_at(child_at(result.root, 0U), 1U);
+    key_parts = child_at(primary_key, 0U);
+    failures += expect_node(
+        child_at(primary_key, 1U),
+        MYLITE_SQL_AST_INDEX_TYPE_OPTION,
+        "alter add primary key type option"
+    );
+    failures += expect_node(
+        child_at(primary_key, 2U),
+        MYLITE_SQL_AST_INDEX_OPTION_LIST,
+        "alter add primary key option list"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(key_parts, 0U), 0U), "id", "alter pk option part");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

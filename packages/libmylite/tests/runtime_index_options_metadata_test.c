@@ -23,7 +23,9 @@ enum {
     show_index_visible_column = 13,
     mysql_error_parse = 1064,
     mysql_error_wrong_usage = 1221,
+    mysql_error_spatial_index_non_geometric = 1687,
     mysql_error_index_comment_too_long = 1688,
+    mysql_error_primary_key_index_invisible = 3522,
 };
 
 struct expected_sql_error {
@@ -42,6 +44,7 @@ struct expected_query {
 
 static int test_create_table_index_options_metadata_and_persistence(void);
 static int test_create_and_alter_index_options(void);
+static int test_primary_key_options_metadata(void);
 static int test_index_options_diagnostics(void);
 static int create_app_schema(mylite_db *database);
 static int expect_single_cell(
@@ -104,6 +107,7 @@ int main(void) {
 
     failures += test_create_table_index_options_metadata_and_persistence();
     failures += test_create_and_alter_index_options();
+    failures += test_primary_key_options_metadata();
     failures += test_index_options_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -335,9 +339,168 @@ static int test_create_and_alter_index_options(void) {
     return failures;
 }
 
+static int test_primary_key_options_metadata(void) {
+    static const char *const statistics_rows[] = {
+        "PRIMARY",
+        "BTREE",
+        "",
+        "pk comment",
+        "YES",
+    };
+    static const char *const show_create_rows[] = {
+        "pk_options",
+        "CREATE TABLE `pk_options` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`) USING BTREE COMMENT 'pk comment'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "primary-key-options") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open primary-key options file");
+    failures += create_app_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE pk_options ("
+        "id INT NOT NULL, v INT, PRIMARY KEY USING BTREE (id) COMMENT 'pk comment' VISIBLE)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE pk_options",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "SHOW CREATE primary-key options",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'pk_options' AND INDEX_NAME = 'PRIMARY'",
+            .values = statistics_rows,
+            .column_count = statistics_probe_field_count,
+            .row_count = 1U,
+            .context = "I_S STATISTICS primary-key options",
+        }
+    );
+    failures += expect_single_cell(
+        database,
+        "SHOW INDEX FROM pk_options WHERE Key_name = 'PRIMARY'",
+        show_index_index_comment_column,
+        "pk comment",
+        "SHOW INDEX primary Index_comment"
+    );
+    failures += expect_single_cell(
+        database,
+        "SHOW INDEX FROM pk_options WHERE Key_name = 'PRIMARY'",
+        show_index_visible_column,
+        "YES",
+        "SHOW INDEX primary visible flag"
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE pk_clone LIKE pk_options");
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE pk_clone",
+        1U,
+        "PRIMARY KEY (`id`) USING BTREE COMMENT 'pk comment'",
+        "CREATE TABLE LIKE preserves primary-key options"
+    );
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "CREATE TABLE pk_hash (id INT NOT NULL, PRIMARY KEY USING HASH (id) COMMENT 'hash pk')",
+        1U
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE pk_hash",
+        1U,
+        "PRIMARY KEY (`id`) COMMENT 'hash pk'",
+        "primary HASH fallback keeps comment"
+    );
+    failures += expect_single_cell_not_contains(
+        database,
+        "SHOW CREATE TABLE pk_hash",
+        1U,
+        "USING",
+        "primary HASH fallback is not rendered"
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE pk_alter (id INT NOT NULL, v INT)");
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE pk_alter ADD PRIMARY KEY USING BTREE (id) COMMENT 'alter pk'"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE pk_alter",
+        1U,
+        "PRIMARY KEY (`id`) USING BTREE COMMENT 'alter pk'",
+        "ALTER ADD PRIMARY KEY renders options"
+    );
+    failures += execute_statement_ok(database, "CREATE TABLE pk_alter_hash (id INT NOT NULL)");
+    failures += expect_statement_ok_with_warning_count(
+        database,
+        "ALTER TABLE pk_alter_hash ADD PRIMARY KEY USING HASH (id) COMMENT 'alter hash'",
+        1U
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE pk_alter_hash",
+        1U,
+        "PRIMARY KEY (`id`) COMMENT 'alter hash'",
+        "ALTER ADD PRIMARY KEY HASH fallback keeps comment"
+    );
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read primary-key options preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "primary-key options preamble unchanged"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen primary-key options file");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE pk_options",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "reopen preserves primary-key options",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_index_options_diagnostics(void) {
     char *create_long = NULL;
     char *alter_long = NULL;
+    char *create_primary_long = NULL;
     mylite_db *database = NULL;
     int failures = expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics");
 
@@ -351,6 +514,56 @@ static int test_index_options_diagnostics(void) {
             .sqlstate = "HY000",
             .message_part =
                 "Incorrect usage of spatial/fulltext/hash index and explicit index order",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_primary_hash (id INT NOT NULL, PRIMARY KEY USING HASH (id DESC))",
+        (struct expected_sql_error){
+            .code = mysql_error_wrong_usage,
+            .sqlstate = "HY000",
+            .message_part =
+                "Incorrect usage of spatial/fulltext/hash index and explicit index order",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_primary_invisible (id INT NOT NULL, PRIMARY KEY (id) INVISIBLE)",
+        (struct expected_sql_error){
+            .code = mysql_error_primary_key_index_invisible,
+            .sqlstate = "HY000",
+            .message_part = "A primary key index cannot be invisible.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_primary_rtree (id INT NOT NULL, PRIMARY KEY USING RTREE (id))",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_non_geometric,
+            .sqlstate = "42000",
+            .message_part = "A SPATIAL index may only contain a geometrical type column",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE alter_primary_invisible (id INT NOT NULL)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_primary_invisible ADD PRIMARY KEY (id) INVISIBLE",
+        (struct expected_sql_error){
+            .code = mysql_error_primary_key_index_invisible,
+            .sqlstate = "HY000",
+            .message_part = "A primary key index cannot be invisible.",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE alter_primary_rtree (id INT NOT NULL)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_primary_rtree ADD PRIMARY KEY USING RTREE (id)",
+        (struct expected_sql_error){
+            .code = mysql_error_spatial_index_non_geometric,
+            .sqlstate = "42000",
+            .message_part = "A SPATIAL index may only contain a geometrical type column",
         }
     );
     failures += execute_error(
@@ -392,7 +605,11 @@ static int test_index_options_diagnostics(void) {
 
     create_long = make_long_index_comment_sql("CREATE INDEX too_long ON t (a) COMMENT '", "'");
     alter_long = make_long_index_comment_sql("ALTER TABLE t ADD INDEX too_long (a) COMMENT '", "'");
-    if (create_long == NULL || alter_long == NULL) {
+    create_primary_long = make_long_index_comment_sql(
+        "CREATE TABLE pk_too_long (id INT NOT NULL, PRIMARY KEY (id) COMMENT '",
+        "')"
+    );
+    if (create_long == NULL || alter_long == NULL || create_primary_long == NULL) {
         fprintf(stderr, "failed to allocate long index comments\n");
         failures += 1;
     } else {
@@ -414,10 +631,20 @@ static int test_index_options_diagnostics(void) {
                 .message_part = "Comment for index 'too_long' is too long (max = 1024)",
             }
         );
+        failures += execute_error(
+            database,
+            create_primary_long,
+            (struct expected_sql_error){
+                .code = mysql_error_index_comment_too_long,
+                .sqlstate = "HY000",
+                .message_part = "Comment for index 'PRIMARY' is too long (max = 1024)",
+            }
+        );
     }
 
     free(create_long);
     free(alter_long);
+    free(create_primary_long);
     mylite_close(database);
     return failures;
 }

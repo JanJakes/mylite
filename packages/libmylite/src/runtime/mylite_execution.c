@@ -1738,6 +1738,9 @@ struct planned_create_table {
     size_t primary_key_part_capacity;
     int64_t primary_key_index_id;
     char primary_key_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char primary_key_comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+    bool primary_key_show_create_explicit_btree;
+    bool primary_key_uses_hash_index_type;
     struct planned_secondary_index *secondary_indexes;
     size_t secondary_index_count;
     size_t secondary_index_capacity;
@@ -1873,6 +1876,9 @@ struct planned_alter_table_add_primary_key {
     size_t part_count;
     size_t part_capacity;
     const char *rowid_alias;
+    char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+    bool show_create_explicit_btree;
+    bool uses_hash_index_type;
 };
 
 struct planned_alter_table_add_index {
@@ -1974,6 +1980,11 @@ struct planned_index_options {
     enum planned_index_type_option type;
     bool is_visible;
     char comment[MYLITE_CATALOG_INDEX_COMMENT_CAPACITY];
+};
+
+struct primary_key_definition_nodes {
+    struct index_option_nodes options;
+    const struct mylite_sql_ast_node *part_list;
 };
 
 struct create_table_secondary_index_definition_nodes {
@@ -10131,6 +10142,13 @@ static int plan_alter_table_add_primary_key(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_add_primary_key *out_plan
 );
+static int append_alter_table_primary_key_parts_from_ast(
+    struct mylite_db *database,
+    struct planned_alter_table_add_primary_key *plan,
+    const struct mylite_sql_ast_node *part_list,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
 static void planned_alter_table_add_primary_key_deinit(
     struct planned_alter_table_add_primary_key *plan
 );
@@ -10202,6 +10220,24 @@ static int apply_index_options_to_secondary_plan(
     struct mylite_db *database,
     struct index_option_nodes nodes,
     struct planned_secondary_index *index
+);
+static int apply_index_options_to_create_primary_key_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_create_table *plan
+);
+static int apply_index_options_to_alter_primary_key_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_alter_table_add_primary_key *plan
+);
+static int collect_primary_key_index_options(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    char *comment,
+    size_t comment_size,
+    bool *out_show_create_explicit_btree,
+    bool *out_uses_hash_index_type
 );
 static int collect_index_options(
     struct mylite_db *database,
@@ -15900,6 +15936,11 @@ static int apply_create_table_primary_key_definition(
     struct mylite_db *database,
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *primary_key
+);
+static int extract_primary_key_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *primary_key,
+    struct primary_key_definition_nodes *out_nodes
 );
 static int apply_create_table_secondary_index_definitions(
     struct mylite_db *database,
@@ -43125,9 +43166,6 @@ static int append_show_create_table_index_options(
 ) {
     int rc = MYLITE_OK;
 
-    if (index->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
-        return MYLITE_OK;
-    }
     if (index->index.show_create_explicit_btree) {
         rc = dynamic_string_append(string, " USING BTREE");
     }
@@ -43137,7 +43175,8 @@ static int append_show_create_table_index_options(
             rc = append_mysql_quoted_text(string, index->index.comment);
         }
     }
-    if (rc == MYLITE_OK && !index->index.is_visible) {
+    if (rc == MYLITE_OK && index->index.kind != MYLITE_CATALOG_INDEX_KIND_PRIMARY &&
+        !index->index.is_visible) {
         rc = dynamic_string_append(string, " /*!80000 INVISIBLE */");
     }
 
@@ -44803,18 +44842,28 @@ static int apply_create_table_primary_key_definition(
     struct planned_create_table *plan,
     const struct mylite_sql_ast_node *primary_key
 ) {
-    const struct mylite_sql_ast_node *part_list = child_at(primary_key, 0U);
+    struct primary_key_definition_nodes nodes = {0};
+    const struct mylite_sql_ast_node *part_list = NULL;
     const struct mylite_sql_ast_node *part = NULL;
     int rc = MYLITE_OK;
 
-    if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION ||
-        part_list == NULL || part_list->kind != MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
     if (plan->has_primary_key) {
         set_multiple_primary_key_error(database);
         return MYLITE_ERROR;
+    }
+
+    rc = extract_primary_key_definition_nodes(database, primary_key, &nodes);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    part_list = nodes.part_list;
+    rc = apply_index_options_to_create_primary_key_plan(database, nodes.options, plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_hash_index_key_part_order(
+            database,
+            plan->primary_key_uses_hash_index_type,
+            part_list
+        );
     }
 
     part = child_at(part_list, 0U);
@@ -44866,6 +44915,52 @@ static int apply_create_table_primary_key_definition(
     }
 
     return rc;
+}
+
+static int extract_primary_key_definition_nodes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *primary_key,
+    struct primary_key_definition_nodes *out_nodes
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (out_nodes == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_nodes = (struct primary_key_definition_nodes){0};
+
+    if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    child = child_at(primary_key, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST && out_nodes->part_list == NULL) {
+            out_nodes->part_list = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_TYPE_OPTION &&
+            out_nodes->options.index_type_node == NULL
+        ) {
+            out_nodes->options.index_type_node = child;
+        } else if (
+            child->kind == MYLITE_SQL_AST_INDEX_OPTION_LIST &&
+            out_nodes->options.option_list_node == NULL
+        ) {
+            out_nodes->options.option_list_node = child;
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        child = child->next_sibling;
+    }
+    if (out_nodes->part_list == NULL ||
+        out_nodes->part_list->kind != MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int apply_create_table_inline_unique_indexes(
@@ -48578,6 +48673,14 @@ static int clone_create_table_like_columns(
                 out_plan->columns[column_index].is_primary_key = true;
                 out_plan->columns[column_index].is_nullable = false;
             }
+            out_plan->primary_key_show_create_explicit_btree =
+                primary_key.index.show_create_explicit_btree;
+            snprintf(
+                out_plan->primary_key_comment,
+                sizeof(out_plan->primary_key_comment),
+                "%s",
+                primary_key.index.comment
+            );
         }
     }
     if (rc == MYLITE_OK) {
@@ -51184,8 +51287,8 @@ static int insert_create_table_index_catalog_rows(
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
             true,
-            "",
-            false,
+            plan->primary_key_comment,
+            plan->primary_key_show_create_explicit_btree,
             NULL
         );
     }
@@ -51605,6 +51708,7 @@ static int append_temporary_primary_index_descriptor(
         .kind = MYLITE_CATALOG_INDEX_KIND_PRIMARY,
         .is_unique = true,
         .is_visible = true,
+        .show_create_explicit_btree = plan->primary_key_show_create_explicit_btree,
     };
     snprintf(index->name, sizeof(index->name), "%s", "PRIMARY");
     snprintf(
@@ -51613,6 +51717,7 @@ static int append_temporary_primary_index_descriptor(
         "%s",
         plan->primary_key_physical_name
     );
+    snprintf(index->comment, sizeof(index->comment), "%s", plan->primary_key_comment);
 
     for (size_t part_index = 0U; part_index < plan->primary_key_part_count; ++part_index) {
         size_t column_index = plan->primary_key_parts[part_index].column_index;
@@ -52765,20 +52870,14 @@ static int plan_alter_table_add_primary_key(
     struct planned_alter_table_add_primary_key *out_plan
 ) {
     const struct mylite_sql_ast_node *primary_key = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *part_list = child_at(primary_key, 0U);
-    const struct mylite_sql_ast_node *part = NULL;
+    struct primary_key_definition_nodes nodes = {0};
+    const struct mylite_sql_ast_node *part_list = NULL;
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct primary_key_info existing_primary_key = primary_key_info_init();
     size_t column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_add_primary_key){0};
-    if (primary_key == NULL || primary_key->kind != MYLITE_SQL_AST_PRIMARY_KEY_DEFINITION ||
-        part_list == NULL || part_list->kind != MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-
     rc = resolve_writable_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -52824,6 +52923,17 @@ static int plan_alter_table_add_primary_key(
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
+        rc = extract_primary_key_definition_nodes(database, primary_key, &nodes);
+    }
+    if (rc == MYLITE_OK) {
+        part_list = nodes.part_list;
+        rc = apply_index_options_to_alter_primary_key_plan(database, nodes.options, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            validate_hash_index_key_part_order(database, out_plan->uses_hash_index_type, part_list);
+    }
+    if (rc == MYLITE_OK) {
         rc = choose_sqlite_rowid_alias(
             database,
             columns,
@@ -52832,7 +52942,34 @@ static int plan_alter_table_add_primary_key(
             &out_plan->rowid_alias
         );
     }
-    part = child_at(part_list, 0U);
+    if (rc == MYLITE_OK) {
+        rc = append_alter_table_primary_key_parts_from_ast(
+            database,
+            out_plan,
+            part_list,
+            columns,
+            column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_primary_key_key_length(database, out_plan);
+    }
+
+    primary_key_info_deinit(&existing_primary_key);
+    free(columns);
+    return rc;
+}
+
+static int append_alter_table_primary_key_parts_from_ast(
+    struct mylite_db *database,
+    struct planned_alter_table_add_primary_key *plan,
+    const struct mylite_sql_ast_node *part_list,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    const struct mylite_sql_ast_node *part = child_at(part_list, 0U);
+    int rc = MYLITE_OK;
+
     while (rc == MYLITE_OK && part != NULL) {
         const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
         enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
@@ -52851,7 +52988,7 @@ static int plan_alter_table_add_primary_key(
         if (rc == MYLITE_OK) {
             rc = append_alter_table_primary_key_part(
                 database,
-                out_plan,
+                plan,
                 columns,
                 column_count,
                 column_name,
@@ -52860,12 +52997,7 @@ static int plan_alter_table_add_primary_key(
         }
         part = part->next_sibling;
     }
-    if (rc == MYLITE_OK) {
-        rc = validate_alter_table_primary_key_key_length(database, out_plan);
-    }
 
-    primary_key_info_deinit(&existing_primary_key);
-    free(columns);
     return rc;
 }
 
@@ -53037,7 +53169,10 @@ static int alter_table_add_primary_key_from_plan(
         return rc;
     }
 
-    rc = mylite_catalog_begin_mutation(database, &mutation);
+    rc = reserve_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_begin_mutation(database, &mutation);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_allocate_index_id_in_mutation(
             database,
@@ -53097,8 +53232,8 @@ static int alter_table_add_primary_key_from_plan(
             MYLITE_CATALOG_INDEX_KIND_PRIMARY,
             true,
             true,
-            "",
-            false,
+            plan->comment,
+            plan->show_create_explicit_btree,
             NULL
         );
     }
@@ -53140,7 +53275,7 @@ static int alter_table_add_primary_key_from_plan(
 
     ++database->session.sqlite_schema_generation;
 
-    return MYLITE_OK;
+    return append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
 }
 
 static int validate_alter_table_add_primary_key_existing_rows(
@@ -53765,6 +53900,86 @@ static int apply_index_options_to_secondary_plan(
     return rc;
 }
 
+static int apply_index_options_to_create_primary_key_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_create_table *plan
+) {
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid primary-key plan");
+        return MYLITE_ERROR;
+    }
+
+    return collect_primary_key_index_options(
+        database,
+        nodes,
+        plan->primary_key_comment,
+        sizeof(plan->primary_key_comment),
+        &plan->primary_key_show_create_explicit_btree,
+        &plan->primary_key_uses_hash_index_type
+    );
+}
+
+static int apply_index_options_to_alter_primary_key_plan(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    struct planned_alter_table_add_primary_key *plan
+) {
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid primary-key plan");
+        return MYLITE_ERROR;
+    }
+
+    return collect_primary_key_index_options(
+        database,
+        nodes,
+        plan->comment,
+        sizeof(plan->comment),
+        &plan->show_create_explicit_btree,
+        &plan->uses_hash_index_type
+    );
+}
+
+static int collect_primary_key_index_options(
+    struct mylite_db *database,
+    struct index_option_nodes nodes,
+    char *comment,
+    size_t comment_size,
+    bool *out_show_create_explicit_btree,
+    bool *out_uses_hash_index_type
+) {
+    struct planned_index_options options = {
+        .type = PLANNED_INDEX_TYPE_DEFAULT,
+        .is_visible = true,
+    };
+    int rc = collect_index_options(database, "PRIMARY", nodes, &options);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!options.is_visible) {
+        set_primary_key_index_invisible_error(database);
+        return MYLITE_ERROR;
+    }
+    if (options.type == PLANNED_INDEX_TYPE_RTREE) {
+        set_spatial_index_non_geometric_error(database);
+        return MYLITE_ERROR;
+    }
+    if (comment == NULL || out_show_create_explicit_btree == NULL ||
+        out_uses_hash_index_type == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (strlen(options.comment) >= comment_size) {
+        set_runtime_error(database, "invalid primary-key comment buffer");
+        return MYLITE_ERROR;
+    }
+
+    memcpy(comment, options.comment, strlen(options.comment) + 1U);
+    *out_show_create_explicit_btree = options.type == PLANNED_INDEX_TYPE_BTREE;
+    *out_uses_hash_index_type = options.type == PLANNED_INDEX_TYPE_HASH;
+    return MYLITE_OK;
+}
+
 static int collect_index_options(
     struct mylite_db *database,
     const char *index_name,
@@ -53986,7 +54201,8 @@ static int validate_hash_index_key_part_order(
     if (!uses_hash_index_type) {
         return MYLITE_OK;
     }
-    if (part_list == NULL || part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST) {
+    if (part_list == NULL || (part_list->kind != MYLITE_SQL_AST_SECONDARY_INDEX_PART_LIST &&
+                              part_list->kind != MYLITE_SQL_AST_PRIMARY_KEY_PART_LIST)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -54968,6 +55184,9 @@ static size_t planned_create_table_hash_index_warning_count(
 
     if (plan == NULL) {
         return 0U;
+    }
+    if (plan->primary_key_uses_hash_index_type) {
+        ++warning_count;
     }
     for (size_t index = 0U; index < plan->secondary_index_count; ++index) {
         if (plan->secondary_indexes[index].uses_hash_index_type) {
@@ -57165,6 +57384,14 @@ static int copy_alter_table_check_primary_index(
             sizeof(out_plan->rebuild.primary_key_physical_name),
             "%s",
             index->index.physical_name
+        );
+        out_plan->rebuild.primary_key_show_create_explicit_btree =
+            index->index.show_create_explicit_btree;
+        snprintf(
+            out_plan->rebuild.primary_key_comment,
+            sizeof(out_plan->rebuild.primary_key_comment),
+            "%s",
+            index->index.comment
         );
     }
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {

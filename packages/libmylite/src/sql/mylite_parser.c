@@ -5460,8 +5460,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
 struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token primary_token,
+    struct mylite_sql_ast_node *index_type,
     struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *index_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&primary_token), span_from_token(&right_paren));
@@ -5472,6 +5474,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_definition(
     }
 
     mylite_sql_ast_node_append_child(primary_key, key_parts);
+    if (index_type != NULL) {
+        mylite_sql_ast_node_append_child(primary_key, index_type);
+    }
+    if (index_options != NULL) {
+        mylite_sql_ast_node_append_child(primary_key, index_options);
+        mylite_sql_ast_node_set_span(
+            primary_key,
+            span_join(primary_key->span, index_options->span)
+        );
+    }
     return primary_key;
 }
 

@@ -846,6 +846,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "charset_function";
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
         return "collation_function";
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
+        return "coercibility_function";
     case MYLITE_SQL_AST_COLUMN_POSITION_FIRST:
         return "column_position_first";
     case MYLITE_SQL_AST_COLUMN_POSITION_AFTER:

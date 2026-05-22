@@ -2791,6 +2791,7 @@ enum planned_charset_collation_function_kind {
     PLANNED_CHARSET_COLLATION_FUNCTION_NONE = 0,
     PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET = 1,
     PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION = 2,
+    PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY = 3,
 };
 
 struct string_slice_right_bounds {
@@ -13462,6 +13463,44 @@ static int charset_collation_scalar_result(
     const struct mylite_sql_ast_node *expression,
     const char **out_result
 );
+static int coercibility_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int coercibility_non_concat_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int coercibility_concat_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int coercibility_binary_wrapper_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static int coercibility_validate_binary_wrapper_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument
+);
+static int coercibility_literal_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+);
+static const char *coercibility_concat_argument_result(const char *argument_result);
+static bool coercibility_binary_wrapper_column_reference(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_column_reference
+);
+static int set_unknown_column_for_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
 static int charset_collation_concat_scalar_result(
     struct mylite_db *database,
     enum planned_charset_collation_function_kind function_kind,
@@ -21701,8 +21740,14 @@ static int plan_row_scalar_charset_collation_column(
     struct planned_row_scalar_expression *out_expression
 );
 static int charset_collation_column_result(
+    struct mylite_db *database,
     enum planned_charset_collation_function_kind function_kind,
     const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *column,
+    const char **out_result
+);
+static int coercibility_column_result(
+    struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
     const char **out_result
 );
@@ -26201,6 +26246,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -34400,7 +34446,8 @@ static int execute_do_statement(
             "DATE_ADD(... INTERVAL ... SECOND), limited DATE_FORMAT(), limited temporal "
             "extract, limited FIELD(), GREATEST(), LEAST(), limited CONCAT_WS(), limited "
             "JSON_VALID(), JSON_ARRAY(), JSON_OBJECT(), and limited string length, string case, "
-            "string slice, CHARSET(), and COLLATION() functions, and top-level CASE expressions"
+            "string slice, CHARSET(), COLLATION(), and COERCIBILITY() functions, and top-level "
+            "CASE expressions"
         );
         return MYLITE_ERROR;
     }
@@ -45679,6 +45726,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
     case MYLITE_SQL_AST_FIELD_FUNCTION:
     case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
@@ -79184,6 +79232,7 @@ static int session_scalar_value(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
         return charset_collation_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
@@ -85899,7 +85948,10 @@ static int charset_collation_function_value(
                                        : charset_collation_function_kind(expression->kind);
     if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
-        set_unsupported_error(database, "CHARSET() and COLLATION() support exactly one argument");
+        set_unsupported_error(
+            database,
+            "CHARSET(), COLLATION(), and COERCIBILITY() support exactly one argument"
+        );
         return MYLITE_ERROR;
     }
 
@@ -85924,35 +85976,21 @@ static int charset_collation_scalar_result(
         return MYLITE_MISUSE;
     }
     *out_result = NULL;
+    if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY) {
+        return coercibility_scalar_result(database, expression, out_result);
+    }
+
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "CHARSET() and COLLATION() support only scalar metadata arguments"
+            "CHARSET(), COLLATION(), and COERCIBILITY() support only scalar metadata arguments"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-        size_t part_count = 0U;
-        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
-
-        if (rc == MYLITE_OK) {
-            rc = format_column_reference_name(
-                database,
-                parts,
-                part_count,
-                column_name,
-                sizeof(column_name)
-            );
-        }
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        set_unknown_column_error(database, column_name);
-        return MYLITE_ERROR;
+        return set_unknown_column_for_reference(database, expression);
     }
 
     switch (expression->kind) {
@@ -86016,8 +86054,372 @@ static int charset_collation_scalar_result(
 
     set_unsupported_error(
         database,
-        "CHARSET() and COLLATION() support only scalar metadata arguments"
+        "CHARSET(), COLLATION(), and COERCIBILITY() support only scalar metadata arguments"
     );
+    return MYLITE_ERROR;
+}
+
+static int coercibility_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        return coercibility_concat_scalar_result(database, expression, out_result);
+    }
+    return coercibility_non_concat_scalar_result(database, expression, out_result);
+}
+
+static int coercibility_non_concat_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
+        int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_LITERAL:
+        return coercibility_literal_result(database, expression, out_result);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION: {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if ((operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+             operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
+            literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            *out_result = "5";
+            return MYLITE_OK;
+        }
+        break;
+    }
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+        *out_result = "3";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
+        const char *charset = NULL;
+        const char *collation = NULL;
+        int rc = charset_collation_rand_result(database, expression, &charset, &collation);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_result = "5";
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return coercibility_binary_wrapper_result(database, expression, out_result);
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION: {
+        struct session_scalar_cell cell = {0};
+        int rc = convert_using_charset_value(database, expression, &cell);
+
+        session_scalar_cell_deinit(&cell);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_result = "2";
+        return MYLITE_OK;
+    }
+    default:
+        break;
+    }
+
+    set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+    return MYLITE_ERROR;
+}
+
+static int coercibility_concat_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    const char *result = "6";
+    bool has_non_null_argument = false;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONCAT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U || arguments == NULL ||
+        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_unsupported_error(database, "CONCAT() requires one or more arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count == 0U) {
+        set_unsupported_error(database, "CONCAT() requires one or more arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U; argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        const struct mylite_sql_ast_node *unwrapped_argument =
+            unwrap_parenthesized_expression(argument);
+        const char *argument_result = NULL;
+        int rc = MYLITE_OK;
+
+        if (unwrapped_argument != NULL &&
+            (unwrapped_argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+             unwrapped_argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+            set_unsupported_error(
+                database,
+                "COERCIBILITY() supports only scalar metadata arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = coercibility_non_concat_scalar_result(database, argument, &argument_result);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (argument_result != NULL && strcmp(argument_result, "6") != 0) {
+            argument_result = coercibility_concat_argument_result(argument_result);
+            if (!has_non_null_argument || argument_result[0] < result[0]) {
+                result = argument_result;
+            }
+            has_non_null_argument = true;
+        }
+        argument = argument->next_sibling;
+    }
+    if (argument != NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_result = result;
+    return MYLITE_OK;
+}
+
+static int coercibility_binary_wrapper_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return set_unknown_column_for_reference(database, argument);
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        rc = coercibility_validate_binary_wrapper_argument(database, argument);
+        break;
+    default:
+        set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+        return MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_result = "2";
+    return MYLITE_OK;
+}
+
+static int coercibility_validate_binary_wrapper_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument
+) {
+    const char *ignored_result = NULL;
+
+    argument = unwrap_parenthesized_expression(argument);
+    if (argument == NULL) {
+        set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+        return MYLITE_ERROR;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        return coercibility_literal_result(database, argument, &ignored_result);
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if ((operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+             operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
+            literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return MYLITE_OK;
+        }
+        set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+        return MYLITE_ERROR;
+    }
+    if (argument->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        argument->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+        argument->kind == MYLITE_SQL_AST_VERSION_FUNCTION) {
+        return MYLITE_OK;
+    }
+    if (argument->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+        argument->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
+        const char *charset = NULL;
+        const char *collation = NULL;
+
+        return charset_collation_rand_result(database, argument, &charset, &collation);
+    }
+    if (argument->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
+        struct session_scalar_cell cell = {0};
+        int rc = convert_using_charset_value(database, argument, &cell);
+
+        session_scalar_cell_deinit(&cell);
+        return rc;
+    }
+
+    set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+    return MYLITE_ERROR;
+}
+
+static int coercibility_literal_result(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char **out_result
+) {
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (mylite_sql_ast_node_literal_kind(expression)) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_HEX:
+    case MYLITE_SQL_AST_LITERAL_BIT:
+        *out_result = "4";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        *out_result = "5";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        *out_result = "6";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NONE:
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        break;
+    }
+    set_unsupported_error(database, "COERCIBILITY() supports only scalar metadata arguments");
+    return MYLITE_ERROR;
+}
+
+static const char *coercibility_concat_argument_result(const char *argument_result) {
+    if (argument_result != NULL && strcmp(argument_result, "5") == 0) {
+        return "4";
+    }
+    return argument_result;
+}
+
+static bool coercibility_binary_wrapper_column_reference(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_column_reference
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    if (out_column_reference == NULL) {
+        return false;
+    }
+    *out_column_reference = NULL;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        break;
+    default:
+        return false;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument == NULL || (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                             argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return false;
+    }
+    *out_column_reference = argument;
+    return true;
+}
+
+static int set_unknown_column_for_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    set_unknown_column_error(database, column_name);
     return MYLITE_ERROR;
 }
 
@@ -86207,6 +86609,8 @@ static enum planned_charset_collation_function_kind charset_collation_function_k
         return PLANNED_CHARSET_COLLATION_FUNCTION_CHARSET;
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
         return PLANNED_CHARSET_COLLATION_FUNCTION_COLLATION;
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
+        return PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY;
     default:
         return PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
     }
@@ -86233,6 +86637,7 @@ static int charset_collation_select_result(
         *out_result = collation;
         return MYLITE_OK;
     case PLANNED_CHARSET_COLLATION_FUNCTION_NONE:
+    case PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY:
         break;
     }
     return MYLITE_ERROR;
@@ -123651,6 +124056,7 @@ static int plan_row_scalar_charset_collation_expression(
     enum planned_charset_collation_function_kind function_kind =
         PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
     const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *binary_column_argument = NULL;
     const char *result = NULL;
     int rc = MYLITE_OK;
 
@@ -123659,7 +124065,10 @@ static int plan_row_scalar_charset_collation_expression(
                                        : charset_collation_function_kind(expression->kind);
     if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_NONE ||
         mylite_sql_ast_node_child_count(expression) != 1U) {
-        set_unsupported_error(database, "CHARSET() and COLLATION() support exactly one argument");
+        set_unsupported_error(
+            database,
+            "CHARSET(), COLLATION(), and COERCIBILITY() support exactly one argument"
+        );
         return MYLITE_ERROR;
     }
 
@@ -123667,25 +124076,7 @@ static int plan_row_scalar_charset_collation_expression(
     if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
                              argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         if (!has_source) {
-            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-            size_t part_count = 0U;
-
-            rc = collect_column_reference_parts(database, argument, parts, &part_count);
-            if (rc == MYLITE_OK) {
-                rc = format_column_reference_name(
-                    database,
-                    parts,
-                    part_count,
-                    column_name,
-                    sizeof(column_name)
-                );
-            }
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            set_unknown_column_error(database, column_name);
-            return MYLITE_ERROR;
+            return set_unknown_column_for_reference(database, argument);
         }
         return plan_row_scalar_charset_collation_column(
             database,
@@ -123697,6 +124088,30 @@ static int plan_row_scalar_charset_collation_expression(
             table,
             out_expression
         );
+    }
+    if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY &&
+        coercibility_binary_wrapper_column_reference(argument, &binary_column_argument)) {
+        struct mylite_catalog_column_descriptor column = {0};
+
+        if (!has_source) {
+            return set_unknown_column_for_reference(database, binary_column_argument);
+        }
+        rc = resolve_descriptor_column_reference(
+            database,
+            binary_column_argument,
+            source_context,
+            COLUMN_REFERENCE_FIELD,
+            "row-scalar SELECT COERCIBILITY() binary cast arguments support only descriptor "
+            "columns",
+            table_columns,
+            table_column_count,
+            &column
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        return copy_text_value(database, "2", &out_expression->value);
     }
 
     rc = charset_collation_scalar_result(database, function_kind, argument, &result);
@@ -123724,7 +124139,8 @@ static int plan_row_scalar_charset_collation_column(
         expression,
         source_context,
         COLUMN_REFERENCE_FIELD,
-        "row-scalar SELECT CHARSET() and COLLATION() support only descriptor columns",
+        "row-scalar SELECT CHARSET(), COLLATION(), and COERCIBILITY() support only descriptor "
+        "columns",
         table_columns,
         table_column_count,
         &column
@@ -123733,7 +124149,7 @@ static int plan_row_scalar_charset_collation_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = charset_collation_column_result(function_kind, table, &column, &result);
+    rc = charset_collation_column_result(database, function_kind, table, &column, &result);
     if (rc == MYLITE_OK) {
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         rc = copy_text_value(database, result, &out_expression->value);
@@ -123742,6 +124158,7 @@ static int plan_row_scalar_charset_collation_column(
 }
 
 static int charset_collation_column_result(
+    struct mylite_db *database,
     enum planned_charset_collation_function_kind function_kind,
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *column,
@@ -123753,6 +124170,10 @@ static int charset_collation_column_result(
     if (out_result == NULL) {
         return MYLITE_MISUSE;
     }
+    if (function_kind == PLANNED_CHARSET_COLLATION_FUNCTION_COERCIBILITY) {
+        return coercibility_column_result(database, column, out_result);
+    }
+
     charset = column_effective_character_set_name(table, column);
     collation = column_effective_collation_name(table, column);
     if (charset == NULL || collation == NULL) {
@@ -123760,6 +124181,41 @@ static int charset_collation_column_result(
         collation = "binary";
     }
     return charset_collation_select_result(function_kind, charset, collation, out_result);
+}
+
+static int coercibility_column_result(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char **out_result
+) {
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    if (column == NULL) {
+        set_unsupported_error(database, "COERCIBILITY() supports only descriptor columns");
+        return MYLITE_ERROR;
+    }
+    if (column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
+        column_descriptor_is_enum(column) || column_descriptor_is_set(column) ||
+        column_descriptor_is_json(column) || column_descriptor_is_spatial(column)) {
+        *out_result = "2";
+        return MYLITE_OK;
+    }
+    if (strcmp(column->physical_type, "INTEGER") == 0 || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_approximate(column) || column_descriptor_is_year(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
+        *out_result = "5";
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "COERCIBILITY() supports only descriptor columns with known MyLite type metadata"
+    );
+    return MYLITE_ERROR;
 }
 
 static bool is_row_scalar_control_flow_expression(const struct mylite_sql_ast_node *expression) {
@@ -125127,7 +125583,8 @@ static int plan_row_scalar_non_concat_expression(
         "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), GREATEST(), LEAST(), "
         "DATE_FORMAT(), descriptor columns, limited temporal extract, string length, string "
         "case, string trim, string codepoint, string slice, string search, string replacement, "
-        "control-flow functions, HEX(), JSON_VALID(), CHARSET(), and COLLATION() functions, "
+        "control-flow functions, HEX(), JSON_VALID(), CHARSET(), COLLATION(), and "
+        "COERCIBILITY() functions, "
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;

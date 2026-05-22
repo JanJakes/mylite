@@ -5498,7 +5498,8 @@ static int test_charset_collation_functions(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT CHARSET('abc'), COLLATION(v), CHARSET(CAST('ABC' AS BINARY)) FROM t;",
+        "SELECT CHARSET('abc'), COLLATION(v), CHARSET(CAST('ABC' AS BINARY)), "
+        "COERCIBILITY(CONVERT('A' USING BINARY)) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -5520,11 +5521,25 @@ static int test_charset_collation_functions(void) {
         MYLITE_SQL_AST_CAST_BINARY_EXPRESSION,
         "charset cast binary argument"
     );
+    expression = child_at(child_at(select_list, 3U), 0U);
+    failures +=
+        expect_node(expression, MYLITE_SQL_AST_COERCIBILITY_FUNCTION, "coercibility function");
+    failures += expect_span_text(
+        expression,
+        "COERCIBILITY(CONVERT('A' USING BINARY))",
+        "coercibility span"
+    );
+    failures += expect_node(
+        child_at(expression, 0U),
+        MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION,
+        "coercibility using binary argument"
+    );
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "charset from table");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SELECT CHARSET ('a'), (COLLATION(CONVERT('A' USING BINARY))) FROM DUAL;",
+        "SELECT CHARSET ('a'), (COLLATION(CONVERT('A' USING BINARY))), COERCIBILITY('x') "
+        "FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -5540,12 +5555,20 @@ static int test_charset_collation_functions(void) {
         MYLITE_SQL_AST_COLLATION_FUNCTION,
         "wrapped collation function"
     );
+    expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(expression, MYLITE_SQL_AST_COERCIBILITY_FUNCTION, "dual coercibility");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CHARSET();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     failures += parse_sql("SELECT COLLATION('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT COERCIBILITY();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT COERCIBILITY('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
 
-    failures += parse_sql("DO CHARSET('abc'), COLLATION(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "DO CHARSET('abc'), COLLATION(NULL), COERCIBILITY(NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     statement = child_at(result.root, 0U);
     expression_list = child_at(statement, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "charset do");
@@ -5556,10 +5579,18 @@ static int test_charset_collation_functions(void) {
         MYLITE_SQL_AST_COLLATION_FUNCTION,
         "do collation"
     );
+    failures += expect_node(
+        child_at(expression_list, 2U),
+        MYLITE_SQL_AST_COERCIBILITY_FUNCTION,
+        "do coercibility"
+    );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE charset_names (charset INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "CREATE TABLE charset_names (charset INT, collation INT, coercibility INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "charset identifier");
     mylite_sql_parse_result_deinit(&result);

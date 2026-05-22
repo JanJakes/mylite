@@ -4137,6 +4137,10 @@ expression(A) ::= COLLATION(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_COLLATION_FUNCTION, B, R);
 }
+expression(A) ::= COERCIBILITY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COERCIBILITY_FUNCTION, B, R);
+}
 expression(A) ::= FORMAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_FORMAT_FUNCTION, B, C, R);
@@ -6242,6 +6246,9 @@ identifier(A) ::= COLLATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COLLATION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COERCIBILITY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VISIBLE(T). {

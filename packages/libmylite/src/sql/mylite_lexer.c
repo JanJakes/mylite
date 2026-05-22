@@ -342,6 +342,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"CLOSE", 0U},
         {"COALESCE", 0U},
         {"CODE", 0U},
+        {"COERCIBILITY", 0U},
         {"COLLATE", MYLITE_SQL_KEYWORD_RESERVED},
         {"COLLATION", 0U},
         {"COLUMN", MYLITE_SQL_KEYWORD_RESERVED},

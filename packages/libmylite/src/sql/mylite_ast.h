@@ -530,6 +530,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_QUALIFIED_WILDCARD = 521,
     MYLITE_SQL_AST_EXTRACT_FUNCTION = 522,
     MYLITE_SQL_AST_QUARTER_FUNCTION = 523,
+    MYLITE_SQL_AST_COERCIBILITY_FUNCTION = 524,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -20318,6 +20318,42 @@ static int test_select_order_limit_clauses(void) {
     failures += expect_span_text(child_at(limit_clause, 0U), "3", "multi-key limit row count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle ORDER BY FIELD(name, 'b', 'a') DESC LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "field order clause");
+    failures +=
+        expect_node(child_at(order_clause, 0U), MYLITE_SQL_AST_FIELD_FUNCTION, "field order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "field order direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle ORDER BY (FIELD(name, 'b', 'a'));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += expect_node(
+        child_at(order_clause, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized field order key"
+    );
+    failures += expect_node(
+        child_at(child_at(order_clause, 0U), 0U),
+        MYLITE_SQL_AST_FIELD_FUNCTION,
+        "parenthesized field order child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT id FROM simple_lifecycle LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
     limit_clause = first_child_kind(child_at(result.root, 0U), MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "simple limit clause");
@@ -21224,6 +21260,12 @@ static int test_table_statement(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("TABLE simple_lifecycle ORDER BY 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "TABLE simple_lifecycle ORDER BY FIELD(name, 'b', 'a');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "TABLE simple_lifecycle UNION SELECT * FROM t;",

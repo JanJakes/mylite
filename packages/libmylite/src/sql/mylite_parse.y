@@ -2599,7 +2599,7 @@ table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH).
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
 }
 
-table_statement(A) ::= TABLE(T) table_name(N) select_order_clause_opt(O) limit_clause_opt(L). {
+table_statement(A) ::= TABLE(T) table_name(N) table_order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_table_statement(state, T, N, O, L);
 }
 
@@ -3431,7 +3431,7 @@ select_order_clause_opt(A) ::= . {
     A = NULL;
 }
 select_order_clause_opt(A) ::=
-    ORDER(O) BY qualified_identifier(K) order_direction_opt(D) select_order_tail_opt(T). {
+    ORDER(O) BY select_order_key(K) order_direction_opt(D) select_order_tail_opt(T). {
     A = mylite_sql_parser_make_select_order_by_clause(
         state,
         O,
@@ -3457,7 +3457,60 @@ select_order_item_list(A) ::= select_order_item_list(L) COMMA select_order_item(
     A = mylite_sql_parser_append_order_by_item(state, L, I);
 }
 
-select_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
+select_order_item(A) ::= select_order_key(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_item(state, K, D);
+}
+
+select_order_key(A) ::= qualified_identifier(K). {
+    A = K;
+}
+select_order_key(A) ::= select_field_order_expression(K). {
+    A = K;
+}
+
+select_field_order_expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
+}
+select_field_order_expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+select_field_order_expression(A) ::= LPAREN(L) select_field_order_expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+table_order_clause_opt(A) ::= . {
+    A = NULL;
+}
+table_order_clause_opt(A) ::=
+    ORDER(O) BY qualified_identifier(K) order_direction_opt(D) table_order_tail_opt(T). {
+    A = mylite_sql_parser_make_select_order_by_clause(
+        state,
+        O,
+        (struct mylite_sql_parser_select_order_by_parts){
+            .first_order_key = K,
+            .first_direction = D,
+            .tail_items = T,
+        }
+    );
+}
+
+table_order_tail_opt(A) ::= . {
+    A = NULL;
+}
+table_order_tail_opt(A) ::= COMMA table_order_item_list(L). {
+    A = L;
+}
+
+table_order_item_list(A) ::= table_order_item(I). {
+    A = mylite_sql_parser_make_order_by_item_list(state, I);
+}
+table_order_item_list(A) ::= table_order_item_list(L) COMMA table_order_item(I). {
+    A = mylite_sql_parser_append_order_by_item(state, L, I);
+}
+
+table_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
     A = mylite_sql_parser_make_order_by_item(state, K, D);
 }
 

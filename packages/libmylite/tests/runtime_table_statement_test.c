@@ -552,6 +552,15 @@ static int test_table_statement_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "TABLE numbers ORDER BY FIELD(s, 'a', 'b')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error",
+        }
+    );
+    failures += execute_error(
+        database,
         "TABLE numbers WHERE id = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

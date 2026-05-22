@@ -2526,6 +2526,13 @@ struct planned_select_predicate {
     bool qualify_column_references;
 };
 
+struct planned_row_scalar_expression;
+
+enum planned_select_order_item_kind {
+    PLANNED_SELECT_ORDER_ITEM_COLUMN = 0,
+    PLANNED_SELECT_ORDER_ITEM_FIELD = 1,
+};
+
 struct select_predicate_plan_options {
     bool allow_exists;
     bool allow_in_subquery;
@@ -2563,9 +2570,11 @@ struct predicate_sql_work_item {
 };
 
 struct planned_select_order_item {
+    enum planned_select_order_item_kind kind;
     enum planned_select_order_direction direction;
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
+    struct planned_row_scalar_expression *expression;
 };
 
 struct planned_select_order {
@@ -11911,6 +11920,7 @@ static int validate_insert_select_integer_value(
 static int plan_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool allow_order_by_field,
     struct planned_select *out_plan
 );
 static const struct mylite_sql_ast_node *from_table_alias_node(
@@ -12044,6 +12054,7 @@ static int execute_row_scalar_select_statement(
 static int plan_row_scalar_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 );
 static int collect_row_scalar_select_clauses(
@@ -12065,6 +12076,7 @@ static int plan_row_scalar_select_row_envelope(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 );
 static int plan_row_scalar_select_tableless_filter(
@@ -20376,6 +20388,27 @@ static int plan_select_order(
     const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_field_order,
+    struct planned_select_order *out_order
+);
+static int plan_select_order_item_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_items,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_field_order,
+    struct planned_select_order *out_order
+);
+static int plan_select_order_ast_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_field_order,
     struct planned_select_order *out_order
 );
 static int plan_select_order_ast_item(
@@ -20385,8 +20418,24 @@ static int plan_select_order_ast_item(
     const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_field_order,
     struct planned_select_order_item *out_item
 );
+static bool order_item_list_contains_field_order_key(const struct mylite_sql_ast_node *order_items);
+static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key);
+static int plan_select_order_field_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order_item *out_item
+);
+static int validate_select_order_field_expression(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression
+);
+static void planned_select_order_item_deinit(struct planned_select_order_item *item);
 static int append_planned_select_order_item(
     struct planned_select_order *order,
     struct planned_select_order_item item
@@ -21858,6 +21907,17 @@ static int plan_row_scalar_field_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_field_expression_with_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_greatest_least_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22177,6 +22237,8 @@ static int plan_row_scalar_field_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
     struct planned_row_scalar_expression *out_expression,
     enum planned_row_scalar_field_domain *inout_domain
 );
@@ -22186,6 +22248,8 @@ static int plan_row_scalar_field_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
     struct planned_row_scalar_expression *out_expression
 );
 static enum planned_row_scalar_field_domain row_scalar_field_argument_domain(
@@ -23882,7 +23946,22 @@ static int append_predicate_sql_work_item(
 );
 static int append_select_order_sql(
     struct dynamic_string *string,
+    const struct planned_select_order *order,
+    size_t *next_parameter
+);
+static int append_select_order_legacy_column_sql(
+    struct dynamic_string *string,
     const struct planned_select_order *order
+);
+static int append_select_order_item_sql(
+    struct dynamic_string *string,
+    const struct planned_select_order *order,
+    size_t item_index,
+    size_t *next_parameter
+);
+static int append_select_order_direction_sql(
+    struct dynamic_string *string,
+    enum planned_select_order_direction direction
 );
 static int append_select_source_alias(struct dynamic_string *string, size_t source_index);
 static bool planned_select_qualifies_source_references(const struct planned_select *plan);
@@ -24502,6 +24581,11 @@ static int bind_row_scalar_select_parameters(
 static int bind_row_scalar_select_parameters_at(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_select *plan,
+    int *parameter_index
+);
+static int bind_select_order_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_order *order,
     int *parameter_index
 );
 static int bind_insert_select_materialize_parameters(
@@ -34451,7 +34535,7 @@ static int execute_descriptor_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
-    int rc = plan_select(database, statement, &plan);
+    int rc = plan_select(database, statement, true, &plan);
 
     if (rc == MYLITE_OK && apply_sql_select_limit) {
         apply_sql_select_limit_to_plan_limit(database, &plan.limit);
@@ -50744,7 +50828,7 @@ static int plan_create_table_select(
     );
     rc = reject_information_schema_write_target(database, child_at(statement, 0U));
     if (rc == MYLITE_OK) {
-        rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+        rc = plan_select(database, child_at(statement, 1U), false, &out_plan->source);
     }
     if (rc == MYLITE_OK) {
         out_plan->source_locking_clause =
@@ -66844,7 +66928,7 @@ static int plan_insert_select_row_scalar_source(
     const struct mylite_sql_ast_node *select_statement,
     struct planned_insert_select *out_plan
 ) {
-    int rc = plan_row_scalar_select(database, select_statement, &out_plan->row_source);
+    int rc = plan_row_scalar_select(database, select_statement, false, &out_plan->row_source);
 
     if (rc == MYLITE_OK && out_plan->row_source.item_count != out_plan->target_count) {
         set_column_count_mismatch_error(database, 1U);
@@ -66859,7 +66943,7 @@ static int plan_insert_select_table_source(
     const struct mylite_sql_ast_node *statement,
     struct planned_insert_select *out_plan
 ) {
-    int rc = plan_select(database, child_at(statement, 2U), &out_plan->source);
+    int rc = plan_select(database, child_at(statement, 2U), false, &out_plan->source);
 
     if (rc == MYLITE_OK && out_plan->source.calc_found_rows) {
         if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
@@ -66997,7 +67081,7 @@ static int plan_insert_select_compound_table_branch(
     struct planned_insert_select_compound_branch *out_branch,
     size_t *out_column_count
 ) {
-    int rc = plan_select(database, branch_statement, &out_branch->source);
+    int rc = plan_select(database, branch_statement, false, &out_branch->source);
 
     if (rc == MYLITE_OK && out_branch->source.source_count > 0U) {
         set_unsupported_error(database, "INSERT ... SELECT UNION does not support joined SELECT");
@@ -67019,7 +67103,7 @@ static int plan_insert_select_compound_row_scalar_branch(
     struct planned_insert_select_compound_branch *out_branch,
     size_t *out_column_count
 ) {
-    int rc = plan_row_scalar_select(database, branch_statement, &out_branch->row_source);
+    int rc = plan_row_scalar_select(database, branch_statement, false, &out_branch->row_source);
 
     if (rc == MYLITE_OK) {
         *out_column_count = out_branch->row_source.item_count;
@@ -69279,6 +69363,7 @@ static int plan_single_table_update(
             NULL,
             table_columns,
             table_column_count,
+            false,
             &out_plan->order
         );
     }
@@ -71547,6 +71632,7 @@ static int init_select_source_context(
 static int plan_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool allow_order_by_field,
     struct planned_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
@@ -71558,12 +71644,16 @@ static int plan_select(
         .allow_exists = true,
         .allow_in_subquery = true,
     };
+    bool allow_field_order = allow_order_by_field;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_select){0};
     out_plan->is_distinct =
         mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+    if (out_plan->is_distinct) {
+        allow_field_order = false;
+    }
     out_plan->calc_found_rows = mylite_sql_ast_node_select_calc_found_rows(statement) != 0;
     if (out_plan->calc_found_rows && out_plan->is_distinct) {
         set_unsupported_error(
@@ -71636,6 +71726,7 @@ static int plan_select(
             out_plan,
             table_columns,
             table_column_count,
+            allow_field_order,
             &out_plan->order
         );
     }
@@ -71826,6 +71917,7 @@ static int plan_joined_select(
             out_plan,
             NULL,
             0U,
+            false,
             &out_plan->order
         );
     }
@@ -72236,6 +72328,9 @@ static void planned_select_order_deinit(struct planned_select_order *order) {
         return;
     }
 
+    for (size_t item_index = 0U; item_index < order->item_count; ++item_index) {
+        planned_select_order_item_deinit(&order->items[item_index]);
+    }
     free(order->items);
     memset(order, 0, sizeof(*order));
 }
@@ -72260,6 +72355,7 @@ static void planned_select_deinit(struct planned_select *plan) {
 static int plan_row_scalar_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
@@ -72332,6 +72428,7 @@ static int plan_row_scalar_select(
             &source_context,
             table_columns,
             table_column_count,
+            allow_order_by_field,
             out_plan
         );
     }
@@ -72416,6 +72513,7 @@ static int plan_row_scalar_select_row_envelope(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_order_by_field,
     struct planned_row_scalar_select *out_plan
 ) {
     struct planned_select order_alias_plan = {
@@ -72440,6 +72538,7 @@ static int plan_row_scalar_select_row_envelope(
             &order_alias_plan,
             table_columns,
             table_column_count,
+            allow_order_by_field,
             &out_plan->order
         );
     }
@@ -75674,7 +75773,7 @@ static int execute_row_scalar_select_statement(
     mylite_result **out_result
 ) {
     struct planned_row_scalar_select plan = {false};
-    int rc = plan_row_scalar_select(database, statement, &plan);
+    int rc = plan_row_scalar_select(database, statement, true, &plan);
 
     if (rc == MYLITE_OK && apply_sql_select_limit) {
         apply_sql_select_limit_to_plan_limit(database, &plan.limit);
@@ -101034,6 +101133,7 @@ static int plan_single_table_delete(
             NULL,
             table_columns,
             table_column_count,
+            false,
             &out_plan->order
         );
     }
@@ -101654,7 +101754,7 @@ static int append_parent_delete_target_sql(
             rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
         }
         if (rc == MYLITE_OK) {
-            rc = append_select_order_sql(string, &plan->order);
+            rc = append_select_order_sql(string, &plan->order, next_parameter);
         }
         if (rc == MYLITE_OK) {
             rc = append_select_limit_sql(string, &plan->limit, next_parameter);
@@ -126797,6 +126897,30 @@ static int plan_row_scalar_field_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
+    return plan_row_scalar_field_expression_with_context(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT FIELD() supports only descriptor columns",
+        out_expression
+    );
+}
+
+static int plan_row_scalar_field_expression_with_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
     const struct mylite_sql_ast_node *arguments = child_at(expression, 0U);
     const struct mylite_sql_ast_node *argument = NULL;
     enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
@@ -126838,6 +126962,8 @@ static int plan_row_scalar_field_expression(
             source_context,
             table_columns,
             table_column_count,
+            column_diagnostic_context,
+            column_unsupported_message,
             &out_expression->arguments[argument_index],
             &domain
         );
@@ -126860,6 +126986,8 @@ static int plan_row_scalar_field_argument(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
     struct planned_row_scalar_expression *out_expression,
     enum planned_row_scalar_field_domain *inout_domain
 ) {
@@ -126909,6 +127037,8 @@ static int plan_row_scalar_field_argument(
             source_context,
             table_columns,
             table_column_count,
+            column_diagnostic_context,
+            column_unsupported_message,
             out_expression
         );
     } else {
@@ -126941,6 +127071,8 @@ static int plan_row_scalar_field_column(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *column_unsupported_message,
     struct planned_row_scalar_expression *out_expression
 ) {
     struct mylite_catalog_column_descriptor column = {0};
@@ -126949,8 +127081,8 @@ static int plan_row_scalar_field_column(
         database,
         expression,
         source_context,
-        COLUMN_REFERENCE_FIELD,
-        "row-scalar SELECT FIELD() supports only descriptor columns",
+        column_diagnostic_context,
+        column_unsupported_message,
         table_columns,
         table_column_count,
         &column
@@ -133771,6 +133903,7 @@ static int plan_select_order(
     const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_field_order,
     struct planned_select_order *out_order
 ) {
     const struct mylite_sql_ast_node *order_items = NULL;
@@ -133792,36 +133925,18 @@ static int plan_select_order(
 
     order_items = child_at(order_clause, 0U);
     if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
-        const struct mylite_sql_ast_node *item = order_items->first_child;
-
-        while (rc == MYLITE_OK && item != NULL) {
-            struct planned_select_order_item planned_item = {0};
-
-            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
-                set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
-                return MYLITE_ERROR;
-            }
-            rc = plan_select_order_ast_item(
-                database,
-                (struct select_order_ast_item_nodes){
-                    .order_key = child_at(item, 0U),
-                    .direction = child_at(item, 1U),
-                },
-                source_context,
-                select_plan,
-                table_columns,
-                table_column_count,
-                &planned_item
-            );
-            if (rc == MYLITE_OK) {
-                rc = append_planned_select_order_item(out_order, planned_item);
-            }
-            item = item->next_sibling;
-        }
+        rc = plan_select_order_item_list(
+            database,
+            order_items,
+            source_context,
+            select_plan,
+            table_columns,
+            table_column_count,
+            allow_field_order,
+            out_order
+        );
     } else {
-        struct planned_select_order_item planned_item = {0};
-
-        rc = plan_select_order_ast_item(
+        rc = plan_select_order_ast_item_and_append(
             database,
             (struct select_order_ast_item_nodes){
                 .order_key = child_at(order_clause, 0U),
@@ -133831,11 +133946,9 @@ static int plan_select_order(
             select_plan,
             table_columns,
             table_column_count,
-            &planned_item
+            allow_field_order,
+            out_order
         );
-        if (rc == MYLITE_OK) {
-            rc = append_planned_select_order_item(out_order, planned_item);
-        }
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -133843,12 +133956,93 @@ static int plan_select_order(
 
     if (out_order->item_count > 0U) {
         out_order->has_order = true;
-        out_order->column = out_order->items[0U].column;
-        out_order->column_source_index = out_order->items[0U].column_source_index;
+        if (out_order->items[0U].kind == PLANNED_SELECT_ORDER_ITEM_COLUMN) {
+            out_order->column = out_order->items[0U].column;
+            out_order->column_source_index = out_order->items[0U].column_source_index;
+        }
         out_order->direction = out_order->items[0U].direction;
     }
 
     return MYLITE_OK;
+}
+
+static int plan_select_order_item_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_items,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_field_order,
+    struct planned_select_order *out_order
+) {
+    const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+    if (order_item_list_contains_field_order_key(order_items) &&
+        mylite_sql_ast_node_child_count(order_items) != 1U) {
+        set_unsupported_error(database, "SELECT ORDER BY FIELD() supports only one order key");
+        return MYLITE_ERROR;
+    }
+
+    while (item != NULL) {
+        int rc = MYLITE_OK;
+
+        if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+            set_unsupported_error(database, "SELECT supports only descriptor ORDER BY columns");
+            return MYLITE_ERROR;
+        }
+        rc = plan_select_order_ast_item_and_append(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(item, 0U),
+                .direction = child_at(item, 1U),
+            },
+            source_context,
+            select_plan,
+            table_columns,
+            table_column_count,
+            allow_field_order,
+            out_order
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_select_order_ast_item_and_append(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool allow_field_order,
+    struct planned_select_order *out_order
+) {
+    struct planned_select_order_item planned_item = {0};
+    int rc = plan_select_order_ast_item(
+        database,
+        item_nodes,
+        source_context,
+        select_plan,
+        table_columns,
+        table_column_count,
+        allow_field_order,
+        &planned_item
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_order_item(out_order, planned_item);
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_order_item_deinit(&planned_item);
+    }
+
+    return rc;
 }
 
 static int plan_select_order_ast_item(
@@ -133858,15 +134052,37 @@ static int plan_select_order_ast_item(
     const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    bool allow_field_order,
     struct planned_select_order_item *out_item
 ) {
     bool resolved_alias = false;
     int rc = MYLITE_OK;
 
     *out_item = (struct planned_select_order_item){
+        .kind = PLANNED_SELECT_ORDER_ITEM_COLUMN,
         .direction = PLANNED_SELECT_ORDER_ASC,
         .column_source_index = 0U,
     };
+
+    if (select_order_key_is_field_function(item_nodes.order_key)) {
+        if (!allow_field_order) {
+            set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
+            return MYLITE_ERROR;
+        }
+        rc = plan_select_order_field_expression(
+            database,
+            item_nodes.order_key,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+        if (rc == MYLITE_OK && mylite_sql_ast_node_order_direction(item_nodes.direction) ==
+                                   MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            out_item->direction = PLANNED_SELECT_ORDER_DESC;
+        }
+        return rc;
+    }
 
     rc = resolve_order_alias(
         database,
@@ -133921,6 +134137,134 @@ static int plan_select_order_ast_item(
     }
 
     return MYLITE_OK;
+}
+
+static bool order_item_list_contains_field_order_key(
+    const struct mylite_sql_ast_node *order_items
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (order_items == NULL || order_items->kind != MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        return false;
+    }
+    item = child_at(order_items, 0U);
+    while (item != NULL) {
+        if (item->kind == MYLITE_SQL_AST_ORDER_BY_ITEM &&
+            select_order_key_is_field_function(child_at(item, 0U))) {
+            return true;
+        }
+        item = item->next_sibling;
+    }
+    return false;
+}
+
+static bool select_order_key_is_field_function(const struct mylite_sql_ast_node *order_key) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    if (order_key == NULL) {
+        return false;
+    }
+    if (order_key->kind == MYLITE_SQL_AST_FIELD_FUNCTION) {
+        return true;
+    }
+    if (order_key->kind == MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR) {
+        return true;
+    }
+    return false;
+}
+
+static int plan_select_order_field_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order_item *out_item
+) {
+    struct planned_row_scalar_expression *expression = NULL;
+    int rc = MYLITE_OK;
+
+    order_key = unwrap_parenthesized_expression(order_key);
+    if (order_key == NULL) {
+        set_unsupported_error(
+            database,
+            "SELECT ORDER BY supports only descriptor columns or FIELD(column, value, ...)"
+        );
+        return MYLITE_ERROR;
+    }
+    if (order_key->kind == MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "FIELD");
+        return MYLITE_ERROR;
+    }
+
+    expression = (struct planned_row_scalar_expression *)calloc(1U, sizeof(*expression));
+    if (expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_field_expression_with_context(
+        database,
+        order_key,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        COLUMN_REFERENCE_ORDER,
+        "SELECT ORDER BY FIELD() supports only descriptor search columns",
+        expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_select_order_field_expression(database, expression);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(expression);
+        free(expression);
+        return rc;
+    }
+
+    out_item->kind = PLANNED_SELECT_ORDER_ITEM_FIELD;
+    out_item->expression = expression;
+    return MYLITE_OK;
+}
+
+static int validate_select_order_field_expression(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_FIELD ||
+        expression->argument_count < 2U || expression->arguments == NULL) {
+        set_native_function_parameter_count_error(database, "FIELD");
+        return MYLITE_ERROR;
+    }
+    if (expression->arguments[0U].kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        set_unsupported_error(
+            database,
+            "SELECT ORDER BY FIELD() supports only descriptor search columns"
+        );
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 1U; argument_index < expression->argument_count;
+         ++argument_index) {
+        if (expression->arguments[argument_index].kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+            set_unsupported_error(
+                database,
+                "SELECT ORDER BY FIELD() supports only literal candidate values"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static void planned_select_order_item_deinit(struct planned_select_order_item *item) {
+    if (item == NULL) {
+        return;
+    }
+    if (item->expression != NULL) {
+        planned_row_scalar_expression_deinit(item->expression);
+        free(item->expression);
+    }
+    *item = (struct planned_select_order_item){0};
 }
 
 static int append_planned_select_order_item(
@@ -134714,7 +135058,7 @@ static int plan_update_scalar_subquery_assignment(
     statement = child_at(value_node, 0U);
     rc = validate_update_scalar_subquery_select(database, statement);
     if (rc == MYLITE_OK) {
-        rc = plan_select(database, statement, &out_plan->assignment_subquery);
+        rc = plan_select(database, statement, false, &out_plan->assignment_subquery);
     }
     if (rc == MYLITE_OK && out_plan->assignment_subquery.column_count != 1U) {
         set_scalar_subquery_column_count_error(database);
@@ -141858,7 +142202,7 @@ static int build_insert_select_table_materialize_sql(
         rc = append_select_predicate_sql(&string, &plan->source.predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(&string, &plan->source.order);
+        rc = append_select_order_sql(&string, &plan->source.order, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(&string, &plan->source.limit, &next_parameter);
@@ -142612,7 +142956,7 @@ static int build_create_table_select_insert_sql(
         rc = append_select_predicate_sql(&string, &plan->source.predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(&string, &plan->source.order);
+        rc = append_select_order_sql(&string, &plan->source.order, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(&string, &plan->source.limit, &next_parameter);
@@ -142711,7 +143055,7 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(&string, &plan->order);
+        rc = append_select_order_sql(&string, &plan->order, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
@@ -142863,7 +143207,7 @@ static int build_row_scalar_select_sql(
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     }
     if (rc == MYLITE_OK && plan->has_source) {
-        rc = append_select_order_sql(&string, &plan->order);
+        rc = append_select_order_sql(&string, &plan->order, &next_parameter);
     }
     if (rc == MYLITE_OK && plan->has_source) {
         rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
@@ -146185,7 +146529,7 @@ static int append_grouped_order_sql(
         return MYLITE_OK;
     }
     if (!plan->order_uses_aggregate) {
-        return append_select_order_sql(string, &plan->order);
+        return append_select_order_sql(string, &plan->order, NULL);
     }
     if (plan->order_aggregate_index >= plan->aggregate_count) {
         return MYLITE_ERROR;
@@ -147274,7 +147618,8 @@ static int append_predicate_sql_work_item(
 
 static int append_select_order_sql(
     struct dynamic_string *string,
-    const struct planned_select_order *order
+    const struct planned_select_order *order,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -147283,49 +147628,85 @@ static int append_select_order_sql(
     }
 
     rc = dynamic_string_append(string, " ORDER BY ");
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (order->item_count == 0U) {
-        if (rc == MYLITE_OK) {
-            rc = append_descriptor_value_sql_for_source(
-                string,
-                &order->column,
-                order->column_source_index,
-                order->qualify_column_reference
-            );
+        return append_select_order_legacy_column_sql(string, order);
+    }
+
+    for (size_t item_index = 0U; item_index < order->item_count; ++item_index) {
+        rc = append_select_order_item_sql(string, order, item_index, next_parameter);
+        if (rc != MYLITE_OK) {
+            return rc;
         }
-        if (rc == MYLITE_OK) {
-            if (order->direction == PLANNED_SELECT_ORDER_DESC) {
-                rc = dynamic_string_append(string, " DESC");
-            } else {
-                rc = dynamic_string_append(string, " ASC");
-            }
-        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_select_order_legacy_column_sql(
+    struct dynamic_string *string,
+    const struct planned_select_order *order
+) {
+    int rc = append_descriptor_value_sql_for_source(
+        string,
+        &order->column,
+        order->column_source_index,
+        order->qualify_column_reference
+    );
+
+    if (rc != MYLITE_OK) {
         return rc;
     }
 
-    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < order->item_count; ++item_index) {
-        const struct planned_select_order_item *item = &order->items[item_index];
+    return append_select_order_direction_sql(string, order->direction);
+}
 
-        if (item_index != 0U) {
-            rc = dynamic_string_append(string, ", ");
+static int append_select_order_item_sql(
+    struct dynamic_string *string,
+    const struct planned_select_order *order,
+    size_t item_index,
+    size_t *next_parameter
+) {
+    const struct planned_select_order_item *item = &order->items[item_index];
+    int rc = MYLITE_OK;
+
+    if (item_index != 0U) {
+        rc = dynamic_string_append(string, ", ");
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD) {
+        if (next_parameter == NULL || item->expression == NULL) {
+            return MYLITE_ERROR;
         }
-        if (rc == MYLITE_OK) {
-            rc = append_descriptor_value_sql_for_source(
-                string,
-                &item->column,
-                item->column_source_index,
-                order->qualify_column_reference
-            );
-        }
-        if (rc == MYLITE_OK) {
-            if (item->direction == PLANNED_SELECT_ORDER_DESC) {
-                rc = dynamic_string_append(string, " DESC");
-            } else {
-                rc = dynamic_string_append(string, " ASC");
-            }
-        }
+        rc = append_row_scalar_expression_sql(string, item->expression, next_parameter);
+    } else {
+        rc = append_descriptor_value_sql_for_source(
+            string,
+            &item->column,
+            item->column_source_index,
+            order->qualify_column_reference
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
-    return rc;
+    return append_select_order_direction_sql(string, item->direction);
+}
+
+static int append_select_order_direction_sql(
+    struct dynamic_string *string,
+    enum planned_select_order_direction direction
+) {
+    if (direction == PLANNED_SELECT_ORDER_DESC) {
+        return dynamic_string_append(string, " DESC");
+    }
+
+    return dynamic_string_append(string, " ASC");
 }
 
 static int append_select_limit_sql(
@@ -147416,7 +147797,7 @@ static int append_delete_rowid_limited_sql(
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(string, &plan->order);
+        rc = append_select_order_sql(string, &plan->order, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(string, &plan->limit, next_parameter);
@@ -147822,7 +148203,7 @@ static int append_update_rowid_limited_sql(
         rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_order_sql(string, &plan->order);
+        rc = append_select_order_sql(string, &plan->order, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_select_limit_sql(string, &plan->limit, next_parameter);
@@ -151045,6 +151426,9 @@ static int bind_select_parameters_at(
     int rc = MYLITE_OK;
 
     rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
+    if (rc == MYLITE_OK) {
+        rc = bind_select_order_parameters(statement, &plan->order, parameter_index);
+    }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
@@ -151084,6 +151468,9 @@ static int bind_row_scalar_select_parameters_at(
     if (rc == MYLITE_OK && plan->has_source) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, parameter_index);
     }
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = bind_select_order_parameters(statement, &plan->order, parameter_index);
+    }
     if (rc == MYLITE_OK && plan->has_source && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
@@ -151108,6 +151495,28 @@ static int bind_row_scalar_select_parameters_at(
     }
     if (rc == MYLITE_OK && !plan->has_source && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
+    }
+
+    return rc;
+}
+
+static int bind_select_order_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_order *order,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (order == NULL || !order->has_order) {
+        return MYLITE_OK;
+    }
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < order->item_count; ++item_index) {
+        const struct planned_select_order_item *item = &order->items[item_index];
+
+        if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD) {
+            rc =
+                bind_row_scalar_expression_parameters(statement, item->expression, parameter_index);
+        }
     }
 
     return rc;

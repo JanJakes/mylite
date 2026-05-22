@@ -41,6 +41,7 @@ struct column_attribute_positions {
 };
 
 static bool map_lexer_token(
+    const struct mylite_sql_parser_state *state,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
@@ -58,7 +59,11 @@ static bool map_keyword_token(
     int *out_parser_token
 );
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
-static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
+static bool map_operator_token(
+    const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_token *token,
+    int *out_parser_token
+);
 static bool previous_token_allows_select_noop_modifier(int previous_parser_token);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static char ascii_upper(unsigned char byte);
@@ -186,7 +191,13 @@ enum mylite_sql_parse_status mylite_sql_parse(
             break;
         }
 
-        if (!map_lexer_token(&token, previous_token_was_dot, previous_parser_token, &token_map)) {
+        if (!map_lexer_token(
+                &state,
+                &token,
+                previous_token_was_dot,
+                previous_parser_token,
+                &token_map
+            )) {
             record_parse_error(
                 out_result,
                 (struct mylite_sql_parse_error){
@@ -7129,6 +7140,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(
 }
 
 static bool map_lexer_token(
+    const struct mylite_sql_parser_state *state,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
@@ -7187,7 +7199,7 @@ static bool map_lexer_token(
         parser_token = MYLITE_SQL_PARSE_FLOAT;
         break;
     case MYLITE_SQL_TOKEN_OPERATOR:
-        if (!map_operator_token(token, &parser_token)) {
+        if (!map_operator_token(state, token, &parser_token)) {
             return false;
         }
         break;
@@ -7718,7 +7730,11 @@ static bool map_punctuation_token(const struct mylite_sql_token *token, int *out
     }
 }
 
-static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token) {
+static bool map_operator_token(
+    const struct mylite_sql_parser_state *state,
+    const struct mylite_sql_token *token,
+    int *out_parser_token
+) {
     switch (token->operator_kind) {
     case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
         *out_parser_token = MYLITE_SQL_PARSE_NULL_SAFE_EQUAL;
@@ -7760,7 +7776,11 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
         *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_AND;
         return true;
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
-        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
+        if (parser_sql_mode_has(state, MYLITE_SQL_MODE_PIPES_AS_CONCAT)) {
+            *out_parser_token = MYLITE_SQL_PARSE_CONCAT_OPERATOR;
+        } else {
+            *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_OR;
+        }
         return true;
     case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
         *out_parser_token = MYLITE_SQL_PARSE_LEFT_SHIFT;

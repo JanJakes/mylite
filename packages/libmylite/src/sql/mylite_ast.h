@@ -588,6 +588,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_RLIKE = 38,
     MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT = 39,
     MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT = 40,
+    MYLITE_SQL_AST_OPERATOR_CONCAT = 41,
 };
 
 enum mylite_sql_ast_integer_type {

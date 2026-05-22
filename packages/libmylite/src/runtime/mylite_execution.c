@@ -12688,6 +12688,50 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int scalar_concat_operator_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int evaluate_concat_operator_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cells,
+    char **owned_texts,
+    struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+);
+static int evaluate_concat_operator_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int concat_operator_scalar_arithmetic_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int scalar_concat_operator_result(
+    const struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    char **out_text
+);
+static bool concat_operator_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+);
+static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool concat_operator_scalar_arithmetic_node_is_admitted(
+    const struct mylite_sql_ast_node *expression,
+    bool *inout_saw_arithmetic,
+    struct scalar_arithmetic_node_stack *stack
+);
 static int rand_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -14695,6 +14739,16 @@ static int evaluate_scalar_arithmetic_enter_frame(
     struct scalar_arithmetic_value_stack *value_stack,
     const struct mylite_sql_ast_node *expression
 );
+static int evaluate_scalar_arithmetic_operand_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+);
+static int evaluate_scalar_arithmetic_non_arithmetic_binary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+);
 static int finish_scalar_arithmetic_result(
     struct mylite_db *database,
     struct scalar_arithmetic_value_stack *value_stack,
@@ -15338,6 +15392,7 @@ static bool is_scalar_logical_projection_expression(const struct mylite_sql_ast_
 static bool is_scalar_comparison_projection_expression(
     const struct mylite_sql_ast_node *expression
 );
+static bool is_scalar_concat_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool scalar_arithmetic_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
@@ -15351,6 +15406,10 @@ static bool scalar_logical_projection_node_is_admitted(
     struct scalar_arithmetic_node_stack *stack
 );
 static bool scalar_comparison_projection_node_is_admitted(
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_node_stack *stack
+);
+static bool scalar_concat_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
 );
@@ -21868,6 +21927,32 @@ static int plan_row_scalar_concat_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_concat_operator_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int count_row_scalar_concat_operator_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t *inout_argument_count
+);
+static int plan_row_scalar_concat_operator_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+);
+static bool row_scalar_expression_is_concat_operator(const struct mylite_sql_ast_node *expression);
 static int plan_row_scalar_concat_ws_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -31601,6 +31686,9 @@ static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session
     }
     if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_IGNORE_SPACE)) {
         modes |= MYLITE_SQL_MODE_IGNORE_SPACE;
+    }
+    if (session_sql_mode_has(session, MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT)) {
+        modes |= MYLITE_SQL_MODE_PIPES_AS_CONCAT;
     }
     return modes;
 }
@@ -75749,6 +75837,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
     while (select_item != NULL) {
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(child_at(select_item, 0U)) ||
+             (has_table_source &&
+              row_scalar_expression_is_concat_operator(child_at(select_item, 0U))) ||
              (has_table_source && row_scalar_expression_contains_date_interval_second_function(
                                       child_at(select_item, 0U)
                                   )) ||
@@ -86336,6 +86426,9 @@ static int session_binary_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    if (row_scalar_expression_is_concat_operator(expression)) {
+        return scalar_concat_operator_value(database, expression, out_cell);
+    }
     if (is_scalar_division_projection_expression(expression)) {
         return scalar_division_value(database, expression, out_cell);
     }
@@ -86352,6 +86445,385 @@ static int session_binary_scalar_value(
         return scalar_comparison_value(database, expression, out_cell);
     }
     return scalar_arithmetic_value(database, expression, out_cell);
+}
+
+static int scalar_concat_operator_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct mylite_string_concat_argument *arguments = NULL;
+    struct session_scalar_cell *cells = NULL;
+    char **owned_texts = NULL;
+    char *result = NULL;
+    size_t argument_count = 0U;
+    size_t next_argument = 0U;
+    int rc = count_row_scalar_concat_operator_arguments(database, expression, &argument_count);
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count == 0U || argument_count > SIZE_MAX / sizeof(*arguments) ||
+        argument_count > SIZE_MAX / sizeof(*cells) ||
+        argument_count > SIZE_MAX / sizeof(*owned_texts)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    arguments = (struct mylite_string_concat_argument *)calloc(argument_count, sizeof(*arguments));
+    cells = (struct session_scalar_cell *)calloc(argument_count, sizeof(*cells));
+    owned_texts = (char **)calloc(argument_count, sizeof(*owned_texts));
+    if (arguments == NULL || cells == NULL || owned_texts == NULL) {
+        free(arguments);
+        free(cells);
+        free((void *)owned_texts);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = evaluate_concat_operator_scalar_arguments(
+        database,
+        expression,
+        cells,
+        owned_texts,
+        arguments,
+        argument_count,
+        &next_argument
+    );
+    if (rc == MYLITE_OK && next_argument != argument_count) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = scalar_concat_operator_result(arguments, argument_count, &result);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    if (rc == MYLITE_OK && result != NULL) {
+        out_cell->owned_text = result;
+        out_cell->value = out_cell->owned_text;
+        result = NULL;
+    }
+
+    free(result);
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        free(owned_texts[argument_index]);
+        session_scalar_cell_deinit(&cells[argument_index]);
+    }
+    free((void *)owned_texts);
+    free(cells);
+    free(arguments);
+    return rc;
+}
+
+static int evaluate_concat_operator_scalar_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *cells,
+    char **owned_texts,
+    struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || cells == NULL || owned_texts == NULL || arguments == NULL ||
+        inout_next_argument == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (row_scalar_expression_is_concat_operator(current)) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+            continue;
+        }
+        if (*inout_next_argument >= argument_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+
+        rc = evaluate_concat_operator_scalar_argument(
+            database,
+            current,
+            &cells[*inout_next_argument],
+            &owned_texts[*inout_next_argument],
+            &arguments[*inout_next_argument].text,
+            &arguments[*inout_next_argument].text_length,
+            &arguments[*inout_next_argument].is_null
+        );
+        if (rc == MYLITE_OK) {
+            ++(*inout_next_argument);
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int evaluate_concat_operator_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    char **out_owned_text,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_owned_text == NULL || out_text == NULL ||
+        out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_owned_text = NULL;
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (!concat_operator_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "|| supports only string, integer, boolean, NULL, session scalar, scalar subquery, "
+            "system variable, and limited integer arithmetic operands"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            rc = decode_sql_string_literal(
+                database,
+                expression,
+                "|| supports only string literals",
+                "|| string literals do not support NUL bytes",
+                out_owned_text,
+                out_text_length
+            );
+            if (rc == MYLITE_OK) {
+                *out_text = *out_owned_text;
+            }
+            return rc;
+        }
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        rc = literal_projection_value(database, expression, inout_cell);
+    } else if (concat_operator_scalar_argument_is_integer_arithmetic_expression(expression)) {
+        rc = concat_operator_scalar_arithmetic_argument_value(database, expression, inout_cell);
+    } else if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        rc = scalar_subquery_value(database, expression, inout_cell);
+    } else {
+        rc = string_length_session_scalar_argument_value(database, expression, inout_cell);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (inout_cell->value == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    *out_text = inout_cell->value;
+    *out_text_length = strlen(inout_cell->value);
+    return MYLITE_OK;
+}
+
+static int concat_operator_scalar_arithmetic_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = evaluate_integer_default_expression(database, expression, &value);
+
+    if (rc != MYLITE_OK) {
+        set_scalar_arithmetic_unsupported_error(database);
+        return rc;
+    }
+    if (value.is_null) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+
+    int written =
+        snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, value.integer);
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format || arithmetic operand");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int scalar_concat_operator_result(
+    const struct mylite_string_concat_argument *arguments,
+    size_t argument_count,
+    char **out_text
+) {
+    char *result = NULL;
+    size_t total_length = 0U;
+    size_t offset = 0U;
+
+    if (arguments == NULL || argument_count == 0U || out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        const struct mylite_string_concat_argument *argument = &arguments[argument_index];
+
+        if (argument->is_null) {
+            return MYLITE_OK;
+        }
+        if (argument->text == NULL && argument->text_length != 0U) {
+            return MYLITE_MISUSE;
+        }
+        if (total_length > SIZE_MAX - argument->text_length) {
+            return MYLITE_NOMEM;
+        }
+        total_length += argument->text_length;
+    }
+
+    if (total_length == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    result = (char *)malloc(total_length + 1U);
+    if (result == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
+        const struct mylite_string_concat_argument *argument = &arguments[argument_index];
+
+        if (argument->text_length != 0U) {
+            memcpy(&result[offset], argument->text, argument->text_length);
+            offset += argument->text_length;
+        }
+    }
+    result[offset] = '\0';
+    *out_text = result;
+    return MYLITE_OK;
+}
+
+static bool concat_operator_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+        return true;
+    }
+    if (concat_operator_scalar_argument_is_integer_arithmetic_expression(expression)) {
+        return true;
+    }
+    return string_length_scalar_argument_is_admitted(expression);
+}
+
+static bool concat_operator_scalar_argument_is_integer_arithmetic_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool saw_arithmetic = false;
+    bool result = true;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && result) {
+        result = concat_operator_scalar_arithmetic_node_is_admitted(
+            stack.items[--stack.count],
+            &saw_arithmetic,
+            &stack
+        );
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return (result && saw_arithmetic) != 0;
+}
+
+static bool concat_operator_scalar_arithmetic_node_is_admitted(
+    const struct mylite_sql_ast_node *expression,
+    bool *inout_saw_arithmetic,
+    struct scalar_arithmetic_node_stack *stack
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            return false;
+        }
+        *inout_saw_arithmetic = true;
+        if (!scalar_arithmetic_node_stack_push(stack, child_at(expression, 1U))) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        if (!integer_default_binary_operator_is_supported(
+                mylite_sql_ast_node_operator(expression)
+            )) {
+            return false;
+        }
+        *inout_saw_arithmetic = true;
+        if (!scalar_arithmetic_node_stack_push(stack, child_at(expression, 1U))) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
+    return false;
 }
 
 static int field_function_value(
@@ -95855,19 +96327,17 @@ static int evaluate_scalar_arithmetic_enter_frame(
         return rc;
     }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        int rc = evaluate_scalar_arithmetic_operand(database, expression, &value);
-
-        if (rc == MYLITE_OK) {
-            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
-        }
-        return rc;
+        return evaluate_scalar_arithmetic_operand_frame(database, value_stack, expression);
     }
 
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
 
     if (!is_scalar_arithmetic_operator(operator_kind)) {
-        set_scalar_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
+        return evaluate_scalar_arithmetic_non_arithmetic_binary_frame(
+            database,
+            value_stack,
+            expression
+        );
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE) {
         bool left_operand_short_circuits = false;
@@ -95913,6 +96383,32 @@ static int evaluate_scalar_arithmetic_enter_frame(
         );
     }
     return rc;
+}
+
+static int evaluate_scalar_arithmetic_operand_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+    int rc = evaluate_scalar_arithmetic_operand(database, expression, &value);
+
+    if (rc == MYLITE_OK) {
+        rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    return rc;
+}
+
+static int evaluate_scalar_arithmetic_non_arithmetic_binary_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    if (!row_scalar_expression_is_concat_operator(expression)) {
+        set_scalar_arithmetic_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    return evaluate_scalar_arithmetic_operand_frame(database, value_stack, expression);
 }
 
 static int scalar_arithmetic_div_left_operand_short_circuits(
@@ -96073,8 +96569,16 @@ static int evaluate_scalar_arithmetic_operand(
 
     expression = unwrap_parenthesized_expression(expression);
     if (!is_scalar_value_projection_expression(expression)) {
-        set_scalar_arithmetic_unsupported_error(database);
-        return MYLITE_ERROR;
+        if (!row_scalar_expression_is_concat_operator(expression)) {
+            set_scalar_arithmetic_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = scalar_concat_operator_value(database, expression, &cell);
+        if (rc == MYLITE_OK) {
+            rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
+        }
+        session_scalar_cell_deinit(&cell);
+        return rc;
     }
     if ((expression->kind == MYLITE_SQL_AST_LITERAL ||
          expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) &&
@@ -99257,6 +99761,9 @@ static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *ex
     if (is_scalar_comparison_projection_expression(expression)) {
         return true;
     }
+    if (is_scalar_concat_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_division_projection_expression(expression)) {
         return true;
     }
@@ -100557,6 +101064,23 @@ static bool is_scalar_comparison_projection_expression(
     return saw_comparison;
 }
 
+static bool is_scalar_concat_projection_expression(const struct mylite_sql_ast_node *expression) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool result = true;
+
+    if (!row_scalar_expression_is_concat_operator(expression)) {
+        return false;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && result) {
+        result = scalar_concat_projection_node_is_admitted(stack.items[--stack.count], &stack);
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return result;
+}
+
 static bool scalar_arithmetic_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
@@ -100564,6 +101088,9 @@ static bool scalar_arithmetic_projection_node_is_admitted(
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return false;
+    }
+    if (row_scalar_expression_is_concat_operator(expression)) {
+        return is_scalar_concat_projection_expression(expression);
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
@@ -100689,6 +101216,23 @@ static bool scalar_comparison_projection_node_is_admitted(
         return false;
     }
     return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+}
+
+static bool scalar_concat_projection_node_is_admitted(
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_node_stack *stack
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (row_scalar_expression_is_concat_operator(expression)) {
+        if (!scalar_arithmetic_node_stack_push(stack, child_at(expression, 1U))) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
+    return concat_operator_scalar_argument_is_admitted(expression);
 }
 
 static bool is_scalar_arithmetic_operator(enum mylite_sql_ast_operator operator_kind) {
@@ -117073,6 +117617,17 @@ static int plan_row_scalar_expression(
         return MYLITE_ERROR;
     }
 
+    if (row_scalar_expression_is_concat_operator(expression)) {
+        return plan_row_scalar_concat_operator_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
         return plan_row_scalar_concat_expression(
             database,
@@ -124809,6 +125364,183 @@ static int plan_row_scalar_concat_expression(
     return MYLITE_OK;
 }
 
+static int plan_row_scalar_concat_operator_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    size_t argument_count = 0U;
+    size_t next_argument = 0U;
+    int rc = count_row_scalar_concat_operator_arguments(database, expression, &argument_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count == 0U || argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_CONCAT;
+    out_expression->argument_count = argument_count;
+
+    rc = plan_row_scalar_concat_operator_arguments(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression->arguments,
+        argument_count,
+        &next_argument
+    );
+    if (rc == MYLITE_OK && next_argument != argument_count) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int count_row_scalar_concat_operator_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t *inout_argument_count
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || inout_argument_count == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (row_scalar_expression_is_concat_operator(current)) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+            continue;
+        }
+        if (*inout_argument_count == SIZE_MAX) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+            break;
+        }
+        ++(*inout_argument_count);
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static int plan_row_scalar_concat_operator_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *arguments,
+    size_t argument_count,
+    size_t *inout_next_argument
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || arguments == NULL || inout_next_argument == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK && stack.count > 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = unwrap_parenthesized_expression(stack.items[stack.count]);
+        if (current == NULL) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (row_scalar_expression_is_concat_operator(current)) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, 1U)) ||
+                !scalar_arithmetic_node_stack_push(&stack, child_at(current, 0U))) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT || does not support nested CONCAT()"
+            );
+            rc = MYLITE_ERROR;
+            break;
+        }
+        if (*inout_next_argument >= argument_count) {
+            set_parse_error(database, NULL);
+            rc = MYLITE_ERROR;
+            break;
+        }
+
+        rc = plan_row_scalar_non_concat_expression(
+            database,
+            current,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            true,
+            &arguments[*inout_next_argument]
+        );
+        if (rc == MYLITE_OK) {
+            ++(*inout_next_argument);
+        }
+    }
+
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return rc;
+}
+
+static bool row_scalar_expression_is_concat_operator(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    return mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_CONCAT;
+}
+
 static int plan_row_scalar_concat_ws_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -130090,6 +130822,7 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -147376,6 +148109,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -148516,6 +149250,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:

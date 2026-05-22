@@ -670,6 +670,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_concat_ws_function_test)
 
+  add_executable(mylite_runtime_pipes_as_concat_test
+    tests/runtime_pipes_as_concat_test.c
+  )
+  target_link_libraries(mylite_runtime_pipes_as_concat_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_pipes_as_concat_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_pipes_as_concat_test)
+
   add_executable(mylite_runtime_replace_string_function_test
     tests/runtime_replace_string_function_test.c
   )
@@ -3583,6 +3594,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.concat_ws_function
     COMMAND mylite_runtime_concat_ws_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.pipes_as_concat
+    COMMAND mylite_runtime_pipes_as_concat_test
   )
   add_test(
     NAME libmylite.runtime.replace_string_function

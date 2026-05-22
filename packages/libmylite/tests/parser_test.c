@@ -43,6 +43,10 @@ enum {
     storage_stats_sample_pages_option_index = 6,
 };
 
+struct parse_sql_modes {
+    unsigned int value;
+};
+
 static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_select_expression_list(void);
@@ -53,6 +57,7 @@ static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
 static int test_concat_function(void);
+static int test_pipes_as_concat_operator(void);
 static int test_concat_ws_function(void);
 static int test_replace_function(void);
 static int test_reverse_function(void);
@@ -219,6 +224,12 @@ static int parse_sql_with_ignore_space(
     enum mylite_sql_parse_status expected_status,
     struct mylite_sql_parse_result *out_result
 );
+static int parse_sql_with_modes(
+    const char *sql,
+    enum mylite_sql_parse_status expected_status,
+    struct parse_sql_modes modes,
+    struct mylite_sql_parse_result *out_result
+);
 static const struct mylite_sql_ast_node *child_at(
     const struct mylite_sql_ast_node *node,
     size_t index
@@ -359,6 +370,7 @@ int main(void) {
     failures += test_ifnull_function();
     failures += test_coalesce_function();
     failures += test_concat_function();
+    failures += test_pipes_as_concat_operator();
     failures += test_concat_ws_function();
     failures += test_replace_function();
     failures += test_reverse_function();
@@ -1963,6 +1975,77 @@ static int test_concat_function(void) {
     first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "concat identifier");
     failures += expect_span_text(first_expression, "concat", "concat identifier span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_pipes_as_concat_operator(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *concat = NULL;
+    const struct mylite_sql_ast_node *nested_concat = NULL;
+    const struct mylite_sql_ast_node *add = NULL;
+    const struct mylite_sql_ast_node *not_expression = NULL;
+    const struct mylite_sql_ast_node *negative_concat = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT 1||0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql_with_modes(
+        "SELECT 'a'||'b'||'c', 1+2||3, NOT 1||2, -1||2;",
+        MYLITE_SQL_PARSE_OK,
+        (struct parse_sql_modes){.value = MYLITE_SQL_MODE_PIPES_AS_CONCAT},
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    concat = child_at(child_at(select_list, 0U), 0U);
+    nested_concat = child_at(concat, 0U);
+    add = child_at(child_at(select_list, 1U), 0U);
+    not_expression = child_at(child_at(select_list, 2U), 0U);
+    negative_concat = child_at(child_at(select_list, 3U), 0U);
+
+    failures += expect_node(concat, MYLITE_SQL_AST_BINARY_EXPRESSION, "pipes concat");
+    failures += expect_operator(concat, MYLITE_SQL_AST_OPERATOR_CONCAT, "pipes concat operator");
+    failures +=
+        expect_node(nested_concat, MYLITE_SQL_AST_BINARY_EXPRESSION, "left associative pipes");
+    failures += expect_operator(
+        nested_concat,
+        MYLITE_SQL_AST_OPERATOR_CONCAT,
+        "left associative pipes operator"
+    );
+    failures += expect_span_text(child_at(concat, 1U), "'c'", "rightmost pipes operand");
+
+    failures += expect_node(add, MYLITE_SQL_AST_BINARY_EXPRESSION, "pipes plus root");
+    failures += expect_operator(add, MYLITE_SQL_AST_OPERATOR_ADD, "pipes plus root operator");
+    failures +=
+        expect_node(child_at(add, 1U), MYLITE_SQL_AST_BINARY_EXPRESSION, "pipes before plus");
+    failures += expect_operator(
+        child_at(add, 1U),
+        MYLITE_SQL_AST_OPERATOR_CONCAT,
+        "pipes before plus operator"
+    );
+
+    failures +=
+        expect_node(not_expression, MYLITE_SQL_AST_UNARY_EXPRESSION, "not after pipes precedence");
+    failures += expect_operator(
+        not_expression,
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        "not after pipes operator"
+    );
+    failures += expect_operator(
+        child_at(not_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_CONCAT,
+        "pipes before not operand"
+    );
+
+    failures +=
+        expect_node(negative_concat, MYLITE_SQL_AST_BINARY_EXPRESSION, "unary before pipes");
+    failures +=
+        expect_operator(negative_concat, MYLITE_SQL_AST_OPERATOR_CONCAT, "unary before pipes op");
+    failures +=
+        expect_operator(child_at(negative_concat, 0U), MYLITE_SQL_AST_OPERATOR_NEGATIVE, "unary");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -25189,27 +25272,7 @@ static int parse_sql(
     enum mylite_sql_parse_status expected_status,
     struct mylite_sql_parse_result *out_result
 ) {
-    enum mylite_sql_parse_status actual = mylite_sql_parse(
-        (struct mylite_sql_parse_config){
-            .input = sql,
-            .length = strlen(sql),
-            .modes = 0U,
-        },
-        out_result
-    );
-
-    if (actual != expected_status) {
-        fprintf(
-            stderr,
-            "parse '%s': expected %s, got %s\n",
-            sql,
-            mylite_sql_parse_status_name(expected_status),
-            mylite_sql_parse_status_name(actual)
-        );
-        return 1;
-    }
-
-    return 0;
+    return parse_sql_with_modes(sql, expected_status, (struct parse_sql_modes){0}, out_result);
 }
 
 static int parse_sql_with_ignore_space(
@@ -25217,11 +25280,25 @@ static int parse_sql_with_ignore_space(
     enum mylite_sql_parse_status expected_status,
     struct mylite_sql_parse_result *out_result
 ) {
+    return parse_sql_with_modes(
+        sql,
+        expected_status,
+        (struct parse_sql_modes){.value = MYLITE_SQL_MODE_IGNORE_SPACE},
+        out_result
+    );
+}
+
+static int parse_sql_with_modes(
+    const char *sql,
+    enum mylite_sql_parse_status expected_status,
+    struct parse_sql_modes modes,
+    struct mylite_sql_parse_result *out_result
+) {
     enum mylite_sql_parse_status actual = mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = strlen(sql),
-            .modes = MYLITE_SQL_MODE_IGNORE_SPACE,
+            .modes = modes.value,
         },
         out_result
     );

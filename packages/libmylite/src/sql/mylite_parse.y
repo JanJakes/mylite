@@ -37,6 +37,7 @@
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
 %left BITWISE_XOR.
+%left CONCAT_OPERATOR.
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %right UPLUS UMINUS BITWISE_NOT.
 
@@ -5444,6 +5445,10 @@ expression(A) ::= expression(B) XOR(T) expression(C). {
 expression(A) ::= expression(B) OR(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
+}
+expression(A) ::= expression(B) CONCAT_OPERATOR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_CONCAT, C);
 }
 expression(A) ::= expression(B) EQUAL(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

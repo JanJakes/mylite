@@ -8,6 +8,7 @@ enum mylite_sql_mode {
     MYLITE_SQL_MODE_ANSI_QUOTES = 1U << 0U,
     MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES = 1U << 1U,
     MYLITE_SQL_MODE_IGNORE_SPACE = 1U << 2U,
+    MYLITE_SQL_MODE_PIPES_AS_CONCAT = 1U << 3U,
 };
 
 enum mylite_sql_keyword_flags {

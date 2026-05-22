@@ -1914,6 +1914,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "logical_or";
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
         return "deprecated_logical_or";
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
+        return "concat";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
         return "logical_not";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:

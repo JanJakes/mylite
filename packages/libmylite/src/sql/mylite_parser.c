@@ -4573,16 +4573,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     return where_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_key_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *group_key
+) {
+    struct mylite_sql_source_span span =
+        group_key == NULL ? (struct mylite_sql_source_span){0} : group_key->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_GROUP_BY_ITEM_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, group_key);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_group_by_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *group_key
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, group_key);
+    if (group_key != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, group_key->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token group_token,
-    struct mylite_sql_ast_node *group_key
+    struct mylite_sql_ast_node *group_keys
 ) {
     struct mylite_sql_source_span span = span_from_token(&group_token);
     struct mylite_sql_ast_node *group_clause = NULL;
 
-    if (group_key != NULL) {
-        span = span_join(span, group_key->span);
+    if (group_keys != NULL) {
+        span = span_join(span, group_keys->span);
     }
 
     group_clause = make_node(state, MYLITE_SQL_AST_GROUP_BY_CLAUSE, span);
@@ -4590,7 +4622,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
         return NULL;
     }
 
-    mylite_sql_ast_node_append_child(group_clause, group_key);
+    if (group_keys != NULL && group_keys->kind == MYLITE_SQL_AST_GROUP_BY_ITEM_LIST) {
+        struct mylite_sql_ast_node *group_key = group_keys->first_child;
+
+        while (group_key != NULL) {
+            struct mylite_sql_ast_node *next = group_key->next_sibling;
+            mylite_sql_ast_node_append_child(group_clause, group_key);
+            group_key = next;
+        }
+    } else {
+        mylite_sql_ast_node_append_child(group_clause, group_keys);
+    }
+
     return group_clause;
 }
 

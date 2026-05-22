@@ -3119,8 +3119,15 @@ where_clause_opt(A) ::= WHERE(W) predicate(P). {
 group_clause_opt(A) ::= . {
     A = NULL;
 }
-group_clause_opt(A) ::= GROUP(G) BY qualified_identifier(K). {
+group_clause_opt(A) ::= GROUP(G) BY group_key_list(K). {
     A = mylite_sql_parser_make_group_by_clause(state, G, K);
+}
+
+group_key_list(A) ::= qualified_identifier(K). {
+    A = mylite_sql_parser_make_group_by_key_list(state, K);
+}
+group_key_list(A) ::= group_key_list(L) COMMA qualified_identifier(K). {
+    A = mylite_sql_parser_append_group_by_key(state, L, K);
 }
 
 having_clause_opt(A) ::= . {

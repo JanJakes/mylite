@@ -1301,10 +1301,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
     struct mylite_sql_token where_token,
     struct mylite_sql_ast_node *predicate
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_key_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *group_key
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_group_by_key(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *group_key
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token group_token,
-    struct mylite_sql_ast_node *group_key
+    struct mylite_sql_ast_node *group_keys
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
     struct mylite_sql_parser_state *state,

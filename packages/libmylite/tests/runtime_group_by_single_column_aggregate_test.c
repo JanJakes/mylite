@@ -257,6 +257,40 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         NULL,
         "1",
     };
+    static const char *const g_n_count_columns[] = {"g", "n", "COUNT(*)"};
+    static const char *const g_n_not_null_values[] = {
+        "1",
+        "10",
+        "1",
+        "2",
+        "20",
+        "1",
+        "2",
+        "30",
+        "1",
+    };
+    static const char *const g_n_null_values[] = {NULL, NULL, "1", "1", NULL, "1"};
+    static const char *const qualified_multi_columns[] = {"k", "value", "c"};
+    static const char *const qualified_multi_values[] = {"2", "30", "1", "2", "20", "1"};
+    static const char *const name_label_columns[] = {"name", "label", "COUNT(*)", "SUM(n)"};
+    static const char *const name_label_values[] = {
+        NULL,
+        NULL,
+        "1",
+        "10",
+        "alice",
+        "A",
+        "2",
+        "50",
+        "bob",
+        "B",
+        "2",
+        "5",
+        "carol",
+        "C",
+        "1",
+        "7",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -794,6 +828,55 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "string grouped limit zero",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, n, COUNT(*) FROM grouped_numbers WHERE n IS NOT NULL "
+                   "GROUP BY g, n ORDER BY n",
+            .columns = g_n_count_columns,
+            .column_count = 3U,
+            .values = g_n_not_null_values,
+            .row_count = 3U,
+            .context = "integer grouped by two descriptor keys",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n "
+                   "HAVING n IS NULL ORDER BY g",
+            .columns = g_n_count_columns,
+            .column_count = 3U,
+            .values = g_n_null_values,
+            .row_count = 2U,
+            .context = "multiple grouped keys with nullable second key having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT t.g AS k, t.n AS value, COUNT(*) AS c "
+                   "FROM app.grouped_numbers AS t WHERE t.n IS NOT NULL "
+                   "GROUP BY t.g, t.n ORDER BY value DESC LIMIT 2",
+            .columns = qualified_multi_columns,
+            .column_count = 3U,
+            .values = qualified_multi_values,
+            .row_count = 2U,
+            .context = "qualified multiple group keys ordered by second alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, label, COUNT(*), SUM(n) FROM string_grouped "
+                   "GROUP BY name, label ORDER BY name",
+            .columns = name_label_columns,
+            .column_count = 4U,
+            .values = name_label_values,
+            .row_count = 4U,
+            .context = "string grouped by two descriptor keys",
+        }
+    );
     failures += expect_row_count(database, "-1", "row count after grouped select");
 
     catalog = mylite_connection_catalog_for_test(database);
@@ -849,6 +932,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "reopened string grouped sum",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, n, COUNT(*) FROM grouped_numbers WHERE n IS NOT NULL "
+                   "GROUP BY g, n ORDER BY n",
+            .columns = g_n_count_columns,
+            .column_count = 3U,
+            .values = g_n_not_null_values,
+            .row_count = 3U,
+            .context = "reopened multiple grouped keys",
+        }
+    );
     failures +=
         execute_ok(database, "RENAME TABLE grouped_numbers TO renamed_grouped_numbers", &result);
     mylite_result_free(result);
@@ -877,6 +972,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = name_count_values,
             .row_count = 4U,
             .context = "renamed table string grouped count",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, n, COUNT(*) FROM renamed_grouped_numbers WHERE n IS NOT NULL "
+                   "GROUP BY g, n ORDER BY n",
+            .columns = g_n_count_columns,
+            .column_count = 3U,
+            .values = g_n_not_null_values,
+            .row_count = 3U,
+            .context = "renamed table multiple grouped keys",
         }
     );
     failures += execute_ok(database, "DROP TABLE renamed_grouped_numbers", &result);
@@ -1123,6 +1230,79 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_not_group_by,
+            .sqlstate = "42000",
+            .message_part = "Expression #2 of SELECT list is not in GROUP BY clause",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, missing, COUNT(*) FROM grouped_numbers GROUP BY g, missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'group statement'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports ORDER BY only on the grouped column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g AS x, n AS x, COUNT(*) FROM grouped_numbers GROUP BY g, n HAVING x = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "HAVING supports only unique selected group aliases",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g AS x, n AS x, COUNT(*) FROM grouped_numbers GROUP BY g, n ORDER BY x",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports ORDER BY only on unique selected group aliases",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n, nn",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, g, n, nn, id, COUNT(*) FROM grouped_numbers GROUP BY id, g, n, nn, id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY supports at most four descriptor group columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT d, COUNT(*) FROM unsupported_group_keys GROUP BY d",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -1147,7 +1327,7 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports one grouped descriptor column and one or more aggregate results",
+                "GROUP BY supports selected descriptor group columns followed by aggregate results",
         }
     );
     failures += execute_error(

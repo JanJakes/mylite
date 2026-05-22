@@ -20952,11 +20952,44 @@ static int test_select_group_by_clause(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SELECT g, COUNT(*) FROM numbers GROUP BY g, n;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    failures += expect_span_text(child_at(group_clause, 0U), "g", "first group key");
+    failures += expect_span_text(child_at(group_clause, 1U), "n", "second group key");
+    failures += expect_true(child_at(group_clause, 2U) == NULL, "two-key group clause child count");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "SELECT g, COUNT(*) FROM numbers GROUP BY g, n;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "SELECT t.g, t.n, COUNT(*) FROM app.numbers AS t GROUP BY t.g, t.n;",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = child_at(result.root, 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    failures += expect_node(
+        child_at(group_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "first qualified group key"
+    );
+    failures += expect_node(
+        child_at(group_clause, 1U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "second qualified group key"
+    );
+    failures += expect_span_text(child_at(group_clause, 0U), "t.g", "first qualified group span");
+    failures += expect_span_text(child_at(group_clause, 1U), "t.n", "second qualified group span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers GROUP BY missing;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    failures += expect_span_text(child_at(group_clause, 0U), "missing", "mismatched group span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

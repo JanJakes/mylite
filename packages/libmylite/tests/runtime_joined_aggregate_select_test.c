@@ -119,6 +119,21 @@ static int test_joined_aggregate_values_and_persistence(void) {
         "5",
         "5.0000",
     };
+    static const char *const joined_multi_key_columns[] = {"id", "id", "COUNT(*)", "SUM(c.score)"};
+    static const char *const joined_multi_key_values[] = {
+        "1",
+        "101",
+        "1",
+        "5",
+        "1",
+        "102",
+        "1",
+        NULL,
+        "2",
+        "103",
+        "1",
+        "7",
+    };
     static const char *const inner_count_columns[] = {"post_id", "COUNT(*)"};
     static const char *const inner_count_values[] = {"1", "2", "2", "1"};
     static const char *const category_count_columns[] = {"category", "COUNT(c.id)"};
@@ -342,6 +357,19 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .context = "joined grouped bitwise xor aggregate",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id, c.id, COUNT(*), SUM(c.score) FROM posts p LEFT JOIN comments c "
+                   "ON p.id = c.post_id GROUP BY p.id, c.id HAVING c.id IS NOT NULL "
+                   "ORDER BY c.id",
+            .columns = joined_multi_key_columns,
+            .column_count = 4U,
+            .values = joined_multi_key_values,
+            .row_count = 3U,
+            .context = "joined grouped by two descriptor keys",
+        }
+    );
     failures += expect_row_count(database, "-1", "row count after joined aggregate select");
 
     mylite_close(database);
@@ -409,6 +437,26 @@ static int test_joined_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT p.id, c.id, COUNT(*) FROM posts p JOIN comments c ON p.id = c.post_id "
+        "GROUP BY p.id, c.id HAVING id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in having clause is ambiguous",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT p.id, c.id, COUNT(*) FROM posts p JOIN comments c ON p.id = c.post_id "
+        "GROUP BY p.id, c.id ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in order clause is ambiguous",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT p.id, COUNT(c.missing) FROM posts p LEFT JOIN comments c "
         "ON p.id = c.post_id GROUP BY p.id",
         (struct expected_sql_error){
@@ -454,7 +502,7 @@ static int test_joined_aggregate_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports one grouped descriptor column and one or more aggregate results",
+                "GROUP BY supports selected descriptor group columns followed by aggregate results",
         }
     );
 

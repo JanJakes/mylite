@@ -193,6 +193,7 @@ static int test_select_noop_modifier_clause(void);
 static int test_select_locking_clause(void);
 static int test_select_all_clause(void);
 static int test_select_union_clause(void);
+static int test_table_statement(void);
 static int test_select_table_alias_clause(void);
 static int test_select_inner_join_clause(void);
 static int test_select_item_alias_clause(void);
@@ -498,6 +499,7 @@ int main(void) {
     failures += test_select_locking_clause();
     failures += test_select_all_clause();
     failures += test_select_union_clause();
+    failures += test_table_statement();
     failures += test_select_table_alias_clause();
     failures += test_select_inner_join_clause();
     failures += test_select_item_alias_clause();
@@ -21031,6 +21033,107 @@ static int test_select_union_clause(void) {
         first_child_kind(child_at(statement, 0U), MYLITE_SQL_AST_ORDER_BY_CLAUSE),
         MYLITE_SQL_AST_ORDER_BY_CLAUSE,
         "union branch order parsed for runtime rejection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_table_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql("TABLE simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SELECT_STATEMENT, "table statement select");
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "table statement wildcard"
+    );
+    failures += expect_node(from_table, MYLITE_SQL_AST_FROM_TABLE, "table statement source");
+    failures += expect_span_text(child_at(from_table, 0U), "simple_lifecycle", "table name");
+    failures += expect_true(
+        first_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE) == NULL,
+        "table statement has no where"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "TABLE app.simple_lifecycle ORDER BY n DESC, id ASC LIMIT 2 OFFSET 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    order_items = child_at(order_clause, 0U);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_span_text(child_at(from_table, 0U), "app.simple_lifecycle", "schema table");
+    failures += expect_node(order_items, MYLITE_SQL_AST_ORDER_BY_ITEM_LIST, "table order list");
+    failures += expect_span_text(child_at(child_at(order_items, 0U), 0U), "n", "first table key");
+    failures += expect_order_direction(
+        child_at(child_at(order_items, 0U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "first table key direction"
+    );
+    failures += expect_span_text(child_at(child_at(order_items, 1U), 0U), "id", "second table key");
+    failures += expect_order_direction(
+        child_at(child_at(order_items, 1U), 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "second table key direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "2", "table limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "table limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "TABLE simple_lifecycle ORDER BY simple_lifecycle.id LIMIT 1, 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(
+        child_at(order_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified table order key"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "2", "table comma limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "table comma limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("TABLE simple_lifecycle LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_span_text(child_at(limit_clause, 0U), "0", "table zero limit");
+    failures += expect_true(child_at(limit_clause, 1U) == NULL, "table simple limit no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("TABLE simple_lifecycle WHERE id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("TABLE simple_lifecycle AS s;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("TABLE simple_lifecycle LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("TABLE simple_lifecycle ORDER BY 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "TABLE simple_lifecycle UNION SELECT * FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

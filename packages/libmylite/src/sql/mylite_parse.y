@@ -101,6 +101,9 @@ statement(A) ::= compound_select_statement(B). {
 statement(A) ::= select_statement(B). {
     A = B;
 }
+statement(A) ::= table_statement(B). {
+    A = B;
+}
 statement(A) ::= use_statement(B). {
     A = B;
 }
@@ -2576,6 +2579,10 @@ union_modifier_opt(A) ::= ALL. {
 
 table_source(A) ::= table_name(N) table_alias_opt(AL) table_index_hints_opt(IH). {
     A = mylite_sql_parser_make_table_source(state, N, AL, IH);
+}
+
+table_statement(A) ::= TABLE(T) table_name(N) select_order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_table_statement(state, T, N, O, L);
 }
 
 table_index_hints_opt(A) ::= . {

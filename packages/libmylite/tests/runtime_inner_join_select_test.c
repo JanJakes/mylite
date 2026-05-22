@@ -126,6 +126,8 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     static const char *const multi_order_rows[] = {"1", "8", "1", "7"};
     static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
     static const char *const row_count_rows[] = {"-1"};
+    static const char *const warning_row_count_rows[] = {"0", "-1"};
+    static const char *const hint_rows[] = {"1", "7"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -207,6 +209,93 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT * FROM lefts, rights WHERE lefts.k = rights.k ORDER BY rights.id",
+            .columns = star_columns,
+            .values = star_rows,
+            .column_count = sizeof(star_columns) / sizeof(star_columns[0]),
+            .row_count = 2U,
+            .context = "comma join with where equality expands left then right",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.w FROM lefts AS l, rights AS r "
+                   "WHERE l.k = r.k AND l.v = 100 ORDER BY r.w LIMIT 1 OFFSET 1",
+            .columns = alias_limit_columns,
+            .values = alias_limit_rows,
+            .column_count = sizeof(alias_limit_columns) / sizeof(alias_limit_columns[0]),
+            .row_count = 1U,
+            .context = "comma join alias where equality order limit offset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id FROM lefts l, rights r "
+                   "WHERE l.id = 1 ORDER BY r.id LIMIT 2",
+            .values = limited_cartesian_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "comma join cartesian product",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id FROM lefts, rights "
+                   "WHERE lefts.name = rights.name ORDER BY rights.id",
+            .values = string_join_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "comma join string equality uses registered collation",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id AS left_id, r.id AS right_id FROM lefts AS l, rights AS r "
+                   "WHERE l.k = r.k ORDER BY right_id DESC",
+            .values = alias_order_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "comma join order by selected alias",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id, r.id FROM lefts AS l USE INDEX (), rights AS r "
+                   "WHERE l.id = 1 ORDER BY r.id LIMIT 1",
+            .values = hint_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "comma join accepts empty use index hint",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT l.id FROM lefts AS l, rights AS r WHERE l.k = r.k "
+                   "ORDER BY r.id LIMIT 0",
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "comma join limit zero returns no rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count, ROW_COUNT()",
+            .values = warning_row_count_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "row count after comma join select",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT lefts.id, rights.id FROM lefts JOIN rights "
                    "ON lefts.name = rights.name ORDER BY rights.id",
             .values = string_join_rows,
@@ -268,6 +357,17 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .context = "schema-qualified join sources and columns",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT app.lefts.id, app.rights.id FROM app.lefts, app.rights "
+                   "WHERE app.lefts.k = app.rights.k ORDER BY app.rights.id",
+            .values = limited_cartesian_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "schema-qualified comma join sources and columns",
+        }
+    );
 
     failures += expect_statement(
         database,
@@ -288,6 +388,17 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "temporary table shadows persistent join source",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id FROM lefts, rights WHERE lefts.k = rights.k "
+                   "ORDER BY rights.id",
+            .values = temp_shadow_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "temporary table shadows persistent comma join source",
         }
     );
     failures += expect_statement(
@@ -345,11 +456,31 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .context = "join after table rename",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights2.id FROM lefts, rights2 WHERE lefts.k = rights2.k "
+                   "ORDER BY rights2.id",
+            .values = limited_cartesian_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "comma join after table rename",
+        }
+    );
     failures +=
         expect_statement(database, "DROP TABLE rights2", (struct expected_statement){0, 0U});
     failures += expect_error(
         database,
         "SELECT lefts.id FROM lefts JOIN rights2 ON lefts.k = rights2.k",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.rights2' doesn't exist",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights2 WHERE lefts.k = rights2.k",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -385,6 +516,15 @@ static int test_inner_join_diagnostics(void) {
     failures += expect_error(
         missing_default_database,
         "SELECT l.id FROM lefts l JOIN rights r ON l.k = r.k",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += expect_error(
+        missing_default_database,
+        "SELECT l.id FROM lefts l, rights r WHERE l.k = r.k",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -431,6 +571,33 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT id FROM lefts, rights WHERE lefts.k = rights.k",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in field list is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights WHERE k = k",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'k' in where clause is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.v FROM lefts, rights WHERE lefts.k = rights.k ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_column_ambiguous,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' in order clause is ambiguous",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT l.id FROM lefts AS l JOIN rights AS r ON lefts.k = r.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -440,7 +607,25 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT l.id FROM lefts AS l, rights AS r WHERE lefts.k = r.k",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'lefts.k' in 'where clause'",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT x.id FROM lefts AS x JOIN rights AS x ON x.k = x.k",
+        (struct expected_sql_error){
+            .code = mysql_error_not_unique_table_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias: 'x'",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT x.id FROM lefts AS x, rights AS x WHERE x.k = x.k",
         (struct expected_sql_error){
             .code = mysql_error_not_unique_table_alias,
             .sqlstate = "42000",
@@ -467,12 +652,40 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT lefts.id FROM lefts, rights WHERE lefts.missing = rights.k",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'lefts.missing' in 'where clause'",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT lefts.id FROM lefts JOIN rights ON lefts.k = rights.name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
                 "joined SELECT supports only same-family integer or string descriptor equality ON",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights WHERE lefts.k <> rights.k",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE column-to-column predicates support only =",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights WHERE lefts.k = rights.name",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE column-to-column predicates support only same-family integer "
+                            "or string descriptor equality",
         }
     );
     failures += expect_error(
@@ -504,12 +717,49 @@ static int test_inner_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
+        "SELECT lefts.id FROM lefts, missing WHERE lefts.k = missing.k",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing' doesn't exist",
+        }
+    );
+    failures += expect_error(
+        database,
         "SELECT lefts.id FROM lefts JOIN missing_schema.rights "
         "ON lefts.k = missing_schema.rights.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
             .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, missing_schema.rights "
+        "WHERE lefts.k = missing_schema.rights.k",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights, missing",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += expect_error(
+        database,
+        "SELECT lefts.id FROM lefts, rights JOIN missing ON rights.id = missing.id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
         }
     );
 
@@ -553,6 +803,17 @@ static int test_independent_file_backed_join_handles(void) {
         }
     );
     failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id FROM lefts, rights WHERE lefts.k = rights.k "
+                   "ORDER BY rights.id",
+            .values = first_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "first file-backed handle comma join state",
+        }
+    );
+    failures += expect_query_values(
         second,
         (struct expected_query){
             .sql = "SELECT lefts.id, rights.id FROM lefts JOIN rights ON lefts.k = rights.k "
@@ -561,6 +822,17 @@ static int test_independent_file_backed_join_handles(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "second file-backed handle join state",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT lefts.id, rights.id FROM lefts, rights WHERE lefts.k = rights.k "
+                   "ORDER BY rights.id",
+            .values = second_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "second file-backed handle comma join state",
         }
     );
 

@@ -2524,6 +2524,15 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, B, mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
 }
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) table_source(LT) COMMA
+    table_source(RT) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, B,
+        mylite_sql_parser_make_from_join(state, F, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL),
+        W, G, H, O, L, K);
+}
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) select_locking_clause_opt(K). {
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
@@ -2550,6 +2559,15 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_statement_with_modifiers(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_join(state, F, LT, JO, RT, J), W, G, H, O, L, K);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_source(LT) COMMA table_source(RT)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) select_order_clause_opt(O)
+    limit_clause_opt(L) select_locking_clause_opt(K). {
+    A = mylite_sql_parser_make_select_statement_with_modifiers(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_join(state, F, LT, MYLITE_SQL_AST_JOIN_KIND_INNER, RT, NULL),
+        W, G, H, O, L, K);
 }
 
 compound_select_statement(A) ::= select_statement(S) union_term_list(T). {

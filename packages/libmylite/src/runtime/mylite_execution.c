@@ -2529,6 +2529,7 @@ struct select_predicate_plan_options {
     bool allow_exists;
     bool allow_in_subquery;
     bool allow_column_reference_rhs;
+    bool allow_same_scope_column_reference_rhs;
     const struct select_source_context *outer_source_context;
     const struct mylite_catalog_column_descriptor *outer_columns;
     size_t outer_column_count;
@@ -19485,6 +19486,12 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 );
+static int plan_joined_select_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
+);
 static int plan_select_predicate_with_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause,
@@ -19661,6 +19668,18 @@ static int plan_literal_left_column_comparison_predicate(
     size_t table_column_count,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
+);
+static int plan_same_scope_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static bool same_scope_column_comparison_is_supported(
+    const struct planned_select_predicate_node *node
 );
 static int plan_scalar_literal_is_predicate(
     struct mylite_db *database,
@@ -71657,12 +71676,10 @@ static int plan_joined_select(
         rc = plan_select_columns(database, select_list, &source_context, NULL, 0U, out_plan);
     }
     if (rc == MYLITE_OK) {
-        rc = plan_select_predicate(
+        rc = plan_joined_select_predicate(
             database,
             where_clause,
             &source_context,
-            NULL,
-            0U,
             &out_plan->predicate
         );
     }
@@ -128164,7 +128181,9 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 ) {
-    const struct select_predicate_plan_options options = {.allow_exists = false};
+    const struct select_predicate_plan_options options = {
+        .allow_exists = false,
+    };
 
     return plan_select_predicate_with_options(
         database,
@@ -128172,6 +128191,28 @@ static int plan_select_predicate(
         source_context,
         table_columns,
         table_column_count,
+        &options,
+        out_predicate
+    );
+}
+
+static int plan_joined_select_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
+) {
+    const struct select_predicate_plan_options options = {
+        .allow_exists = false,
+        .allow_same_scope_column_reference_rhs = true,
+    };
+
+    return plan_select_predicate_with_options(
+        database,
+        where_clause,
+        source_context,
+        NULL,
+        0U,
         &options,
         out_predicate
     );
@@ -129105,6 +129146,17 @@ static int plan_comparison_predicate(
     }
 
     if (comparison_predicate_rhs_is_column_reference(predicate_node)) {
+        if (options != NULL && options->allow_same_scope_column_reference_rhs) {
+            return plan_same_scope_column_comparison_predicate(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                predicate,
+                out_node_index
+            );
+        }
         if (options == NULL || !options->allow_column_reference_rhs) {
             set_unsupported_error(
                 database,
@@ -129275,6 +129327,71 @@ static int plan_literal_left_column_comparison_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_same_scope_column_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+        .value_is_column_reference = true,
+    };
+    int rc = MYLITE_OK;
+
+    if (node.operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL) {
+        set_unsupported_error(database, "WHERE column-to-column predicates support only =");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_predicate_column_with_source_index(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column,
+        &node.column_source_index
+    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_predicate_column_with_source_index(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &node.value_column,
+            &node.value_column_source_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!same_scope_column_comparison_is_supported(&node)) {
+        set_unsupported_error(
+            database,
+            "WHERE column-to-column predicates support only same-family integer or string "
+            "descriptor equality"
+        );
+        return MYLITE_ERROR;
+    }
+
+    predicate->qualify_column_references = true;
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static bool same_scope_column_comparison_is_supported(
+    const struct planned_select_predicate_node *node
+) {
+    return join_condition_columns_are_compatible(&node->column, &node->value_column);
 }
 
 static int plan_scalar_literal_is_predicate(

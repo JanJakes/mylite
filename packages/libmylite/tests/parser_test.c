@@ -21424,6 +21424,44 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT l.id, r.w FROM lefts AS l, rights AS r WHERE l.k = r.k "
+        "ORDER BY r.w LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    left_source = child_at(from_join, 0U);
+    right_source = child_at(from_join, 1U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "comma join from clause");
+    failures += expect_child_count(from_join, 2U, "comma join child count");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_INNER,
+        "comma join kind"
+    );
+    failures += expect_span_text(child_at(left_source, 0U), "lefts", "comma left table");
+    failures += expect_span_text(child_at(left_source, 1U), "l", "comma left alias");
+    failures += expect_span_text(child_at(right_source, 0U), "rights", "comma right table");
+    failures += expect_span_text(child_at(right_source, 1U), "r", "comma right alias");
+    failures += expect_span_text(child_at(order_clause, 0U), "r.w", "comma order key");
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "comma limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM lefts, rights;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "comma join wildcard"
+    );
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "comma wildcard join");
+    failures += expect_child_count(from_join, 2U, "comma wildcard child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT l.id FROM lefts l INNER JOIN rights r ON l.k = r.k;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -21463,6 +21501,19 @@ static int test_select_inner_join_clause(void) {
     failures += expect_true(
         mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER,
         "left outer join kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l, rights r, extras e;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l, rights r JOIN extras e ON r.id = e.id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -29,6 +29,8 @@ enum {
     unix_timestamp_second_offset = 17,
     unix_timestamp_two_digit_count = 2,
     unix_timestamp_four_digit_count = 4,
+    unix_timestamp_four_digit_year_min = 0,
+    unix_timestamp_four_digit_year_max = 9999,
     unix_timestamp_month_max = 12,
     unix_timestamp_day_max = 31,
     unix_timestamp_february = 2,
@@ -43,15 +45,22 @@ enum {
     unix_timestamp_days_per_common_year = 365,
     unix_timestamp_days_from_civil_epoch_shift = 719468,
     unix_timestamp_days_per_era = 146097,
+    unix_timestamp_days_per_era_minus_one = 146096,
+    unix_timestamp_days_per_quadrennium = 1460,
+    unix_timestamp_days_per_century = 36524,
     unix_timestamp_march_based_early_month_offset = 9,
     unix_timestamp_march_based_later_month_offset = -3,
     unix_timestamp_month_formula_multiplier = 153,
     unix_timestamp_month_formula_offset = 2,
     unix_timestamp_month_formula_divisor = 5,
+    unix_timestamp_march_based_month_wrap = 10,
     unix_timestamp_valid_minimum = 1,
     unix_timestamp_seconds_per_minute = 60,
     unix_timestamp_minutes_per_hour = 60,
     unix_timestamp_hours_per_day = 24,
+    unix_timestamp_seconds_per_hour =
+        unix_timestamp_minutes_per_hour * unix_timestamp_seconds_per_minute,
+    unix_timestamp_seconds_per_day = unix_timestamp_hours_per_day * unix_timestamp_seconds_per_hour,
 };
 
 static const int64_t unix_timestamp_maximum = 32536771199LL;
@@ -92,6 +101,7 @@ static void unix_timestamp_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void from_unixtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int unix_timestamp_sqlite_input_kind(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -103,6 +113,7 @@ static int unix_timestamp_sqlite_result(
     size_t value_length,
     enum mylite_unix_timestamp_input_kind input_kind
 );
+static int from_unixtime_sqlite_result(sqlite3_context *context, int64_t seconds);
 static int unix_timestamp_value_result(
     struct mylite_db *database,
     const char *value,
@@ -110,6 +121,7 @@ static int unix_timestamp_value_result(
     enum mylite_unix_timestamp_input_kind input_kind,
     char **out_text
 );
+static int from_unixtime_value_result(struct mylite_db *database, int64_t seconds, char **out_text);
 static enum unix_timestamp_parse_status parse_unix_timestamp_value(
     const struct unix_timestamp_value_source *source,
     struct unix_timestamp_datetime_parts *out_datetime
@@ -146,9 +158,17 @@ static int64_t epoch_from_datetime(
     const struct unix_timestamp_datetime_parts *datetime,
     int offset_minutes
 );
+static struct unix_timestamp_datetime_parts datetime_from_epoch(int64_t epoch, int offset_minutes);
 static int64_t days_from_civil(const struct unix_timestamp_date_parts *date);
+static struct unix_timestamp_date_parts civil_from_days(int64_t days);
+static int64_t floor_divide_i64(int64_t numerator, int64_t denominator);
 static int copy_unix_timestamp_text(struct mylite_db *database, const char *text, char **out_text);
 static int format_unix_timestamp_epoch(struct mylite_db *database, int64_t epoch, char **out_text);
+static int format_from_unixtime_datetime(
+    struct mylite_db *database,
+    const struct unix_timestamp_datetime_parts *datetime,
+    char **out_text
+);
 static int append_incorrect_datetime_warning(
     struct mylite_db *database,
     const char *value,
@@ -219,6 +239,25 @@ int mylite_unix_timestamp_value(
     return unix_timestamp_value_result(database, value, value_length, input_kind, out_text);
 }
 
+int mylite_from_unixtime_value(
+    struct mylite_db *database,
+    int64_t seconds,
+    bool is_null,
+    char **out_text,
+    bool *out_is_null
+) {
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+    if (is_null || seconds < 0 || seconds > unix_timestamp_maximum) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    return from_unixtime_value_result(database, seconds, out_text);
+}
+
 int mylite_sqlite_register_unix_timestamp_function(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -228,6 +267,19 @@ int mylite_sqlite_register_unix_timestamp_function(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = unix_timestamp_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_from_unixtime",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = from_unixtime_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -281,6 +333,30 @@ static void unix_timestamp_sqlite_callback(
     }
 }
 
+static void from_unixtime_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    int sqlite_type = SQLITE_NULL;
+
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite FROM_UNIXTIME callback", -1);
+        return;
+    }
+
+    sqlite_type = sqlite3_value_type(argv[0]);
+    if (sqlite_type == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite_type != SQLITE_INTEGER) {
+        sqlite3_result_error(context, "MyLite FROM_UNIXTIME expects integer seconds", -1);
+        return;
+    }
+    (void)from_unixtime_sqlite_result(context, sqlite3_value_int64(argv[0]));
+}
+
 static int unix_timestamp_sqlite_input_kind(
     sqlite3_context *context,
     sqlite3_value *value,
@@ -326,6 +402,36 @@ static int unix_timestamp_sqlite_result(
             sqlite3_result_error_nomem(context);
         } else {
             sqlite3_result_error(context, "MyLite UNIX_TIMESTAMP failed", -1);
+        }
+        free(result);
+        return rc;
+    }
+    if (is_null) {
+        sqlite3_result_null(context);
+    } else {
+        sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
+    }
+    free(result);
+    return MYLITE_OK;
+}
+
+static int from_unixtime_sqlite_result(sqlite3_context *context, int64_t seconds) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    char *result = NULL;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite FROM_UNIXTIME owner", -1);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_from_unixtime_value(database, seconds, false, &result, &is_null);
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+        } else {
+            sqlite3_result_error(context, "MyLite FROM_UNIXTIME failed", -1);
         }
         free(result);
         return rc;
@@ -387,6 +493,19 @@ static int unix_timestamp_value_result(
     }
     epoch = epoch_from_datetime(&datetime, offset_minutes);
     return format_unix_timestamp_epoch(database, epoch, out_text);
+}
+
+static int from_unixtime_value_result(
+    struct mylite_db *database,
+    int64_t seconds,
+    char **out_text
+) {
+    struct unix_timestamp_datetime_parts datetime = datetime_from_epoch(
+        seconds,
+        database == NULL ? 0 : database->session.time_zone_offset_minutes
+    );
+
+    return format_from_unixtime_datetime(database, &datetime, out_text);
 }
 
 static enum unix_timestamp_parse_status parse_unix_timestamp_value(
@@ -633,6 +752,21 @@ static int64_t epoch_from_datetime(
     return seconds;
 }
 
+static struct unix_timestamp_datetime_parts datetime_from_epoch(int64_t epoch, int offset_minutes) {
+    int64_t local_epoch = epoch + ((int64_t)offset_minutes * unix_timestamp_seconds_per_minute);
+    int64_t seconds_per_day = unix_timestamp_seconds_per_day;
+    int64_t days = floor_divide_i64(local_epoch, seconds_per_day);
+    int64_t seconds_of_day = local_epoch - (days * seconds_per_day);
+    struct unix_timestamp_datetime_parts datetime = {0};
+
+    datetime.date = civil_from_days(days);
+    datetime.time.hour = (int)(seconds_of_day / unix_timestamp_seconds_per_hour);
+    seconds_of_day %= unix_timestamp_seconds_per_hour;
+    datetime.time.minute = (int)(seconds_of_day / unix_timestamp_seconds_per_minute);
+    datetime.time.second = (int)(seconds_of_day % unix_timestamp_seconds_per_minute);
+    return datetime;
+}
+
 static int64_t days_from_civil(const struct unix_timestamp_date_parts *date) {
     int year = date == NULL ? 0 : date->year;
     int month = date == NULL ? 0 : date->month;
@@ -658,6 +792,49 @@ static int64_t days_from_civil(const struct unix_timestamp_date_parts *date) {
 
     return ((int64_t)era * unix_timestamp_days_per_era) + (int64_t)day_of_era -
            unix_timestamp_days_from_civil_epoch_shift;
+}
+
+static struct unix_timestamp_date_parts civil_from_days(int64_t days) {
+    int64_t shifted_days = days + unix_timestamp_days_from_civil_epoch_shift;
+    int64_t era = floor_divide_i64(shifted_days, unix_timestamp_days_per_era);
+    uint64_t day_of_era = (uint64_t)(shifted_days - (era * unix_timestamp_days_per_era));
+    uint64_t year_of_era = (day_of_era - (day_of_era / unix_timestamp_days_per_quadrennium) +
+                            (day_of_era / unix_timestamp_days_per_century) -
+                            (day_of_era / unix_timestamp_days_per_era_minus_one)) /
+                           unix_timestamp_days_per_common_year;
+    int64_t year = (era * unix_timestamp_leap_quadricentennial_year_cycle) + (int64_t)year_of_era;
+    uint64_t day_of_year =
+        day_of_era - ((year_of_era * unix_timestamp_days_per_common_year) +
+                      (year_of_era / unix_timestamp_leap_quadrennial_year_cycle) -
+                      (year_of_era / unix_timestamp_leap_century_year_cycle));
+    uint64_t month_part = ((unix_timestamp_month_formula_divisor * day_of_year) +
+                           unix_timestamp_month_formula_offset) /
+                          unix_timestamp_month_formula_multiplier;
+    int day = (int)(day_of_year -
+                    (((unix_timestamp_month_formula_multiplier * month_part) +
+                      unix_timestamp_month_formula_offset) /
+                     unix_timestamp_month_formula_divisor) +
+                    1U);
+    int month = (int)month_part + (month_part < unix_timestamp_march_based_month_wrap
+                                       ? -unix_timestamp_march_based_later_month_offset
+                                       : -unix_timestamp_march_based_early_month_offset);
+
+    year += month <= unix_timestamp_february ? 1 : 0;
+    return (struct unix_timestamp_date_parts){
+        .year = (int)year,
+        .month = month,
+        .day = day,
+    };
+}
+
+static int64_t floor_divide_i64(int64_t numerator, int64_t denominator) {
+    int64_t quotient = numerator / denominator;
+    int64_t remainder = numerator % denominator;
+
+    if (remainder != 0 && ((remainder < 0) != (denominator < 0))) {
+        --quotient;
+    }
+    return quotient;
 }
 
 static int copy_unix_timestamp_text(struct mylite_db *database, const char *text, char **out_text) {
@@ -697,6 +874,38 @@ static int format_unix_timestamp_epoch(struct mylite_db *database, int64_t epoch
     written = snprintf(buffer, sizeof(buffer), "%" PRId64, result);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         set_unix_timestamp_unsupported_error(database, "failed to format UNIX_TIMESTAMP() value");
+        return MYLITE_ERROR;
+    }
+    return copy_unix_timestamp_text(database, buffer, out_text);
+}
+
+static int format_from_unixtime_datetime(
+    struct mylite_db *database,
+    const struct unix_timestamp_datetime_parts *datetime,
+    char **out_text
+) {
+    char buffer[unix_timestamp_result_capacity];
+    int written = 0;
+
+    if (datetime == NULL || datetime->date.year < unix_timestamp_four_digit_year_min ||
+        datetime->date.year > unix_timestamp_four_digit_year_max) {
+        set_unix_timestamp_unsupported_error(database, "failed to format FROM_UNIXTIME() value");
+        return MYLITE_ERROR;
+    }
+
+    written = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%04d-%02d-%02d %02d:%02d:%02d",
+        datetime->date.year,
+        datetime->date.month,
+        datetime->date.day,
+        datetime->time.hour,
+        datetime->time.minute,
+        datetime->time.second
+    );
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        set_unix_timestamp_unsupported_error(database, "failed to format FROM_UNIXTIME() value");
         return MYLITE_ERROR;
     }
     return copy_unix_timestamp_text(database, buffer, out_text);

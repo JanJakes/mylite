@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 enum mylite_unix_timestamp_input_kind {
     MYLITE_UNIX_TIMESTAMP_INPUT_STRING = 0,
@@ -27,6 +28,13 @@ int mylite_unix_timestamp_value(
     const char *value,
     size_t value_length,
     enum mylite_unix_timestamp_input_kind input_kind,
+    char **out_text,
+    bool *out_is_null
+);
+int mylite_from_unixtime_value(
+    struct mylite_db *database,
+    int64_t seconds,
+    bool is_null,
     char **out_text,
     bool *out_is_null
 );

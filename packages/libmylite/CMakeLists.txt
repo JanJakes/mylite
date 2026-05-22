@@ -823,6 +823,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_unix_timestamp_function_test)
 
+  add_executable(mylite_runtime_from_unixtime_function_test
+    tests/runtime_from_unixtime_function_test.c
+  )
+  target_link_libraries(mylite_runtime_from_unixtime_function_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_from_unixtime_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_from_unixtime_function_test)
+
   add_executable(mylite_runtime_time_second_conversion_functions_test
     tests/runtime_time_second_conversion_functions_test.c
   )
@@ -3581,6 +3593,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.unix_timestamp_function
     COMMAND mylite_runtime_unix_timestamp_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.from_unixtime_function
+    COMMAND mylite_runtime_from_unixtime_function_test
   )
   add_test(
     NAME libmylite.runtime.time_second_conversion_functions

@@ -68,6 +68,7 @@ static int test_addtime_subtime_functions(void);
 static int test_date_format_function(void);
 static int test_datediff_function(void);
 static int test_unix_timestamp_function(void);
+static int test_from_unixtime_function(void);
 static int test_time_second_conversion_functions(void);
 static int test_temporal_extract_functions(void);
 static int test_scalar_subquery_expression(void);
@@ -372,6 +373,7 @@ int main(void) {
     failures += test_date_format_function();
     failures += test_datediff_function();
     failures += test_unix_timestamp_function();
+    failures += test_from_unixtime_function();
     failures += test_time_second_conversion_functions();
     failures += test_temporal_extract_functions();
     failures += test_scalar_subquery_expression();
@@ -3795,6 +3797,126 @@ static int test_unix_timestamp_function(void) {
     failures += parse_sql(
         "CREATE TABLE unix_timestamp (unix_timestamp INT); "
         "SELECT unix_timestamp FROM unix_timestamp;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_from_unixtime_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT FROM_UNIXTIME(0), From_Unixtime(+1) AS dt, FROM_UNIXTIME(seconds) "
+        "FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "from_unixtime integer function"
+    );
+    failures += expect_child_count(first_expression, 1U, "from_unixtime integer count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "from_unixtime integer argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "from_unixtime signed function"
+    );
+    failures += expect_child_count(second_expression, 1U, "from_unixtime signed count");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_UNARY_EXPRESSION,
+        "from_unixtime signed argument"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "from_unixtime alias"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "from_unixtime column function"
+    );
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "from_unixtime column argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DO FROM_UNIXTIME(1), FROM_UNIXTIME(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    expression_list = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "from_unixtime do");
+    failures += expect_node(
+        child_at(expression_list, 0U),
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "do from_unixtime integer"
+    );
+    failures += expect_node(
+        child_at(expression_list, 1U),
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "do from_unixtime null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FROM_UNIXTIME();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR,
+        "from_unixtime zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FROM_UNIXTIME(1, '%Y-%m-%d');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION,
+        "from_unixtime format marker"
+    );
+    failures += expect_child_count(first_expression, 2U, "from_unixtime format count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT FROM_UNIXTIME(1, 2, 3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR,
+        "from_unixtime extra argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT FROM_UNIXTIME (1) AS dt FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE from_unixtime (from_unixtime INT); "
+        "SELECT from_unixtime FROM from_unixtime;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

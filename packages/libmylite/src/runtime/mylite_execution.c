@@ -2716,6 +2716,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_STRCMP = 42,
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE = 43,
     PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME = 44,
+    PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME = 45,
 };
 
 enum planned_row_scalar_field_domain {
@@ -12953,13 +12954,30 @@ static int sec_to_time_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int from_unixtime_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_sec_to_time_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     int64_t *out_seconds,
     bool *out_is_null
 );
+static int evaluate_from_unixtime_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_seconds,
+    bool *out_is_null
+);
 static int sec_to_time_scalar_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    int64_t *out_seconds
+);
+static int from_unixtime_scalar_integer_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
     bool is_negative,
@@ -21947,6 +21965,37 @@ static int plan_row_scalar_sec_to_time_column(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_from_unixtime_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_from_unixtime_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_from_unixtime_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_from_unixtime_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static bool row_scalar_date_format_equal_attempt(const struct mylite_sql_ast_node *expression);
 static bool date_format_numeric_literal_expression(const struct mylite_sql_ast_node *expression);
 static int plan_row_scalar_date_format_numeric_literal(
@@ -23113,6 +23162,11 @@ static int append_row_scalar_temporal_extract_expression_sql(
     size_t *next_parameter
 );
 static int append_row_scalar_sec_to_time_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_from_unixtime_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -24331,6 +24385,11 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_sec_to_time_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_from_unixtime_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -25584,6 +25643,8 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
@@ -45047,6 +45108,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
@@ -78367,6 +78430,8 @@ static const char *argument_count_error_node_function_name(
         return "TIME_TO_SEC";
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
         return "SEC_TO_TIME";
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
+        return "FROM_UNIXTIME";
     case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
         return "DAYOFMONTH";
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
@@ -78497,6 +78562,11 @@ static int session_scalar_value(
         return sec_to_time_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "SEC_TO_TIME");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+        return from_unixtime_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_TO_SEC");
@@ -82067,6 +82137,166 @@ static int sec_to_time_scalar_integer_literal_value(
         set_unsupported_error(
             database,
             "SEC_TO_TIME() integer literals must fit the signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        *out_seconds = INT64_MIN;
+    } else if (is_negative) {
+        *out_seconds = -(int64_t)magnitude;
+    } else {
+        *out_seconds = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int from_unixtime_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    int64_t seconds = 0;
+    bool is_null = false;
+    bool result_is_null = false;
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION) {
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count == 2U) {
+        set_unsupported_error(database, "FROM_UNIXTIME() format arguments are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (child_count != 1U) {
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
+        return MYLITE_ERROR;
+    }
+
+    rc = evaluate_from_unixtime_scalar_argument(
+        database,
+        child_at(expression, 0U),
+        &seconds,
+        &is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_from_unixtime_value(
+            database,
+            seconds,
+            is_null,
+            &out_cell->owned_text,
+            &result_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->value = out_cell->owned_text;
+    }
+    return rc;
+}
+
+static int evaluate_from_unixtime_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    int64_t *out_seconds,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (out_seconds == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_seconds = 0;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() supports only signed integer, boolean, and NULL literal arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if ((operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) ||
+            literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "FROM_UNIXTIME() supports only signed integer, boolean, and NULL literal arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        return from_unixtime_scalar_integer_literal_value(
+            database,
+            literal,
+            operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+            out_seconds
+        );
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() supports only signed integer, boolean, and NULL literal arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_seconds = 1;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_seconds = 0;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() supports only signed integer, boolean, and NULL literal arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return from_unixtime_scalar_integer_literal_value(database, expression, false, out_seconds);
+}
+
+static int from_unixtime_scalar_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    int64_t *out_seconds
+) {
+    uint64_t magnitude = 0U;
+
+    if (literal == NULL || out_seconds == NULL ||
+        parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() integer literals must fit the signed 64-bit range"
         );
         return MYLITE_ERROR;
     }
@@ -97819,6 +98049,8 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
     case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
@@ -116563,6 +116795,21 @@ static int plan_row_scalar_temporal_function_expression(
             table_column_count,
             out_expression
         );
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
+        *out_handled = true;
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+        *out_handled = true;
+        return plan_row_scalar_from_unixtime_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "TIME_TO_SEC");
         *out_handled = true;
@@ -123303,6 +123550,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -125049,6 +125297,220 @@ static int plan_row_scalar_sec_to_time_column(
     return MYLITE_OK;
 }
 
+static int plan_row_scalar_from_unixtime_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    size_t child_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION) {
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
+        return MYLITE_ERROR;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (child_count == 2U) {
+        set_unsupported_error(database, "FROM_UNIXTIME() format arguments are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (child_count != 1U) {
+        set_native_function_parameter_count_error(database, "FROM_UNIXTIME");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME;
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_from_unixtime_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    return rc;
+}
+
+static int plan_row_scalar_from_unixtime_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() supports only signed integer, boolean, NULL, and integer "
+            "descriptor arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = false, .integer = 0};
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return plan_row_scalar_from_unixtime_integer_value(
+                database,
+                expression,
+                out_expression
+            );
+        }
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_from_unixtime_integer_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_from_unixtime_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "FROM_UNIXTIME() supports only signed integer, boolean, NULL, and integer descriptor "
+        "arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_from_unixtime_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool is_negative = false;
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "FROM_UNIXTIME() supports only signed integer, boolean, NULL, and integer "
+                "descriptor arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(expression, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "FROM_UNIXTIME() supports only signed integer, boolean, NULL, and integer descriptor "
+            "arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = from_unixtime_scalar_integer_literal_value(database, literal, is_negative, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = false, .integer = value};
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_from_unixtime_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT FROM_UNIXTIME() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (strcmp(column.physical_type, "INTEGER") != 0) {
+        set_unsupported_error(database, "FROM_UNIXTIME() supports only integer descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
 static bool planned_date_format_numeric_equal_format_is_supported(
     const struct planned_row_scalar_expression *expression
 ) {
@@ -126142,6 +126604,8 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR ||
@@ -140468,6 +140932,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
@@ -141326,6 +141791,8 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
         return append_row_scalar_sec_to_time_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+        return append_row_scalar_from_unixtime_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return append_row_scalar_string_slice_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
@@ -141427,6 +141894,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -142154,6 +142622,31 @@ static int append_row_scalar_sec_to_time_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_from_unixtime_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_from_unixtime(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_non_concat_expression_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_string_slice_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -142625,6 +143118,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -142814,6 +143308,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -142878,6 +143373,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -143275,6 +143771,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -143343,6 +143840,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -149333,6 +149831,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+        return bind_row_scalar_from_unixtime_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
         return bind_row_scalar_string_slice_expression_parameters(
             statement,
@@ -149482,6 +149986,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -149719,6 +150224,21 @@ static int bind_row_scalar_temporal_extract_expression_parameters(
 }
 
 static int bind_row_scalar_sec_to_time_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_non_concat_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+}
+
+static int bind_row_scalar_from_unixtime_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -150037,6 +150557,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -150211,6 +150732,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
@@ -150270,6 +150792,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:

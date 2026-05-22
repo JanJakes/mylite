@@ -505,6 +505,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"FOUND", 0U},
         {"FOUND_ROWS", 0U},
         {"FROM", MYLITE_SQL_KEYWORD_RESERVED},
+        {"FROM_UNIXTIME", 0U},
         {"FULL", 0U},
         {"FULLTEXT", MYLITE_SQL_KEYWORD_RESERVED},
         {"FUNCTION", MYLITE_SQL_KEYWORD_RESERVED},

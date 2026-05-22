@@ -10,10 +10,12 @@ primary-key, unique-index, prefix-key, auto-increment, and foreign-key
 replacement machinery already used by `REPLACE ... VALUES` and `REPLACE ...
 SET`.
 
-This is not full MySQL `REPLACE ... SELECT`. The source remains the current
-single-table descriptor-backed `SELECT` subset. Row-scalar, compound, joined,
-`TABLE`, partitioned, expression, and generated-column target forms remain
-deferred.
+This is not full MySQL `REPLACE ... SELECT`. This slice keeps the source as
+the current single-table descriptor-backed `SELECT` subset. Row-scalar source
+behavior is specified separately in
+`docs/specs/baseline-replace-select-row-scalar-source/specs.md`; compound,
+joined, `TABLE`, partitioned, broader expression, and generated-column target
+forms remain deferred.
 
 ## Sources
 
@@ -108,8 +110,11 @@ The implementation must add:
 
 This feature must not implement:
 
-- row-scalar, `DUAL`, compound `UNION`, joined, CTE, subquery, or `TABLE`
-  sources for `REPLACE ... SELECT`;
+- row-scalar or `DUAL` sources for this keyed table-backed slice; they are
+  specified separately in
+  `docs/specs/baseline-replace-select-row-scalar-source/specs.md`;
+- compound `UNION`, joined, CTE, subquery, or `TABLE` sources for
+  `REPLACE ... SELECT`;
 - source expression projection, arbitrary functions, parameters, literals, or
   general expression conversion;
 - generated-column target writes beyond the current rejected non-`DEFAULT`
@@ -295,7 +300,7 @@ Update:
 - `COMPATIBILITY.md`
 - `docs/compatibility/sql-table-dml.md`
 
-The wording must remain partial/limited. Do not claim `TABLE`, joins,
-row-scalar sources, compound sources, partitions, target aliases, expression
-sources, generated-column writes, triggers, cascades, optimizer behavior,
-privileges, or full MySQL `REPLACE` compatibility.
+The wording must remain partial/limited. Do not claim `TABLE`, joins, compound
+sources, partitions, target aliases, broad expression sources,
+generated-column writes, triggers, cascades, optimizer behavior, privileges, or
+full MySQL `REPLACE` compatibility.

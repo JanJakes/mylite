@@ -13,7 +13,7 @@
 enum {
     test_path_capacity = 1024,
     show_warnings_column_count = 3,
-    final_row_count = 6,
+    final_row_count = 8,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
 };
@@ -100,24 +100,8 @@ static int test_replace_modifiers_for_supported_forms(void) {
         "Column 'id' cannot be null",
     };
     static const char *const final_rows[] = {
-        "1",
-        "11",
-        NULL,
-        "2",
-        "22",
-        NULL,
-        "3",
-        "33",
-        NULL,
-        "4",
-        "44",
-        NULL,
-        "10",
-        "100",
-        NULL,
-        "11",
-        "110",
-        "11",
+        "1",  "11",  NULL, "2",  "22",  NULL, "3",  "33",  NULL, "4",  "44",  NULL,
+        "10", "100", NULL, "11", "110", "11", "12", "120", NULL, "13", "130", NULL,
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -151,6 +135,13 @@ static int test_replace_modifiers_for_supported_forms(void) {
         (struct expected_dml){
             .sql = "REPLACE LOW_PRIORITY INTO numbers (id, nn, n) "
                    "SELECT id, nn, n FROM src ORDER BY id LIMIT 1",
+            .affected_rows = 1,
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        (struct expected_dml){
+            .sql = "REPLACE LOW_PRIORITY INTO numbers (id, nn) SELECT 12, 120",
             .affected_rows = 1,
         }
     );
@@ -209,6 +200,24 @@ static int test_replace_modifiers_for_supported_forms(void) {
             .codes = delayed_warning_codes,
             .message_parts = delayed_warning_messages,
             .context = "delayed select warning row",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        (struct expected_dml){
+            .sql = "REPLACE DELAYED INTO numbers (id, nn) SELECT 13, 130 FROM DUAL",
+            .affected_rows = 1,
+            .warning_count = 1U,
+        }
+    );
+    failures += expect_show_warnings(
+        database,
+        (struct expected_warnings){
+            .row_count = 1U,
+            .levels = delayed_warning_levels,
+            .codes = delayed_warning_codes,
+            .message_parts = delayed_warning_messages,
+            .context = "delayed row-scalar select warning row",
         }
     );
 

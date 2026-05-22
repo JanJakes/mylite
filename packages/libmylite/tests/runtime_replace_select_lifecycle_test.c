@@ -22,6 +22,7 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_unknown_column = 1054,
+    mysql_error_no_tables_used = 1096,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_column_specified_twice = 1110,
     mysql_error_table_does_not_exist = 1146,
@@ -48,6 +49,7 @@ struct expected_query {
 };
 
 static int test_replace_select_success_persistence_and_visibility(void);
+static int test_replace_select_row_scalar_sources(void);
 static int test_replace_select_keyed_targets(void);
 static int test_replace_select_schema_resolution_and_diagnostics(void);
 static int test_replace_select_independent_handles(void);
@@ -89,6 +91,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_replace_select_success_persistence_and_visibility();
+    failures += test_replace_select_row_scalar_sources();
     failures += test_replace_select_keyed_targets();
     failures += test_replace_select_schema_resolution_and_diagnostics();
     failures += test_replace_select_independent_handles();
@@ -304,6 +307,248 @@ static int test_replace_select_success_persistence_and_visibility(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.renamed_dst' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_replace_select_row_scalar_sources(void) {
+    static const char *const no_key_rows[] = {
+        "1",
+        "7",
+        "10",
+        "1",
+        "20",
+        "30",
+    };
+    static const char *const filter_rows[] = {
+        "1",
+        "10",
+        "2",
+        "20",
+    };
+    static const char *const zero_rows[] = {"0"};
+    static const char *const pk_rows[] = {
+        "1",
+        "30",
+        "2",
+        "20",
+    };
+    static const char *const multi_unique_rows[] = {
+        "1",
+        "20",
+        "300",
+    };
+    static const char *const nullable_unique_rows[] = {
+        NULL,
+        "10",
+        NULL,
+        "20",
+    };
+    static const char *const auto_increment_first_last_id[] = {"1"};
+    static const char *const auto_increment_second_last_id[] = {"2"};
+    static const char *const auto_increment_rows[] = {
+        "2",
+        "a",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "row_scalar") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open row scalar file");
+    failures += seed_schema(database, "app");
+    failures += expect_statement_ok(database, "USE app");
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE no_key(id INT, v INT NOT NULL DEFAULT 7, req INT NOT NULL)"
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO no_key(id, req) SELECT 1, 10", 1);
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO no_key(id, v, req) SELECT 1, 20, 30 FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, req FROM no_key ORDER BY req",
+            .values = no_key_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "row-scalar no-key replace select rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE filter_target(id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO filter_target(id, v) SELECT 1, 10 FROM DUAL "
+        "WHERE EXISTS(SELECT * FROM filter_target WHERE id = 99)",
+        0
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM filter_target",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "false exists replace select source",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO filter_target(id, v) SELECT 1, 10 FROM DUAL "
+        "WHERE NOT EXISTS(SELECT * FROM filter_target WHERE id = 99)",
+        1
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO filter_target(id, v) SELECT 2, 20 FROM DUAL "
+        "WHERE EXISTS(SELECT * FROM filter_target WHERE id = 1)",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM filter_target ORDER BY id",
+            .values = filter_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "dual exists replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE required_target(id INT PRIMARY KEY, must INT NOT NULL)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO required_target(id) SELECT 10 FROM DUAL "
+        "WHERE EXISTS(SELECT * FROM required_target WHERE id = 99)",
+        0
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO required_target(id) SELECT 11 FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'must' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO required_target(id, must) SELECT 12, NULL FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'must' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO required_target SELECT * FROM DUAL",
+        (struct expected_sql_error){
+            .code = mysql_error_no_tables_used,
+            .sqlstate = "HY000",
+            .message_part = "No tables used",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE pk(id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO pk VALUES (1, 10)", 1);
+    failures += expect_dml_ok(database, "REPLACE INTO pk SELECT 2, 20", 1);
+    failures += expect_dml_ok(database, "REPLACE INTO pk SELECT 1, 30 FROM DUAL", 2);
+    failures += expect_dml_ok(database, "REPLACE INTO pk SELECT 1, 30 FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM pk ORDER BY id",
+            .values = pk_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "primary-key row-scalar replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE multi_unique(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO multi_unique VALUES (1, 10, 100)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO multi_unique VALUES (2, 20, 200)", 1);
+    failures += expect_dml_ok(database, "REPLACE INTO multi_unique SELECT 1, 20, 300 FROM DUAL", 3);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM multi_unique",
+            .values = multi_unique_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "multi-unique row-scalar replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE nullable_unique(a INT UNIQUE, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO nullable_unique VALUES (NULL, 10)", 1);
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO nullable_unique SELECT NULL, 20 FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, v FROM nullable_unique ORDER BY v",
+            .values = nullable_unique_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "nullable unique row-scalar replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE auto_inc(id INT AUTO_INCREMENT PRIMARY KEY, v VARCHAR(10) UNIQUE)"
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO auto_inc(v) SELECT CONCAT('a') FROM DUAL", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = auto_increment_first_last_id,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar replace select generated first id",
+        }
+    );
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO auto_inc(id, v) SELECT NULL, 'a' FROM DUAL", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = auto_increment_second_last_id,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar replace select generated replacement id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM auto_inc",
+            .values = auto_increment_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "row-scalar replace select auto-increment rows",
         }
     );
 
@@ -912,11 +1157,11 @@ static int test_replace_select_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO dst SELECT 1",
+        "REPLACE INTO dst(id) SELECT 1 UNION SELECT 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "REPLACE ... SELECT does not support row-scalar sources",
+            .message_part = "You have an error in your SQL syntax",
         }
     );
     failures += execute_error(

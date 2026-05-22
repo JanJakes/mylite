@@ -546,9 +546,9 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
         database,
         "REPLACE INTO numbers SELECT 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REPLACE ... SELECT does not support row-scalar sources",
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
         }
     );
     failures += execute_error(

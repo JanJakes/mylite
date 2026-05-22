@@ -850,15 +850,7 @@ static int test_unique_index_diagnostics(void) {
     );
     failures += expect_dml_ok(database, "INSERT INTO key_bearing SELECT 1, 2", 1);
     failures += expect_dml_ok(database, "REPLACE INTO key_bearing VALUES (3, 4)", 1);
-    failures += execute_error(
-        database,
-        "REPLACE INTO key_bearing SELECT 1, 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REPLACE ... SELECT does not support row-scalar sources",
-        }
-    );
+    failures += expect_dml_ok(database, "REPLACE INTO key_bearing SELECT 1, 2", 1);
     failures += execute_error(
         database,
         "ALTER TABLE key_bearing ORDER BY id",

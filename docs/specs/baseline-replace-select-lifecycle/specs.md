@@ -166,7 +166,9 @@ This feature must not implement:
 - source literal projection, `FROM DUAL` source projection, expression
   projection, arithmetic, functions, variables, parameters, subqueries,
   string/decimal/float/hex/bit/date/time/json selected values, or general
-  expression evaluation;
+  expression evaluation in this original table-backed slice; later row-scalar
+  source behavior is specified separately in
+  `docs/specs/baseline-replace-select-row-scalar-source/specs.md`;
 - DML `DEFAULT` keyword values in the source `SELECT` or target list;
 - primary/unique/foreign keys, duplicate-key handling, auto-increment,
   `LAST_INSERT_ID()` changes, generated columns, check constraints, triggers,
@@ -219,10 +221,11 @@ FROM table_name [AS] alias
 [LIMIT row_count]
 ```
 
-The source `SELECT` subset is exactly the descriptor-backed single-table
-subset currently implemented for ordinary `SELECT`, except that no-source
-literal projection and `FROM DUAL` projection are intentionally deferred for
-`REPLACE ... SELECT`.
+The source `SELECT` subset in this original slice is exactly the
+descriptor-backed single-table subset currently implemented for ordinary
+`SELECT`. Later no-source and `FROM DUAL` row-scalar projection behavior is
+specified separately in
+`docs/specs/baseline-replace-select-row-scalar-source/specs.md`.
 
 `table_name` uses the existing table lifecycle subset:
 
@@ -381,7 +384,7 @@ The implementation must provide deterministic diagnostics for:
 - selected integer value outside the target range;
 - unsupported source `SELECT` shape, including no-source literal projections,
   `FROM DUAL`, expression projections, joins, CTEs, subqueries, and arbitrary
-  expressions;
+  expressions for this original table-backed slice;
 - unsupported modifiers and clauses such as `LOW_PRIORITY`, `DELAYED`,
   `PARTITION`, target aliases, table-qualified target columns, and
   `REPLACE ... TABLE`;

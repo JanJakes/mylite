@@ -68892,12 +68892,6 @@ static int plan_insert_select(
     out_plan->target.replace_existing_rows =
         statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT;
     out_plan->source_kind = source_kind;
-    if (source_kind == PLANNED_INSERT_SELECT_SOURCE_ROW_SCALAR &&
-        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
-        set_unsupported_error(database, "REPLACE ... SELECT does not support row-scalar sources");
-        primary_key_info_deinit(&primary_key);
-        return MYLITE_ERROR;
-    }
     if (source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND &&
         statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
         set_unsupported_error(database, "REPLACE ... SELECT does not support UNION sources");

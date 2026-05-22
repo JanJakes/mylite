@@ -14,6 +14,7 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     mysql_error_native_function_argument_count = 1582,
+    mysql_error_bigint_out_of_range = 1690,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
 };
@@ -36,6 +37,7 @@ struct expected_query {
 static int test_no_source_and_dual_concat(void);
 static int test_table_backed_concat(void);
 static int test_table_backed_control_flow(void);
+static int test_table_backed_signed_integer_arithmetic(void);
 static int test_concat_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -69,6 +71,7 @@ int main(void) {
     failures += test_no_source_and_dual_concat();
     failures += test_table_backed_concat();
     failures += test_table_backed_control_flow();
+    failures += test_table_backed_signed_integer_arithmetic();
     failures += test_concat_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -481,6 +484,222 @@ static int test_table_backed_control_flow(void) {
             .values = values_status,
             .row_count = 1U,
             .context = "control-flow status after select",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_table_backed_signed_integer_arithmetic(void) {
+    static const char *const columns_core[] = {
+        "a+i",
+        "a-i",
+        "a*i",
+        "a+5",
+        "5+a",
+        "(a+i)*2",
+        "a+i*2",
+        "n+1",
+        "TRUE+a",
+        "FALSE+a",
+        "a+i+1",
+        "a-i-1",
+        "a+NULL",
+        "NULL+a",
+    };
+    static const char *const values_core[] = {
+        "5",  "-1",  "6",   "7", "7", "10", "8",  NULL, "3",  "2",  "6",  "-2",  NULL, NULL,
+        "2",  "-12", "-35", "0", "0", "4",  "9",  "11", "-4", "-5", "3",  "-13", NULL, NULL,
+        "-2", "2",   "0",   "5", "5", "-4", "-4", NULL, "1",  "0",  "-1", "1",   NULL, NULL,
+    };
+    static const char *const columns_families[] = {
+        "ti+s",
+        "tb+s",
+        "s+mi",
+        "mi+a",
+        "i+(b-b)",
+    };
+    static const char *const values_families[] = {"4", "5", "7", "6", "3"};
+    static const char *const columns_signed_literal[] = {"signed_literal", "signed_subtract"};
+    static const char *const values_signed_literal[] = {"-3", "7"};
+    static const char *const columns_qualified_table[] = {"t.a+t.i"};
+    static const char *const columns_qualified_alias[] = {"x.a+x.i"};
+    static const char *const values_qualified[] = {"5"};
+    static const char *const columns_label[] = {"expr_alias", "(a+i)*2"};
+    static const char *const values_label[] = {"5", "10"};
+    static const char *const columns_envelope[] = {"limited"};
+    static const char *const values_envelope[] = {"-2", "2"};
+    static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_status[] = {"-1", "0"};
+    static const char *const columns_no_match[] = {"b+2"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "integer-arithmetic", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t("
+        "id INT, ti TINYINT, tb TINYINT(1), s SMALLINT, mi MEDIUMINT, "
+        "a INT, i INTEGER, b BIGINT, n INT NULL, u INT UNSIGNED, v VARCHAR(10)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES "
+        "(1, 1, 2, 3, 4, 2, 3, 9223372036854775806, NULL, 4, 'x'), "
+        "(2, -1, 0, -3, 6, -5, 7, -9223372036854775807, 10, 5, 'y'), "
+        "(3, 0, 1, 2, -4, 0, -2, 0, NULL, 6, 'z')",
+        NULL
+    );
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a+i, a-i, a*i, a+5, 5+a, (a+i)*2, a+i*2, n+1, TRUE+a, "
+                   "FALSE+a, a+i+1, a-i-1, a+NULL, NULL+a FROM t ORDER BY id",
+            .columns = columns_core,
+            .column_count = sizeof(columns_core) / sizeof(columns_core[0]),
+            .values = values_core,
+            .row_count = 3U,
+            .context = "table signed integer arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ti+s, tb+s, s+mi, mi+a, i+(b-b) FROM t WHERE id = 1",
+            .columns = columns_families,
+            .column_count = sizeof(columns_families) / sizeof(columns_families[0]),
+            .values = values_families,
+            .row_count = 1U,
+            .context = "signed integer family arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a+-5 AS signed_literal, a- -5 AS signed_subtract FROM t WHERE id = 1",
+            .columns = columns_signed_literal,
+            .column_count = sizeof(columns_signed_literal) / sizeof(columns_signed_literal[0]),
+            .values = values_signed_literal,
+            .row_count = 1U,
+            .context = "signed integer literal arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t.a+t.i FROM t WHERE t.id = 1",
+            .columns = columns_qualified_table,
+            .column_count = sizeof(columns_qualified_table) / sizeof(columns_qualified_table[0]),
+            .values = values_qualified,
+            .row_count = 1U,
+            .context = "table-qualified arithmetic projection operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT x.a+x.i FROM t AS x WHERE x.id = 1",
+            .columns = columns_qualified_alias,
+            .column_count = sizeof(columns_qualified_alias) / sizeof(columns_qualified_alias[0]),
+            .values = values_qualified,
+            .row_count = 1U,
+            .context = "alias-qualified arithmetic projection operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a+i AS expr_alias, (a+i)*2 FROM t WHERE id = 1",
+            .columns = columns_label,
+            .column_count = sizeof(columns_label) / sizeof(columns_label[0]),
+            .values = values_label,
+            .row_count = 1U,
+            .context = "arithmetic projection labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a+i AS limited FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2",
+            .columns = columns_envelope,
+            .column_count = sizeof(columns_envelope) / sizeof(columns_envelope[0]),
+            .values = values_envelope,
+            .row_count = 2U,
+            .context = "arithmetic projection row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b+2 FROM t WHERE id = 99",
+            .columns = columns_no_match,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "arithmetic projection skips unmatched overflow",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = sizeof(columns_status) / sizeof(columns_status[0]),
+            .values = values_status,
+            .row_count = 1U,
+            .context = "arithmetic projection status after select",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT b+2 FROM t WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range in scalar arithmetic expression",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT u+1 FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed integer arithmetic projection does not support unsigned",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT v+1 FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed integer arithmetic projection supports only signed integer",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT a/1 FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed integer arithmetic projection supports only +, binary -, and *",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT a + -i FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed integer arithmetic projection supports unary signs only on "
+                            "integer literals",
         }
     );
 

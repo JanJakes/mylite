@@ -4,6 +4,7 @@
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
+#include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
@@ -216,6 +217,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_datediff_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_integer_arithmetic_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_temporal_extract_function(sqlite);

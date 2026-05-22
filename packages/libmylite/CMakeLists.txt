@@ -45,6 +45,7 @@ add_library(mylite STATIC
   src/runtime/mylite_datediff.c
   src/runtime/mylite_diagnostics.c
   src/runtime/mylite_execution.c
+  src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_json.c
   src/runtime/mylite_json_functions.c
   src/runtime/mylite_regexp.c

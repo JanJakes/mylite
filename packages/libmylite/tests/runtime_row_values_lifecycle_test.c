@@ -534,15 +534,30 @@ static int test_failure_diagnostics_and_unwinding(void) {
             .message_part = "Unknown column 'numbers.missing' in 'field list'",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT i + 1 FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+    failures += execute_ok(database, "SELECT i + 1 FROM numbers", &result);
+    failures += expect_size(
+        mylite_result_column_count(result),
+        1U,
+        "row values arithmetic projection column count"
     );
+    failures += expect_size(
+        mylite_result_row_count(result),
+        1U,
+        "row values arithmetic projection row count"
+    );
+    failures += expect_select_value(result, 0U, 0U, "2", "row values arithmetic projection value");
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "row values arithmetic projection affected rows"
+    );
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "row values arithmetic projection warning count"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "INSERT INTO numbers VALUES (1)",

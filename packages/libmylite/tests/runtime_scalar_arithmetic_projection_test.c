@@ -278,6 +278,8 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
 }
 
 static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
+    static const char *const columns_table_arithmetic[] = {"1+id"};
+    static const char *const values_table_arithmetic[] = {NULL, "1", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -446,13 +448,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .message_part = "SELECT IF() supports only signed 64-bit integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1+id FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT 1+id FROM t ORDER BY id",
+            .columns = columns_table_arithmetic,
+            .column_count = sizeof(columns_table_arithmetic) / sizeof(columns_table_arithmetic[0]),
+            .values = values_table_arithmetic,
+            .row_count = 3U,
+            .context = "table-backed scalar arithmetic projection",
         }
     );
     failures += execute_error(

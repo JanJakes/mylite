@@ -7,6 +7,7 @@
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
 #include "mylite_diagnostics.h"
+#include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_parser.h"
 #include "mylite_regexp.h"
@@ -2720,6 +2721,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE = 43,
     PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME = 44,
     PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME = 45,
+    PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC = 46,
 };
 
 enum planned_row_scalar_field_domain {
@@ -2807,12 +2809,47 @@ struct planned_row_scalar_expression {
     enum planned_string_search_function_kind string_search_kind;
     enum planned_string_padding_function_kind string_padding_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
+    enum mylite_sql_ast_operator arithmetic_operator;
     struct planned_value value;
     enum mylite_json_sql_value_kind json_value_kind;
     bool regexp_case_sensitive;
     struct mylite_catalog_column_descriptor column;
     struct planned_row_scalar_expression *arguments;
     size_t argument_count;
+};
+
+struct row_scalar_integer_arithmetic_plan_frame {
+    const struct mylite_sql_ast_node *expression;
+    struct planned_row_scalar_expression *out_expression;
+};
+
+struct row_scalar_integer_arithmetic_plan_stack {
+    struct row_scalar_integer_arithmetic_plan_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
+enum row_scalar_integer_arithmetic_append_phase {
+    ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_ENTER = 0,
+    ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_COMMA = 1,
+    ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_CLOSE = 2,
+};
+
+struct row_scalar_integer_arithmetic_append_frame {
+    const struct planned_row_scalar_expression *expression;
+    enum row_scalar_integer_arithmetic_append_phase phase;
+};
+
+struct row_scalar_integer_arithmetic_append_stack {
+    struct row_scalar_integer_arithmetic_append_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct row_scalar_integer_arithmetic_bind_stack {
+    const struct planned_row_scalar_expression **items;
+    size_t count;
+    size_t capacity;
 };
 
 struct planned_row_scalar_select_item {
@@ -20653,6 +20690,53 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_integer_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_integer_arithmetic_frame(
+    struct mylite_db *database,
+    const struct row_scalar_integer_arithmetic_plan_frame *frame,
+    struct row_scalar_integer_arithmetic_plan_stack *stack,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+);
+static int plan_row_scalar_integer_arithmetic_binary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+);
+static void row_scalar_integer_arithmetic_plan_stack_deinit(
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+);
+static int row_scalar_integer_arithmetic_plan_stack_push(
+    struct mylite_db *database,
+    struct row_scalar_integer_arithmetic_plan_stack *stack,
+    struct row_scalar_integer_arithmetic_plan_frame frame
+);
+static int plan_row_scalar_integer_arithmetic_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_integer_arithmetic_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool signed_integer_arithmetic_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int plan_row_scalar_date_function_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -22118,10 +22202,7 @@ static enum planned_row_scalar_field_domain row_scalar_field_column_domain(
     const struct mylite_catalog_column_descriptor *column
 );
 static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expression *expression);
-static void planned_row_scalar_expression_deinit_child(
-    struct planned_row_scalar_expression *expression
-);
-static void planned_row_scalar_expression_deinit_leaf(
+static void planned_row_scalar_expression_deinit_next_leaf(
     struct planned_row_scalar_expression *expression
 );
 static bool row_scalar_column_descriptor_is_supported(
@@ -22140,6 +22221,11 @@ static bool row_scalar_expression_contains_control_flow_function(
 static bool row_scalar_expression_contains_statement_time_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_contains_integer_arithmetic_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool integer_arithmetic_operator_is_attempt(enum mylite_sql_ast_operator operator_kind);
+static bool integer_arithmetic_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static struct result_column_metadata_context result_column_metadata_context_init(void);
 static void result_column_metadata_context_deinit(struct result_column_metadata_context *context);
@@ -23143,6 +23229,38 @@ static int append_row_scalar_non_concat_expression_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
+);
+static int append_row_scalar_integer_arithmetic_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_integer_arithmetic_frame_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct row_scalar_integer_arithmetic_append_frame *frame,
+    size_t *next_parameter
+);
+static int append_row_scalar_integer_arithmetic_enter_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_integer_arithmetic_function_call_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct planned_row_scalar_expression *expression
+);
+static const char *row_scalar_integer_arithmetic_function_name(
+    const struct planned_row_scalar_expression *expression
+);
+static void row_scalar_integer_arithmetic_append_stack_deinit(
+    struct row_scalar_integer_arithmetic_append_stack *stack
+);
+static int row_scalar_integer_arithmetic_append_stack_push(
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    struct row_scalar_integer_arithmetic_append_frame frame
 );
 static int append_row_scalar_concat_expression_sql(
     struct dynamic_string *string,
@@ -24410,6 +24528,24 @@ static int bind_row_scalar_non_concat_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
+);
+static int bind_row_scalar_integer_arithmetic_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_integer_arithmetic_frame_parameters(
+    sqlite3_stmt *statement,
+    struct row_scalar_integer_arithmetic_bind_stack *stack,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static void row_scalar_integer_arithmetic_bind_stack_deinit(
+    struct row_scalar_integer_arithmetic_bind_stack *stack
+);
+static int row_scalar_integer_arithmetic_bind_stack_push(
+    struct row_scalar_integer_arithmetic_bind_stack *stack,
+    const struct planned_row_scalar_expression *expression
 );
 static int bind_row_scalar_field_expression_parameters(
     sqlite3_stmt *statement,
@@ -75575,7 +75711,10 @@ static bool select_statement_is_row_scalar_projection_attempt(
                                   )) ||
              row_scalar_expression_contains_statement_time_function(child_at(select_item, 0U)) ||
              (has_table_source &&
-              row_scalar_expression_contains_control_flow_function(child_at(select_item, 0U))))) {
+              row_scalar_expression_contains_control_flow_function(child_at(select_item, 0U))) ||
+             (has_table_source && row_scalar_expression_contains_integer_arithmetic_attempt(
+                                      child_at(select_item, 0U)
+                                  )))) {
             return true;
         }
         select_item = select_item->next_sibling;
@@ -75747,6 +75886,10 @@ static int row_scalar_select_step_error(
     }
     if (strcmp(message, "Unsupported JSON value in JSON constructor") == 0) {
         set_unsupported_error(database, "JSON constructors support only baseline JSON values");
+        return MYLITE_ERROR;
+    }
+    if (strcmp(message, MYLITE_INTEGER_ARITHMETIC_OVERFLOW_MESSAGE) == 0) {
+        set_scalar_arithmetic_overflow_error(database);
         return MYLITE_ERROR;
     }
 
@@ -117052,6 +117195,16 @@ static int plan_row_scalar_expression(
             out_expression
         );
     }
+    if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
 
     if (has_source) {
         allow_scalar_subquery = false;
@@ -117066,6 +117219,333 @@ static int plan_row_scalar_expression(
         allow_scalar_subquery,
         out_expression
     );
+}
+
+static int plan_row_scalar_integer_arithmetic_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct row_scalar_integer_arithmetic_plan_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = row_scalar_integer_arithmetic_plan_stack_push(
+        database,
+        &stack,
+        (struct row_scalar_integer_arithmetic_plan_frame){
+            .expression = expression,
+            .out_expression = out_expression,
+        }
+    );
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        struct row_scalar_integer_arithmetic_plan_frame frame = stack.items[--stack.count];
+
+        rc = plan_row_scalar_integer_arithmetic_frame(
+            database,
+            &frame,
+            &stack,
+            source_context,
+            table_columns,
+            table_column_count
+        );
+    }
+
+    row_scalar_integer_arithmetic_plan_stack_deinit(&stack);
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_integer_arithmetic_frame(
+    struct mylite_db *database,
+    const struct row_scalar_integer_arithmetic_plan_frame *frame,
+    struct row_scalar_integer_arithmetic_plan_stack *stack,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+
+    if (frame == NULL || frame->out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    current = unwrap_parenthesized_expression(frame->expression);
+    if (current == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    if (current->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return plan_row_scalar_integer_arithmetic_binary(
+            database,
+            current,
+            frame->out_expression,
+            stack
+        );
+    }
+    if (current->kind == MYLITE_SQL_AST_LITERAL ||
+        current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_arithmetic_literal(database, current, frame->out_expression);
+    }
+    if (current->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return plan_row_scalar_integer_arithmetic_column(
+            database,
+            current,
+            source_context,
+            table_columns,
+            table_column_count,
+            frame->out_expression
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "table-backed signed integer arithmetic projection supports only descriptor columns, "
+        "integer literals, booleans, NULL, parentheses, and +, binary -, and * operators"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_integer_arithmetic_binary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    int rc = MYLITE_OK;
+
+    if (!integer_arithmetic_operator_is_supported(operator_kind)) {
+        set_unsupported_error(
+            database,
+            "table-backed signed integer arithmetic projection supports only +, binary -, "
+            "and * operators"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC;
+    out_expression->arithmetic_operator = operator_kind;
+    out_expression->argument_count = 2U;
+
+    rc = row_scalar_integer_arithmetic_plan_stack_push(
+        database,
+        stack,
+        (struct row_scalar_integer_arithmetic_plan_frame){
+            .expression = child_at(expression, 1U),
+            .out_expression = &out_expression->arguments[1],
+        }
+    );
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_arithmetic_plan_stack_push(
+            database,
+            stack,
+            (struct row_scalar_integer_arithmetic_plan_frame){
+                .expression = child_at(expression, 0U),
+                .out_expression = &out_expression->arguments[0],
+            }
+        );
+    }
+    return rc;
+}
+
+static void row_scalar_integer_arithmetic_plan_stack_deinit(
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct row_scalar_integer_arithmetic_plan_stack){0};
+}
+
+static int row_scalar_integer_arithmetic_plan_stack_push(
+    struct mylite_db *database,
+    struct row_scalar_integer_arithmetic_plan_stack *stack,
+    struct row_scalar_integer_arithmetic_plan_frame frame
+) {
+    struct row_scalar_integer_arithmetic_plan_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+
+    stack->items[stack->count] = frame;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_integer_arithmetic_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(literal);
+
+    if (unwrapped == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        const struct mylite_sql_ast_node *child =
+            unwrap_parenthesized_expression(child_at(unwrapped, 0U));
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(unwrapped);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            set_unsupported_error(
+                database,
+                "table-backed signed integer arithmetic projection supports only signed "
+                "integer literal operands"
+            );
+            return MYLITE_ERROR;
+        }
+        if (child == NULL || child->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(child) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "table-backed signed integer arithmetic projection supports unary signs only "
+                "on integer literals"
+            );
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_integer_value(database, unwrapped, out_expression);
+    }
+    if (unwrapped->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "table-backed signed integer arithmetic projection supports only integer, boolean, "
+            "and NULL literal operands"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (mylite_sql_ast_node_literal_kind(unwrapped)) {
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return plan_row_scalar_integer_value(database, unwrapped, out_expression);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = false, .integer = 0};
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "table-backed signed integer arithmetic projection supports only integer, boolean, "
+        "and NULL literal operands"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_integer_arithmetic_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "table-backed signed integer arithmetic projection supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!signed_integer_arithmetic_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static bool signed_integer_arithmetic_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    const char *logical_type = NULL;
+
+    if (column == NULL || strcmp(column->physical_type, "INTEGER") != 0) {
+        set_unsupported_error(
+            database,
+            "table-backed signed integer arithmetic projection supports only signed integer "
+            "descriptor columns"
+        );
+        return false;
+    }
+
+    logical_type = column->logical_type;
+    if (strstr(logical_type, "UNSIGNED") != NULL) {
+        set_unsupported_error(
+            database,
+            "table-backed signed integer arithmetic projection does not support unsigned "
+            "integer columns"
+        );
+        return false;
+    }
+    if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
+        strcmp(logical_type, "SMALLINT") == 0 || strcmp(logical_type, "MEDIUMINT") == 0 ||
+        strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INTEGER") == 0 ||
+        strcmp(logical_type, "BIGINT") == 0) {
+        return true;
+    }
+
+    set_unsupported_error(
+        database,
+        "table-backed signed integer arithmetic projection supports only signed integer "
+        "descriptor columns"
+    );
+    return false;
 }
 
 static int plan_row_scalar_temporal_function_expression(
@@ -123881,6 +124361,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return expression->field_domain;
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -126896,41 +127377,31 @@ static void planned_row_scalar_expression_deinit(struct planned_row_scalar_expre
         return;
     }
 
-    for (size_t argument_index = 0U; argument_index < expression->argument_count;
-         ++argument_index) {
-        planned_row_scalar_expression_deinit_child(&expression->arguments[argument_index]);
+    while (expression->argument_count != 0U) {
+        planned_row_scalar_expression_deinit_next_leaf(expression);
     }
     free(expression->arguments);
     planned_value_deinit(&expression->value);
     *expression = (struct planned_row_scalar_expression){0};
 }
 
-static void planned_row_scalar_expression_deinit_child(
+static void planned_row_scalar_expression_deinit_next_leaf(
     struct planned_row_scalar_expression *expression
 ) {
-    if (expression == NULL) {
-        return;
+    struct planned_row_scalar_expression *parent = NULL;
+    struct planned_row_scalar_expression *current = expression;
+
+    while (current->argument_count != 0U) {
+        parent = current;
+        current = &current->arguments[current->argument_count - 1U];
     }
 
-    for (size_t argument_index = 0U; argument_index < expression->argument_count;
-         ++argument_index) {
-        planned_row_scalar_expression_deinit_leaf(&expression->arguments[argument_index]);
+    free(current->arguments);
+    planned_value_deinit(&current->value);
+    *current = (struct planned_row_scalar_expression){0};
+    if (parent != NULL) {
+        --parent->argument_count;
     }
-    free(expression->arguments);
-    planned_value_deinit(&expression->value);
-    *expression = (struct planned_row_scalar_expression){0};
-}
-
-static void planned_row_scalar_expression_deinit_leaf(
-    struct planned_row_scalar_expression *expression
-) {
-    if (expression == NULL) {
-        return;
-    }
-
-    free(expression->arguments);
-    planned_value_deinit(&expression->value);
-    *expression = (struct planned_row_scalar_expression){0};
 }
 
 static bool row_scalar_column_descriptor_is_supported(
@@ -127056,6 +127527,71 @@ static bool row_scalar_expression_contains_row_function(
     scalar_arithmetic_node_stack_deinit(&stack);
 
     return found;
+}
+
+static bool row_scalar_expression_contains_integer_arithmetic_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+            integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(current))) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
+static bool integer_arithmetic_operator_is_attempt(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool integer_arithmetic_operator_is_supported(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return true;
+    default:
+        break;
+    }
+    return false;
 }
 
 static bool row_scalar_expression_contains_date_interval_second_function(
@@ -141649,6 +142185,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
@@ -142452,6 +142989,12 @@ static int append_row_scalar_expression_sql(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return dynamic_string_append_quoted_identifier(string, expression->column.name);
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return append_row_scalar_integer_arithmetic_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         return append_row_scalar_concat_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -142584,6 +143127,7 @@ static int append_row_scalar_non_concat_expression_sql(
         return dynamic_string_append_quoted_identifier(string, expression->column.name);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -142630,6 +143174,246 @@ static int append_row_scalar_non_concat_expression_sql(
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_row_scalar_integer_arithmetic_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    struct row_scalar_integer_arithmetic_append_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = row_scalar_integer_arithmetic_append_stack_push(
+        &stack,
+        (struct row_scalar_integer_arithmetic_append_frame){
+            .expression = expression,
+            .phase = ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_ENTER,
+        }
+    );
+
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        struct row_scalar_integer_arithmetic_append_frame frame = stack.items[--stack.count];
+
+        rc = append_row_scalar_integer_arithmetic_frame_sql(string, &stack, &frame, next_parameter);
+    }
+    row_scalar_integer_arithmetic_append_stack_deinit(&stack);
+    return rc;
+}
+
+static int append_row_scalar_integer_arithmetic_frame_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct row_scalar_integer_arithmetic_append_frame *frame,
+    size_t *next_parameter
+) {
+    if (frame == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (frame->phase) {
+    case ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_COMMA:
+        return dynamic_string_append(string, ", ");
+    case ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_CLOSE:
+        return dynamic_string_append_char(string, ')');
+    case ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_ENTER:
+        return append_row_scalar_integer_arithmetic_enter_sql(
+            string,
+            stack,
+            frame->expression,
+            next_parameter
+        );
+    }
+    return MYLITE_ERROR;
+}
+
+static int append_row_scalar_integer_arithmetic_enter_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return dynamic_string_append_quoted_identifier(string, expression->column.name);
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return append_row_scalar_integer_arithmetic_function_call_sql(string, stack, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+        return MYLITE_ERROR;
+    }
+    return MYLITE_ERROR;
+}
+
+static int append_row_scalar_integer_arithmetic_function_call_sql(
+    struct dynamic_string *string,
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    const struct planned_row_scalar_expression *expression
+) {
+    const char *function_name = row_scalar_integer_arithmetic_function_name(expression);
+    int rc = MYLITE_OK;
+
+    if (function_name == NULL || expression->arguments == NULL ||
+        expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = row_scalar_integer_arithmetic_append_stack_push(
+        stack,
+        (struct row_scalar_integer_arithmetic_append_frame){
+            .expression = NULL,
+            .phase = ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_CLOSE,
+        }
+    );
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_arithmetic_append_stack_push(
+            stack,
+            (struct row_scalar_integer_arithmetic_append_frame){
+                .expression = &expression->arguments[1],
+                .phase = ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_ENTER,
+            }
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_arithmetic_append_stack_push(
+            stack,
+            (struct row_scalar_integer_arithmetic_append_frame){
+                .expression = NULL,
+                .phase = ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_COMMA,
+            }
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = row_scalar_integer_arithmetic_append_stack_push(
+            stack,
+            (struct row_scalar_integer_arithmetic_append_frame){
+                .expression = &expression->arguments[0],
+                .phase = ROW_SCALAR_INTEGER_ARITHMETIC_APPEND_ENTER,
+            }
+        );
+    }
+    return rc;
+}
+
+static const char *row_scalar_integer_arithmetic_function_name(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    switch (expression->arithmetic_operator) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return "_mylite_i64_add";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return "_mylite_i64_sub";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return "_mylite_i64_mul";
+    default:
+        return NULL;
+    }
+}
+
+static void row_scalar_integer_arithmetic_append_stack_deinit(
+    struct row_scalar_integer_arithmetic_append_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free(stack->items);
+    *stack = (struct row_scalar_integer_arithmetic_append_stack){0};
+}
+
+static int row_scalar_integer_arithmetic_append_stack_push(
+    struct row_scalar_integer_arithmetic_append_stack *stack,
+    struct row_scalar_integer_arithmetic_append_frame frame
+) {
+    struct row_scalar_integer_arithmetic_append_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            return MYLITE_NOMEM;
+        }
+        items = realloc(stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+    stack->items[stack->count] = frame;
+    ++stack->count;
+    return MYLITE_OK;
 }
 
 static int append_row_scalar_concat_expression_sql(
@@ -143806,6 +144590,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
         return append_row_scalar_json_extract_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -143994,6 +144779,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return append_row_scalar_isnull_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -144059,6 +144845,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
         return append_row_scalar_nested_isnull_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -144459,6 +145246,7 @@ static int append_row_scalar_control_flow_argument_sql(
             next_parameter
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -144528,6 +145316,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -150437,6 +151226,12 @@ static int bind_row_scalar_expression_parameters(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return bind_row_scalar_integer_arithmetic_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         for (size_t argument_index = 0U;
@@ -150676,6 +151471,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -150722,6 +151518,149 @@ static int bind_row_scalar_non_concat_expression_parameters(
     }
 
     return MYLITE_ERROR;
+}
+
+static int bind_row_scalar_integer_arithmetic_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    struct row_scalar_integer_arithmetic_bind_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = row_scalar_integer_arithmetic_bind_stack_push(&stack, expression);
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct planned_row_scalar_expression *current = stack.items[--stack.count];
+
+        rc = bind_row_scalar_integer_arithmetic_frame_parameters(
+            statement,
+            &stack,
+            current,
+            parameter_index
+        );
+    }
+    row_scalar_integer_arithmetic_bind_stack_deinit(&stack);
+    return rc;
+}
+
+static int bind_row_scalar_integer_arithmetic_frame_parameters(
+    sqlite3_stmt *statement,
+    struct row_scalar_integer_arithmetic_bind_stack *stack,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        rc = bind_planned_value_parameter(statement, *parameter_index, &expression->value);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        if (expression->arguments == NULL || expression->argument_count != 2U) {
+            return MYLITE_ERROR;
+        }
+        rc = row_scalar_integer_arithmetic_bind_stack_push(stack, &expression->arguments[1]);
+        if (rc == MYLITE_OK) {
+            rc = row_scalar_integer_arithmetic_bind_stack_push(stack, &expression->arguments[0]);
+        }
+        return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+        return MYLITE_ERROR;
+    }
+    return MYLITE_ERROR;
+}
+
+static void row_scalar_integer_arithmetic_bind_stack_deinit(
+    struct row_scalar_integer_arithmetic_bind_stack *stack
+) {
+    if (stack == NULL) {
+        return;
+    }
+    free((void *)stack->items);
+    *stack = (struct row_scalar_integer_arithmetic_bind_stack){0};
+}
+
+static int row_scalar_integer_arithmetic_bind_stack_push(
+    struct row_scalar_integer_arithmetic_bind_stack *stack,
+    const struct planned_row_scalar_expression *expression
+) {
+    const struct planned_row_scalar_expression **items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            return MYLITE_NOMEM;
+        }
+        items = (const struct planned_row_scalar_expression **)
+            realloc((void *)stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+    stack->items[stack->count] = expression;
+    ++stack->count;
+    return MYLITE_OK;
 }
 
 static int bind_row_scalar_field_expression_parameters(
@@ -151245,6 +152184,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
             parameter_index
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -151420,6 +152360,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
             parameter_index
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -151480,6 +152421,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
             parameter_index
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:

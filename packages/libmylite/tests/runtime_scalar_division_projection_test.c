@@ -507,7 +507,8 @@ static int test_scalar_division_errors_and_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports",
+            .message_part = "table-backed signed integer arithmetic projection supports only +, "
+                            "binary -, and * operators",
         }
     );
     failures += execute_error(

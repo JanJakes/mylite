@@ -7,12 +7,12 @@
   `NULL`, parse errors, whitespace, and identifier use.
 - [x] Write the independently authored feature spec.
 - [x] Add MySQL 8.4.9 expectation script for the user-visible behavior.
-- [ ] Add parser/AST support for `TIMESTAMPDIFF(unit, expr1, expr2)`.
-- [ ] Add the MyLite-owned `TIMESTAMPDIFF()` runtime helper and SQLite scalar
+- [x] Add parser/AST support for `TIMESTAMPDIFF(unit, expr1, expr2)`.
+- [x] Add the MyLite-owned `TIMESTAMPDIFF()` runtime helper and SQLite scalar
   callback.
-- [ ] Wire scalar and row-scalar analyzer/planner/execution paths.
-- [ ] Add focused C runtime tests and parser coverage.
-- [ ] Update compatibility documentation.
-- [ ] Run focused build/tests and MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff, amend issues, commit atomically, and push `main`.
+- [x] Wire scalar and row-scalar analyzer/planner/execution paths.
+- [x] Add focused C runtime tests and parser coverage.
+- [x] Update compatibility documentation.
+- [x] Run focused build/tests and MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff, amend issues, commit atomically, and push `main`.

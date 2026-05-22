@@ -179,7 +179,7 @@ expect_output \
     "$DATABASE"
 
 null_invalid_expected=$(cat <<EXPECTED
-NULL	NULL	NULL	NULL
+NULL	NULL	NULL	NULL	NULL
 Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Incorrect datetime value: 'bad-left'
 Warning	1292	Incorrect datetime value: 'bad-right'
@@ -191,6 +191,7 @@ expect_output \
     "$null_invalid_expected" \
     "SELECT "\
 "TIMESTAMPDIFF(DAY,NULL,'not-a-date'), "\
+"TIMESTAMPDIFF(DAY,NULL,1), "\
 "TIMESTAMPDIFF(DAY,'not-a-date',NULL), "\
 "TIMESTAMPDIFF(DAY,'bad-left','bad-right'), "\
 "TIMESTAMPDIFF(DAY,'2003-01-01','bad-right'); "\

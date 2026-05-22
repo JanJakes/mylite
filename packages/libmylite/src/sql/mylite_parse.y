@@ -4031,6 +4031,11 @@ expression(A) ::= DATEDIFF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R)
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_DATEDIFF_FUNCTION, B, C, R);
 }
+expression(A) ::=
+    TIMESTAMPDIFF(T) LPAREN timestampdiff_unit(U) COMMA expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION, U, B, C, R);
+}
 expression(A) ::= UNIX_TIMESTAMP(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, R);
@@ -4170,6 +4175,58 @@ extract_unit(A) ::= MINUTE_MICROSECOND(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 extract_unit(A) ::= SECOND_MICROSECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+timestampdiff_unit(A) ::= YEAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_YEAR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= QUARTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_QUARTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= WEEK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_WEEK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= SQL_TSI_SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+timestampdiff_unit(A) ::= MICROSECOND(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 expression(A) ::= current_timestamp_value(T). {
@@ -6191,6 +6248,33 @@ identifier(A) ::= TIME_FORMAT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= DATEDIFF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TIMESTAMPDIFF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_DAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_HOUR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_MINUTE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_MONTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_QUARTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_SECOND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_WEEK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SQL_TSI_YEAR(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UNIX_TIMESTAMP(T). {

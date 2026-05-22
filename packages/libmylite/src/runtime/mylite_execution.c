@@ -27,6 +27,7 @@
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
 #include "mylite_temporal_extract.h"
+#include "mylite_timestampdiff.h"
 #include "mylite_unix_timestamp.h"
 #include "sqlite3.h"
 
@@ -2827,6 +2828,11 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME = 47,
     PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC = 48,
     PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT = 49,
+    PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF = 50,
+};
+
+enum {
+    planned_row_scalar_timestampdiff_argument_count = 5,
 };
 
 enum planned_row_scalar_field_domain {
@@ -13605,7 +13611,24 @@ static int datediff_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int timestampdiff_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int timestampdiff_function_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit,
+    enum mylite_timestampdiff_unit *out_unit
+);
 static int evaluate_datediff_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int evaluate_timestampdiff_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     char **out_text,
@@ -22908,6 +22931,39 @@ static int plan_row_scalar_datediff_string_literal(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_timestampdiff_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_timestampdiff_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_timestampdiff_input_kind *out_input_kind
+);
+static int plan_row_scalar_timestampdiff_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_timestampdiff_input_kind *out_input_kind
+);
+static int plan_row_scalar_timestampdiff_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
 static bool row_scalar_date_format_numeric_equal_sides(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_date_format,
@@ -24206,6 +24262,11 @@ static int append_row_scalar_datediff_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_timestampdiff_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int append_row_scalar_field_operand_sql(
     struct dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -25493,6 +25554,11 @@ static int bind_row_scalar_date_interval_second_expression_parameters(
     int *parameter_index
 );
 static int bind_row_scalar_datediff_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
+static int bind_row_scalar_timestampdiff_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -26818,6 +26884,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
@@ -47216,6 +47283,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
@@ -78885,6 +78953,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
@@ -82421,6 +82490,8 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "DATEDIFF");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
+        return timestampdiff_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
         return sec_to_time_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
@@ -86255,6 +86326,223 @@ static int evaluate_datediff_scalar_argument(
     );
     if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
         set_unsupported_error(database, "DATEDIFF() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int timestampdiff_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum mylite_timestampdiff_unit unit = MYLITE_TIMESTAMPDIFF_UNIT_DAY;
+    char *left_text = NULL;
+    char *right_text = NULL;
+    size_t left_text_length = 0U;
+    size_t right_text_length = 0U;
+    bool left_is_null = false;
+    bool right_is_null = false;
+    bool result_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 3U) {
+        set_runtime_error(database, "invalid TIMESTAMPDIFF() syntax");
+        return MYLITE_ERROR;
+    }
+
+    rc = timestampdiff_function_unit_from_ast(database, child_at(expression, 0U), &unit);
+    if (rc == MYLITE_OK && unit == MYLITE_TIMESTAMPDIFF_UNIT_MICROSECOND) {
+        set_unsupported_error(database, "TIMESTAMPDIFF() does not yet support MICROSECOND");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = evaluate_timestampdiff_scalar_argument(
+            database,
+            child_at(expression, 1U),
+            &left_text,
+            &left_text_length,
+            &left_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !left_is_null) {
+        rc = evaluate_timestampdiff_scalar_argument(
+            database,
+            child_at(expression, 2U),
+            &right_text,
+            &right_text_length,
+            &right_is_null
+        );
+    }
+    if (rc == MYLITE_OK && !left_is_null) {
+        rc = mylite_timestampdiff_value(
+            database,
+            unit,
+            left_text,
+            left_text_length,
+            MYLITE_TIMESTAMPDIFF_INPUT_STRING,
+            left_is_null,
+            right_text,
+            right_text_length,
+            MYLITE_TIMESTAMPDIFF_INPUT_STRING,
+            right_is_null,
+            &out_cell->owned_text,
+            &result_is_null
+        );
+    } else if (rc == MYLITE_OK) {
+        result_is_null = true;
+    }
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->value = out_cell->owned_text;
+    }
+
+    free(left_text);
+    free(right_text);
+    return rc;
+}
+
+static int timestampdiff_function_unit_from_ast(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *unit,
+    enum mylite_timestampdiff_unit *out_unit
+) {
+    char unit_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (out_unit == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_DAY;
+    rc = copy_identifier_text(unit, unit_name, sizeof(unit_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (text_equals_ascii_case_insensitive(unit_name, "YEAR") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_YEAR")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_YEAR;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "QUARTER") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_QUARTER")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_QUARTER;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MONTH") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_MONTH")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_MONTH;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "WEEK") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_WEEK")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_WEEK;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "DAY") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_DAY")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_DAY;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "HOUR") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_HOUR")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_HOUR;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MINUTE") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_MINUTE")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_MINUTE;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "SECOND") ||
+        text_equals_ascii_case_insensitive(unit_name, "SQL_TSI_SECOND")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_SECOND;
+        return MYLITE_OK;
+    }
+    if (text_equals_ascii_case_insensitive(unit_name, "MICROSECOND")) {
+        *out_unit = MYLITE_TIMESTAMPDIFF_UNIT_MICROSECOND;
+        return MYLITE_OK;
+    }
+
+    if (snprintf(message, sizeof(message), "TIMESTAMPDIFF() unit %s is not supported", unit_name) <
+        0) {
+        set_runtime_error(database, "failed to format TIMESTAMPDIFF() diagnostic");
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static int evaluate_timestampdiff_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+            "descriptor columns, string descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return date_add_set_unknown_identifier_error(database, expression);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+            "descriptor columns, string descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+            "descriptor columns, string descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        expression,
+        "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, string descriptor columns, and NULL",
+        "TIMESTAMPDIFF() literals do not support NUL bytes",
+        out_text,
+        out_text_length
+    );
+    if (rc == MYLITE_OK && memchr(*out_text, '\0', *out_text_length) != NULL) {
+        set_unsupported_error(database, "TIMESTAMPDIFF() literals do not support NUL bytes");
         rc = MYLITE_ERROR;
     }
     return rc;
@@ -103405,6 +103693,7 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
     case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
@@ -122547,6 +122836,17 @@ static int plan_row_scalar_temporal_function_expression(
             table_column_count,
             out_expression
         );
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
+        *out_handled = true;
+        return plan_row_scalar_timestampdiff_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
         *out_handled = true;
         return plan_row_scalar_unix_timestamp_expression(
@@ -129633,6 +129933,7 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -132296,6 +132597,259 @@ static int plan_row_scalar_datediff_string_literal(
     return rc;
 }
 
+static int plan_row_scalar_timestampdiff_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_timestampdiff_unit unit = MYLITE_TIMESTAMPDIFF_UNIT_DAY;
+    enum mylite_timestampdiff_input_kind left_kind = MYLITE_TIMESTAMPDIFF_INPUT_STRING;
+    enum mylite_timestampdiff_input_kind right_kind = MYLITE_TIMESTAMPDIFF_INPUT_STRING;
+    const struct mylite_sql_ast_node *left_argument = NULL;
+    const char *unit_name = NULL;
+    const char *left_kind_name = NULL;
+    const char *right_kind_name = NULL;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 3U) {
+        set_runtime_error(database, "invalid TIMESTAMPDIFF() syntax");
+        return MYLITE_ERROR;
+    }
+
+    rc = timestampdiff_function_unit_from_ast(database, child_at(expression, 0U), &unit);
+    if (rc == MYLITE_OK && unit == MYLITE_TIMESTAMPDIFF_UNIT_MICROSECOND) {
+        set_unsupported_error(database, "TIMESTAMPDIFF() does not yet support MICROSECOND");
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(planned_row_scalar_timestampdiff_argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF;
+    out_expression->argument_count = planned_row_scalar_timestampdiff_argument_count;
+
+    unit_name = mylite_timestampdiff_unit_name(unit);
+    if (unit_name != NULL) {
+        rc = copy_text_value(database, unit_name, &out_expression->arguments[0].value);
+        out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    }
+    left_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    if (rc == MYLITE_OK && left_argument != NULL && left_argument->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(left_argument) == MYLITE_SQL_AST_LITERAL_NULL) {
+        out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[1].value = (struct planned_value){.is_null = true, .integer = 0};
+        out_expression->arguments[3].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        out_expression->arguments[3].value = (struct planned_value){.is_null = true, .integer = 0};
+    } else if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_timestampdiff_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1],
+            &left_kind
+        );
+        if (rc == MYLITE_OK) {
+            rc = plan_row_scalar_timestampdiff_argument(
+                database,
+                child_at(expression, 2U),
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                &out_expression->arguments[3],
+                &right_kind
+            );
+        }
+    }
+    left_kind_name = mylite_timestampdiff_input_kind_name(left_kind);
+    right_kind_name = mylite_timestampdiff_input_kind_name(right_kind);
+    if (rc == MYLITE_OK && left_kind_name != NULL) {
+        rc = copy_text_value(database, left_kind_name, &out_expression->arguments[2].value);
+        out_expression->arguments[2].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    }
+    if (rc == MYLITE_OK && right_kind_name != NULL) {
+        rc = copy_text_value(database, right_kind_name, &out_expression->arguments[4].value);
+        out_expression->arguments[4].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_timestampdiff_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_timestampdiff_input_kind *out_input_kind
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_input_kind == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input_kind = MYLITE_TIMESTAMPDIFF_INPUT_STRING;
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+            "descriptor columns, string descriptor columns, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            return plan_row_scalar_timestampdiff_string_literal(
+                database,
+                expression,
+                out_expression
+            );
+        }
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_timestampdiff_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression,
+            out_input_kind
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, string descriptor columns, and NULL"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_timestampdiff_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression,
+    enum mylite_timestampdiff_input_kind *out_input_kind
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    int rc = resolve_descriptor_column_reference(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT TIMESTAMPDIFF() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column_descriptor_is_date(&column)) {
+        *out_input_kind = MYLITE_TIMESTAMPDIFF_INPUT_DATE;
+    } else if (column_descriptor_is_datetime(&column)) {
+        *out_input_kind = MYLITE_TIMESTAMPDIFF_INPUT_DATETIME;
+    } else if (column_descriptor_is_timestamp(&column)) {
+        *out_input_kind = MYLITE_TIMESTAMPDIFF_INPUT_TIMESTAMP;
+    } else if (column_descriptor_is_time(&column)) {
+        set_unsupported_error(database, "TIMESTAMPDIFF() does not yet support TIME values");
+        return MYLITE_ERROR;
+    } else if (column_descriptor_is_string_family(&column)) {
+        *out_input_kind = MYLITE_TIMESTAMPDIFF_INPUT_STRING;
+    } else {
+        set_unsupported_error(
+            database,
+            "TIMESTAMPDIFF() supports only DATE, DATETIME, TIMESTAMP, string descriptor "
+            "columns, string temporal literals, and NULL"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_timestampdiff_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = decode_sql_string_literal(
+        database,
+        expression,
+        "TIMESTAMPDIFF() supports only string temporal literals, DATE, DATETIME, TIMESTAMP "
+        "descriptor columns, string descriptor columns, and NULL",
+        "TIMESTAMPDIFF() literals do not support NUL bytes",
+        &text,
+        &text_length
+    );
+
+    if (rc == MYLITE_OK && memchr(text, '\0', text_length) != NULL) {
+        set_unsupported_error(database, "TIMESTAMPDIFF() literals do not support NUL bytes");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        rc = assign_text_value(database, text, text_length, &out_expression->value);
+        text = NULL;
+    }
+    free(text);
+    return rc;
+}
+
 static int plan_row_scalar_unix_timestamp_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -133164,6 +133718,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_TIME_FORMAT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATEDIFF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR ||
@@ -148368,6 +148923,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
@@ -149209,6 +149765,8 @@ static int append_row_scalar_expression_sql(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
         return append_row_scalar_datediff_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+        return append_row_scalar_timestampdiff_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
@@ -149343,6 +149901,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -149475,6 +150034,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -149990,6 +150550,40 @@ static int append_row_scalar_datediff_expression_sql(
 
     rc = dynamic_string_append(string, "_mylite_datediff(");
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_timestampdiff_expression_sql(
+    struct dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL ||
+        expression->argument_count != planned_row_scalar_timestampdiff_argument_count ||
+        expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, "_mylite_timestampdiff(");
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < planned_row_scalar_timestampdiff_argument_count;
+         ++argument_index) {
         if (argument_index != 0U) {
             rc = dynamic_string_append(string, ", ");
         }
@@ -150854,6 +151448,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -151048,6 +151643,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -151117,6 +151713,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -151519,6 +152116,7 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -151592,6 +152190,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -157648,6 +158247,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+        return bind_row_scalar_timestampdiff_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
         return bind_row_scalar_string_length_expression_parameters(
             statement,
@@ -157847,6 +158452,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -157957,6 +158563,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -158145,6 +158752,29 @@ static int bind_row_scalar_datediff_expression_parameters(
         return MYLITE_ERROR;
     }
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
+static int bind_row_scalar_timestampdiff_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL ||
+        expression->argument_count != planned_row_scalar_timestampdiff_argument_count) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < planned_row_scalar_timestampdiff_argument_count;
+         ++argument_index) {
         rc = bind_row_scalar_non_concat_expression_parameters(
             statement,
             &expression->arguments[argument_index],
@@ -158589,6 +159219,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -158768,6 +159399,7 @@ static int bind_row_scalar_control_flow_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
@@ -158832,6 +159464,7 @@ static int bind_row_scalar_control_flow_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_EQUAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:

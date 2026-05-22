@@ -102,6 +102,7 @@ enum {
     mysql_error_conflicting_declarations = 1302,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
+    mysql_error_cannot_drop_index_needed_fk = 1553,
     mysql_error_incorrect_index_name = 1280,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_variable_cant_be_set = 1231,
@@ -181,6 +182,8 @@ enum {
     mysql_error_check_constraint_unknown_column = 3820,
     mysql_error_check_constraint_not_found = 3821,
     mysql_error_duplicate_check_constraint = 3822,
+    mysql_error_drop_constraint_ambiguous = 3939,
+    mysql_error_constraint_does_not_exist = 3940,
     mysql_error_incorrect_timestamp_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
     mysql_error_duplicated_value_in_set = 1291,
@@ -2020,6 +2023,14 @@ struct planned_alter_table_drop_foreign_key {
     struct loaded_foreign_key_info foreign_key;
 };
 
+enum planned_alter_table_drop_constraint_kind {
+    PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE = 0,
+    PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY = 1,
+    PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX = 2,
+    PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY = 3,
+    PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK = 4,
+};
+
 struct planned_drop_index {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -2118,6 +2129,33 @@ struct planned_alter_table_drop_primary_key {
     struct loaded_index_part *parts;
     size_t part_count;
     int64_t affected_rows;
+};
+
+struct planned_alter_table_drop_constraint {
+    enum planned_alter_table_drop_constraint_kind kind;
+    struct planned_alter_table_drop_primary_key primary_key;
+    struct planned_drop_index unique_index;
+    struct planned_alter_table_drop_foreign_key foreign_key;
+    struct planned_alter_table_check_constraint check_constraint;
+};
+
+struct alter_table_drop_constraint_context {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor *columns;
+    struct loaded_index_info *indexes;
+    struct loaded_foreign_key_info *foreign_keys;
+    struct loaded_check_constraint_info *check_constraints;
+    size_t column_count;
+    size_t index_count;
+    size_t foreign_key_count;
+    size_t check_constraint_count;
+};
+
+struct alter_table_drop_constraint_resolution {
+    enum planned_alter_table_drop_constraint_kind kind;
+    size_t match_count;
+    size_t unique_index;
 };
 
 struct planned_alter_table_auto_increment {
@@ -8561,6 +8599,11 @@ static int execute_alter_table_drop_foreign_key_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_drop_constraint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_alter_table_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -10917,6 +10960,56 @@ static void planned_alter_table_drop_foreign_key_deinit(
 static int alter_table_drop_foreign_key_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_drop_foreign_key *plan
+);
+static int plan_alter_table_drop_constraint(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_constraint *out_plan
+);
+static int load_alter_table_drop_constraint_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_drop_constraint_context *context,
+    char *constraint_name,
+    size_t constraint_name_size
+);
+static int resolve_alter_table_drop_constraint(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+);
+static void match_alter_table_drop_constraint_indexes(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+);
+static void match_alter_table_drop_constraint_foreign_keys(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+);
+static void match_alter_table_drop_constraint_checks(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+);
+static int populate_alter_table_drop_constraint_plan(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_drop_constraint_context *context,
+    const struct alter_table_drop_constraint_resolution *resolution,
+    struct planned_alter_table_drop_constraint *out_plan
+);
+static int validate_alter_table_drop_constraint_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum planned_alter_table_drop_constraint_kind kind
+);
+static void alter_table_drop_constraint_context_deinit(
+    struct alter_table_drop_constraint_context *context
+);
+static void planned_alter_table_drop_constraint_deinit(
+    struct planned_alter_table_drop_constraint *plan
 );
 static int find_loaded_foreign_key_by_name(
     const struct loaded_foreign_key_info *foreign_keys,
@@ -25791,6 +25884,10 @@ static void set_duplicate_key_error(
 );
 static void set_no_referenced_row_error(struct mylite_db *database);
 static void set_row_is_referenced_error(struct mylite_db *database);
+static void set_cannot_drop_index_needed_foreign_key_error(
+    struct mylite_db *database,
+    const char *index_name
+);
 static void set_failed_to_open_referenced_table_error(
     struct mylite_db *database,
     const char *table_name
@@ -25840,6 +25937,14 @@ static void set_check_constraint_violated_error(
     const char *constraint_name
 );
 static void set_check_constraint_not_found_error(
+    struct mylite_db *database,
+    const char *constraint_name
+);
+static void set_drop_constraint_ambiguous_error(
+    struct mylite_db *database,
+    const char *constraint_name
+);
+static void set_constraint_does_not_exist_error(
     struct mylite_db *database,
     const char *constraint_name
 );
@@ -26357,6 +26462,8 @@ static int execute_non_prepared_statement(
         return execute_alter_table_add_foreign_key_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
         return execute_alter_table_drop_foreign_key_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
+        return execute_alter_table_drop_constraint_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return execute_alter_table_drop_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
@@ -28455,6 +28562,7 @@ static bool statement_requires_implicit_user_transaction_commit(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
@@ -34218,6 +34326,56 @@ static int execute_alter_table_drop_foreign_key_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_alter_table_drop_constraint_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_drop_constraint plan = {0};
+    mylite_result *result = NULL;
+    int64_t affected_rows = 0;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_drop_constraint(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        switch (plan.kind) {
+        case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY:
+            rc = alter_table_drop_primary_key_from_plan(database, &plan.primary_key);
+            affected_rows = plan.primary_key.affected_rows;
+            break;
+        case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX:
+            rc = drop_index_from_plan(database, &plan.unique_index);
+            affected_rows = plan.unique_index.affected_rows;
+            break;
+        case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY:
+            rc = alter_table_drop_foreign_key_from_plan(database, &plan.foreign_key);
+            break;
+        case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK:
+            rc = alter_table_check_constraint_from_plan(database, &plan.check_constraint);
+            affected_rows = plan.check_constraint.affected_rows;
+            break;
+        case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE:
+            set_runtime_error(database, "invalid DROP CONSTRAINT plan");
+            rc = MYLITE_ERROR;
+            break;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_drop_constraint_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, affected_rows);
+    planned_alter_table_drop_constraint_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_alter_table_drop_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -35286,6 +35444,7 @@ static bool alter_table_statement_accepts_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_INDEX_VISIBILITY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_FOREIGN_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_FOREIGN_KEY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
         return true;
@@ -46642,6 +46801,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CHECK_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ALTER_CHECK_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_UNIQUE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_CREATE_FULLTEXT_INDEX_STATEMENT:
@@ -60087,6 +60247,323 @@ static int alter_table_drop_foreign_key_from_plan(
     return MYLITE_OK;
 }
 
+static int plan_alter_table_drop_constraint(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_constraint *out_plan
+) {
+    struct alter_table_drop_constraint_context context = {0};
+    struct alter_table_drop_constraint_resolution resolution = {
+        .kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE,
+        .match_count = 0U,
+        .unique_index = 0U,
+    };
+    char constraint_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = "";
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_drop_constraint){0};
+    rc = load_alter_table_drop_constraint_context(
+        database,
+        statement,
+        &context,
+        constraint_name,
+        sizeof(constraint_name)
+    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_alter_table_drop_constraint(&context, constraint_name, &resolution);
+    }
+    if (rc == MYLITE_OK && resolution.match_count == 0U) {
+        set_constraint_does_not_exist_error(database, constraint_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && resolution.match_count > 1U) {
+        set_drop_constraint_ambiguous_error(database, constraint_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_drop_constraint_algorithm_lock_options(
+            database,
+            statement,
+            resolution.kind
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = populate_alter_table_drop_constraint_plan(
+            database,
+            statement,
+            &context,
+            &resolution,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->kind = resolution.kind;
+    }
+
+    alter_table_drop_constraint_context_deinit(&context);
+    if (rc != MYLITE_OK) {
+        planned_alter_table_drop_constraint_deinit(out_plan);
+    }
+    return rc;
+}
+
+static int load_alter_table_drop_constraint_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_drop_constraint_context *context,
+    char *constraint_name,
+    size_t constraint_name_size
+) {
+    int rc = resolve_writable_table_name(database, child_at(statement, 0U), &context->target);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(context->target.table_name)) {
+        set_reserved_name_error(database, "table", context->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            constraint_name,
+            constraint_name_size,
+            database
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            context->target.schema.schema_id,
+            context->target.table_name,
+            &context->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                context->target.schema.name,
+                context->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && context->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE DROP CONSTRAINT supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            context->table.table_id,
+            &context->columns,
+            &context->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            context->table.table_id,
+            context->columns,
+            context->column_count,
+            &context->indexes,
+            &context->index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_foreign_key_infos(
+            database,
+            context->table.table_id,
+            context->columns,
+            context->column_count,
+            &context->foreign_keys,
+            &context->foreign_key_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_check_constraint_infos(
+            database,
+            context->table.table_id,
+            &context->check_constraints,
+            &context->check_constraint_count
+        );
+    }
+    return rc;
+}
+
+static int resolve_alter_table_drop_constraint(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+) {
+    *resolution = (struct alter_table_drop_constraint_resolution){
+        .kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE,
+        .match_count = 0U,
+        .unique_index = 0U,
+    };
+    match_alter_table_drop_constraint_indexes(context, constraint_name, resolution);
+    match_alter_table_drop_constraint_foreign_keys(context, constraint_name, resolution);
+    match_alter_table_drop_constraint_checks(context, constraint_name, resolution);
+    return MYLITE_OK;
+}
+
+static void match_alter_table_drop_constraint_indexes(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+) {
+    for (size_t index = 0U; index < context->index_count; ++index) {
+        const struct loaded_index_info *candidate = &context->indexes[index];
+
+        if (!text_equals_ascii_case_insensitive(candidate->index.name, constraint_name)) {
+            continue;
+        }
+        if (candidate->index.kind == MYLITE_CATALOG_INDEX_KIND_PRIMARY) {
+            resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY;
+            ++resolution->match_count;
+        } else if (
+            candidate->index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
+            candidate->index.is_unique
+        ) {
+            resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX;
+            resolution->unique_index = index;
+            ++resolution->match_count;
+        }
+    }
+}
+
+static void match_alter_table_drop_constraint_foreign_keys(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+) {
+    for (size_t index = 0U; index < context->foreign_key_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                context->foreign_keys[index].foreign_key.name,
+                constraint_name
+            )) {
+            resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY;
+            ++resolution->match_count;
+        }
+    }
+}
+
+static void match_alter_table_drop_constraint_checks(
+    const struct alter_table_drop_constraint_context *context,
+    const char *constraint_name,
+    struct alter_table_drop_constraint_resolution *resolution
+) {
+    for (size_t index = 0U; index < context->check_constraint_count; ++index) {
+        if (text_equals_ascii_case_insensitive(
+                context->check_constraints[index].check_constraint.name,
+                constraint_name
+            )) {
+            resolution->kind = PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK;
+            ++resolution->match_count;
+        }
+    }
+}
+
+static int populate_alter_table_drop_constraint_plan(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct alter_table_drop_constraint_context *context,
+    const struct alter_table_drop_constraint_resolution *resolution,
+    struct planned_alter_table_drop_constraint *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    switch (resolution->kind) {
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY:
+        return plan_alter_table_drop_primary_key(database, statement, &out_plan->primary_key);
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX:
+        rc = validate_drop_index_auto_increment(
+            database,
+            &context->indexes[resolution->unique_index],
+            context->indexes,
+            context->index_count
+        );
+        if (rc == MYLITE_OK) {
+            rc = reject_index_used_by_foreign_key(
+                database,
+                &context->indexes[resolution->unique_index].index
+            );
+        }
+        if (rc == MYLITE_OK) {
+            out_plan->unique_index.target = context->target;
+            out_plan->unique_index.table = context->table;
+            out_plan->unique_index.index = context->indexes[resolution->unique_index];
+            context->indexes[resolution->unique_index] = (struct loaded_index_info){0};
+        }
+        return rc;
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY:
+        return plan_alter_table_drop_foreign_key(database, statement, &out_plan->foreign_key);
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK:
+        return plan_alter_table_drop_check(database, statement, &out_plan->check_constraint);
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE:
+        set_runtime_error(database, "invalid DROP CONSTRAINT resolution");
+        return MYLITE_ERROR;
+    }
+
+    set_runtime_error(database, "invalid DROP CONSTRAINT resolution");
+    return MYLITE_ERROR;
+}
+
+static int validate_alter_table_drop_constraint_algorithm_lock_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    enum planned_alter_table_drop_constraint_kind kind
+) {
+    enum mylite_sql_ast_alter_algorithm algorithm = mylite_sql_ast_node_alter_algorithm(statement);
+    enum mylite_sql_ast_alter_lock lock = mylite_sql_ast_node_alter_lock(statement);
+    int rc = validate_alter_table_algorithm_lock_option_values(database, algorithm, lock);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    switch (kind) {
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_PRIMARY_KEY:
+        return validate_alter_table_rebuild_algorithm_options(database, algorithm);
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_UNIQUE_INDEX:
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_FOREIGN_KEY:
+        return validate_alter_table_online_metadata_algorithm_options(database, algorithm);
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_CHECK:
+    case PLANNED_ALTER_TABLE_DROP_CONSTRAINT_NONE:
+        return MYLITE_OK;
+    }
+
+    return MYLITE_OK;
+}
+
+static void alter_table_drop_constraint_context_deinit(
+    struct alter_table_drop_constraint_context *context
+) {
+    if (context == NULL) {
+        return;
+    }
+    loaded_check_constraint_infos_deinit(
+        &context->check_constraints,
+        &context->check_constraint_count
+    );
+    loaded_foreign_key_infos_deinit(&context->foreign_keys, &context->foreign_key_count);
+    loaded_index_infos_deinit(&context->indexes, &context->index_count);
+    free(context->columns);
+    *context = (struct alter_table_drop_constraint_context){0};
+}
+
+static void planned_alter_table_drop_constraint_deinit(
+    struct planned_alter_table_drop_constraint *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+    planned_alter_table_drop_primary_key_deinit(&plan->primary_key);
+    planned_drop_index_deinit(&plan->unique_index);
+    planned_alter_table_drop_foreign_key_deinit(&plan->foreign_key);
+    planned_alter_table_check_constraint_deinit(&plan->check_constraint);
+    *plan = (struct planned_alter_table_drop_constraint){0};
+}
+
 static int find_loaded_foreign_key_by_name(
     const struct loaded_foreign_key_info *foreign_keys,
     size_t foreign_key_count,
@@ -60218,7 +60695,7 @@ static int reject_index_used_by_foreign_key(
         return rc;
     }
     if (context.found) {
-        set_row_is_referenced_error(database);
+        set_cannot_drop_index_needed_foreign_key_error(database, index->name);
         return MYLITE_ERROR;
     }
 
@@ -160090,6 +160567,29 @@ static void set_row_is_referenced_error(struct mylite_db *database) {
     );
 }
 
+static void set_cannot_drop_index_needed_foreign_key_error(
+    struct mylite_db *database,
+    const char *index_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Cannot drop index '%s': needed in a foreign key constraint",
+        index_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cannot_drop_index_needed_fk,
+        "HY000",
+        message
+    );
+}
+
 static void set_failed_to_open_referenced_table_error(
     struct mylite_db *database,
     const char *table_name
@@ -160373,6 +160873,49 @@ static void set_check_constraint_not_found_error(
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_check_constraint_not_found,
+        "HY000",
+        message
+    );
+}
+
+static void set_drop_constraint_ambiguous_error(
+    struct mylite_db *database,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Table has multiple constraints with the name '%s'. "
+        "Please use constraint specific 'DROP' clause.",
+        constraint_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_drop_constraint_ambiguous,
+        "HY000",
+        message
+    );
+}
+
+static void set_constraint_does_not_exist_error(
+    struct mylite_db *database,
+    const char *constraint_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Constraint '%s' does not exist.", constraint_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_constraint_does_not_exist,
         "HY000",
         message
     );

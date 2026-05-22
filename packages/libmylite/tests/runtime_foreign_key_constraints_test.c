@@ -27,6 +27,7 @@ enum {
     mysql_error_incorrect_index_name = 1280,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
+    mysql_error_cannot_drop_index_needed_foreign_key = 1553,
     mysql_error_foreign_key_cascade_duplicate = 1761,
     mysql_error_failed_to_open_referenced_table = 1824,
     mysql_error_duplicate_foreign_key = 1826,
@@ -522,7 +523,11 @@ static int test_composite_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DROP INDEX fk_alter_composite ON child_alter",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){
+            mysql_error_cannot_drop_index_needed_foreign_key,
+            "HY000",
+            "needed in a foreign key constraint",
+        }
     );
     failures += execute_error(
         database,
@@ -626,7 +631,11 @@ static int test_alter_table_add_foreign_key_lifecycle(void) {
     failures += execute_error(
         database,
         "DROP INDEX fk_alter_parent ON child",
-        (struct expected_sql_error){mysql_error_row_is_referenced, "23000", "parent row"}
+        (struct expected_sql_error){
+            mysql_error_cannot_drop_index_needed_foreign_key,
+            "HY000",
+            "needed in a foreign key constraint",
+        }
     );
 
     mylite_close(database);

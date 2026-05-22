@@ -16981,6 +16981,27 @@ static int test_alter_table_drop_foreign_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE child DROP CONSTRAINT fk_child_parent;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT,
+        "alter drop constraint foreign key statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter drop constraint fk child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "child", "alter drop constraint fk table");
+    failures += expect_span_text(
+        child_at(statement, 1U),
+        "fk_child_parent",
+        "alter drop constraint fk name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE child DROP CONSTRAINT IF EXISTS fk_child_parent;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -17358,11 +17379,17 @@ static int test_alter_table_check_constraint_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "ALTER TABLE checked DROP CONSTRAINT positive;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parse_sql("ALTER TABLE checked DROP CONSTRAINT positive;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT,
+        "alter drop constraint check statement"
     );
+    failures += expect_child_count(statement, 2U, "alter drop constraint check child count");
+    failures += expect_span_text(child_at(statement, 0U), "checked", "alter drop constraint table");
+    failures += expect_span_text(child_at(statement, 1U), "positive", "alter drop constraint name");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -17440,8 +17467,43 @@ static int test_alter_table_drop_primary_key_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT,
+        "alter drop constraint primary statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter drop constraint primary child count");
+    failures += expect_span_text(
+        child_at(statement, 1U),
+        "`PRIMARY`",
+        "alter drop constraint primary quoted name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
-        "ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`;",
+        "ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`, ALGORITHM=COPY;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "alter drop constraint algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP CONSTRAINT PRIMARY;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`, DROP INDEX k_v;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

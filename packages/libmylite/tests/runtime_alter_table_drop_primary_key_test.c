@@ -28,6 +28,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_constraint_does_not_exist = 3940,
 };
 
 struct expected_sql_error {
@@ -606,9 +607,9 @@ static int test_drop_primary_key_auto_increment_and_diagnostics(void) {
         database,
         "ALTER TABLE ai_key DROP CONSTRAINT `PRIMARY`",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_constraint_does_not_exist,
+            .sqlstate = "HY000",
+            .message_part = "Constraint 'PRIMARY' does not exist",
         }
     );
     failures += expect_statement_ok(

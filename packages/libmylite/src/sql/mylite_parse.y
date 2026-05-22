@@ -255,6 +255,9 @@ statement(A) ::= alter_table_add_foreign_key_statement(B). {
 statement(A) ::= alter_table_drop_foreign_key_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_drop_constraint_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_drop_index_statement(B). {
     A = B;
 }
@@ -1725,6 +1728,11 @@ alter_table_add_foreign_key_statement(A) ::=
 alter_table_drop_foreign_key_statement(A) ::=
     ALTER(A1) TABLE table_name(T) DROP FOREIGN KEY identifier(I) alter_table_option_tail_opt(O). {
     A = mylite_sql_parser_make_alter_table_drop_foreign_key_statement(state, A1, T, I, O);
+}
+
+alter_table_drop_constraint_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DROP CONSTRAINT identifier(C) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_drop_constraint_statement(state, A1, T, C, O);
 }
 
 alter_table_drop_index_statement(A) ::=

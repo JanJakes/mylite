@@ -29,6 +29,7 @@ enum {
     mysql_error_variable_cant_be_set = 1231,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
+    mysql_error_cannot_drop_index_needed_foreign_key = 1553,
 };
 
 struct expected_sql_error {
@@ -571,9 +572,9 @@ static int test_disabled_foreign_key_checks_dml(void) {
         database,
         "DROP INDEX fk_child_parent ON child",
         (struct expected_sql_error){
-            .code = mysql_error_row_is_referenced,
-            .sqlstate = "23000",
-            .message_part = "parent row",
+            .code = mysql_error_cannot_drop_index_needed_foreign_key,
+            .sqlstate = "HY000",
+            .message_part = "needed in a foreign key constraint",
         }
     );
     failures += execute_error(

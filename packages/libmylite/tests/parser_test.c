@@ -17259,7 +17259,98 @@ static int test_alter_table_default_charset_collation_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4;",
+        "ALTER TABLE app.old_name CONVERT TO CHARACTER SET utf8mb4 "
+        "COLLATE 'utf8mb4_bin';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 1U);
+    charset_option = child_at(table_options, 0U);
+    collation_option = child_at(table_options, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT,
+        "alter table convert character set statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter convert charset child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.old_name", "alter convert target");
+    failures +=
+        expect_node(table_options, MYLITE_SQL_AST_TABLE_OPTION_LIST, "alter convert option list");
+    failures += expect_child_count(table_options, 2U, "alter convert option count");
+    failures +=
+        expect_node(charset_option, MYLITE_SQL_AST_TABLE_CHARSET_OPTION, "convert charset option");
+    failures += expect_span_text(child_at(charset_option, 0U), "utf8mb4", "convert charset");
+    failures += expect_node(
+        collation_option,
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "convert collation option"
+    );
+    failures += expect_literal(
+        child_at(collation_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "convert string collation"
+    );
+    failures +=
+        expect_span_text(child_at(collation_option, 0U), "'utf8mb4_bin'", "convert collation");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARSET `utf8mb4` COLLATE `utf8mb4_0900_ai_ci`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET binary;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4 COLLATE binary;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 1U);
+    charset_option = child_at(table_options, 0U);
+    failures += expect_child_count(table_options, 1U, "alter convert default option count");
+    failures += expect_span_text(child_at(charset_option, 0U), "DEFAULT", "convert default");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET=utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4 COLLATE DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4 DEFAULT COLLATE utf8mb4_bin;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4, ALGORITHM=COPY;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

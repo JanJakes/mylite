@@ -1504,6 +1504,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "set_character_set_default_target";
     case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
         return "alter_table_default_charset_collation_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT:
+        return "alter_table_convert_character_set_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
         return "alter_table_comment_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT:

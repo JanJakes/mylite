@@ -976,6 +976,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_default_charset_c
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *table_options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_convert_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_comment_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

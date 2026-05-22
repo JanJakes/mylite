@@ -299,6 +299,9 @@ statement(A) ::= alter_table_column_visibility_statement(B). {
 statement(A) ::= alter_table_default_charset_collation_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_convert_character_set_statement(B). {
+    A = B;
+}
 statement(A) ::= alter_table_comment_statement(B). {
     A = B;
 }
@@ -1686,6 +1689,108 @@ alter_table_default_charset_collation_option(A) ::=
 alter_table_default_charset_collation_option(A) ::=
     default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARACTER(C) SET
+    option_name(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(state, C, N)),
+            O));
+}
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARACTER(C) SET
+    BINARY(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, N))),
+            O));
+}
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARSET(C)
+    option_name(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(state, C, N)),
+            O));
+}
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARSET(C)
+    BINARY(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, N))),
+            O));
+}
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARACTER(C) SET DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_table_option_list(
+            state,
+            mylite_sql_parser_make_table_charset_option(
+                state,
+                C,
+                mylite_sql_parser_make_identifier(state, D))));
+}
+alter_table_convert_character_set_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARSET(C) DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        A1,
+        T,
+        mylite_sql_parser_make_table_option_list(
+            state,
+            mylite_sql_parser_make_table_charset_option(
+                state,
+                C,
+                mylite_sql_parser_make_identifier(state, D))));
+}
+
+convert_character_set_collate_opt(A) ::= . {
+    A = NULL;
+}
+convert_character_set_collate_opt(A) ::= COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+convert_character_set_collate_opt(A) ::= COLLATE(C) BINARY(N). {
+    A = mylite_sql_parser_make_table_collation_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
 }
 
 alter_table_comment_statement(A) ::=

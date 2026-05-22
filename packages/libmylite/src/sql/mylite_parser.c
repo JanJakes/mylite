@@ -3298,6 +3298,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_default_charset_c
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_convert_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_options != NULL) {
+        span = span_join(span, table_options->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_CONVERT_CHARACTER_SET_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, table_options);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_comment_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token alter_token,

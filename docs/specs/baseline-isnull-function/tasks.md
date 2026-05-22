@@ -24,6 +24,6 @@
 - [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
 - [x] Run focused build/tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, performance, cleanup, compatibility wording, and test relevance.
-- [ ] Commit, push `main`, and continue to the next baseline slice.
+- [x] Commit, push `main`, and continue to the next baseline slice.

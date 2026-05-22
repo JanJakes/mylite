@@ -17,4 +17,4 @@
 - [x] Review the final diff for architecture boundaries, scope control,
   diagnostics, warning order/counts, affected rows, zero-init cleanup, and
   compatibility docs.
-- [ ] Commit and push the completed feature to `origin/main`.
+- [x] Commit and push the completed feature to `origin/main`.

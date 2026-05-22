@@ -20,5 +20,5 @@
 - [x] Add focused fast C runtime tests and register any new test binary.
 - [x] Run focused MySQL expectations, build, focused CTest entries, and full
       `cmake --workflow --preset check`.
-- [ ] Review, amend if needed, commit, push, and continue to the next priority
+- [x] Review, amend if needed, commit, push, and continue to the next priority
       baseline slice.

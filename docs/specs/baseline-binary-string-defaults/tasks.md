@@ -32,6 +32,6 @@
       implemented subset.
 - [x] Run focused build/tests, the new MySQL expectation script, and
       `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, catalog authority,
+- [x] Review the final diff for architecture boundaries, catalog authority,
       binary default conversion, generated SQL quoting, compatibility claims,
       performance, and file-format safety.

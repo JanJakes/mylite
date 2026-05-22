@@ -12,4 +12,4 @@
 - [x] Update compatibility documentation.
 - [x] Run focused build/tests, the MySQL expectation script, and
   `cmake --workflow --preset check`.
-- [ ] Review, commit, and push.
+- [x] Review, commit, and push.

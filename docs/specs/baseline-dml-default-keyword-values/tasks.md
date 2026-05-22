@@ -27,4 +27,4 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review the final diff for architecture boundaries, descriptor authority,
   performance, cleanup, compatibility wording, and test relevance.
-- [ ] Commit, push `main`, and continue to the next baseline slice.
+- [x] Commit, push `main`, and continue to the next baseline slice.

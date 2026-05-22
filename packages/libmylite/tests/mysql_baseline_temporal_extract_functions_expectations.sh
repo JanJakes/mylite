@@ -103,7 +103,7 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 
 core_expected=$(cat <<EXPECTED
-2008-01-02	2008-01-02	NULL	2008	1	2	2	13	29	17	13	29	17	13	272	29	17
+2008-01-02	2008-01-02	NULL	2008	1	1	2	3	4	2	2	13	29	17	13	29	17	13	272	29	17
 -1	0
 EXPECTED
 )
@@ -112,6 +112,8 @@ expect_output \
     "$core_expected" \
     "DO 0; SELECT DATE('2008-01-02 13:29:17'), DATE('2008-01-02'), "\
 "DATE(NULL), YEAR('2008-01-02 13:29:17'), MONTH('2008-01-02 13:29:17'), "\
+"QUARTER('2008-01-02'), QUARTER('2008-04-01'), QUARTER('2008-07-01'), "\
+"QUARTER('2008-10-01'), "\
 "DAY('2008-01-02 13:29:17'), DAYOFMONTH('2008-01-02 13:29:17'), "\
 "HOUR('2008-01-02 13:29:17'), MINUTE('2008-01-02 13:29:17'), "\
 "SECOND('2008-01-02 13:29:17'), HOUR('13:29:17'), MINUTE('13:29:17'), "\
@@ -121,7 +123,7 @@ expect_output \
     "$DATABASE"
 
 zero_expected=$(cat <<EXPECTED
-0000-00-00	0	0	0	0	1	2	3	2001-11-00	2001	11	0	2005-00-00	2005	0	0	0000-01-02	0	1	2
+0000-00-00	0	0	0	0	0	1	0	4	1	2	3	2001-11-00	2001	11	4	0	2005-00-00	2005	0	0	0	0000-01-02	0	1	1	2
 EXPECTED
 )
 expect_output \
@@ -130,34 +132,38 @@ expect_output \
     "SET SESSION sql_mode = ''; "\
 "SELECT DATE('0000-00-00 00:00:00'), YEAR('0000-00-00'), "\
 "MONTH('2005-00-00'), DAY('2001-11-00'), DAYOFMONTH('2001-11-00'), "\
+"QUARTER('0000-00-00'), QUARTER('0000-01-02'), QUARTER('2005-00-00'), "\
+"QUARTER('2001-11-00'), "\
 "HOUR('0000-00-00 01:02:03'), MINUTE('0000-00-00 01:02:03'), "\
 "SECOND('0000-00-00 01:02:03'), DATE('2001-11-00'), YEAR('2001-11-00'), "\
-"MONTH('2001-11-00'), DAY('2001-11-00'), DATE('2005-00-00'), "\
+"MONTH('2001-11-00'), QUARTER('2001-11-00'), DAY('2001-11-00'), DATE('2005-00-00'), "\
 "YEAR('2005-00-00'), MONTH('2005-00-00'), DAY('2005-00-00'), "\
-"DATE('0000-01-02'), YEAR('0000-01-02'), MONTH('0000-01-02'), DAY('0000-01-02');" \
+"QUARTER('2005-00-00'), DATE('0000-01-02'), YEAR('0000-01-02'), "\
+"MONTH('0000-01-02'), QUARTER('0000-01-02'), DAY('0000-01-02');" \
     "$DATABASE"
 
 labels_expected=$(cat <<EXPECTED
-DATE ('2008-01-02 13:29:17')	yr	hr
-2008-01-02	2008	13
+DATE ('2008-01-02 13:29:17')	yr	qtr	hr
+2008-01-02	2008	2	13
 EXPECTED
 )
 expect_output_with_headers \
     "temporal extract labels and whitespace" \
     "$labels_expected" \
-    "SET SESSION sql_mode = ''; "\
+"SET SESSION sql_mode = ''; "\
 "SELECT DATE ('2008-01-02 13:29:17'), YEAR ('2008-01-02') AS yr, "\
-"HOUR ('13:29:17') AS hr FROM DUAL;" \
+"QUARTER ('2008-04-01') AS qtr, HOUR ('13:29:17') AS hr FROM DUAL;" \
     "$DATABASE"
 
 table_expected=$(cat <<EXPECTED
-1	2008-01-02	2008	1	2	2	13	29	17	13	29	17
-2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
-3	0000-00-00	0	0	0	0	13	29	17	NULL	NULL	NULL
+1	2008-01-02	2008	1	2	2	1	1	13	29	17	1	4	3	13	29	17
+2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+3	0000-00-00	0	0	0	0	0	NULL	13	29	17	NULL	0	4	NULL	NULL	NULL
+Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
-3
+4
 EXPECTED
 )
 expect_output \
@@ -165,24 +171,26 @@ expect_output \
     "$table_expected" \
     "SET SESSION sql_mode = ''; "\
 "CREATE TABLE t(id INT, d DATE NULL, dt DATETIME NULL, ts TIMESTAMP NULL, "\
-"tm TIME NULL, s VARCHAR(32)); "\
+"tm TIME NULL, s VARCHAR(32), c CHAR(19), x TEXT); "\
 "INSERT INTO t VALUES "\
-"(1,'2008-01-02','2008-01-02 13:29:17','2008-01-02 13:29:17','13:29:17','2008-01-02 13:29:17'),"\
-"(2,NULL,NULL,NULL,NULL,NULL),"\
-"(3,'0000-00-00','0000-00-00 01:02:03',NULL,'-13:29:17','not-a-date'); "\
+"(1,'2008-01-02','2008-01-02 13:29:17','2008-01-02 13:29:17','13:29:17','2008-01-02 13:29:17','2008-10-01','2008-07-01'),"\
+"(2,NULL,NULL,NULL,NULL,NULL,NULL,NULL),"\
+"(3,'0000-00-00','0000-00-00 01:02:03',NULL,'-13:29:17','not-a-date','2005-00-00','2001-11-00'); "\
 "SELECT id, DATE(dt), YEAR(d), MONTH(dt), DAY(d), DAYOFMONTH(dt), "\
-"HOUR(tm), MINUTE(tm), SECOND(tm), HOUR(s), MINUTE(s), SECOND(s) "\
+"QUARTER(d), QUARTER(ts), HOUR(tm), MINUTE(tm), SECOND(tm), "\
+"QUARTER(s), QUARTER(c), QUARTER(x), HOUR(s), MINUTE(s), SECOND(s) "\
 "FROM t ORDER BY id; SHOW WARNINGS; SELECT @@warning_count;" \
     "$DATABASE"
 
 timestamp_expected=$(cat <<EXPECTED
-2008-01-02	2008	13	29	17
+2008-01-02	2008	1	13	29	17
 EXPECTED
 )
 expect_output \
     "timestamp-backed temporal extract values" \
     "$timestamp_expected" \
-    "SELECT DATE(ts), YEAR(ts), HOUR(ts), MINUTE(ts), SECOND(ts) FROM t WHERE id = 1;" \
+    "SELECT DATE(ts), YEAR(ts), QUARTER(ts), HOUR(ts), MINUTE(ts), SECOND(ts) "\
+"FROM t WHERE id = 1;" \
     "$DATABASE"
 
 do_expected=$(cat <<EXPECTED
@@ -192,12 +200,14 @@ EXPECTED
 expect_output \
     "temporal extract do status" \
     "$do_expected" \
-    "DO DATE('2008-01-02 13:29:17'), YEAR(NULL), HOUR('13:29:17'); "\
+    "DO DATE('2008-01-02 13:29:17'), YEAR(NULL), QUARTER('2008-04-01'), "\
+"HOUR('13:29:17'); "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
 invalid_expected=$(cat <<EXPECTED
-NULL	NULL	NULL	NULL	NULL	NULL	NULL
+NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Incorrect datetime value: 'not-a-date'
@@ -205,14 +215,14 @@ Warning	1292	Incorrect datetime value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
 Warning	1292	Truncated incorrect time value: 'not-a-date'
-7
+8
 EXPECTED
 )
 expect_output \
     "invalid temporal extract warnings" \
     "$invalid_expected" \
     "SELECT DATE('not-a-date'), YEAR('not-a-date'), MONTH('not-a-date'), "\
-"DAY('not-a-date'), HOUR('not-a-date'), MINUTE('not-a-date'), "\
+"QUARTER('not-a-date'), DAY('not-a-date'), HOUR('not-a-date'), MINUTE('not-a-date'), "\
 "SECOND('not-a-date'); SHOW WARNINGS; SELECT @@warning_count;" \
     "$DATABASE"
 
@@ -233,6 +243,22 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "QUARTER empty argument syntax" \
+    1064 \
+    "42000" \
+    "syntax" \
+    "SELECT QUARTER() AS x;" \
+    "$DATABASE"
+
+expect_error \
+    "QUARTER extra argument syntax" \
+    1064 \
+    "42000" \
+    "syntax" \
+    "SELECT QUARTER('2008-01-02', 'x') AS x;" \
+    "$DATABASE"
+
+expect_error \
     "DAYOFMONTH empty argument count" \
     1582 \
     "42000" \
@@ -242,7 +268,13 @@ expect_error \
 
 expect_upstream_accepts \
     "numeric temporal literals deferred by MyLite" \
-    "SELECT DATE(20080102132917), YEAR(20080102132917), HOUR(20080102132917);" \
+    "SELECT DATE(20080102132917), YEAR(20080102132917), QUARTER(20080102132917), "\
+"HOUR(20080102132917);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "boolean and hex quarter coercions deferred by MyLite" \
+    "SELECT QUARTER(TRUE), QUARTER(FALSE), QUARTER(X'323030382D30342D3031');" \
     "$DATABASE"
 
 expect_upstream_accepts \

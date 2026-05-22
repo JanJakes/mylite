@@ -170,9 +170,11 @@ This slice intentionally does not support:
   them through warning-producing time coercion that is outside this batch;
 - `TIME` inputs to `DATE()`, `YEAR()`, `MONTH()`, `DAY()`, or `DAYOFMONTH()`;
 - `DAYNAME()`, `DAYOFWEEK()`, `DAYOFYEAR()`, `EXTRACT()`, `MICROSECOND()`,
-  `QUARTER()`, `WEEK()`, `WEEKDAY()`, `WEEKOFYEAR()`, `YEARWEEK()`, or other
+  `WEEK()`, `WEEKDAY()`, `WEEKOFYEAR()`, `YEARWEEK()`, or other
   temporal functions outside later feature slices such as
-  `docs/specs/baseline-time-function/specs.md`;
+  `docs/specs/baseline-time-function/specs.md`,
+  `docs/specs/baseline-extract-function/specs.md`, and
+  `docs/specs/baseline-quarter-function/specs.md`;
 - use in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults,
   generated columns, indexes, constraints, joins, CTEs, or arbitrary SQLite
   pass-through.

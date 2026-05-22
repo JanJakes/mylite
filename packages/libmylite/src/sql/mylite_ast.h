@@ -529,6 +529,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR = 520,
     MYLITE_SQL_AST_QUALIFIED_WILDCARD = 521,
     MYLITE_SQL_AST_EXTRACT_FUNCTION = 522,
+    MYLITE_SQL_AST_QUARTER_FUNCTION = 523,
 };
 
 enum mylite_sql_ast_literal_kind {

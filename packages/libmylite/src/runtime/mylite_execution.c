@@ -25738,6 +25738,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -45212,6 +45213,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -79074,6 +79076,7 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -82718,6 +82721,8 @@ static enum mylite_temporal_extract_kind temporal_extract_function_kind(
         return MYLITE_TEMPORAL_EXTRACT_TIME;
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC;
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
+        return MYLITE_TEMPORAL_EXTRACT_QUARTER;
     case MYLITE_SQL_AST_YEAR_FUNCTION:
         return MYLITE_TEMPORAL_EXTRACT_YEAR;
     case MYLITE_SQL_AST_MONTH_FUNCTION:
@@ -82747,6 +82752,7 @@ static bool is_temporal_extract_function_kind(enum mylite_sql_ast_node_kind ast_
     case MYLITE_SQL_AST_DATE_FUNCTION:
     case MYLITE_SQL_AST_TIME_FUNCTION:
     case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
     case MYLITE_SQL_AST_YEAR_FUNCTION:
     case MYLITE_SQL_AST_MONTH_FUNCTION:
     case MYLITE_SQL_AST_DAY_FUNCTION:
@@ -125488,10 +125494,12 @@ static int reject_time_column_temporal_extract_date_part(
 ) {
     if (mylite_temporal_extract_kind_is_calendar_date(extract_kind)) {
         set_unsupported_error(database, "calendar date functions do not yet support TIME values");
-    } else if (
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_QUARTER ||
-        extract_kind == MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH
-    ) {
+    } else if (extract_kind == MYLITE_TEMPORAL_EXTRACT_QUARTER) {
+        set_unsupported_error(
+            database,
+            "DATE()/YEAR()/QUARTER()/MONTH()/DAY()/DAYOFMONTH() do not support TIME values"
+        );
+    } else if (extract_kind == MYLITE_TEMPORAL_EXTRACT_YEAR_MONTH) {
         set_unsupported_error(database, "EXTRACT() date units do not support TIME values");
     } else {
         set_unsupported_error(

@@ -4061,14 +4061,18 @@ static int test_time_second_conversion_functions(void) {
 
 static int test_temporal_extract_functions(void) {
     enum {
-        temporal_extract_dayofweek_projection_index = 5,
-        temporal_extract_dayofyear_projection_index = 6,
-        temporal_extract_last_day_projection_index = 7,
-        temporal_extract_time_projection_index = 8,
-        temporal_extract_hour_projection_index = 9,
-        temporal_extract_minute_projection_index = 10,
-        temporal_extract_second_projection_index = 11,
-        temporal_extract_do_hour_index = 6
+        temporal_extract_quarter_projection_index = 3,
+        temporal_extract_day_projection_index = 4,
+        temporal_extract_dayofmonth_projection_index = 5,
+        temporal_extract_dayofweek_projection_index = 6,
+        temporal_extract_dayofyear_projection_index = 7,
+        temporal_extract_last_day_projection_index = 8,
+        temporal_extract_time_projection_index = 9,
+        temporal_extract_hour_projection_index = 10,
+        temporal_extract_minute_projection_index = 11,
+        temporal_extract_second_projection_index = 12,
+        temporal_extract_do_time_index = 5,
+        temporal_extract_do_hour_index = 7
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -4078,9 +4082,9 @@ static int test_temporal_extract_functions(void) {
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT DATE('2008-01-02 13:29:17'), YEAR(d), MONTH(d), DAY(d), "
-        "DAYOFMONTH(d), DAYOFWEEK(d), DAYOFYEAR(d), LAST_DAY(d), TIME(dt), HOUR(tm), "
-        "MINUTE(tm), SECOND(tm) FROM t;",
+        "SELECT DATE('2008-01-02 13:29:17'), YEAR(d), MONTH(d), QUARTER(d), "
+        "DAY(d), DAYOFMONTH(d), DAYOFWEEK(d), DAYOFYEAR(d), LAST_DAY(d), TIME(dt), "
+        "HOUR(tm), MINUTE(tm), SECOND(tm) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -4102,12 +4106,17 @@ static int test_temporal_extract_functions(void) {
         "month extract function"
     );
     failures += expect_node(
-        child_at(child_at(select_list, 3U), 0U),
+        child_at(child_at(select_list, temporal_extract_quarter_projection_index), 0U),
+        MYLITE_SQL_AST_QUARTER_FUNCTION,
+        "quarter extract function"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, temporal_extract_day_projection_index), 0U),
         MYLITE_SQL_AST_DAY_FUNCTION,
         "day extract function"
     );
     failures += expect_node(
-        child_at(child_at(select_list, 4U), 0U),
+        child_at(child_at(select_list, temporal_extract_dayofmonth_projection_index), 0U),
         MYLITE_SQL_AST_DAYOFMONTH_FUNCTION,
         "dayofmonth extract function"
     );
@@ -4149,7 +4158,8 @@ static int test_temporal_extract_functions(void) {
     failures += parse_sql(
         "SELECT DATE ('2008-01-02 13:29:17'), DAYOFWEEK ('2008-01-02') AS dow, "
         "DAYOFYEAR ('2008-01-02') AS doy, LAST_DAY ('2008-01-02') AS month_end, "
-        "TIME ('13:29:17') AS tm, HOUR ('13:29:17') AS h FROM DUAL;",
+        "QUARTER ('2008-04-01') AS q, TIME ('13:29:17') AS tm, "
+        "HOUR ('13:29:17') AS h FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -4157,7 +4167,8 @@ static int test_temporal_extract_functions(void) {
 
     failures += parse_sql(
         "DO DATE(NULL), DAYOFWEEK('2008-01-02'), DAYOFYEAR('2008-01-02'), "
-        "LAST_DAY('2008-01-02'), TIME('13:29:17'), YEAR('2008-01-02'), HOUR('13:29:17');",
+        "LAST_DAY('2008-01-02'), QUARTER('2008-04-01'), TIME('13:29:17'), "
+        "YEAR('2008-01-02'), HOUR('13:29:17');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -4181,8 +4192,16 @@ static int test_temporal_extract_functions(void) {
         MYLITE_SQL_AST_LAST_DAY_FUNCTION,
         "do last_day extract"
     );
-    failures +=
-        expect_node(child_at(expression_list, 4U), MYLITE_SQL_AST_TIME_FUNCTION, "do time extract");
+    failures += expect_node(
+        child_at(expression_list, 4U),
+        MYLITE_SQL_AST_QUARTER_FUNCTION,
+        "do quarter extract"
+    );
+    failures += expect_node(
+        child_at(expression_list, temporal_extract_do_time_index),
+        MYLITE_SQL_AST_TIME_FUNCTION,
+        "do time extract"
+    );
     failures += expect_node(
         child_at(expression_list, temporal_extract_do_hour_index),
         MYLITE_SQL_AST_HOUR_FUNCTION,
@@ -4264,6 +4283,11 @@ static int test_temporal_extract_functions(void) {
     failures += parse_sql("SELECT TIME();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT QUARTER();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT QUARTER('2008-01-02', 'x');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT EXTRACT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

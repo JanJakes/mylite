@@ -3674,6 +3674,10 @@ expression(A) ::= EXTRACT(T) LPAREN extract_unit(U) FROM expression(B) RPAREN(R)
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_EXTRACT_FUNCTION, U, B, R);
 }
+expression(A) ::= QUARTER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_QUARTER_FUNCTION, B, R);
+}
 expression(A) ::= YEAR(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_YEAR_FUNCTION, B, R);

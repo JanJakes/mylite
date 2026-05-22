@@ -249,8 +249,8 @@ Existing diagnostics are preserved unless adjustment applies:
   statements; warning under adjustment.
 - Existing unsupported-shape diagnostics remain unchanged for unsupported
   source conversions, `AUTO_INCREMENT` `IGNORE` targets, row-scalar/compound
-  `IGNORE`, `REPLACE ... SELECT` key-bearing forms, aliases, partitions,
-  joins, expressions, and unsupported descriptors.
+  `IGNORE`, `REPLACE ... SELECT` row-scalar or compound sources, aliases,
+  partitions, joins, expressions, and unsupported descriptors.
 - Allocation and physical SQLite failures use existing runtime diagnostics and
   preserve statement cleanup.
 

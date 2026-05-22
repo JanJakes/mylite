@@ -1145,6 +1145,7 @@ static int test_primary_key_type_and_mutation_coverage(void) {
 static int test_primary_key_diagnostics(void) {
     static const char *const keyed_rows_after_drop[] = {"10"};
     static const char *const keyed_rows_after_replace[] = {"10", "11"};
+    static const char *const keyed_negative_rows_after_replace_select[] = {"1", "10"};
     static const char *const no_show_index_rows[] = {NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -1385,13 +1386,16 @@ static int test_primary_key_diagnostics(void) {
             .message_part = "Duplicate entry '1' for key 'keyed_negative.PRIMARY'",
         }
     );
-    failures += execute_error(
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO keyed_negative SELECT id, v FROM keyed_negative", 1);
+    failures += expect_query_values(
         database,
-        "REPLACE INTO keyed_negative SELECT id, v FROM keyed_negative",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REPLACE ... SELECT into primary-key tables is not supported",
+        (struct expected_query){
+            .sql = "SELECT id, v FROM keyed_negative",
+            .values = keyed_negative_rows_after_replace_select,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "primary key table REPLACE SELECT exact replacement",
         }
     );
     failures += execute_error(

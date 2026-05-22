@@ -218,6 +218,151 @@ expect_value \
     "3	0	2	1:20,2:30" \
     "$(printf '%s\n' "$keyed_status" | tail -n 1)"
 
+same_table_keyed_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE keyed_same(id INT PRIMARY KEY, v INT);
+         INSERT INTO keyed_same VALUES (1, 10), (2, 20);
+         REPLACE INTO keyed_same SELECT id, v FROM keyed_same ORDER BY id;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id)
+         FROM keyed_same;"
+)
+expect_value \
+    "mysql exact same-table replace-select counts selected rows" \
+    "2	0	2	1:10,2:20" \
+    "$(printf '%s\n' "$same_table_keyed_status" | tail -n 1)"
+
+unique_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE unique_target(a INT UNIQUE, b INT, v INT);
+         INSERT INTO unique_target VALUES (1, 10, 100);
+         CREATE TABLE unique_source(a INT, b INT, v INT);
+         INSERT INTO unique_source VALUES (1, 20, 200), (2, 30, 300);
+         REPLACE INTO unique_target SELECT a, b, v FROM unique_source ORDER BY a;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(CONCAT(a, ':', b, ':', v) ORDER BY a)
+         FROM unique_target;"
+)
+expect_value \
+    "mysql unique replace-select deletes and inserts" \
+    "3	0	2	1:20:200,2:30:300" \
+    "$(printf '%s\n' "$unique_status" | tail -n 1)"
+
+multi_unique_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE multi_unique(a INT UNIQUE, b INT UNIQUE, v INT);
+         INSERT INTO multi_unique VALUES (1, 10, 100), (2, 20, 200);
+         CREATE TABLE multi_unique_source(a INT, b INT, v INT);
+         INSERT INTO multi_unique_source VALUES (1, 20, 300);
+         REPLACE INTO multi_unique SELECT a, b, v FROM multi_unique_source;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(CONCAT(a, ':', b, ':', v) ORDER BY a)
+         FROM multi_unique;"
+)
+expect_value \
+    "mysql replace-select can delete multiple unique conflicts" \
+    "3	0	1	1:20:300" \
+    "$(printf '%s\n' "$multi_unique_status" | tail -n 1)"
+
+composite_unique_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE composite_unique(a INT, b INT, v INT, UNIQUE KEY uq_ab(a, b));
+         INSERT INTO composite_unique VALUES (1, 1, 10), (1, 2, 20);
+         CREATE TABLE composite_unique_source(a INT, b INT, v INT);
+         INSERT INTO composite_unique_source VALUES (1, 1, 100), (2, 2, 200);
+         REPLACE INTO composite_unique SELECT a, b, v FROM composite_unique_source ORDER BY a, b;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(CONCAT(a, ':', b, ':', v) ORDER BY a, b)
+         FROM composite_unique;"
+)
+expect_value \
+    "mysql composite unique replace-select" \
+    "3	0	3	1:1:100,1:2:20,2:2:200" \
+    "$(printf '%s\n' "$composite_unique_status" | tail -n 1)"
+
+nullable_unique_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE nullable_unique(a INT UNIQUE, v INT);
+         INSERT INTO nullable_unique VALUES (NULL, 10);
+         CREATE TABLE nullable_unique_source(a INT, v INT);
+         INSERT INTO nullable_unique_source VALUES (NULL, 20);
+         REPLACE INTO nullable_unique SELECT a, v FROM nullable_unique_source;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(COALESCE(CONCAT(a, ':', v), CONCAT('NULL:', v)) ORDER BY v)
+         FROM nullable_unique;"
+)
+expect_value \
+    "mysql nullable unique replace-select does not conflict on null" \
+    "1	0	2	NULL:10,NULL:20" \
+    "$(printf '%s\n' "$nullable_unique_status" | tail -n 1)"
+
+prefix_unique_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE prefix_unique(s VARCHAR(10), v INT, UNIQUE KEY uq_s(s(3)));
+         INSERT INTO prefix_unique VALUES ('abcdef', 10);
+         CREATE TABLE prefix_unique_source(s VARCHAR(10), v INT);
+         INSERT INTO prefix_unique_source VALUES ('abczzz', 20), ('xyz000', 30);
+         REPLACE INTO prefix_unique SELECT s, v FROM prefix_unique_source ORDER BY s;
+         SELECT ROW_COUNT(), @@warning_count, COUNT(*),
+             GROUP_CONCAT(CONCAT(s, ':', v) ORDER BY s)
+         FROM prefix_unique;"
+)
+expect_value \
+    "mysql prefix unique replace-select" \
+    "3	0	2	abczzz:20,xyz000:30" \
+    "$(printf '%s\n' "$prefix_unique_status" | tail -n 1)"
+
+auto_increment_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         CREATE TABLE auto_inc(id INT AUTO_INCREMENT PRIMARY KEY, v INT UNIQUE);
+         INSERT INTO auto_inc(v) VALUES (10), (20);
+         CREATE TABLE auto_inc_source(id INT, v INT);
+         INSERT INTO auto_inc_source VALUES (NULL, 20), (7, 30);
+         REPLACE INTO auto_inc(id, v) SELECT id, v FROM auto_inc_source ORDER BY v;
+         SELECT ROW_COUNT(), @@warning_count, LAST_INSERT_ID(), COUNT(*),
+             GROUP_CONCAT(CONCAT(id, ':', v) ORDER BY id)
+         FROM auto_inc;"
+)
+expect_value \
+    "mysql auto increment replace-select" \
+    "3	0	3	3	1:10,3:20,7:30" \
+    "$(printf '%s\n' "$auto_increment_status" | tail -n 1)"
+
+expect_error \
+    "parent foreign key replace-select" \
+    1451 \
+    23000 \
+    "Cannot delete or update a parent row" \
+    "USE ${DATABASE};
+     CREATE TABLE fk_parent(id INT PRIMARY KEY, v INT);
+     CREATE TABLE fk_child(
+         id INT PRIMARY KEY,
+         parent_id INT,
+         FOREIGN KEY(parent_id) REFERENCES fk_parent(id)
+     );
+     INSERT INTO fk_parent VALUES (1, 10);
+     INSERT INTO fk_child VALUES (1, 1);
+     CREATE TABLE fk_parent_source(id INT, v INT);
+     INSERT INTO fk_parent_source VALUES (1, 20);
+     REPLACE INTO fk_parent SELECT id, v FROM fk_parent_source;"
+
+expect_error \
+    "child foreign key replace-select" \
+    1452 \
+    23000 \
+    "Cannot add or update a child row" \
+    "USE ${DATABASE};
+     CREATE TABLE fk_child_source(id INT, parent_id INT);
+     INSERT INTO fk_child_source VALUES (2, 999);
+     REPLACE INTO fk_child SELECT id, parent_id FROM fk_child_source;"
+
 expect_error \
     "column count mismatch too few" \
     1136 \

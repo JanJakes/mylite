@@ -283,14 +283,10 @@ static int test_create_table_foreign_key_lifecycle(void) {
         "INSERT INTO select_child SELECT id, parent_id FROM select_source",
         0
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "REPLACE INTO select_child SELECT id, parent_id FROM select_source",
-        (struct expected_sql_error){
-            mysql_error_parse,
-            "42000",
-            "foreign-key child tables",
-        }
+        0
     );
 
     mylite_close(database);

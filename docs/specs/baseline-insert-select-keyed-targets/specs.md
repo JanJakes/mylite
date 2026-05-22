@@ -110,7 +110,8 @@ unsupported source shapes remain those of the existing table-backed
 This feature does not implement:
 
 - `INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`;
-- `REPLACE ... SELECT` into key-bearing targets;
+- `REPLACE ... SELECT` into key-bearing targets, which is specified separately
+  in `docs/specs/baseline-replace-select-keyed-targets/specs.md`;
 - table-backed `INSERT IGNORE ... SELECT` into `AUTO_INCREMENT` targets;
 - table-backed `INSERT IGNORE ... SELECT` warning demotion for selected-row
   range, nullability, default, string length, temporal, decimal, approximate,
@@ -200,8 +201,8 @@ Supported strict failures use existing MyLite diagnostics:
 
 - duplicate primary or unique key: `1062 / 23000`;
 - missing parent row: `1452 / 23000`;
-- unsupported key-bearing `REPLACE ... SELECT`: existing `1064 / 42000`
-  unsupported diagnostics;
+- key-bearing `REPLACE ... SELECT`: specified separately in
+  `docs/specs/baseline-replace-select-keyed-targets/specs.md`;
 - unsupported table-backed `INSERT IGNORE ... SELECT` into `AUTO_INCREMENT`
   targets: existing `1064 / 42000` unsupported diagnostics;
 - selected-row conversion failures: existing `INSERT ... SELECT` diagnostics;

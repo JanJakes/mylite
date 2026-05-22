@@ -8,9 +8,10 @@ surface already exists; this slice adds descriptor-driven duplicate-key
 replacement semantics for the current primary-key and unique-index descriptor
 subset.
 
-`REPLACE ... SELECT` remains no-key-only in this slice. It has different source
-streaming, row materialization, generated-value, and same-table-read concerns
-and needs its own key-bearing design.
+`REPLACE ... SELECT` remains no-key-only in this slice. Its later key-bearing
+source materialization, generated-value, and same-table-read behavior is
+specified separately in
+`docs/specs/baseline-replace-select-keyed-targets/specs.md`.
 
 ## Sources
 
@@ -247,7 +248,7 @@ New key-bearing behavior must:
 
 - stop returning `REPLACE into primary-key tables is not supported` and
   `REPLACE into unique-index tables is not supported` for `VALUES` and `SET`;
-- keep `REPLACE ... SELECT` key-bearing rejection until separately specified;
+- keep `REPLACE ... SELECT` key-bearing behavior outside this slice;
 - report duplicate-key diagnostics only for impossible stale-descriptor or
   physical failures after MyLite cannot map a unique constraint to a descriptor
   conflict;

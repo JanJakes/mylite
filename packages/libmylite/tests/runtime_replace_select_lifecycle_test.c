@@ -28,6 +28,8 @@ enum {
     mysql_error_column_count_mismatch = 1136,
     mysql_error_data_out_of_range = 1264,
     mysql_error_field_no_default = 1364,
+    mysql_error_row_is_referenced = 1451,
+    mysql_error_no_referenced_row = 1452,
     mysql_error_bad_null = 1048,
 };
 
@@ -46,6 +48,7 @@ struct expected_query {
 };
 
 static int test_replace_select_success_persistence_and_visibility(void);
+static int test_replace_select_keyed_targets(void);
 static int test_replace_select_schema_resolution_and_diagnostics(void);
 static int test_replace_select_independent_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
@@ -53,6 +56,7 @@ static int create_source_table(mylite_db *database, const char *table_name);
 static int create_target_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
+static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
@@ -85,6 +89,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_replace_select_success_persistence_and_visibility();
+    failures += test_replace_select_keyed_targets();
     failures += test_replace_select_schema_resolution_and_diagnostics();
     failures += test_replace_select_independent_handles();
 
@@ -299,6 +304,365 @@ static int test_replace_select_success_persistence_and_visibility(void) {
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
             .message_part = "Table 'app.renamed_dst' doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_replace_select_keyed_targets(void) {
+    static const char *const pk_rows[] = {"1", "20", "2", "30"};
+    static const char *const same_table_rows[] = {"1", "10", "2", "20"};
+    static const char *const unique_rows[] = {"1", "20", "200", "2", "30", "300"};
+    static const char *const multi_unique_rows[] = {"1", "20", "300"};
+    static const char *const composite_unique_rows[] = {
+        "1",
+        "1",
+        "100",
+        "1",
+        "2",
+        "20",
+        "2",
+        "2",
+        "200",
+    };
+    static const char *const nullable_unique_rows[] = {
+        NULL,
+        "10",
+        NULL,
+        "20",
+    };
+    static const char *const prefix_unique_rows[] = {
+        "abczzz",
+        "20",
+        "xyz000",
+        "30",
+    };
+    static const char *const auto_increment_last_id[] = {"3"};
+    static const char *const auto_increment_next_last_id[] = {"8"};
+    static const char *const auto_increment_rows[] = {
+        "1",
+        "10",
+        "3",
+        "20",
+        "7",
+        "30",
+    };
+    static const char *const auto_increment_rows_after_next[] = {
+        "1",
+        "10",
+        "3",
+        "20",
+        "7",
+        "30",
+        "8",
+        "40",
+    };
+    static const char *const parent_rows[] = {"1", "10"};
+    static const char *const child_rows[] = {"1", "1"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "keyed_targets") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open keyed file");
+    failures += seed_schema(database, "app");
+    failures += expect_statement_ok(database, "USE app");
+
+    failures += expect_statement_ok(database, "CREATE TABLE pk(id INT PRIMARY KEY, v INT)");
+    failures += expect_statement_ok(database, "CREATE TABLE pk_src(id INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO pk VALUES (1, 10)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO pk_src VALUES (1, 20), (2, 30)", 2);
+    failures += expect_dml_ok(database, "REPLACE INTO pk SELECT id, v FROM pk_src ORDER BY id", 3);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM pk ORDER BY id",
+            .values = pk_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "primary key replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE pk_same(id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO pk_same VALUES (1, 10), (2, 20)", 2);
+    failures +=
+        expect_dml_ok(database, "REPLACE INTO pk_same SELECT id, v FROM pk_same ORDER BY id", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM pk_same ORDER BY id",
+            .values = same_table_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "same table exact replace select rows",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE unique_target(a INT UNIQUE, b INT, v INT)");
+    failures += expect_statement_ok(database, "CREATE TABLE unique_source(a INT, b INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO unique_target VALUES (1, 10, 100)", 1);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO unique_source VALUES (1, 20, 200), (2, 30, 300)", 2);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO unique_target SELECT a, b, v FROM unique_source ORDER BY a",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM unique_target ORDER BY a",
+            .values = unique_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "single unique replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE multi_unique(a INT UNIQUE, b INT UNIQUE, v INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE multi_unique_source(a INT, b INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO multi_unique VALUES (1, 10, 100)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO multi_unique VALUES (2, 20, 200)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO multi_unique_source VALUES (1, 20, 300)", 1);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO multi_unique SELECT a, b, v FROM multi_unique_source",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM multi_unique",
+            .values = multi_unique_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "multiple unique conflict replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE composite_unique(a INT, b INT, v INT, UNIQUE KEY uq_ab(a, b))"
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE composite_unique_source(a INT, b INT, v INT)");
+    failures +=
+        expect_dml_ok(database, "INSERT INTO composite_unique VALUES (1, 1, 10), (1, 2, 20)", 2);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO composite_unique_source VALUES (1, 1, 100), (2, 2, 200)",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO composite_unique SELECT a, b, v FROM composite_unique_source ORDER BY a",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, v FROM composite_unique ORDER BY a, b",
+            .values = composite_unique_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .context = "composite unique replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE nullable_unique(a INT UNIQUE, v INT)");
+    failures += expect_statement_ok(database, "CREATE TABLE nullable_unique_source(a INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO nullable_unique VALUES (NULL, 10)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO nullable_unique_source VALUES (NULL, 20)", 1);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO nullable_unique SELECT a, v FROM nullable_unique_source",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, v FROM nullable_unique ORDER BY v",
+            .values = nullable_unique_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "nullable unique null replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE prefix_unique(s VARCHAR(10), v INT, UNIQUE KEY uq_s(s(3)))"
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE prefix_unique_source(s VARCHAR(10), v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO prefix_unique VALUES ('abcdef', 10)", 1);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO prefix_unique_source VALUES ('abczzz', 20)", 1);
+    failures +=
+        expect_dml_ok(database, "INSERT INTO prefix_unique_source VALUES ('xyz000', 30)", 1);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO prefix_unique SELECT s, v FROM prefix_unique_source ORDER BY s",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT s, v FROM prefix_unique ORDER BY s",
+            .values = prefix_unique_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "prefix unique replace select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE auto_inc(id INT AUTO_INCREMENT PRIMARY KEY, v INT UNIQUE)"
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE auto_inc_source(id INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO auto_inc(v) VALUES (10), (20)", 2);
+    failures += expect_dml_ok(database, "INSERT INTO auto_inc_source VALUES (NULL, 20)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO auto_inc_source VALUES (7, 30)", 1);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO auto_inc(id, v) SELECT id, v FROM auto_inc_source ORDER BY v",
+        3
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = auto_increment_last_id,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "replace select first generated auto increment id",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM auto_inc ORDER BY id",
+            .values = auto_increment_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "replace select auto increment rows",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO auto_inc(v) VALUES (40)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .values = auto_increment_next_last_id,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "replace select advances auto increment counter",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM auto_inc ORDER BY id",
+            .values = auto_increment_rows_after_next,
+            .column_count = 2U,
+            .row_count = 4U,
+            .context = "replace select auto increment next generated row",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE fk_parent(id INT PRIMARY KEY, v INT)");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE fk_child("
+        "id INT PRIMARY KEY, "
+        "parent_id INT, "
+        "FOREIGN KEY(parent_id) REFERENCES fk_parent(id))"
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE fk_parent_source(id INT, v INT)");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE fk_child_source(id INT, parent_id INT)");
+    failures += expect_dml_ok(database, "INSERT INTO fk_parent VALUES (1, 10)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO fk_child VALUES (1, 1)", 1);
+    failures += expect_dml_ok(database, "INSERT INTO fk_parent_source VALUES (1, 20)", 1);
+    failures += execute_error(
+        database,
+        "REPLACE INTO fk_parent SELECT id, v FROM fk_parent_source",
+        (struct expected_sql_error){
+            .code = mysql_error_row_is_referenced,
+            .sqlstate = "23000",
+            .message_part = "parent row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM fk_parent",
+            .values = parent_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "parent replace select rolls back after FK error",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO fk_child_source VALUES (2, 999)", 1);
+    failures += execute_error(
+        database,
+        "REPLACE INTO fk_child SELECT id, parent_id FROM fk_child_source",
+        (struct expected_sql_error){
+            .code = mysql_error_no_referenced_row,
+            .sqlstate = "23000",
+            .message_part = "child row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, parent_id FROM fk_child",
+            .values = child_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "child replace select rolls back after FK error",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "keyed replace select preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen keyed file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM pk ORDER BY id",
+            .values = pk_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "persisted primary key replace select rows",
         }
     );
 
@@ -798,6 +1162,14 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
     mylite_result_free(result);
 
+    return failures;
+}
+
+static int expect_statement_ok(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    mylite_result_free(result);
     return failures;
 }
 

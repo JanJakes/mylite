@@ -14,8 +14,8 @@
 - [x] Add parser grammar, AST kind, AST name, and parser helper for
   `REPLACE [INTO] ... SELECT`.
 - [x] Reuse the descriptor-driven `INSERT ... SELECT` planner/executor for the
-  no-key baseline `REPLACE ... SELECT` path while keeping future duplicate-key
-  semantics clear.
+  no-key baseline `REPLACE ... SELECT` path while keeping later duplicate-key
+  semantics separated.
 - [x] Add C parser and runtime lifecycle tests, including persistence,
   diagnostics, reserved names, generation stability, preamble preservation, and
   independent file-backed handles.

@@ -11585,12 +11585,6 @@ static int validate_insert_select_compound_target_compatibility(
 static void planned_insert_select_compound_source_deinit(
     struct planned_insert_select_compound_source *source
 );
-static int reject_insert_select_key_bearing_target(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    struct planned_insert_select *out_plan,
-    const struct primary_key_info *primary_key
-);
 static void planned_insert_select_deinit(struct planned_insert_select *plan);
 static int execute_insert_select_from_plan(
     struct mylite_db *database,
@@ -17900,7 +17894,6 @@ static bool column_is_first_not_null_unique_secondary_index(
     struct loaded_index_info_span indexes,
     int64_t column_id
 );
-static bool table_has_unique_secondary_index(struct loaded_index_info_span indexes);
 static int reject_primary_key_table_alter(
     struct mylite_db *database,
     int64_t table_id,
@@ -66625,6 +66618,8 @@ static int plan_insert_select(
     bool ignore = child_with_kind(statement, MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER) != NULL;
     enum planned_insert_select_source_kind source_kind =
         insert_select_source_kind(source_statement);
+    bool uses_auto_increment = (statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT ||
+                                statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) != 0;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_insert_select){0};
@@ -66645,15 +66640,11 @@ static int plan_insert_select(
         return MYLITE_ERROR;
     }
     rc = plan_insert_select_target(database, statement, out_plan, &primary_key);
-    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+    if (rc == MYLITE_OK && uses_auto_increment) {
         rc = initialize_insert_auto_increment_plan(database, &out_plan->target);
     }
-    if (rc == MYLITE_OK && statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+    if (rc == MYLITE_OK && uses_auto_increment) {
         rc = initialize_insert_auto_increment_range(database, &out_plan->target);
-    }
-    if (rc == MYLITE_OK && source_kind == PLANNED_INSERT_SELECT_SOURCE_TABLE &&
-        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
-        rc = reject_insert_select_key_bearing_target(database, statement, out_plan, &primary_key);
     }
     if (rc == MYLITE_OK) {
         rc = collect_insert_target_indexes(
@@ -67099,66 +67090,6 @@ static void planned_insert_select_compound_source_deinit(
     }
     free(source->branches);
     *source = (struct planned_insert_select_compound_source){0};
-}
-
-static int reject_insert_select_key_bearing_target(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    struct planned_insert_select *out_plan,
-    const struct primary_key_info *primary_key
-) {
-    if (primary_key->has_primary_key) {
-        out_plan->target.has_primary_key = true;
-        if (primary_key->part_count == 1U) {
-            out_plan->target.primary_key_column_index = primary_key->parts[0].column_index;
-        }
-        if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
-            set_unsupported_error(
-                database,
-                "REPLACE ... SELECT into primary-key tables is not supported"
-            );
-        } else {
-            set_unsupported_error(
-                database,
-                "INSERT ... SELECT into primary-key tables is not supported"
-            );
-        }
-        return MYLITE_ERROR;
-    }
-
-    if (!table_has_unique_secondary_index((struct loaded_index_info_span){
-            .indexes = out_plan->target.indexes,
-            .count = out_plan->target.index_count,
-        })) {
-        if (out_plan->target.foreign_key_count == 0U) {
-            return MYLITE_OK;
-        }
-        if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
-            set_unsupported_error(
-                database,
-                "REPLACE ... SELECT into foreign-key child tables is not supported"
-            );
-        } else {
-            set_unsupported_error(
-                database,
-                "INSERT ... SELECT into foreign-key child tables is not supported"
-            );
-        }
-        return MYLITE_ERROR;
-    }
-
-    if (statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT) {
-        set_unsupported_error(
-            database,
-            "REPLACE ... SELECT into unique-index tables is not supported"
-        );
-    } else {
-        set_unsupported_error(
-            database,
-            "INSERT ... SELECT into unique-index tables is not supported"
-        );
-    }
-    return MYLITE_ERROR;
 }
 
 static void planned_insert_select_deinit(struct planned_insert_select *plan) {
@@ -109570,17 +109501,6 @@ static bool column_is_first_not_null_unique_secondary_index(
             }
         }
         return false;
-    }
-
-    return false;
-}
-
-static bool table_has_unique_secondary_index(struct loaded_index_info_span indexes) {
-    for (size_t index = 0U; index < indexes.count; ++index) {
-        if (indexes.indexes[index].index.kind == MYLITE_CATALOG_INDEX_KIND_SECONDARY &&
-            indexes.indexes[index].index.is_unique) {
-            return true;
-        }
     }
 
     return false;

@@ -10,13 +10,12 @@ storage, descriptor-backed `SELECT ... WHERE ... ORDER BY ... LIMIT`,
 `INSERT ... SELECT`, and the current no-key `REPLACE ... VALUES` /
 `REPLACE ... SET` paths.
 
-This is not full MySQL `REPLACE ... SELECT`. This baseline remains no-key-only:
-`REPLACE [INTO] target [(columns)] SELECT ... FROM source` is supported only
-where MySQL is insert-equivalent. Key-bearing `REPLACE ... VALUES` and
+This is not full MySQL `REPLACE ... SELECT`. This original baseline specified
+the no-key insert-equivalent path. Key-bearing `REPLACE ... VALUES` and
 `REPLACE ... SET` behavior is specified in
-`docs/specs/baseline-replace-key-lifecycle/specs.md`; key-bearing
-`REPLACE ... SELECT` remains deferred because source streaming and replacement
-retry semantics need a separate design.
+`docs/specs/baseline-replace-key-lifecycle/specs.md`, and later key-bearing
+`REPLACE ... SELECT` behavior is specified in
+`docs/specs/baseline-replace-select-keyed-targets/specs.md`.
 
 ## Sources
 
@@ -109,8 +108,8 @@ records the runtime probes for this feature. Observed behavior:
   affected row per inserted row.
 - On a table with a primary key, replacing one existing row and inserting one
   new row in the same `REPLACE ... SELECT` reports three affected rows: one
-  deleted row plus two inserted rows. This behavior is deferred until MyLite has
-  primary-key or unique-key descriptors.
+  deleted row plus two inserted rows. This later behavior belongs to
+  `docs/specs/baseline-replace-select-keyed-targets/specs.md`.
 - MySQL accepts wider forms that this slice defers, including
   `LOW_PRIORITY`, `DELAYED`, `PARTITION`, table-qualified target columns, and
   `REPLACE ... TABLE`.

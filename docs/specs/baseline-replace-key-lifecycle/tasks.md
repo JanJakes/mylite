@@ -11,7 +11,7 @@
 - [x] Update compatibility documentation for the exact supported subset.
 - [x] Extend descriptor-driven `REPLACE ... VALUES` and `REPLACE ... SET`
   execution for key-bearing targets.
-- [x] Keep key-bearing `REPLACE ... SELECT` deferred and tested as rejected.
+- [x] Keep key-bearing `REPLACE ... SELECT` outside this slice.
 - [x] Add focused C runtime tests and register any new test binary.
 - [x] Run focused build/tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.

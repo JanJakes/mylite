@@ -205,6 +205,11 @@ joined_calc=$(run_mysql \
        ORDER BY lefts.id, rights.id LIMIT 2;
      SHOW WARNINGS;
      SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id
+       FROM lefts RIGHT JOIN rights ON lefts.k = rights.k
+       ORDER BY rights.id, lefts.id LIMIT 2;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
      SELECT lefts.id, rights.id
        FROM lefts JOIN rights ON lefts.k = rights.k
        ORDER BY rights.id LIMIT 1, 1;
@@ -250,13 +255,26 @@ expect_contains \
     "SQL_CALC_FOUND_ROWS is deprecated"
 expect_value "left joined sql calc found rows" "4	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '12p')"
 expect_value \
+    "right joined sql calc visible row 1" \
+    "1	7" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '13p')"
+expect_value \
+    "right joined sql calc visible row 2" \
+    "1	8" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '14p')"
+expect_contains \
+    "right joined sql calc warning" \
+    "$(printf '%s\n' "$joined_calc" | sed -n '15p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value "right joined sql calc found rows" "3	1	-1" "$(printf '%s\n' "$joined_calc" | sed -n '16p')"
+expect_value \
     "ordinary joined offset visible row" \
     "1	8" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '13p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '17p')"
 expect_value \
     "ordinary joined offset found rows" \
     "2	1	-1" \
-    "$(printf '%s\n' "$joined_calc" | sed -n '14p')"
+    "$(printf '%s\n' "$joined_calc" | sed -n '18p')"
 
 non_select=$(run_mysql \
     "USE ${DATABASE};

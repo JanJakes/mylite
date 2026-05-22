@@ -1,0 +1,322 @@
+#!/usr/bin/env sh
+
+set -eu
+
+MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+DATABASE="mylite_right_join_select_expectations_$$"
+
+fail() {
+    printf '%s\n' "mysql_baseline_right_join_select_expectations: $1" >&2
+    exit 1
+}
+
+run_mysql() {
+    sql=$1
+    shift
+    printf '%s\n' "$sql" \
+        | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw --skip-column-names "$@"
+}
+
+run_mysql_with_headers() {
+    sql=$1
+    shift
+    printf '%s\n' "$sql" \
+        | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw "$@"
+}
+
+expect_output() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql "$sql" "$@")
+    if [ "$output" != "$expected" ]; then
+        fail "$label: expected [$expected], got [$output]"
+    fi
+}
+
+expect_output_with_headers() {
+    label=$1
+    expected=$2
+    sql=$3
+    shift 3
+
+    output=$(run_mysql_with_headers "$sql" "$@")
+    if [ "$output" != "$expected" ]; then
+        fail "$label: expected [$expected], got [$output]"
+    fi
+}
+
+expect_value() {
+    label=$1
+    expected=$2
+    actual=$3
+
+    if [ "$actual" != "$expected" ]; then
+        fail "$label: expected [$expected], got [$actual]"
+    fi
+}
+
+expect_contains() {
+    label=$1
+    actual=$2
+    needle=$3
+
+    case "$actual" in
+        *"$needle"*) ;;
+        *) fail "$label: expected [$actual] to contain [$needle]" ;;
+    esac
+}
+
+expect_error() {
+    label=$1
+    code=$2
+    state=$3
+    message=$4
+    sql=$5
+    shift 5
+
+    set +e
+    output=$(run_mysql "$sql" "$@" 2>&1)
+    status_code=$?
+    set -e
+
+    if [ "$status_code" -eq 0 ]; then
+        fail "$label: expected error $code/$state, command succeeded with [$output]"
+    fi
+
+    case "$output" in
+        *"ERROR $code ($state)"*"$message"*) ;;
+        *)
+            fail "$label: expected error $code/$state containing [$message], got [$output]"
+            ;;
+    esac
+}
+
+cleanup() {
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
+version=$(run_mysql 'SELECT VERSION();')
+case "$version" in
+    8.4.9*) ;;
+    *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
+esac
+
+cleanup
+run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
+run_mysql \
+    "CREATE TABLE lefts (id INT NOT NULL, k INT NULL, v INT NULL, name VARCHAR(20)); "\
+"CREATE TABLE rights (id INT NOT NULL, k INT NULL, w INT NULL, name VARCHAR(20)); "\
+"INSERT INTO lefts VALUES "\
+"(1,10,100,'alpha'),(2,20,200,'Beta'),(3,NULL,300,'none'),(4,40,400,'onlyleft'); "\
+"INSERT INTO rights VALUES "\
+"(7,10,700,'ALPHA'),(8,10,800,'beta'),(9,NULL,900,'none'),(10,50,1000,'onlyright');" \
+    "$DATABASE" >/dev/null
+
+expect_output_with_headers \
+    "right join preserves right rows and null-extends left rows" \
+    "id	k	id	k	w
+1	10	7	10	700
+1	10	8	10	800
+NULL	NULL	9	NULL	900
+NULL	NULL	10	50	1000
+@@warning_count	ROW_COUNT()
+0	-1" \
+    "DO 0; SELECT l.id, l.k, r.id, r.k, r.w "\
+"FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k "\
+"ORDER BY r.id, l.id; SELECT @@warning_count, ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "right outer join synonym" \
+    "id	id
+1	7
+1	8
+NULL	9
+NULL	10" \
+    "SELECT l.id, r.id FROM lefts l RIGHT OUTER JOIN rights r ON l.k = r.k "\
+"ORDER BY r.id, l.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "star expands syntactic left then right" \
+    "id	k	v	name	id	k	w	name
+1	10	100	alpha	7	10	700	ALPHA
+1	10	100	alpha	8	10	800	beta
+NULL	NULL	NULL	NULL	9	NULL	900	none
+NULL	NULL	NULL	NULL	10	50	1000	onlyright" \
+    "SELECT * FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "\
+"ORDER BY rights.id, lefts.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "where sees null-extended left rows" \
+    "id	id
+NULL	9
+NULL	10" \
+    "SELECT l.id, r.id FROM lefts l RIGHT JOIN rights r ON l.k = r.k "\
+"WHERE l.id IS NULL ORDER BY r.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "order by left nullable key asc" \
+    "id	id
+NULL	10
+1	7" \
+    "SELECT l.id, r.id FROM lefts l RIGHT JOIN rights r ON l.k = r.k "\
+"WHERE r.id = 7 OR r.id = 10 ORDER BY l.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "order by left nullable key desc" \
+    "id	id
+1	7
+NULL	10" \
+    "SELECT l.id, r.id FROM lefts l RIGHT JOIN rights r ON l.k = r.k "\
+"WHERE r.id = 7 OR r.id = 10 ORDER BY l.id DESC;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "string equality uses collation" \
+    "id	id
+1	7
+2	8
+3	9
+NULL	10" \
+    "SELECT lefts.id, rights.id FROM lefts RIGHT JOIN rights "\
+"ON lefts.name = rights.name ORDER BY rights.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "source index hints are accepted" \
+    "id	id
+1	7
+1	8" \
+    "SELECT l.id, r.id FROM lefts AS l USE INDEX () "\
+"RIGHT JOIN rights AS r USE INDEX () ON l.k = r.k "\
+"WHERE r.id <= 8 ORDER BY r.id, l.id;" \
+    "$DATABASE"
+
+expect_output \
+    "limit zero" \
+    "0	-1" \
+    "DO 0; SELECT l.id FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k "\
+"ORDER BY r.id LIMIT 0; SELECT @@warning_count, ROW_COUNT();" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "exact limit" \
+    "id	id
+NULL	10
+1	7" \
+    "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k "\
+"WHERE r.id = 7 OR r.id = 10 ORDER BY l.id LIMIT 2;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "oversized limit" \
+    "id	id
+NULL	10
+1	7" \
+    "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k "\
+"WHERE r.id = 7 OR r.id = 10 ORDER BY l.id LIMIT 10;" \
+    "$DATABASE"
+
+right_join_calc=$(run_mysql \
+    "SELECT SQL_CALC_FOUND_ROWS l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "\
+"ON l.k = r.k ORDER BY r.id, l.id LIMIT 2; "\
+"SHOW WARNINGS; SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();" \
+    "$DATABASE"
+)
+expect_value "right joined sql calc row 1" "1	7" "$(printf '%s\n' "$right_join_calc" | sed -n '1p')"
+expect_value "right joined sql calc row 2" "1	8" "$(printf '%s\n' "$right_join_calc" | sed -n '2p')"
+expect_contains \
+    "right joined sql calc warning" \
+    "$(printf '%s\n' "$right_join_calc" | sed -n '3p')" \
+    "SQL_CALC_FOUND_ROWS is deprecated"
+expect_value \
+    "right joined sql calc found rows" \
+    "4	1	-1" \
+    "$(printf '%s\n' "$right_join_calc" | sed -n '4p')"
+
+expect_output_with_headers \
+    "mysql accepts using but mylite defers it" \
+    "id
+1
+1
+NULL
+NULL" \
+    "SELECT l.id FROM lefts l RIGHT JOIN rights r USING (k) ORDER BY r.id, l.id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "mysql accepts natural right join but mylite defers it" \
+    "id
+NULL
+NULL
+NULL
+NULL" \
+    "SELECT l.id FROM lefts l NATURAL RIGHT JOIN rights r ORDER BY r.id, l.id;" \
+    "$DATABASE"
+
+expect_error \
+    "right join without condition is syntax error" \
+    1064 \
+    42000 \
+    "You have an error in your SQL syntax" \
+    "SELECT l.id FROM lefts l RIGHT JOIN rights r;" \
+    "$DATABASE"
+
+expect_error \
+    "full outer join is syntax error" \
+    1064 \
+    42000 \
+    "You have an error in your SQL syntax" \
+    "SELECT l.id FROM lefts l FULL OUTER JOIN rights r ON l.k = r.k;" \
+    "$DATABASE"
+
+expect_error \
+    "ambiguous selected column" \
+    1052 \
+    23000 \
+    "Column 'id' in field list is ambiguous" \
+    "SELECT id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k;" \
+    "$DATABASE"
+
+expect_error \
+    "ambiguous on column" \
+    1052 \
+    23000 \
+    "Column 'k' in on clause is ambiguous" \
+    "SELECT lefts.id FROM lefts RIGHT JOIN rights ON k = k;" \
+    "$DATABASE"
+
+expect_error \
+    "alias hides original table in on" \
+    1054 \
+    42S22 \
+    "Unknown column 'lefts.k' in 'on clause'" \
+    "SELECT l.id FROM lefts AS l RIGHT JOIN rights AS r ON lefts.k = r.k;" \
+    "$DATABASE"
+
+expect_error \
+    "duplicate alias" \
+    1066 \
+    42000 \
+    "Not unique table/alias: 'x'" \
+    "SELECT x.id FROM lefts AS x RIGHT JOIN rights AS x ON x.k = x.k;" \
+    "$DATABASE"
+
+expect_error \
+    "unknown on column" \
+    1054 \
+    42S22 \
+    "Unknown column 'lefts.missing' in 'on clause'" \
+    "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.missing = rights.k;" \
+    "$DATABASE"
+
+printf '%s\n' "mysql_baseline_right_join_select_expectations: ok"

@@ -391,6 +391,7 @@ static int test_sql_calc_found_rows_joined_selects(void) {
     static const char *const inner_limit_rows[][2] = {{"1", "7"}};
     static const char *const cartesian_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const left_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
+    static const char *const right_limit_rows[][2] = {{"1", "7"}, {"1", "8"}};
     static const char *const ordinary_offset_rows[][2] = {{"1", "8"}};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -498,6 +499,27 @@ static int test_sql_calc_found_rows_joined_selects(void) {
             .warning_count = "1",
             .row_count = "-1",
             .context = "left joined sql calc found rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS lefts.id, rights.id "
+        "FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "
+        "ORDER BY rights.id, lefts.id LIMIT 2",
+        &result
+    );
+    failures +=
+        expect_two_column_rows(result, right_limit_rows, 2U, 1U, "right joined sql calc rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "3",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "right joined sql calc found rows",
         }
     );
 

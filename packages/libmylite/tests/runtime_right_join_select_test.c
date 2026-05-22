@@ -16,7 +16,7 @@ enum {
     test_path_capacity = 1024,
     test_path_suffix_capacity = 16U,
     sql_capacity = 1024,
-    qualified_left_join_column_count = 5,
+    qualified_right_join_column_count = 5,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_column_ambiguous = 1052,
@@ -48,9 +48,9 @@ struct expected_sql_error {
     const char *message_part;
 };
 
-static int test_left_join_success_persistence_and_table_lifecycle(void);
-static int test_left_join_diagnostics(void);
-static int test_independent_file_backed_join_handles(void);
+static int test_right_join_success_persistence_and_table_lifecycle(void);
+static int test_right_join_diagnostics(void);
+static int test_independent_file_backed_right_join_handles(void);
 static int seed_app_schema(mylite_db *database);
 static int seed_join_tables(
     mylite_db *database,
@@ -93,43 +93,31 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_left_join_success_persistence_and_table_lifecycle();
-    failures += test_left_join_diagnostics();
-    failures += test_independent_file_backed_join_handles();
+    failures += test_right_join_success_persistence_and_table_lifecycle();
+    failures += test_right_join_diagnostics();
+    failures += test_independent_file_backed_right_join_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_left_join_success_persistence_and_table_lifecycle(void) {
+static int test_right_join_success_persistence_and_table_lifecycle(void) {
     static const char *const star_columns[] = {"id", "k", "v", "name", "id", "k", "w", "name"};
     static const char *const star_rows[] = {
-        "2",  "20", "200", "Beta", NULL, NULL, NULL,  NULL,       "3",  NULL, "300", "none",
-        NULL, NULL, NULL,  NULL,   "4",  "40", "400", "onlyleft", NULL, NULL, NULL,  NULL,
+        "1", "10", "100", "alpha", "8",  "10", "800", "beta", NULL, NULL, NULL,   NULL,
+        "9", NULL, "900", "none",  NULL, NULL, NULL,  NULL,   "10", "50", "1000", "onlyright",
     };
-    static const char *const left_rows[] = {
-        "2",
-        "20",
-        NULL,
-        NULL,
-        NULL,
-        "3",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        "4",
-        "40",
-        NULL,
-        NULL,
-        NULL,
+    static const char *const right_rows[] = {
+        "1",  "10", "7", "10", "700", "1",  "10", "8",  "10", "800",
+        NULL, NULL, "9", NULL, "900", NULL, NULL, "10", "50", "1000",
     };
-    static const char *const anti_rows[] = {"2", NULL, "3", NULL, "4", NULL};
-    static const char *const right_order_asc_rows[] = {"4", NULL, "1", "7", "1", "8"};
-    static const char *const right_order_desc_rows[] = {"1", "8", "1", "7", "4", NULL};
-    static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9", "4", NULL};
-    static const char *const alias_order_rows[] = {"1", "8", "1", "7", "4", NULL};
-    static const char *const temp_shadow_rows[] = {"10", "7", "10", "8"};
+    static const char *const anti_rows[] = {NULL, "9", NULL, "10"};
+    static const char *const left_order_asc_rows[] = {NULL, "10", "1", "7"};
+    static const char *const left_order_desc_rows[] = {"1", "7", NULL, "10"};
+    static const char *const string_join_rows[] = {"1", "7", "2", "8", "3", "9", NULL, "10"};
+    static const char *const limit_two_rows[] = {"1", "7", "1", "8"};
     static const char *const row_count_rows[] = {"-1"};
+    static const char *const schema_rows[] = {NULL, "10"};
+    static const char *const temp_shadow_rows[] = {"1", "70"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -142,7 +130,7 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     remove_related_files(path);
     mylite_file_preamble_init(expected_preamble);
 
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open join success file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open right join success file");
     failures += seed_app_schema(database);
     failures += seed_join_tables(
         database,
@@ -157,111 +145,101 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT * FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
-                   "WHERE lefts.id >= 2 ORDER BY lefts.id",
+            .sql = "SELECT * FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "
+                   "WHERE rights.id >= 8 ORDER BY rights.id",
             .columns = star_columns,
             .values = star_rows,
             .column_count = sizeof(star_columns) / sizeof(star_columns[0]),
             .row_count = 3U,
-            .context = "star left join preserves unmatched left rows",
+            .context = "star right join preserves syntactic column order",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id, l.k, r.id, r.k, r.w FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id >= 2 ORDER BY l.id",
-            .values = left_rows,
-            .column_count = qualified_left_join_column_count,
-            .row_count = 3U,
-            .context = "qualified left join columns include right NULLs",
+            .sql = "SELECT l.id, l.k, r.id, r.k, r.w FROM lefts AS l RIGHT OUTER JOIN rights AS r "
+                   "ON l.k = r.k ORDER BY r.id",
+            .values = right_rows,
+            .column_count = qualified_right_join_column_count,
+            .row_count = 4U,
+            .context = "qualified right join columns include left NULLs",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE r.id IS NULL ORDER BY l.id",
+            .sql = "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.k = r.k WHERE l.id IS NULL ORDER BY r.id",
             .values = anti_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "where filters after null extension",
+            .row_count = 2U,
+            .context = "where filters after right join null extension",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT OUTER JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id = 1 OR l.id = 4 ORDER BY r.id",
-            .values = right_order_asc_rows,
+            .sql = "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.k = r.k WHERE r.id = 7 OR r.id = 10 ORDER BY l.id",
+            .values = left_order_asc_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "left outer join keyword and ascending NULL order",
+            .row_count = 2U,
+            .context = "right join ascending left order keeps NULL first",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id = 1 OR l.id = 4 ORDER BY r.id DESC",
-            .values = right_order_desc_rows,
+            .sql = "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.k = r.k WHERE r.id = 7 OR r.id = 10 ORDER BY l.id DESC",
+            .values = left_order_desc_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "descending right order keeps NULL last",
+            .row_count = 2U,
+            .context = "right join descending left order keeps NULL last",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights "
-                   "ON lefts.name = rights.name ORDER BY lefts.id",
+            .sql = "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.name = r.name ORDER BY r.id",
             .values = string_join_rows,
             .column_count = 2U,
             .row_count = 4U,
-            .context = "left string join equality uses registered collation",
+            .context = "right string join equality uses registered collation",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id AS left_id, r.id AS right_id FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id = 1 OR l.id = 4 ORDER BY right_id DESC",
-            .values = alias_order_rows,
+            .sql = "SELECT l.id, r.id FROM lefts AS l USE INDEX () "
+                   "RIGHT JOIN rights AS r USE INDEX () ON l.k = r.k "
+                   "WHERE r.id <= 8 ORDER BY r.id, l.id",
+            .values = limit_two_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "order by selected alias",
+            .row_count = 2U,
+            .context = "right join accepts source index hints",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id FROM lefts AS l LEFT JOIN rights AS r ON l.k = r.k "
+            .sql = "SELECT l.id FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k "
                    "ORDER BY r.id LIMIT 0",
             .column_count = 1U,
             .row_count = 0U,
-            .context = "limit zero returns no rows",
+            .context = "right join limit zero returns no rows",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id = 1 OR l.id = 4 ORDER BY r.id LIMIT 3",
-            .values = right_order_asc_rows,
+            .sql = "SELECT l.id, r.id FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.k = r.k ORDER BY r.id LIMIT 2",
+            .values = limit_two_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "exact limit returns all limited left join rows",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT l.id, r.id FROM lefts AS l LEFT JOIN rights AS r "
-                   "ON l.k = r.k WHERE l.id = 1 OR l.id = 4 ORDER BY r.id LIMIT 10",
-            .values = right_order_asc_rows,
-            .column_count = 2U,
-            .row_count = 3U,
-            .context = "oversized limit returns matched joined set",
+            .row_count = 2U,
+            .context = "right join exact limit returns ordered prefix",
         }
     );
     failures += expect_query_values(
@@ -271,83 +249,68 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
             .values = row_count_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "row count after joined select",
+            .context = "row count after right joined select",
         }
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT app.lefts.id, app.rights.id FROM app.lefts LEFT JOIN app.rights "
-                   "ON app.lefts.k = app.rights.k WHERE app.lefts.id = 1 OR app.lefts.id = 4 "
-                   "ORDER BY app.rights.id",
-            .values = right_order_asc_rows,
+            .sql = "SELECT app.lefts.id, app.rights.id FROM app.lefts RIGHT JOIN app.rights "
+                   "ON app.lefts.k = app.rights.k WHERE app.rights.id = 10",
+            .values = schema_rows,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "schema-qualified join sources and columns",
+            .row_count = 1U,
+            .context = "schema-qualified right join sources and columns",
         }
     );
 
     failures += expect_statement(
         database,
-        "CREATE TEMPORARY TABLE lefts (id INT NOT NULL, k INT NULL, v INT NULL, name VARCHAR(20))",
+        "CREATE TEMPORARY TABLE rights (id INT NOT NULL, k INT NULL, w INT NULL, name VARCHAR(20))",
         (struct expected_statement){0, 0U}
     );
     failures += expect_statement(
         database,
-        "INSERT INTO lefts VALUES (10,10,1000,'alpha')",
+        "INSERT INTO rights VALUES (70,10,7000,'ALPHA')",
         (struct expected_statement){1, 0U}
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights "
-                   "ON lefts.k = rights.k "
-                   "ORDER BY rights.id",
+            .sql = "SELECT lefts.id, rights.id FROM lefts RIGHT JOIN rights "
+                   "ON lefts.k = rights.k ORDER BY rights.id",
             .values = temp_shadow_rows,
             .column_count = 2U,
-            .row_count = 2U,
-            .context = "temporary table shadows persistent join source",
+            .row_count = 1U,
+            .context = "temporary table shadows right join preserved source",
         }
     );
     failures += expect_statement(
         database,
-        "DROP TEMPORARY TABLE lefts",
+        "DROP TEMPORARY TABLE rights",
         (struct expected_statement){0, 0U}
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights "
-                   "ON lefts.k = rights.k WHERE lefts.id = 1 OR lefts.id = 4 "
-                   "ORDER BY rights.id",
-            .values = right_order_asc_rows,
-            .column_count = 2U,
-            .row_count = 3U,
-            .context = "persistent table visible after dropping temporary shadow",
-        }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "left joins preserve MyLite preamble"
+        "right joins preserve MyLite preamble"
     );
 
     mylite_close(database);
     database = NULL;
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen join file");
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen right join file");
     failures += expect_statement(database, "USE app", (struct expected_statement){0, 0U});
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights "
-                   "ON lefts.k = rights.k WHERE lefts.id = 1 OR lefts.id = 4 "
-                   "ORDER BY rights.id",
-            .values = right_order_asc_rows,
-            .column_count = 2U,
-            .row_count = 3U,
-            .context = "joined rows persist after reopen",
+            .sql = "SELECT l.id, l.k, r.id, r.k, r.w FROM lefts AS l RIGHT JOIN rights AS r "
+                   "ON l.k = r.k ORDER BY r.id",
+            .values = right_rows,
+            .column_count = qualified_right_join_column_count,
+            .row_count = 4U,
+            .context = "right joined rows persist after reopen",
         }
     );
     failures += expect_statement(
@@ -358,20 +321,19 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights2.id FROM lefts LEFT JOIN rights2 "
-                   "ON lefts.k = rights2.k WHERE lefts.id = 1 OR lefts.id = 4 "
-                   "ORDER BY rights2.id",
-            .values = right_order_asc_rows,
-            .column_count = 2U,
-            .row_count = 3U,
-            .context = "join after table rename",
+            .sql = "SELECT l.id, l.k, r.id, r.k, r.w FROM lefts AS l RIGHT JOIN rights2 AS r "
+                   "ON l.k = r.k ORDER BY r.id",
+            .values = right_rows,
+            .column_count = qualified_right_join_column_count,
+            .row_count = 4U,
+            .context = "right join after table rename",
         }
     );
     failures +=
         expect_statement(database, "DROP TABLE rights2", (struct expected_statement){0, 0U});
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights2 ON lefts.k = rights2.k",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights2 ON lefts.k = rights2.k",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -384,7 +346,7 @@ static int test_left_join_success_persistence_and_table_lifecycle(void) {
     return failures;
 }
 
-static int test_left_join_diagnostics(void) {
+static int test_right_join_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_db *missing_default_database = NULL;
@@ -406,7 +368,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         missing_default_database,
-        "SELECT l.id FROM lefts l LEFT JOIN rights r ON l.k = r.k",
+        "SELECT l.id FROM lefts l RIGHT JOIN rights r ON l.k = r.k",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -415,7 +377,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         missing_default_database,
-        "SELECT * FROM lefts LEFT JOIN rights",
+        "SELECT * FROM lefts RIGHT JOIN rights",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -426,7 +388,7 @@ static int test_left_join_diagnostics(void) {
 
     failures += expect_error(
         database,
-        "SELECT id FROM lefts LEFT JOIN rights ON lefts.k = rights.k",
+        "SELECT id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_column_ambiguous,
             .sqlstate = "23000",
@@ -435,7 +397,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON k = k",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON k = k",
         (struct expected_sql_error){
             .code = mysql_error_column_ambiguous,
             .sqlstate = "23000",
@@ -444,7 +406,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.v FROM lefts LEFT JOIN rights ON lefts.k = rights.k WHERE id = 1",
+        "SELECT lefts.v FROM lefts RIGHT JOIN rights ON lefts.k = rights.k WHERE id = 1",
         (struct expected_sql_error){
             .code = mysql_error_column_ambiguous,
             .sqlstate = "23000",
@@ -453,7 +415,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.v FROM lefts LEFT JOIN rights ON lefts.k = rights.k ORDER BY id",
+        "SELECT lefts.v FROM lefts RIGHT JOIN rights ON lefts.k = rights.k ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_column_ambiguous,
             .sqlstate = "23000",
@@ -462,7 +424,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT l.id FROM lefts AS l LEFT JOIN rights AS r ON lefts.k = r.k",
+        "SELECT l.id FROM lefts AS l RIGHT JOIN rights AS r ON lefts.k = r.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -471,7 +433,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT x.id FROM lefts AS x LEFT JOIN rights AS x ON x.k = x.k",
+        "SELECT x.id FROM lefts AS x RIGHT JOIN rights AS x ON x.k = x.k",
         (struct expected_sql_error){
             .code = mysql_error_not_unique_table_alias,
             .sqlstate = "42000",
@@ -480,7 +442,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT missing.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k",
+        "SELECT missing.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -489,7 +451,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.missing = rights.k",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.missing = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -498,7 +460,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.k = rights.name",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -508,7 +470,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k WHERE missing = 1",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k WHERE missing = 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -517,7 +479,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k ORDER BY missing",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k ORDER BY missing",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -526,7 +488,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN missing ON lefts.k = missing.k",
+        "SELECT lefts.id FROM lefts RIGHT JOIN missing ON lefts.k = missing.k",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -535,7 +497,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN missing_schema.rights "
+        "SELECT lefts.id FROM lefts RIGHT JOIN missing_schema.rights "
         "ON lefts.k = missing_schema.rights.k",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
@@ -545,7 +507,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM _mylite_private.lefts LEFT JOIN rights "
+        "SELECT lefts.id FROM _mylite_private.lefts RIGHT JOIN rights "
         "ON _mylite_private.lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
@@ -555,7 +517,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM _mylite_private LEFT JOIN rights "
+        "SELECT lefts.id FROM _mylite_private RIGHT JOIN rights "
         "ON _mylite_private.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
@@ -565,7 +527,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -574,7 +536,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT * FROM missing LEFT JOIN also_missing",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights USING (k)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -583,7 +545,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT * FROM lefts AS x LEFT JOIN rights AS x",
+        "SELECT lefts.id FROM lefts NATURAL RIGHT JOIN rights",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -592,7 +554,7 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights USING (k)",
+        "SELECT lefts.id FROM lefts FULL OUTER JOIN rights ON lefts.k = rights.k",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -601,7 +563,8 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts NATURAL LEFT JOIN rights",
+        "SELECT lefts.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "
+        "RIGHT JOIN rights AS rights2 ON lefts.k = rights2.k",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -610,12 +573,29 @@ static int test_left_join_diagnostics(void) {
     );
     failures += expect_error(
         database,
-        "SELECT lefts.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
-        "LEFT JOIN rights AS rights2 ON lefts.k = rights2.k",
+        "SELECT l.id, COUNT(*) FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k GROUP BY l.id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "GROUP BY does not support RIGHT JOIN",
+        }
+    );
+    failures += expect_error(
+        database,
+        "UPDATE lefts AS l RIGHT JOIN rights AS r ON l.k = r.k SET l.v = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "joined UPDATE does not support RIGHT JOIN",
+        }
+    );
+    failures += expect_error(
+        database,
+        "DELETE l FROM lefts AS l RIGHT JOIN rights AS r ON l.k = r.k",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "joined DELETE does not support RIGHT JOIN",
         }
     );
 
@@ -624,9 +604,9 @@ static int test_left_join_diagnostics(void) {
     return failures;
 }
 
-static int test_independent_file_backed_join_handles(void) {
+static int test_independent_file_backed_right_join_handles(void) {
     static const char *const first_rows[] = {"1", "7"};
-    static const char *const second_rows[] = {"2", "8"};
+    static const char *const second_rows[] = {"2", "8", NULL, "9"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -640,33 +620,36 @@ static int test_independent_file_backed_join_handles(void) {
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first join file");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second join file");
+    failures +=
+        expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first right join file");
+    failures +=
+        expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second right join file");
     failures += seed_app_schema(first);
     failures += seed_app_schema(second);
     failures += seed_join_tables(first, "(1,10,100,'alpha')", 1, "(7,10,700,'ALPHA')", 1);
-    failures += seed_join_tables(second, "(2,20,200,'beta')", 1, "(8,20,800,'BETA')", 1);
+    failures +=
+        seed_join_tables(second, "(2,20,200,'beta')", 1, "(8,20,800,'BETA'),(9,30,900,'x')", 2);
 
     failures += expect_query_values(
         first,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
+            .sql = "SELECT lefts.id, rights.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "
                    "ORDER BY rights.id",
             .values = first_rows,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "first file-backed handle join state",
+            .context = "first file-backed handle right join state",
         }
     );
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT lefts.id, rights.id FROM lefts LEFT JOIN rights ON lefts.k = rights.k "
+            .sql = "SELECT lefts.id, rights.id FROM lefts RIGHT JOIN rights ON lefts.k = rights.k "
                    "ORDER BY rights.id",
             .values = second_rows,
             .column_count = 2U,
-            .row_count = 1U,
-            .context = "second file-backed handle join state",
+            .row_count = 2U,
+            .context = "second file-backed handle right join state",
         }
     );
 
@@ -837,7 +820,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "runtime_left_join_select_%s_%d.mylite",
+        "runtime_right_join_select_%s_%d.mylite",
         name,
         current_process_id()
     );

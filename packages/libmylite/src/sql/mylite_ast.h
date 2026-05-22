@@ -709,6 +709,7 @@ enum mylite_sql_ast_join_kind {
     MYLITE_SQL_AST_JOIN_KIND_UNSPECIFIED = 0,
     MYLITE_SQL_AST_JOIN_KIND_INNER = 1,
     MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER = 2,
+    MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER = 3,
 };
 
 struct mylite_sql_ast_select_payload {

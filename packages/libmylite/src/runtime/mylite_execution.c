@@ -69380,6 +69380,10 @@ static int plan_joined_update(
 
     join_condition = child_at(from_clause, 2U);
     out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        set_unsupported_error(database, "joined UPDATE does not support RIGHT JOIN");
+        return MYLITE_ERROR;
+    }
     if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -71763,7 +71767,9 @@ static int plan_joined_select(
     }
 
     out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
-    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
+    if ((out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
+         out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) &&
+        join_condition == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -72148,7 +72154,8 @@ static int plan_joined_select_condition(
 
     *out_condition = (struct planned_select_join_condition){.has_condition = false};
     if (condition_node == NULL) {
-        if (join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
+        if (join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
+            join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
             set_parse_error(database, NULL);
             return MYLITE_ERROR;
         }
@@ -72762,8 +72769,14 @@ static int plan_grouped_aggregate_join_source(
     int rc = MYLITE_OK;
 
     out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
-    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
+    if ((out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER ||
+         out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) &&
+        join_condition == NULL) {
         set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        set_unsupported_error(database, "GROUP BY does not support RIGHT JOIN");
         return MYLITE_ERROR;
     }
     out_plan->sources = calloc(2U, sizeof(*out_plan->sources));
@@ -101075,6 +101088,10 @@ static int plan_joined_delete(
     }
 
     out_plan->join_kind = mylite_sql_ast_node_join_kind(from_clause);
+    if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        set_unsupported_error(database, "joined DELETE does not support RIGHT JOIN");
+        return MYLITE_ERROR;
+    }
     if (out_plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER && join_condition == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -142740,6 +142757,8 @@ static int append_select_from_sql(
     }
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        rc = dynamic_string_append(string, " RIGHT JOIN ");
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " JOIN ");
     }
@@ -145913,6 +145932,8 @@ static int append_grouped_aggregate_from_sql(
     }
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        rc = dynamic_string_append(string, " RIGHT JOIN ");
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " JOIN ");
     }
@@ -147488,6 +147509,8 @@ static int append_joined_delete_from_sql(
     }
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        rc = dynamic_string_append(string, " RIGHT JOIN ");
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " JOIN ");
     }
@@ -147892,6 +147915,8 @@ static int append_joined_update_from_sql(
     }
     if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER) {
         rc = dynamic_string_append(string, " LEFT JOIN ");
+    } else if (rc == MYLITE_OK && plan->join_kind == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER) {
+        rc = dynamic_string_append(string, " RIGHT JOIN ");
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, " JOIN ");
     }

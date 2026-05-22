@@ -2686,6 +2686,12 @@ join_operator(A) ::= LEFT JOIN. {
 join_operator(A) ::= LEFT OUTER JOIN. {
     A = MYLITE_SQL_AST_JOIN_KIND_LEFT_OUTER;
 }
+join_operator(A) ::= RIGHT JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
+}
+join_operator(A) ::= RIGHT OUTER JOIN. {
+    A = MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER;
+}
 
 join_condition_opt(A) ::= . [ON] {
     A = NULL;

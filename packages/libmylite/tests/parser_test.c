@@ -21600,6 +21600,35 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT l.id FROM lefts l RIGHT JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "right join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER,
+        "right join kind"
+    );
+    failures += expect_child_count(from_join, 3U, "right join child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT l.id FROM lefts l RIGHT OUTER JOIN rights r ON l.k = r.k;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_join = child_at(statement, 1U);
+    failures += expect_node(from_join, MYLITE_SQL_AST_FROM_JOIN, "right outer join");
+    failures += expect_true(
+        mylite_sql_ast_node_join_kind(from_join) == MYLITE_SQL_AST_JOIN_KIND_RIGHT_OUTER,
+        "right outer join kind"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT l.id FROM lefts l, rights r, extras e;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

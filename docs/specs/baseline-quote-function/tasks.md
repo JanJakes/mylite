@@ -14,4 +14,4 @@
 - [x] Update `COMPATIBILITY.md` and string/query compatibility docs.
 - [x] Run focused parser/runtime tests and MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review, commit, push, and run the feature review gate.
+- [x] Review, commit, push, and run the feature review gate.

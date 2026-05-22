@@ -18,5 +18,5 @@
 - [x] Update compatibility docs for the exact joined grouped aggregate subset.
 - [x] Run focused build/tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff with a subagent, amend any findings, commit, and
+- [x] Review the final diff with a subagent, amend any findings, commit, and
   push to remote `main`.

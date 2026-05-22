@@ -40,5 +40,5 @@
 - [x] Review the final diff for architecture boundaries, MySQL 8.4.9 evidence,
   binary-value scope control, warning behavior, file-format safety,
   unsupported-form diagnostics, and compatibility-doc accuracy.
-- [ ] Commit atomically, run a subagent release-gate review, amend if needed,
+- [x] Commit atomically, run a subagent release-gate review, amend if needed,
   push `main`, and continue to the next baseline slice.

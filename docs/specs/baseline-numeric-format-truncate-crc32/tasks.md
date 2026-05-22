@@ -16,4 +16,4 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review final diff for MySQL evidence, scalar-expression scope, diagnostics,
   file-format safety, docs accuracy, and test relevance.
-- [ ] Commit, review with a subagent, amend if needed, and push `main`.
+- [x] Commit, review with a subagent, amend if needed, and push `main`.

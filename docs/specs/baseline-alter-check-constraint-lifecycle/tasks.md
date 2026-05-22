@@ -24,4 +24,4 @@
 - [x] Review the final diff for MySQL behavior, descriptor authority, physical
   SQLite scope, diagnostics, metadata, performance, persistence, cleanup, and
   scope control.
-- [ ] Commit, review with a subagent, amend if needed, and push `main`.
+- [x] Commit, review with a subagent, amend if needed, and push `main`.

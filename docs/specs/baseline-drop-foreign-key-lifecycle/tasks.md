@@ -24,7 +24,7 @@
 - [x] Update `COMPATIBILITY.md`,
   `docs/compatibility/sql-indexes-constraints.md`, and
   `docs/compatibility/sql-table-ddl.md` with exact limited wording.
-- [ ] Run focused build/tests, the MySQL expectation script, and
+- [x] Run focused build/tests, the MySQL expectation script, and
   `cmake --workflow --preset check`.
 - [x] Review the final diff with a subagent, amend any findings, commit, and
   push to remote `main`.

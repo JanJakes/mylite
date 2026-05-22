@@ -10,4 +10,4 @@
 - [x] Update compatibility docs for the exact limited mutable subset.
 - [x] Run focused MySQL expectation and CTest coverage.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review final diff, amend if needed, commit, push, and run subagent review.
+- [x] Review final diff, amend if needed, commit, push, and run subagent review.

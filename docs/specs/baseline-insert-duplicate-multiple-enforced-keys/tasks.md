@@ -19,4 +19,4 @@
 - [x] Update compatibility docs for the exact supported subset.
 - [x] Run focused runtime tests, the MySQL expectation script, and
       `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend if needed, commit, and push `main`.
+- [x] Review with a subagent, amend if needed, commit, and push `main`.

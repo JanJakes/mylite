@@ -25,5 +25,5 @@
 - [x] Review the final diff for architecture boundaries, MySQL evidence,
       no-op SQLite SQL generation, CTAS diagnostics, docs accuracy, and test
       relevance.
-- [ ] Commit, review with a subagent, amend if needed, push `main`, then
+- [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.

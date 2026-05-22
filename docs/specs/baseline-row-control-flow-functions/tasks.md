@@ -12,4 +12,4 @@
 - [x] Update compatibility docs for the exact supported subset.
 - [x] Run focused runtime tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff, commit atomically, and push `main`.
+- [x] Review the final diff, commit atomically, and push `main`.

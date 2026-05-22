@@ -33,7 +33,7 @@
 
 ## Verification
 
-- [ ] Run `packages/libmylite/tests/mysql_baseline_convert_using_binary_expectations.sh`
+- [x] Run `packages/libmylite/tests/mysql_baseline_convert_using_binary_expectations.sh`
   when the MySQL 8.4.9 Docker runtime is available.
 - [x] Run `cmake --build --preset dev`.
 - [x] Run focused parser/runtime CTest entries for `CONVERT(... USING BINARY)`

@@ -11,5 +11,5 @@
 - [x] Update compatibility docs for the extension spelling.
 - [x] Run targeted parser/runtime transaction CTest entries.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff, commit atomically, push `main`, and run a
+- [x] Review the final diff, commit atomically, push `main`, and run a
       subagent release-gate review.

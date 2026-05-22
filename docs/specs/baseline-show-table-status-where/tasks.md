@@ -26,4 +26,4 @@
 - [x] Run parser and `SHOW TABLE STATUS` runtime CTest entries.
 - [x] Run focused SHOW/metadata regression entries if touched code warrants it.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review, commit, and push.
+- [x] Review, commit, and push.

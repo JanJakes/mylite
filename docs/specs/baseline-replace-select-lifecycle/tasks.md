@@ -24,4 +24,4 @@
 - [x] Run `cmake --workflow --preset check`.
 - [x] Review the final diff for architecture boundaries, descriptor authority,
   performance, cleanup, compatibility wording, and test relevance.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

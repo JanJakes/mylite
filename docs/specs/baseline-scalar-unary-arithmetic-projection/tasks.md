@@ -36,4 +36,4 @@
 - [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, unary overflow correctness, performance,
   cleanup, compatibility wording, and test relevance.
-- [ ] Commit, push `main`, and continue to the next baseline slice.
+- [x] Commit, push `main`, and continue to the next baseline slice.

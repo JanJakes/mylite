@@ -35,5 +35,5 @@
   without overclaiming full `INSERT IGNORE ... SELECT`.
 - [x] Run focused parser/runtime CTest entries.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Rerun MySQL 8.4.9 expectation generation/comparison when local Docker is
+- [x] Rerun MySQL 8.4.9 expectation generation/comparison when local Docker is
   responsive again.

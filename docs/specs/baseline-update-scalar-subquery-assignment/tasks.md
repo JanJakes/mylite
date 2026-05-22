@@ -15,4 +15,4 @@
 - [x] Run focused tests, MySQL expectation script, and `cmake --workflow --preset
       check`.
 - [x] Review the feature and fix findings.
-- [ ] Commit and push `main`.
+- [x] Commit and push `main`.

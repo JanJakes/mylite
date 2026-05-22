@@ -16,4 +16,4 @@
 - [x] Add fast C runtime coverage.
 - [x] Run focused build/tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review, commit, push `main`, and continue to the next baseline slice.
+- [x] Review, commit, push `main`, and continue to the next baseline slice.

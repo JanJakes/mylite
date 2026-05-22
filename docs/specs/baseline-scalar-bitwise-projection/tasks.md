@@ -17,5 +17,5 @@
   and `cmake --workflow --preset check`.
 - [x] Review final diff for MySQL behavior, unsigned formatting, expression
   scope, diagnostics, architecture boundaries, file safety, and test coverage.
-- [ ] Commit, review with a subagent, amend if needed, push `main`, then
+- [x] Commit, review with a subagent, amend if needed, push `main`, then
   continue to the next baseline slice.

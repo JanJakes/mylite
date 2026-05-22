@@ -26,4 +26,4 @@
 - [x] Add focused parser/runtime C tests and register any new test binary.
 - [x] Run focused parser/runtime tests and the MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [ ] Review with a subagent, amend if needed, commit, and push `main`.
+- [x] Review with a subagent, amend if needed, commit, and push `main`.

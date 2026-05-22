@@ -27,5 +27,5 @@
 - [x] Review the final diff for architecture boundaries, MySQL evidence,
       warning semantics, found-row state lifetime, performance, docs accuracy,
       and test relevance.
-- [ ] Commit, review with a subagent, amend if needed, push `main`, then
+- [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.

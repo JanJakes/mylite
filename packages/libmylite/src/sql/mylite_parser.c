@@ -3513,6 +3513,52 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_force_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_disable_keys_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_alter_table_options options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    apply_alter_table_options(statement, options);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_enable_keys_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_alter_table_options options
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    apply_alter_table_options(statement, options);
+    return statement;
+}
+
 struct mylite_sql_alter_table_options mylite_sql_parser_empty_alter_table_options(void) {
     return (struct mylite_sql_alter_table_options){
         .algorithm = MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED,
@@ -7708,6 +7754,8 @@ static bool map_keyword_token(
         {"ROW_FORMAT", MYLITE_SQL_PARSE_ROW_FORMAT},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},
         {"PACK_KEYS", MYLITE_SQL_PARSE_PACK_KEYS},
+        {"DISABLE", MYLITE_SQL_PARSE_DISABLE},
+        {"ENABLE", MYLITE_SQL_PARSE_ENABLE},
         {"CHECKSUM", MYLITE_SQL_PARSE_CHECKSUM},
         {"STATS_PERSISTENT", MYLITE_SQL_PARSE_STATS_PERSISTENT},
         {"STATS_AUTO_RECALC", MYLITE_SQL_PARSE_STATS_AUTO_RECALC},

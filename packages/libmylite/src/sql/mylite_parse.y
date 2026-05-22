@@ -323,6 +323,12 @@ statement(A) ::= alter_table_order_by_statement(B). {
 statement(A) ::= alter_table_force_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_disable_keys_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_table_enable_keys_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -2037,6 +2043,16 @@ alter_table_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
 
 alter_table_force_statement(A) ::= ALTER(A1) TABLE table_name(T) FORCE alter_table_option_tail_opt(O). {
     A = mylite_sql_parser_make_alter_table_force_statement(state, A1, T, O);
+}
+
+alter_table_disable_keys_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) DISABLE KEYS alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_disable_keys_statement(state, A1, T, O);
+}
+
+alter_table_enable_keys_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ENABLE KEYS alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_enable_keys_statement(state, A1, T, O);
 }
 
 alter_table_option_tail_opt(A) ::= . {
@@ -6500,6 +6516,12 @@ identifier(A) ::= KEY_BLOCK_SIZE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= PACK_KEYS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= DISABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ENABLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHECKSUM(T). {

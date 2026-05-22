@@ -2314,6 +2314,12 @@ struct planned_alter_table_force {
     size_t column_count;
 };
 
+struct planned_alter_table_key_maintenance {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    int64_t affected_rows;
+};
+
 struct planned_truncate_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -8722,6 +8728,21 @@ static int execute_alter_table_force_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_disable_keys_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_enable_keys_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_key_maintenance_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int validate_alter_table_algorithm_lock_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -8753,6 +8774,11 @@ static int validate_alter_table_add_foreign_key_algorithm_lock_options(
 static int validate_alter_table_rebuild_algorithm_options(
     struct mylite_db *database,
     enum mylite_sql_ast_alter_algorithm algorithm
+);
+static int validate_alter_table_key_maintenance_algorithm_lock_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
 );
 static bool alter_table_statement_accepts_algorithm_lock_options(
     enum mylite_sql_ast_node_kind kind
@@ -11667,6 +11693,11 @@ static int alter_table_force_from_plan(
 static int execute_physical_alter_table_force(
     struct mylite_db *database,
     const struct planned_alter_table_force *plan
+);
+static int plan_alter_table_key_maintenance(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_key_maintenance *out_plan
 );
 static int build_alter_table_check_temporary_physical_name(
     const struct planned_alter_table_check_constraint *plan,
@@ -25760,6 +25791,7 @@ static void set_alter_table_add_foreign_key_lock_none_error(
 );
 static void set_alter_table_add_fulltext_instant_error(struct mylite_db *database);
 static void set_alter_table_copy_lock_none_error(struct mylite_db *database);
+static void set_alter_table_key_maintenance_lock_error(struct mylite_db *database);
 static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database);
 static void set_no_tables_used_error(struct mylite_db *database);
 static void set_in_subquery_limit_error(struct mylite_db *database);
@@ -25832,6 +25864,10 @@ static int append_unknown_table_note(
 );
 static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
 static void set_table_storage_engine_option_error(
+    struct mylite_db *database,
+    const char *table_name
+);
+static int append_table_storage_engine_option_note(
     struct mylite_db *database,
     const char *table_name
 );
@@ -26548,6 +26584,10 @@ static int execute_non_prepared_statement(
         return execute_alter_table_order_by_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
         return execute_alter_table_force_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT:
+        return execute_alter_table_disable_keys_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT:
+        return execute_alter_table_enable_keys_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
@@ -35299,6 +35339,68 @@ static int execute_alter_table_force_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_alter_table_disable_keys_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_alter_table_key_maintenance_statement(database, statement, out_result);
+}
+
+static int execute_alter_table_enable_keys_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_alter_table_key_maintenance_statement(database, statement, out_result);
+}
+
+static int execute_alter_table_key_maintenance_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_key_maintenance plan = {0};
+    enum mylite_sql_ast_alter_algorithm algorithm = mylite_sql_ast_node_alter_algorithm(statement);
+    enum mylite_sql_ast_alter_lock lock = mylite_sql_ast_node_alter_lock(statement);
+    const char *note_table_name = NULL;
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_key_maintenance(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_key_maintenance_algorithm_lock_options(database, algorithm, lock);
+    }
+    if (rc == MYLITE_OK && algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+        rc = read_show_table_status_row_count(database, &plan.table, &plan.affected_rows);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to read key maintenance row count");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        note_table_name = algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY ? "#sql-mylite-copy"
+                                                                           : plan.target.table_name;
+        rc = append_table_storage_engine_option_note(database, note_table_name);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int validate_alter_table_algorithm_lock_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -35319,6 +35421,21 @@ static int validate_alter_table_algorithm_lock_options(
     if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_UNSPECIFIED &&
         lock == MYLITE_SQL_AST_ALTER_LOCK_UNSPECIFIED) {
         return MYLITE_OK;
+    }
+
+    if ((statement->kind == MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT ||
+         statement->kind == MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT) &&
+        algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT &&
+        (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE || lock == MYLITE_SQL_AST_ALTER_LOCK_SHARED ||
+         lock == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE)) {
+        rc = reject_information_schema_write_target(database, child_at(statement, 0U));
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = require_selected_schema_for_unqualified_table_name(database, child_at(statement, 0U));
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
 
     rc = validate_alter_table_algorithm_lock_option_values(database, algorithm, lock);
@@ -35469,6 +35586,28 @@ static int validate_alter_table_rebuild_algorithm_options(
     return MYLITE_OK;
 }
 
+static int validate_alter_table_key_maintenance_algorithm_lock_options(
+    struct mylite_db *database,
+    enum mylite_sql_ast_alter_algorithm algorithm,
+    enum mylite_sql_ast_alter_lock lock
+) {
+    if (lock == MYLITE_SQL_AST_ALTER_LOCK_NONE) {
+        if (algorithm == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+            set_alter_table_copy_lock_none_error(database);
+        } else {
+            set_alter_table_key_maintenance_lock_error(database);
+        }
+        return MYLITE_ERROR;
+    }
+    if (lock == MYLITE_SQL_AST_ALTER_LOCK_SHARED &&
+        algorithm != MYLITE_SQL_AST_ALTER_ALGORITHM_COPY) {
+        set_alter_table_key_maintenance_lock_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static bool alter_table_statement_accepts_algorithm_lock_options(
     enum mylite_sql_ast_node_kind kind
 ) {
@@ -35487,6 +35626,8 @@ static bool alter_table_statement_accepts_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_CONSTRAINT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_COMMENT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT:
         return true;
     default:
         return false;
@@ -46849,6 +46990,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -65151,6 +65294,26 @@ static int alter_table_force_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_alter_table_key_maintenance(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_key_maintenance *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_key_maintenance){0};
+    rc = resolve_visible_writable_table_reference(
+        database,
+        child_at(statement, 0U),
+        &out_plan->target,
+        &out_plan->table
+    );
+    if (rc != MYLITE_OK) {
+        *out_plan = (struct planned_alter_table_key_maintenance){0};
+    }
+    return rc;
 }
 
 static void planned_column_from_catalog_descriptor(
@@ -159237,6 +159400,15 @@ static void set_alter_table_copy_lock_none_error(struct mylite_db *database) {
     );
 }
 
+static void set_alter_table_key_maintenance_lock_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported,
+        "0A000",
+        "LOCK=NONE/SHARED is not supported for this operation. Try LOCK=EXCLUSIVE."
+    );
+}
+
 static void set_alter_table_add_fulltext_lock_none_error(struct mylite_db *database) {
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
@@ -160077,6 +160249,29 @@ static void set_table_storage_engine_option_error(
         message[0] = '\0';
     }
     mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_table_storage_engine_option,
+        "HY000",
+        message
+    );
+}
+
+static int append_table_storage_engine_option_note(
+    struct mylite_db *database,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Table storage engine for '%s' doesn't have this option",
+        table_name == NULL ? "" : table_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_note(
         mylite_connection_diagnostics(database),
         mysql_error_table_storage_engine_option,
         "HY000",

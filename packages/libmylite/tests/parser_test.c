@@ -178,6 +178,7 @@ static int test_alter_table_default_charset_collation_statements(void);
 static int test_alter_table_order_by_statements(void);
 static int test_alter_table_algorithm_lock_option_statements(void);
 static int test_alter_table_force_statements(void);
+static int test_alter_table_disable_enable_keys_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
@@ -492,6 +493,7 @@ int main(void) {
     failures += test_alter_table_order_by_statements();
     failures += test_alter_table_algorithm_lock_option_statements();
     failures += test_alter_table_force_statements();
+    failures += test_alter_table_disable_enable_keys_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
@@ -18246,6 +18248,65 @@ static int test_alter_table_force_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("ALTER TABLE old_name FORCE id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_disable_enable_keys_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE old_name DISABLE KEYS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DISABLE_KEYS_STATEMENT,
+        "alter table disable keys statement"
+    );
+    failures += expect_child_count(statement, 1U, "alter table disable keys child count");
+    failures += expect_span_text(child_at(statement, 0U), "old_name", "disable keys target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE app.old_name ENABLE KEYS, ALGORITHM=COPY, LOCK=EXCLUSIVE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ENABLE_KEYS_STATEMENT,
+        "alter table enable keys statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app.old_name", "enable keys target");
+    failures += expect_true(
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_COPY,
+        "enable keys algorithm option"
+    );
+    failures += expect_true(
+        mylite_sql_ast_node_alter_lock(statement) == MYLITE_SQL_AST_ALTER_LOCK_EXCLUSIVE,
+        "enable keys lock option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name DISABLE KEY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name DISABLE KEYS, ENABLE KEYS;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ENABLE KEYS LOCK=NONE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

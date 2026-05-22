@@ -1539,6 +1539,16 @@ alter_table_multi_first_action(A) ::= ADD(A1) named_unique_constraint_definition
             I,
             mylite_sql_parser_empty_alter_table_options()));
 }
+alter_table_multi_first_action(A) ::= ADD(A1) primary_key_definition(P) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_primary_key_statement(
+            state,
+            A1,
+            NULL,
+            P,
+            mylite_sql_parser_empty_alter_table_options()));
+}
 alter_table_multi_first_action(A) ::= DROP(A1) INDEX identifier(I) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
@@ -1557,6 +1567,16 @@ alter_table_multi_first_action(A) ::= DROP(A1) KEY identifier(I) COMMA. {
             A1,
             NULL,
             I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) PRIMARY KEY(K) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_primary_key_statement(
+            state,
+            A1,
+            NULL,
+            K,
             mylite_sql_parser_empty_alter_table_options()));
 }
 alter_table_multi_first_action(A) ::=
@@ -1614,6 +1634,14 @@ alter_table_multi_action(A) ::= ADD(A1) named_unique_constraint_definition(I). {
         I,
         mylite_sql_parser_empty_alter_table_options());
 }
+alter_table_multi_action(A) ::= ADD(A1) primary_key_definition(P). {
+    A = mylite_sql_parser_make_alter_table_add_primary_key_statement(
+        state,
+        A1,
+        NULL,
+        P,
+        mylite_sql_parser_empty_alter_table_options());
+}
 alter_table_multi_action(A) ::= DROP(A1) INDEX identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(
         state,
@@ -1628,6 +1656,14 @@ alter_table_multi_action(A) ::= DROP(A1) KEY identifier(I). {
         A1,
         NULL,
         I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DROP(A1) PRIMARY KEY(K). {
+    A = mylite_sql_parser_make_alter_table_drop_primary_key_statement(
+        state,
+        A1,
+        NULL,
+        K,
         mylite_sql_parser_empty_alter_table_options());
 }
 alter_table_multi_action(A) ::=

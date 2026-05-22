@@ -17,9 +17,13 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_parse = 1064,
+    mysql_error_multiple_primary_key = 1068,
     mysql_error_key_column_missing = 1072,
+    mysql_error_wrong_auto_key = 1075,
+    mysql_error_cant_drop_field_or_key = 1091,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_duplicate_key = 1062,
+    mysql_error_invalid_use_of_null = 1138,
     mysql_error_unknown_column = 1054,
     mysql_error_field_no_default = 1364,
 };
@@ -40,6 +44,8 @@ struct expected_query {
 
 static int test_multi_action_success_metadata_and_persistence(void);
 static int test_multi_action_drop_add_and_rollback(void);
+static int test_multi_action_primary_key_metadata_and_persistence(void);
+static int test_multi_action_primary_key_rollback_and_diagnostics(void);
 static int test_multi_action_default_metadata_and_persistence(void);
 static int test_multi_action_default_rollback_and_diagnostics(void);
 static int test_multi_action_diagnostics(void);
@@ -78,6 +84,8 @@ int main(void) {
 
     failures += test_multi_action_success_metadata_and_persistence();
     failures += test_multi_action_drop_add_and_rollback();
+    failures += test_multi_action_primary_key_metadata_and_persistence();
+    failures += test_multi_action_primary_key_rollback_and_diagnostics();
     failures += test_multi_action_default_metadata_and_persistence();
     failures += test_multi_action_default_rollback_and_diagnostics();
     failures += test_multi_action_diagnostics();
@@ -343,6 +351,445 @@ static int test_multi_action_drop_add_and_rollback(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "index name is reusable after failed multi-action rollback",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_multi_action_primary_key_metadata_and_persistence(void) {
+    static const char *const add_pk_show_create_rows[] = {
+        "add_pk",
+        "CREATE TABLE `add_pk` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  KEY `k_v` (`v`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const add_pk_statistics_rows[] = {
+        "k_v",
+        "1",
+        "v",
+        "PRIMARY",
+        "0",
+        "id",
+    };
+    static const char *const swap_pk_show_create_rows[] = {
+        "swap_pk",
+        "CREATE TABLE `swap_pk` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `v` int NOT NULL,\n"
+        "  PRIMARY KEY (`v`),\n"
+        "  KEY `k_id` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const add_then_pk_show_create_rows[] = {
+        "add_then_pk",
+        "CREATE TABLE `add_then_pk` (\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  `id` int NOT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const ai_later_key_show_create_rows[] = {
+        "ai_later_key",
+        "CREATE TABLE `ai_later_key` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  KEY `k_id` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const ai_earlier_key_show_create_rows[] = {
+        "ai_earlier_key",
+        "CREATE TABLE `ai_earlier_key` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  KEY `k_id` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "primary_key_success") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open pk success db");
+    failures += expect_dml_ok(database, "CREATE DATABASE app", 1);
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE add_pk (id INT NOT NULL, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO add_pk VALUES (1,10),(2,20)", 2);
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE add_pk ADD PRIMARY KEY(id), ADD KEY k_v(v)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE add_pk",
+            .values = add_pk_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "add primary key multi-action show create",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'add_pk' "
+                   "ORDER BY INDEX_NAME",
+            .values = add_pk_statistics_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "add primary key multi-action statistics",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO add_pk VALUES (1, 30)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1' for key 'add_pk.PRIMARY'",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE swap_pk (id INT PRIMARY KEY, v INT NOT NULL, KEY k_id(id))"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO swap_pk VALUES (1,10),(2,20)", 2);
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE swap_pk DROP PRIMARY KEY, ADD PRIMARY KEY(v)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE swap_pk",
+            .values = swap_pk_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "swap primary key multi-action show create",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE add_then_pk (v INT)");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE add_then_pk ADD COLUMN id INT NOT NULL, ADD PRIMARY KEY(id)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE add_then_pk",
+            .values = add_then_pk_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "add column then primary key show create",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ai_later_key (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE ai_later_key DROP PRIMARY KEY, ADD KEY k_id(id)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ai_earlier_key (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE ai_earlier_key ADD KEY k_id(id), DROP PRIMARY KEY"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE ai_later_key",
+            .values = ai_later_key_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto increment drop primary key with later replacement key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE ai_earlier_key",
+            .values = ai_earlier_key_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "auto increment drop primary key with earlier replacement key",
+        }
+    );
+    failures += expect_bytes(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) == 0 ? actual_preamble
+                                                                              : NULL,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after primary key multi-action ALTER"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen pk success db");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE add_pk",
+            .values = add_pk_show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "reopened add primary key show create",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME "
+                   "FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'add_pk' "
+                   "ORDER BY INDEX_NAME",
+            .values = add_pk_statistics_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "reopened add primary key statistics",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_multi_action_primary_key_rollback_and_diagnostics(void) {
+    static const char *const zero_rows[] = {"0"};
+    static const char *const primary_id_rows[] = {"PRIMARY", "id"};
+    static const char *const add_dup_columns[] = {"v", "", "YES", NULL};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "primary_key_rollback") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open pk rollback db");
+    failures += expect_dml_ok(database, "CREATE DATABASE app", 1);
+    failures += expect_statement_ok(database, "USE app");
+
+    failures += expect_statement_ok(database, "CREATE TABLE dup_pk (id INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO dup_pk VALUES (1,10),(1,20)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE dup_pk ADD KEY k_v(v), ADD PRIMARY KEY(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1' for key 'dup_pk.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'dup_pk'",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "duplicate primary key rolls back earlier index",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE swap_dup (id INT PRIMARY KEY, v INT NOT NULL)");
+    failures += expect_dml_ok(database, "INSERT INTO swap_dup VALUES (1,10),(2,10)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE swap_dup DROP PRIMARY KEY, ADD PRIMARY KEY(v)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '10' for key 'swap_dup.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'swap_dup' "
+                   "ORDER BY INDEX_NAME",
+            .values = primary_id_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "failed primary key swap preserves original key",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE null_pk (id INT, v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO null_pk VALUES (NULL,10),(2,20)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE null_pk ADD KEY k_v(v), ADD PRIMARY KEY(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_use_of_null,
+            .sqlstate = "22004",
+            .message_part = "Invalid use of NULL value",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'null_pk'",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "null primary key rolls back earlier index",
+        }
+    );
+
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE existing_pk (id INT PRIMARY KEY, v INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE existing_pk ADD PRIMARY KEY(v), ADD KEY k_v(v)",
+        (struct expected_sql_error){
+            .code = mysql_error_multiple_primary_key,
+            .sqlstate = "42000",
+            .message_part = "Multiple primary key defined",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'existing_pk' "
+                   "ORDER BY INDEX_NAME",
+            .values = primary_id_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "existing primary key rolls back later index",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE no_pk (id INT, v INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE no_pk DROP PRIMARY KEY, ADD KEY k_id(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_cant_drop_field_or_key,
+            .sqlstate = "42000",
+            .message_part = "Can't DROP 'PRIMARY'; check that column/key exists",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'no_pk'",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "missing primary key rolls back later index",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE add_dup (v INT)");
+    failures += expect_dml_ok(database, "INSERT INTO add_dup VALUES (1),(2)", 2);
+    failures += execute_error(
+        database,
+        "ALTER TABLE add_dup ADD COLUMN id INT NOT NULL, ADD PRIMARY KEY(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '0' for key 'add_dup.PRIMARY'",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COLUMN_NAME, COLUMN_KEY, IS_NULLABLE, COLUMN_DEFAULT "
+                   "FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'add_dup' "
+                   "ORDER BY ORDINAL_POSITION",
+            .values = add_dup_columns,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "failed add column primary key rolls back column",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ai_bad (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE ai_bad DROP PRIMARY KEY, ADD KEY k_v(v)",
+        (struct expected_sql_error){
+            .code = mysql_error_wrong_auto_key,
+            .sqlstate = "42000",
+            .message_part =
+                "Incorrect table definition; there can be only one auto column and it must be "
+                "defined as a key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'ai_bad' "
+                   "ORDER BY INDEX_NAME",
+            .values = primary_id_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "failed auto increment final validation preserves primary key",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE hash_pk (id INT NOT NULL, v INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE hash_pk ADD PRIMARY KEY USING HASH(id), ADD KEY k_v(v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "multi-action ALTER TABLE does not yet support warning-producing "
+                            "ADD PRIMARY KEY",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TEMPORARY TABLE tmp_pk (id INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE tmp_pk ADD PRIMARY KEY(id), ADD KEY k_id(id)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "multi-action ALTER TABLE supports only persistent base tables",
+        }
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE unknown_col (id INT, v INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE unknown_col ADD PRIMARY KEY(missing), ADD KEY k_v(v)",
+        (struct expected_sql_error){
+            .code = mysql_error_key_column_missing,
+            .sqlstate = "42000",
+            .message_part = "Key column 'missing' doesn't exist in table",
         }
     );
 

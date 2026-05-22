@@ -1940,6 +1940,12 @@ struct alter_table_multi_default_target_view {
     const struct mylite_sql_ast_node *action;
 };
 
+struct alter_table_multi_auto_increment_key_lookup {
+    const struct loaded_index_info *indexes;
+    size_t index_count;
+    int64_t column_id;
+};
+
 struct planned_alter_table_add_primary_key {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -8436,7 +8442,21 @@ static int execute_alter_table_multi_action_add_index(
     const struct mylite_catalog_mutation *mutation,
     bool *out_physical_schema_changed
 );
+static int execute_alter_table_multi_action_add_primary_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
 static int execute_alter_table_multi_action_drop_index(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+);
+static int execute_alter_table_multi_action_drop_primary_key(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
     const struct mylite_sql_ast_node *action,
@@ -8457,6 +8477,17 @@ static int execute_alter_table_multi_action_drop_default(
     const struct mylite_catalog_mutation *mutation,
     const struct alter_table_multi_action_state *state
 );
+static int validate_alter_table_multi_action_final_state(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node
+);
+static int validate_alter_table_multi_action_auto_increment_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+);
+static bool table_index_infos_have_leading_column(
+    const struct alter_table_multi_auto_increment_key_lookup *lookup
+);
 static void make_alter_table_action_statement_view(
     const struct mylite_sql_ast_node *table_node,
     struct alter_table_action_statement_view *out_view,
@@ -8470,12 +8501,16 @@ static int reject_unsupported_multi_action_add_index(
     struct mylite_db *database,
     const struct planned_alter_table_add_index *plan
 );
+static int reject_unsupported_multi_action_add_primary_key(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+);
 static int reject_multi_action_default_target_added_in_statement(
     struct mylite_db *database,
     const struct alter_table_multi_default_target_view *target,
     const struct alter_table_multi_action_state *state
 );
-static int reject_multi_action_default_temporary_target(
+static int reject_alter_table_multi_action_temporary_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node
 );
@@ -10530,6 +10565,11 @@ static int alter_table_add_primary_key_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan
 );
+static int alter_table_add_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_primary_key *plan
+);
 static int validate_alter_table_primary_key_key_length(
     struct mylite_db *database,
     const struct planned_alter_table_add_primary_key *plan
@@ -11205,6 +11245,17 @@ static int plan_alter_table_drop_primary_key(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_drop_primary_key *out_plan
 );
+static int plan_alter_table_drop_primary_key_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_primary_key *out_plan
+);
+static int plan_alter_table_drop_primary_key_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool validate_auto_increment,
+    struct planned_alter_table_drop_primary_key *out_plan
+);
 static void planned_alter_table_drop_primary_key_deinit(
     struct planned_alter_table_drop_primary_key *plan
 );
@@ -11220,6 +11271,11 @@ static bool primary_key_auto_increment_column_id(
 );
 static int alter_table_drop_primary_key_from_plan(
     struct mylite_db *database,
+    const struct planned_alter_table_drop_primary_key *plan
+);
+static int alter_table_drop_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
     const struct planned_alter_table_drop_primary_key *plan
 );
 static int execute_physical_alter_table_drop_primary_key(
@@ -33350,6 +33406,9 @@ static int execute_alter_table_multi_action_statement(
         action = action->next_sibling;
     }
     if (rc == MYLITE_OK) {
+        rc = validate_alter_table_multi_action_final_state(database, table_node);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
@@ -33400,8 +33459,24 @@ static int execute_alter_table_multi_action(
             mutation,
             out_physical_schema_changed
         );
+    case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
+        return execute_alter_table_multi_action_add_primary_key(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_INDEX_STATEMENT:
         return execute_alter_table_multi_action_drop_index(
+            database,
+            table_node,
+            action,
+            mutation,
+            out_physical_schema_changed
+        );
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
+        return execute_alter_table_multi_action_drop_primary_key(
             database,
             table_node,
             action,
@@ -33490,6 +33565,39 @@ static int execute_alter_table_multi_action_add_index(
     return rc;
 }
 
+static int execute_alter_table_multi_action_add_primary_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_add_primary_key plan = {0};
+    int rc = MYLITE_OK;
+
+    rc = reject_alter_table_multi_action_temporary_target(database, table_node);
+    if (rc == MYLITE_OK) {
+        make_alter_table_action_statement_view(table_node, &view, action);
+        rc = plan_alter_table_add_primary_key(database, &view.statement, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = reject_unsupported_multi_action_add_primary_key(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_add_primary_key_existing_rows(database, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_add_primary_key_in_mutation(database, mutation, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        *out_physical_schema_changed = true;
+    }
+
+    planned_alter_table_add_primary_key_deinit(&plan);
+    return rc;
+}
+
 static int execute_alter_table_multi_action_drop_index(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
@@ -33523,6 +33631,40 @@ static int execute_alter_table_multi_action_drop_index(
     return rc;
 }
 
+static int execute_alter_table_multi_action_drop_primary_key(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    const struct mylite_sql_ast_node *action,
+    const struct mylite_catalog_mutation *mutation,
+    bool *out_physical_schema_changed
+) {
+    struct alter_table_action_statement_view view = {0};
+    struct planned_alter_table_drop_primary_key plan = {0};
+    int rc = MYLITE_OK;
+
+    rc = reject_alter_table_multi_action_temporary_target(database, table_node);
+    if (rc == MYLITE_OK) {
+        make_alter_table_action_statement_view(table_node, &view, action);
+        rc = plan_alter_table_drop_primary_key_for_multi_action(database, &view.statement, &plan);
+    }
+    if (rc == MYLITE_OK && plan.table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = alter_table_drop_primary_key_in_mutation(database, mutation, &plan);
+    }
+    if (rc == MYLITE_OK) {
+        *out_physical_schema_changed = true;
+    }
+
+    planned_alter_table_drop_primary_key_deinit(&plan);
+    return rc;
+}
+
 static int execute_alter_table_multi_action_set_default(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node,
@@ -33539,7 +33681,7 @@ static int execute_alter_table_multi_action_set_default(
     int rc = reject_multi_action_default_target_added_in_statement(database, &target, state);
 
     if (rc == MYLITE_OK) {
-        rc = reject_multi_action_default_temporary_target(database, table_node);
+        rc = reject_alter_table_multi_action_temporary_target(database, table_node);
     }
     if (rc == MYLITE_OK) {
         make_alter_table_action_statement_view(table_node, &view, action);
@@ -33576,7 +33718,7 @@ static int execute_alter_table_multi_action_drop_default(
     int rc = reject_multi_action_default_target_added_in_statement(database, &target, state);
 
     if (rc == MYLITE_OK) {
-        rc = reject_multi_action_default_temporary_target(database, table_node);
+        rc = reject_alter_table_multi_action_temporary_target(database, table_node);
     }
     if (rc == MYLITE_OK) {
         make_alter_table_action_statement_view(table_node, &view, action);
@@ -33587,6 +33729,99 @@ static int execute_alter_table_multi_action_drop_default(
     }
 
     return rc;
+}
+
+static int validate_alter_table_multi_action_final_state(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node
+) {
+    struct table_name_resolution target = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    int rc = resolve_writable_table_name(database, table_node, &target);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            target.schema.schema_id,
+            target.table_name,
+            &table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(database, target.schema.name, target.table_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && table.kind == MYLITE_CATALOG_TABLE_KIND_BASE) {
+        rc = validate_alter_table_multi_action_auto_increment_keys(database, &table);
+    }
+
+    return rc;
+}
+
+static int validate_alter_table_multi_action_auto_increment_keys(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    struct loaded_index_info *indexes = NULL;
+    size_t column_count = 0U;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (table == NULL) {
+        set_runtime_error(database, "invalid multi-action final table");
+        return MYLITE_ERROR;
+    }
+
+    rc = load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = load_table_index_infos(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &indexes,
+            &index_count
+        );
+    }
+    for (size_t column = 0U; rc == MYLITE_OK && column < column_count; ++column) {
+        const struct alter_table_multi_auto_increment_key_lookup lookup = {
+            .indexes = indexes,
+            .index_count = index_count,
+            .column_id = columns[column].column_id,
+        };
+
+        if (!columns[column].is_auto_increment) {
+            continue;
+        }
+        if (!table_index_infos_have_leading_column(&lookup)) {
+            set_wrong_auto_key_error(database);
+            rc = MYLITE_ERROR;
+        }
+    }
+
+    loaded_index_infos_deinit(&indexes, &index_count);
+    free(columns);
+    return rc;
+}
+
+static bool table_index_infos_have_leading_column(
+    const struct alter_table_multi_auto_increment_key_lookup *lookup
+) {
+    if (lookup == NULL) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < lookup->index_count; ++index) {
+        if (lookup->indexes[index].part_count == 0U) {
+            continue;
+        }
+        if (lookup->indexes[index].parts[0].column.column_id == lookup->column_id) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void make_alter_table_action_statement_view(
@@ -33654,6 +33889,31 @@ static int reject_unsupported_multi_action_add_index(
     return MYLITE_OK;
 }
 
+static int reject_unsupported_multi_action_add_primary_key(
+    struct mylite_db *database,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    if (plan == NULL) {
+        set_runtime_error(database, "invalid multi-action add-primary-key plan");
+        return MYLITE_ERROR;
+    }
+    if (plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE supports only persistent base tables"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->uses_hash_index_type) {
+        set_unsupported_error(
+            database,
+            "multi-action ALTER TABLE does not yet support warning-producing ADD PRIMARY KEY"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
 static int reject_multi_action_default_target_added_in_statement(
     struct mylite_db *database,
     const struct alter_table_multi_default_target_view *target,
@@ -33691,7 +33951,7 @@ static int reject_multi_action_default_target_added_in_statement(
     return rc;
 }
 
-static int reject_multi_action_default_temporary_target(
+static int reject_alter_table_multi_action_temporary_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *table_node
 ) {
@@ -56607,8 +56867,6 @@ static int alter_table_add_primary_key_from_plan(
     const struct planned_alter_table_add_primary_key *plan
 ) {
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
-    char primary_key_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
-    int64_t primary_key_index_id = 0;
     int rc = MYLITE_OK;
 
     if (plan->part_count == 0U) {
@@ -56625,12 +56883,37 @@ static int alter_table_add_primary_key_from_plan(
         rc = mylite_catalog_begin_mutation(database, &mutation);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_allocate_index_id_in_mutation(
-            database,
-            &mutation,
-            &primary_key_index_id
-        );
+        rc = alter_table_add_primary_key_in_mutation(database, &mutation, plan);
     }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to add primary key");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+}
+
+static int alter_table_add_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_add_primary_key *plan
+) {
+    char primary_key_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    int64_t primary_key_index_id = 0;
+    int rc = MYLITE_OK;
+
+    if (mutation == NULL || plan == NULL || plan->part_count == 0U) {
+        set_runtime_error(database, "invalid primary-key mutation plan");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_allocate_index_id_in_mutation(database, mutation, &primary_key_index_id);
     if (rc == MYLITE_OK) {
         rc = build_physical_index_name(
             primary_key_index_id,
@@ -56654,7 +56937,7 @@ static int alter_table_add_primary_key_from_plan(
 
         rc = mylite_catalog_replace_column_in_mutation(
             database,
-            &mutation,
+            mutation,
             plan->table.table_id,
             column->column_id,
             column->name,
@@ -56679,7 +56962,7 @@ static int alter_table_add_primary_key_from_plan(
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_insert_index_in_mutation(
             database,
-            &mutation,
+            mutation,
             primary_key_index_id,
             plan->table.table_id,
             "PRIMARY",
@@ -56695,7 +56978,7 @@ static int alter_table_add_primary_key_from_plan(
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < plan->part_count; ++part_index) {
         rc = mylite_catalog_insert_index_column_in_mutation(
             database,
-            &mutation,
+            mutation,
             primary_key_index_id,
             plan->table.table_id,
             plan->parts[part_index].column.column_id,
@@ -56712,25 +56995,15 @@ static int alter_table_add_primary_key_from_plan(
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_update_table_identity_in_mutation(
             database,
-            &mutation,
+            mutation,
             plan->table.table_id,
             plan->table.schema_id,
             plan->table.name,
             NULL
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_commit_mutation(database, &mutation);
-    }
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to add primary key");
-        mylite_catalog_rollback_mutation(database, &mutation);
-        return rc;
-    }
 
-    ++database->session.sqlite_schema_generation;
-
-    return append_hash_index_warning_if_needed(database, plan->uses_hash_index_type);
+    return rc;
 }
 
 static int validate_alter_table_add_primary_key_existing_rows(
@@ -61653,6 +61926,23 @@ static int plan_alter_table_drop_primary_key(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_drop_primary_key *out_plan
 ) {
+    return plan_alter_table_drop_primary_key_with_options(database, statement, true, out_plan);
+}
+
+static int plan_alter_table_drop_primary_key_for_multi_action(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_primary_key *out_plan
+) {
+    return plan_alter_table_drop_primary_key_with_options(database, statement, false, out_plan);
+}
+
+static int plan_alter_table_drop_primary_key_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool validate_auto_increment,
+    struct planned_alter_table_drop_primary_key *out_plan
+) {
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct primary_key_info primary_key = primary_key_info_init();
     size_t column_count = 0U;
@@ -61710,7 +62000,7 @@ static int plan_alter_table_drop_primary_key(
         primary_key.parts = NULL;
         primary_key.part_count = 0U;
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && validate_auto_increment) {
         rc = validate_alter_table_drop_primary_key_auto_increment(
             database,
             out_plan,
@@ -61813,25 +62103,7 @@ static int alter_table_drop_primary_key_from_plan(
     int rc = mylite_catalog_begin_mutation(database, &mutation);
 
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_delete_index_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            plan->primary_key.index_id
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = execute_physical_alter_table_drop_primary_key(database, plan);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_update_table_identity_in_mutation(
-            database,
-            &mutation,
-            plan->table.table_id,
-            plan->table.schema_id,
-            plan->table.name,
-            NULL
-        );
+        rc = alter_table_drop_primary_key_in_mutation(database, &mutation, plan);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
@@ -61845,6 +62117,41 @@ static int alter_table_drop_primary_key_from_plan(
     ++database->session.sqlite_schema_generation;
 
     return MYLITE_OK;
+}
+
+static int alter_table_drop_primary_key_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_alter_table_drop_primary_key *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (mutation == NULL || plan == NULL) {
+        set_runtime_error(database, "invalid drop-primary-key mutation plan");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_delete_index_in_mutation(
+        database,
+        mutation,
+        plan->table.table_id,
+        plan->primary_key.index_id
+    );
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_drop_primary_key(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+
+    return rc;
 }
 
 static int execute_physical_alter_table_drop_primary_key(

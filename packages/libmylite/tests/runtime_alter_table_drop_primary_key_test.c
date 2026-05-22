@@ -611,13 +611,19 @@ static int test_drop_primary_key_auto_increment_and_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ai_multi_bad (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
     failures += execute_error(
         database,
-        "ALTER TABLE ai_key DROP PRIMARY KEY, ADD KEY k_v (v)",
+        "ALTER TABLE ai_multi_bad DROP PRIMARY KEY, ADD KEY k_v (v)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_wrong_auto_key,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "Incorrect table definition; there can be only one auto column and it must be "
+                "defined as a key",
         }
     );
 

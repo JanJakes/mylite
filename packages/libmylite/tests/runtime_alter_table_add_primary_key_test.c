@@ -1227,14 +1227,10 @@ static int test_alter_add_primary_key_diagnostics(void) {
         database,
         "ALTER TABLE using_pk ADD PRIMARY KEY USING BTREE (id)"
     );
-    failures += execute_error(
+    failures += expect_statement_ok(database, "CREATE TABLE multi_action_pk (id INT)");
+    failures += expect_statement_ok(
         database,
-        "ALTER TABLE qualified_pk ADD PRIMARY KEY (id), ADD KEY k_id (id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        "ALTER TABLE multi_action_pk ADD PRIMARY KEY (id), ADD KEY k_id (id)"
     );
     failures += execute_error(
         database,

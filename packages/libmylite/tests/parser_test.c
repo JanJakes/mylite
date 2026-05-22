@@ -11904,6 +11904,69 @@ static int test_alter_table_multi_action_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE add_pk ADD PRIMARY KEY (id), ADD KEY k_v (v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi add primary key statement"
+    );
+    failures += expect_child_count(actions, 2U, "alter multi add primary key count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT,
+        "alter multi first add primary key action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT,
+        "alter multi second add index after primary key action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE drop_pk DROP PRIMARY KEY, ADD PRIMARY KEY (v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    actions = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "alter multi drop add primary key statement"
+    );
+    failures += expect_child_count(actions, 2U, "alter multi drop add primary key count");
+    failures += expect_node(
+        child_at(actions, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT,
+        "alter multi first drop primary key action"
+    );
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT,
+        "alter multi second add primary key action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE add_pk ADD COLUMN id INT NOT NULL, ADD PRIMARY KEY (id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    actions = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(
+        child_at(actions, 1U),
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT,
+        "alter multi add primary key after add column action"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE defaults ALTER a SET DEFAULT 9, ALTER b DROP DEFAULT;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -16245,7 +16308,7 @@ static int test_alter_table_add_primary_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE add_pk ADD PRIMARY KEY (id), ADD KEY k_v (v);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -17365,7 +17428,7 @@ static int test_alter_table_drop_primary_key_statements(void) {
 
     failures += parse_sql(
         "ALTER TABLE drop_pk DROP PRIMARY KEY, ADD KEY k_v (v);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

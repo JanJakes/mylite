@@ -814,6 +814,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "qualified_identifier";
     case MYLITE_SQL_AST_WILDCARD:
         return "wildcard";
+    case MYLITE_SQL_AST_QUALIFIED_WILDCARD:
+        return "qualified_wildcard";
     case MYLITE_SQL_AST_LITERAL:
         return "literal";
     case MYLITE_SQL_AST_UNARY_EXPRESSION:

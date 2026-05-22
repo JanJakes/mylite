@@ -1401,6 +1401,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_identifier(
     struct mylite_sql_ast_node *left,
     struct mylite_sql_ast_node *right
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_wildcard(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *qualifier,
+    struct mylite_sql_token token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token

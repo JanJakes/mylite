@@ -19455,6 +19455,42 @@ static int plan_select_wildcard_columns(
     size_t table_column_count,
     struct planned_select *out_plan
 );
+static int plan_select_qualified_wildcard_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *qualified_wildcard,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+);
+static int collect_qualified_wildcard_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *qualified_wildcard,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t *out_part_count
+);
+static int set_unknown_qualified_wildcard_table_error(
+    struct mylite_db *database,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+);
+static bool select_source_matches_qualified_wildcard_parts(
+    const struct select_source_context *source_context,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+);
+static bool joined_source_matches_qualified_wildcard_parts(
+    const struct planned_select_source *source,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+);
+static int append_visible_select_columns_from_source(
+    struct mylite_db *database,
+    struct planned_select *out_plan,
+    size_t source_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
 static int plan_joined_select_wildcard_columns(
     struct mylite_db *database,
     const struct select_source_context *source_context,
@@ -19477,6 +19513,10 @@ static int plan_select_distinct_column(
 static int select_item_column_reference(
     const struct mylite_sql_ast_node *item,
     const struct mylite_sql_ast_node **out_column
+);
+static bool select_item_qualified_wildcard(
+    const struct mylite_sql_ast_node *item,
+    const struct mylite_sql_ast_node **out_qualified_wildcard
 );
 static int plan_select_predicate(
     struct mylite_db *database,
@@ -24815,6 +24855,7 @@ static void set_unknown_table_error(
     const char *schema_name,
     const char *table_name
 );
+static void set_unknown_table_name_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_multi_delete_table_error(
     struct mylite_db *database,
     const char *table_name
@@ -25389,6 +25430,7 @@ static int execute_parsed_statement(
         return execute_non_prepared_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
+    case MYLITE_SQL_AST_QUALIFIED_WILDCARD:
     case MYLITE_SQL_AST_QUOTE_FUNCTION:
     case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
         break;
@@ -25638,6 +25680,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_USING_LIST:
     case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_QUALIFIED_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
     case MYLITE_SQL_AST_DEFAULT_FUNCTION:
@@ -45110,6 +45153,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SET_ASSIGNMENT:
     case MYLITE_SQL_AST_EXECUTE_USING_LIST:
     case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_QUALIFIED_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
     case MYLITE_SQL_AST_DEFAULT_FUNCTION:
@@ -126952,10 +126996,27 @@ static int plan_select_columns(
     item = child_at(select_list, 0U);
     while (item != NULL) {
         const struct mylite_sql_ast_node *column_node = NULL;
+        const struct mylite_sql_ast_node *qualified_wildcard = NULL;
         struct mylite_catalog_column_descriptor column = {0};
         size_t source_index = 0U;
-        int rc = select_item_column_reference(item, &column_node);
+        int rc = MYLITE_OK;
 
+        if (select_item_qualified_wildcard(item, &qualified_wildcard)) {
+            rc = plan_select_qualified_wildcard_columns(
+                database,
+                qualified_wildcard,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            item = item->next_sibling;
+            continue;
+        }
+        rc = select_item_column_reference(item, &column_node);
         if (rc != MYLITE_OK) {
             set_unsupported_error(database, "SELECT supports only descriptor table columns");
             return MYLITE_ERROR;
@@ -126986,6 +127047,207 @@ static int plan_select_columns(
             return rc;
         }
         item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_select_qualified_wildcard_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *qualified_wildcard,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_catalog_column_descriptor *columns = table_columns;
+    size_t column_count = table_column_count;
+    size_t source_index = 0U;
+    size_t part_count = 0U;
+    bool matched = false;
+    int rc = collect_qualified_wildcard_parts(database, qualified_wildcard, parts, &part_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (select_source_context_is_joined(source_context)) {
+        for (size_t index = 0U; index < source_context->source_count; ++index) {
+            const struct planned_select_source *source = &source_context->sources[index];
+
+            if (!joined_source_matches_qualified_wildcard_parts(source, parts, part_count)) {
+                continue;
+            }
+            columns = source->columns;
+            column_count = source->column_count;
+            source_index = index;
+            matched = true;
+            break;
+        }
+    } else {
+        matched = select_source_matches_qualified_wildcard_parts(
+            source_context,
+            (const char (*)[MYLITE_CATALOG_IDENTIFIER_CAPACITY])parts,
+            part_count
+        );
+    }
+
+    if (!matched) {
+        return set_unknown_qualified_wildcard_table_error(database, parts, part_count);
+    }
+
+    return append_visible_select_columns_from_source(
+        database,
+        out_plan,
+        source_index,
+        columns,
+        column_count
+    );
+}
+
+static int collect_qualified_wildcard_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *qualified_wildcard,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t *out_part_count
+) {
+    const struct mylite_sql_ast_node *qualifier = NULL;
+    int rc = MYLITE_OK;
+
+    *out_part_count = 0U;
+    if (qualified_wildcard == NULL ||
+        qualified_wildcard->kind != MYLITE_SQL_AST_QUALIFIED_WILDCARD) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    qualifier = child_at(qualified_wildcard, 0U);
+    rc = collect_identifier_parts(
+        qualifier,
+        parts,
+        table_name_part_capacity,
+        out_part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (*out_part_count == 0U || *out_part_count > 2U) {
+        set_unsupported_error(
+            database,
+            "SELECT supports only one- or two-part qualified wildcards"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int set_unknown_qualified_wildcard_table_error(
+    struct mylite_db *database,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+) {
+    char table_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int rc =
+        format_column_reference_name(database, parts, part_count, table_name, sizeof(table_name));
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    set_unknown_table_name_error(database, table_name);
+    return MYLITE_ERROR;
+}
+
+static bool select_source_matches_qualified_wildcard_parts(
+    const struct select_source_context *source_context,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+) {
+    if (source_context == NULL || source_context->source == NULL) {
+        return false;
+    }
+    if (part_count == 1U) {
+        const char *expected = source_context->source->table_name;
+
+        if (source_context->has_alias) {
+            expected = source_context->alias;
+        }
+
+        return text_equals_ascii_case_insensitive(parts[0], expected);
+    }
+    if (part_count == 2U && !source_context->has_alias) {
+        bool schema_matches =
+            text_equals_ascii_case_insensitive(parts[0], source_context->source->schema.name);
+        bool table_matches =
+            text_equals_ascii_case_insensitive(parts[1], source_context->source->table_name);
+
+        if (!schema_matches) {
+            return false;
+        }
+        return table_matches;
+    }
+
+    return false;
+}
+
+static bool joined_source_matches_qualified_wildcard_parts(
+    const struct planned_select_source *source,
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count
+) {
+    if (source == NULL) {
+        return false;
+    }
+    if (part_count == 1U) {
+        const char *expected = source->source.table_name;
+
+        if (source->has_alias) {
+            expected = source->alias;
+        }
+
+        return text_equals_ascii_case_insensitive(parts[0], expected);
+    }
+    if (part_count == 2U && !source->has_alias) {
+        bool schema_matches =
+            text_equals_ascii_case_insensitive(parts[0], source->source.schema.name);
+        bool table_matches =
+            text_equals_ascii_case_insensitive(parts[1], source->source.table_name);
+
+        if (!schema_matches) {
+            return false;
+        }
+        return table_matches;
+    }
+
+    return false;
+}
+
+static int append_visible_select_columns_from_source(
+    struct mylite_db *database,
+    struct planned_select *out_plan,
+    size_t source_index,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        int rc = MYLITE_OK;
+
+        if (!columns[column_index].is_visible) {
+            continue;
+        }
+        rc = append_select_column_from_source(
+            database,
+            out_plan,
+            &columns[column_index],
+            source_index,
+            NULL
+        );
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+            return rc;
+        }
     }
 
     return MYLITE_OK;
@@ -127023,24 +127285,16 @@ static int plan_joined_select_wildcard_columns(
 ) {
     for (size_t source_index = 0U; source_index < source_context->source_count; ++source_index) {
         const struct planned_select_source *source = &source_context->sources[source_index];
+        int rc = append_visible_select_columns_from_source(
+            database,
+            out_plan,
+            source_index,
+            source->columns,
+            source->column_count
+        );
 
-        for (size_t column_index = 0U; column_index < source->column_count; ++column_index) {
-            int rc = MYLITE_OK;
-
-            if (!source->columns[column_index].is_visible) {
-                continue;
-            }
-            rc = append_select_column_from_source(
-                database,
-                out_plan,
-                &source->columns[column_index],
-                source_index,
-                NULL
-            );
-            if (rc != MYLITE_OK) {
-                set_nomem_error(database);
-                return rc;
-            }
+        if (rc != MYLITE_OK) {
+            return rc;
         }
     }
 
@@ -127053,26 +127307,13 @@ static int plan_single_source_select_wildcard_columns(
     size_t table_column_count,
     struct planned_select *out_plan
 ) {
-    for (size_t column_index = 0U; column_index < table_column_count; ++column_index) {
-        int rc = MYLITE_OK;
-
-        if (!table_columns[column_index].is_visible) {
-            continue;
-        }
-        rc = append_select_column_from_source(
-            database,
-            out_plan,
-            &table_columns[column_index],
-            0U,
-            NULL
-        );
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-            return rc;
-        }
-    }
-
-    return MYLITE_OK;
+    return append_visible_select_columns_from_source(
+        database,
+        out_plan,
+        0U,
+        table_columns,
+        table_column_count
+    );
 }
 
 static int plan_select_distinct_column(
@@ -127230,6 +127471,22 @@ static int select_item_column_reference(
     *out_column = expression;
 
     return MYLITE_OK;
+}
+
+static bool select_item_qualified_wildcard(
+    const struct mylite_sql_ast_node *item,
+    const struct mylite_sql_ast_node **out_qualified_wildcard
+) {
+    const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+
+    *out_qualified_wildcard = NULL;
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
+        expression->kind != MYLITE_SQL_AST_QUALIFIED_WILDCARD || child_at(item, 1U) != NULL) {
+        return false;
+    }
+
+    *out_qualified_wildcard = expression;
+    return true;
 }
 
 static int append_select_result_column(
@@ -153045,6 +153302,21 @@ static void set_unknown_table_error(
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Unknown table '%s.%s'", schema_name, table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_table,
+        "42S02",
+        message
+    );
+}
+
+static void set_unknown_table_name_error(struct mylite_db *database, const char *table_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Unknown table '%s'", table_name);
 
     if (written < 0) {
         message[0] = '\0';

@@ -18,6 +18,7 @@ enum {
     sql_buffer_capacity = 512,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
+    mysql_error_unknown_table = 1051,
     mysql_error_table_does_not_exist = 1146,
 };
 
@@ -35,6 +36,15 @@ struct expected_query {
     const char *context;
 };
 
+struct expected_query_table {
+    const char *sql;
+    const char *const *columns;
+    size_t column_count;
+    const char *const *values;
+    size_t row_count;
+    const char *context;
+};
+
 struct expected_row_count {
     const char *expected;
     const char *context;
@@ -45,9 +55,11 @@ static int test_select_qualified_columns_diagnostics(void);
 static int test_independent_qualified_column_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_numbers_table(mylite_db *database, const char *insert_rows);
+static int create_other_numbers_table(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_query_table(mylite_db *database, struct expected_query_table query);
 static int expect_row_count(mylite_db *database, struct expected_row_count expected);
 static int expect_result_value(
     const mylite_result *result,
@@ -93,6 +105,87 @@ static int test_select_qualified_columns_values_reopen_rename_and_drop(void) {
     static const char *const count_distinct_n[] = {"1"};
     static const char *const min_n[] = {"10"};
     static const char *const renamed_values[] = {"10", NULL, "10"};
+    static const char *const wildcard_columns[] = {"id", "n", "nn"};
+    static const char *const wildcard_rows[] = {"1", "10", "5", "2", NULL, "6", "3", "10", "7"};
+    static const char *const mixed_leading_columns[] = {"id", "id", "n", "nn"};
+    static const char *const mixed_leading_rows[] = {
+        "1",
+        "1",
+        "10",
+        "5",
+        "2",
+        "2",
+        NULL,
+        "6",
+        "3",
+        "3",
+        "10",
+        "7",
+    };
+    static const char *const mixed_trailing_columns[] = {"id", "n", "nn", "id"};
+    static const char *const mixed_trailing_rows[] = {
+        "1",
+        "10",
+        "5",
+        "1",
+        "2",
+        NULL,
+        "6",
+        "2",
+        "3",
+        "10",
+        "7",
+        "3",
+    };
+    static const char *const invisible_wildcard_columns[] = {"id", "n"};
+    static const char *const invisible_wildcard_rows[] = {"1", "10", "2", NULL};
+    static const char *const joined_columns[] = {"id", "n", "nn", "v"};
+    static const char *const joined_rows[] = {"1", "10", "5", "70", "2", NULL, "6", "80"};
+    static const char *const comma_joined_columns[] = {"id", "n", "nn", "id", "number_id", "v"};
+    static const char *const comma_joined_rows[] = {
+        "1",
+        "10",
+        "5",
+        "7",
+        "1",
+        "70",
+        "2",
+        NULL,
+        "6",
+        "8",
+        "2",
+        "80",
+    };
+    static const char *const left_joined_columns[] = {"id", "n", "nn", "id"};
+    static const char *const left_joined_rows[] = {
+        "1",
+        "10",
+        "5",
+        "7",
+        "2",
+        NULL,
+        "6",
+        "8",
+        "3",
+        "10",
+        "7",
+        NULL,
+    };
+    static const char *const left_joined_nullable_side_columns[] = {"id", "id", "number_id", "v"};
+    static const char *const left_joined_nullable_side_rows[] = {
+        "1",
+        "7",
+        "1",
+        "70",
+        "2",
+        "8",
+        "2",
+        "80",
+        "3",
+        NULL,
+        NULL,
+        NULL,
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -112,6 +205,145 @@ static int test_select_qualified_columns_values_reopen_rename_and_drop(void) {
     mylite_result_free(result);
     result = NULL;
     failures += create_numbers_table(database, "(1, 10, 5), (2, NULL, 6), (3, 10, 7)");
+    failures += create_other_numbers_table(database);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE hidden_numbers (id INT NOT NULL, n INT NULL, hidden INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO hidden_numbers (id, n, hidden) VALUES (1, 10, 100), (2, NULL, 200)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "ALTER TABLE hidden_numbers ALTER COLUMN hidden SET INVISIBLE",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT numbers.* FROM numbers ORDER BY numbers.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = wildcard_rows,
+            .row_count = 3U,
+            .context = "table-qualified wildcard columns",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT app.numbers.* FROM app.numbers ORDER BY app.numbers.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = wildcard_rows,
+            .row_count = 3U,
+            .context = "schema-qualified wildcard columns",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.* FROM numbers AS nums ORDER BY nums.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = wildcard_rows,
+            .row_count = 3U,
+            .context = "alias-qualified wildcard columns",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT id, numbers.* FROM numbers ORDER BY id",
+            .columns = mixed_leading_columns,
+            .column_count = sizeof(mixed_leading_columns) / sizeof(mixed_leading_columns[0]),
+            .values = mixed_leading_rows,
+            .row_count = 3U,
+            .context = "mixed selected column before qualified wildcard",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT numbers.*, numbers.id FROM numbers ORDER BY numbers.id",
+            .columns = mixed_trailing_columns,
+            .column_count = sizeof(mixed_trailing_columns) / sizeof(mixed_trailing_columns[0]),
+            .values = mixed_trailing_rows,
+            .row_count = 3U,
+            .context = "mixed selected column after qualified wildcard",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT hidden_numbers.* FROM hidden_numbers ORDER BY hidden_numbers.id",
+            .columns = invisible_wildcard_columns,
+            .column_count =
+                sizeof(invisible_wildcard_columns) / sizeof(invisible_wildcard_columns[0]),
+            .values = invisible_wildcard_rows,
+            .row_count = 2U,
+            .context = "qualified wildcard omits invisible columns",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.*, other.v FROM numbers AS nums JOIN other_numbers AS other "
+                   "ON nums.id = other.number_id ORDER BY other.id",
+            .columns = joined_columns,
+            .column_count = sizeof(joined_columns) / sizeof(joined_columns[0]),
+            .values = joined_rows,
+            .row_count = 2U,
+            .context = "joined qualified wildcard with explicit column",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.*, other.* FROM numbers AS nums, other_numbers AS other "
+                   "WHERE nums.id = other.number_id ORDER BY other.id",
+            .columns = comma_joined_columns,
+            .column_count = sizeof(comma_joined_columns) / sizeof(comma_joined_columns[0]),
+            .values = comma_joined_rows,
+            .row_count = 2U,
+            .context = "comma joined qualified wildcards",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.*, other.id FROM numbers AS nums LEFT JOIN other_numbers AS other "
+                   "ON nums.id = other.number_id ORDER BY nums.id",
+            .columns = left_joined_columns,
+            .column_count = sizeof(left_joined_columns) / sizeof(left_joined_columns[0]),
+            .values = left_joined_rows,
+            .row_count = 3U,
+            .context = "left joined qualified wildcard",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.id, other.* FROM numbers AS nums LEFT JOIN other_numbers AS other "
+                   "ON nums.id = other.number_id ORDER BY nums.id",
+            .columns = left_joined_nullable_side_columns,
+            .column_count = sizeof(left_joined_nullable_side_columns) /
+                            sizeof(left_joined_nullable_side_columns[0]),
+            .values = left_joined_nullable_side_rows,
+            .row_count = 3U,
+            .context = "left joined nullable-side qualified wildcard",
+        }
+    );
 
     failures += expect_query_values(
         database,
@@ -257,6 +489,17 @@ static int test_select_qualified_columns_values_reopen_rename_and_drop(void) {
             .context = "reopened alias-qualified selected column",
         }
     );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT nums.* FROM numbers AS nums ORDER BY nums.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = wildcard_rows,
+            .row_count = 3U,
+            .context = "reopened alias-qualified wildcard columns",
+        }
+    );
 
     failures += execute_ok(database, "RENAME TABLE numbers TO renamed_numbers", &result);
     mylite_result_free(result);
@@ -269,6 +512,17 @@ static int test_select_qualified_columns_values_reopen_rename_and_drop(void) {
             .values = renamed_values,
             .value_count = sizeof(renamed_values) / sizeof(renamed_values[0]),
             .context = "alias-qualified renamed table",
+        }
+    );
+    failures += expect_query_table(
+        database,
+        (struct expected_query_table){
+            .sql = "SELECT r.* FROM renamed_numbers AS r ORDER BY r.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = wildcard_rows,
+            .row_count = 3U,
+            .context = "alias-qualified wildcard renamed table",
         }
     );
     failures += execute_ok(database, "DROP TABLE renamed_numbers", &result);
@@ -382,7 +636,34 @@ static int test_select_qualified_columns_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT nums.* FROM numbers AS nums",
+        "SELECT numbers.* FROM numbers AS nums",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'numbers'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT app.numbers.* FROM numbers AS nums",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'app.numbers'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT wrong.* FROM numbers AS nums",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'wrong'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT nums.* AS all_columns FROM numbers AS nums",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -399,6 +680,9 @@ static int test_select_qualified_columns_diagnostics(void) {
 static int test_independent_qualified_column_handles(void) {
     static const char *const first_expected[] = {"10"};
     static const char *const second_expected[] = {"20"};
+    static const char *const wildcard_columns[] = {"id", "n", "nn"};
+    static const char *const first_wildcard_rows[] = {"1", "10", "5"};
+    static const char *const second_wildcard_rows[] = {"1", "20", "5"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -436,6 +720,17 @@ static int test_independent_qualified_column_handles(void) {
             .context = "first handle qualified row",
         }
     );
+    failures += expect_query_table(
+        first,
+        (struct expected_query_table){
+            .sql = "SELECT n.* FROM numbers AS n ORDER BY n.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = first_wildcard_rows,
+            .row_count = 1U,
+            .context = "first handle qualified wildcard row",
+        }
+    );
     failures += expect_query_values(
         second,
         (struct expected_query){
@@ -444,6 +739,17 @@ static int test_independent_qualified_column_handles(void) {
             .values = second_expected,
             .value_count = sizeof(second_expected) / sizeof(second_expected[0]),
             .context = "second handle qualified row",
+        }
+    );
+    failures += expect_query_table(
+        second,
+        (struct expected_query_table){
+            .sql = "SELECT n.* FROM numbers AS n ORDER BY n.id",
+            .columns = wildcard_columns,
+            .column_count = sizeof(wildcard_columns) / sizeof(wildcard_columns[0]),
+            .values = second_wildcard_rows,
+            .row_count = 1U,
+            .context = "second handle qualified wildcard row",
         }
     );
 
@@ -483,6 +789,23 @@ static int create_numbers_table(mylite_db *database, const char *insert_rows) {
         return failures + 1;
     }
     failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_other_numbers_table(mylite_db *database) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(
+        database,
+        "CREATE TABLE other_numbers (id INT NOT NULL, number_id INT NOT NULL, v INT NULL)",
+        &result
+    );
+
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "INSERT INTO other_numbers VALUES (7, 1, 70), (8, 2, 80)", &result);
     mylite_result_free(result);
 
     return failures;
@@ -534,6 +857,34 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     failures += expect_size(mylite_result_row_count(result), query.value_count, query.context);
     for (size_t index = 0U; index < query.value_count; ++index) {
         failures += expect_result_value(result, index, 0U, query.values[index], query.context);
+    }
+    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_query_table(mylite_db *database, struct expected_query_table query) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), query.column_count, query.context);
+    for (size_t column = 0U; column < query.column_count; ++column) {
+        failures += expect_text(
+            mylite_result_column_name(result, column),
+            query.columns[column],
+            query.context
+        );
+    }
+    failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+    for (size_t row = 0U; row < query.row_count; ++row) {
+        for (size_t column = 0U; column < query.column_count; ++column) {
+            size_t value_index = (row * query.column_count) + column;
+
+            failures +=
+                expect_result_value(result, row, column, query.values[value_index], query.context);
+        }
     }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
     failures += expect_size(mylite_result_warning_count(result), 0U, query.context);

@@ -88,8 +88,11 @@ Observed results:
   `1054 (42S22) Unknown column '<qualified-name>' in '<clause>'`.
 - Unknown qualifiers and unknown qualified column names also report
   `1054 (42S22)` in the field, where, or order clause.
-- MySQL accepts qualified wildcards such as `alias.*`. MyLite defers qualified
-  wildcard expansion in this slice.
+- MySQL accepts qualified wildcards such as `alias.*`. This slice deferred
+  wildcard expansion; the later
+  [baseline qualified wildcard SELECT](../baseline-qualified-wildcard-select/specs.md)
+  slice admits limited descriptor-backed `table.*`, `schema.table.*`, and
+  `alias.*` projection.
 
 ## Scope
 
@@ -108,7 +111,8 @@ In scope:
 
 Out of scope:
 
-- qualified wildcard forms such as `table.*` and `alias.*`;
+- qualified wildcard forms such as `table.*` and `alias.*`, which are handled
+  by the later baseline qualified wildcard slice;
 - select-item aliases and `ORDER BY` select-item alias resolution;
 - joins, multiple source tables, derived tables, CTEs, subqueries, grouping,
   having, windows, set operations, locking clauses, index hints, partitions,
@@ -207,7 +211,7 @@ Expected diagnostics for this slice:
 | Unknown predicate column or wrong predicate qualifier | `1054` / `42S22`, unknown column in where clause |
 | Unknown order column or wrong order qualifier | `1054` / `42S22`, unknown column in order clause |
 | Qualified aggregate argument mismatch | `1054` / `42S22`, unknown column in field list |
-| Qualified wildcard | deterministic parse or unsupported diagnostic |
+| Qualified wildcard | later limited qualified wildcard slice expands visible descriptor columns |
 | Unsupported projection expression or select-item alias | existing parse or unsupported diagnostic |
 | Physical SQLite failure | existing internal SQLite row-operation diagnostic |
 | Allocation failure | existing allocation diagnostic |
@@ -229,7 +233,8 @@ Add MySQL-runtime-verified expectations for:
 - original table or schema qualifiers after aliasing;
 - unknown qualifiers and unknown qualified columns in field, where, and order
   clauses; and
-- qualified wildcard behavior documented as out of scope.
+- qualified wildcard behavior documented as deferred to the later baseline
+  qualified wildcard slice.
 
 Add fast C coverage by extending existing parser and runtime lifecycle tests:
 

@@ -9577,6 +9577,7 @@ static int test_qualified_identifier_keyword_part(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *qualified = NULL;
+    const struct mylite_sql_ast_node *wildcard = NULL;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *column = NULL;
@@ -9682,6 +9683,48 @@ static int test_qualified_identifier_keyword_part(void) {
         "qualified order key"
     );
 
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a.* FROM numbers AS a;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    wildcard = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(wildcard, MYLITE_SQL_AST_QUALIFIED_WILDCARD, "qualified wildcard");
+    failures += expect_span_text(child_at(wildcard, 0U), "a", "qualified wildcard source");
+    failures += expect_node(child_at(wildcard, 1U), MYLITE_SQL_AST_WILDCARD, "wildcard star");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT app.numbers.* FROM app.numbers;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    wildcard = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(wildcard, MYLITE_SQL_AST_QUALIFIED_WILDCARD, "schema-qualified wildcard");
+    failures += expect_span_text(child_at(wildcard, 0U), "app.numbers", "schema wildcard source");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT a.*, b.* FROM lefts a JOIN rights b ON a.id = b.id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, 2U, "joined qualified wildcard items");
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_WILDCARD,
+        "joined left wildcard"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_WILDCARD,
+        "joined right wildcard"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT a.* AS all_columns FROM numbers AS a;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

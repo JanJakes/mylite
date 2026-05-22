@@ -3514,6 +3514,9 @@ select_item(A) ::= expression(B) AS select_alias(C). {
 select_item(A) ::= expression(B) select_alias(C). {
     A = mylite_sql_parser_make_select_item(state, B, C);
 }
+select_item(A) ::= qualified_wildcard(B). {
+    A = mylite_sql_parser_make_select_item(state, B, NULL);
+}
 
 select_alias(A) ::= identifier(B). {
     A = B;
@@ -5534,6 +5537,10 @@ qualified_identifier(A) ::= identifier(B). {
 }
 qualified_identifier(A) ::= qualified_identifier(B) DOT identifier(C). {
     A = mylite_sql_parser_make_qualified_identifier(state, B, C);
+}
+
+qualified_wildcard(A) ::= qualified_identifier(B) DOT STAR(S). {
+    A = mylite_sql_parser_make_qualified_wildcard(state, B, S);
 }
 
 table_name(A) ::= identifier(B). {

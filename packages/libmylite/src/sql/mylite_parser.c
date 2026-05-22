@@ -4914,6 +4914,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_identifier(
     return identifier;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_wildcard(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *qualifier,
+    struct mylite_sql_token token
+) {
+    struct mylite_sql_ast_node *wildcard = NULL;
+    struct mylite_sql_source_span span =
+        qualifier == NULL ? span_from_token(&token) : qualifier->span;
+    struct mylite_sql_ast_node *qualified = NULL;
+
+    wildcard = mylite_sql_parser_make_wildcard(state, token);
+    if (wildcard != NULL) {
+        span = span_join(span, wildcard->span);
+    }
+
+    qualified = make_node(state, MYLITE_SQL_AST_QUALIFIED_WILDCARD, span);
+    if (qualified == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(qualified, qualifier);
+    mylite_sql_ast_node_append_child(qualified, wildcard);
+    return qualified;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token

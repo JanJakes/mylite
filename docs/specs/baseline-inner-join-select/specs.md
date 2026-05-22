@@ -112,7 +112,9 @@ Out of scope:
 - outer joins, natural joins, `USING`, `STRAIGHT_JOIN` as a join operator,
   parenthesized table references, ODBC escape joins, lateral or derived tables,
   table functions, CTEs, partitions, and index hints;
-- qualified wildcards such as `table.*` or `alias.*`;
+- qualified wildcards outside the later limited descriptor-backed
+  [baseline qualified wildcard SELECT](../baseline-qualified-wildcard-select/specs.md)
+  projection slice;
 - join predicates other than one descriptor-column equality;
 - mixed-type join comparisons and MySQL's conversion/warning behavior for those
   comparisons;

@@ -120,7 +120,9 @@ Out of scope:
   derived tables, table functions, CTEs, and partitions;
 - `USING`, natural joins, right/full outer joins, and `STRAIGHT_JOIN` as a
   table-reference join operator;
-- qualified wildcards such as `table.*`;
+- qualified wildcards outside the later limited descriptor-backed
+  [baseline qualified wildcard SELECT](../baseline-qualified-wildcard-select/specs.md)
+  projection slice;
 - column-to-column `WHERE` predicates other than `=`;
 - mixed-type column-to-column comparisons and MySQL conversion/warning
   behavior for those comparisons;
@@ -297,7 +299,8 @@ Add MySQL-runtime expectations and focused C coverage for:
   selected/predicate/order columns;
 - unsupported `a,b,c`, mixed comma/explicit joins, `USING`, non-`=`
   column-to-column predicates, mixed-type column equality, expression table
-  sources, and qualified wildcards where currently rejected;
+  sources, and qualified wildcard forms outside the later limited descriptor-backed
+  projection slice where currently rejected;
 - parser coverage for admitted comma-source AST shape and rejected broader
   table-reference forms;
 - existing parser, explicit join, left join, row values, select-where,
